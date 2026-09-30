@@ -13,3 +13,4 @@
 - Keep domain seed data outside UI components so demo content can be replaced by live integrations cleanly.
 - Keep Meta, Asaas, and EVO behind server-side service interfaces; external credentials never enter browser code.
 - Store roles separately from profiles and enforce tenant access in database policies and authenticated server functions.
+- Use the supplied NEX Marketing Digital artwork as the canonical static brand asset; it keeps the product visually consistent.

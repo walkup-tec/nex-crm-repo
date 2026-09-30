@@ -1,0 +1,2 @@
+import { createFileRoute, Outlet, notFound } from "@tanstack/react-router";import { supabase } from "@/integrations/supabase/client";
+export const Route=createFileRoute("/_authenticated/master")({beforeLoad:async({context})=>{const user=(context as {user?:{id:string}}).user; if(!user) throw notFound();const{data}=await supabase.from("user_roles").select("role").eq("user_id",user.id).eq("role","master").maybeSingle();if(!data) throw notFound();},component:Outlet});

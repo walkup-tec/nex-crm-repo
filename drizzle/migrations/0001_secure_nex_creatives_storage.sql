@@ -1,0 +1,4 @@
+CREATE POLICY "tenant reads creative objects" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'nex-creatives' AND ((storage.foldername(name))[1] = public.current_organization_id()::text OR public.is_master()));
+CREATE POLICY "masters upload creative objects" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'nex-creatives' AND public.is_master());
+CREATE POLICY "masters update creative objects" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'nex-creatives' AND public.is_master()) WITH CHECK (bucket_id = 'nex-creatives' AND public.is_master());
+CREATE POLICY "masters delete creative objects" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'nex-creatives' AND public.is_master());

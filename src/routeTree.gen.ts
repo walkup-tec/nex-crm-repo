@@ -10,33 +10,270 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as DemoRouteImport } from './routes/demo'
+import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
+import { Route as AuthenticatedCreditosMetaRouteImport } from './routes/_authenticated/creditos-meta'
+import { Route as AuthenticatedCriativosRouteImport } from './routes/_authenticated/criativos'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
+import { Route as AuthenticatedMasterRouteImport } from './routes/_authenticated/master'
+import { Route as AuthenticatedMinhaContaRouteImport } from './routes/_authenticated/minha-conta'
+import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
+import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenticated/master.index'
+import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
+import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
+import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
+import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
+import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
+  id: '/esqueci-senha',
+  path: '/esqueci-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedCampanhasRoute = AuthenticatedCampanhasRouteImport.update({
+  id: '/campanhas',
+  path: '/campanhas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCreditosMetaRoute =
+  AuthenticatedCreditosMetaRouteImport.update({
+    id: '/creditos-meta',
+    path: '/creditos-meta',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCriativosRoute = AuthenticatedCriativosRouteImport.update({
+  id: '/criativos',
+  path: '/criativos',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedFinanceiroRoute = AuthenticatedFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMasterRoute = AuthenticatedMasterRouteImport.update({
+  id: '/master',
+  path: '/master',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMinhaContaRoute = AuthenticatedMinhaContaRouteImport.update({
+  id: '/minha-conta',
+  path: '/minha-conta',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMasterIndexRoute =
+  AuthenticatedMasterIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const AuthenticatedMasterCampanhasRoute =
+  AuthenticatedMasterCampanhasRouteImport.update({
+    id: '/campanhas',
+    path: '/campanhas',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const AuthenticatedMasterClientesRoute =
+  AuthenticatedMasterClientesRouteImport.update({
+    id: '/clientes',
+    path: '/clientes',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const AuthenticatedMasterConfiguracoesRoute =
+  AuthenticatedMasterConfiguracoesRouteImport.update({
+    id: '/configuracoes',
+    path: '/configuracoes',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const AuthenticatedMasterCriativosRoute =
+  AuthenticatedMasterCriativosRouteImport.update({
+    id: '/criativos',
+    path: '/criativos',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const AuthenticatedMasterFinanceiroRoute =
+  AuthenticatedMasterFinanceiroRouteImport.update({
+    id: '/financeiro',
+    path: '/financeiro',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/demo': typeof DemoRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/campanhas': typeof AuthenticatedCampanhasRoute
+  '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
+  '/criativos': typeof AuthenticatedCriativosRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/financeiro': typeof AuthenticatedFinanceiroRoute
+  '/master': typeof AuthenticatedMasterRouteWithChildren
+  '/minha-conta': typeof AuthenticatedMinhaContaRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
+  '/master/clientes': typeof AuthenticatedMasterClientesRoute
+  '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/master/criativos': typeof AuthenticatedMasterCriativosRoute
+  '/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/master/': typeof AuthenticatedMasterIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/demo': typeof DemoRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/campanhas': typeof AuthenticatedCampanhasRoute
+  '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
+  '/criativos': typeof AuthenticatedCriativosRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/financeiro': typeof AuthenticatedFinanceiroRoute
+  '/minha-conta': typeof AuthenticatedMinhaContaRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
+  '/master/clientes': typeof AuthenticatedMasterClientesRoute
+  '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/master/criativos': typeof AuthenticatedMasterCriativosRoute
+  '/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/master': typeof AuthenticatedMasterIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/demo': typeof DemoRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
+  '/_authenticated/creditos-meta': typeof AuthenticatedCreditosMetaRoute
+  '/_authenticated/criativos': typeof AuthenticatedCriativosRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
+  '/_authenticated/master': typeof AuthenticatedMasterRouteWithChildren
+  '/_authenticated/minha-conta': typeof AuthenticatedMinhaContaRoute
+  '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
+  '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
+  '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
+  '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
+  '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/demo'
+    | '/esqueci-senha'
+    | '/reset-password'
+    | '/campanhas'
+    | '/creditos-meta'
+    | '/criativos'
+    | '/dashboard'
+    | '/financeiro'
+    | '/master'
+    | '/minha-conta'
+    | '/usuarios'
+    | '/master/campanhas'
+    | '/master/clientes'
+    | '/master/configuracoes'
+    | '/master/criativos'
+    | '/master/financeiro'
+    | '/master/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/demo'
+    | '/esqueci-senha'
+    | '/reset-password'
+    | '/campanhas'
+    | '/creditos-meta'
+    | '/criativos'
+    | '/dashboard'
+    | '/financeiro'
+    | '/minha-conta'
+    | '/usuarios'
+    | '/master/campanhas'
+    | '/master/clientes'
+    | '/master/configuracoes'
+    | '/master/criativos'
+    | '/master/financeiro'
+    | '/master'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/demo'
+    | '/esqueci-senha'
+    | '/reset-password'
+    | '/_authenticated/campanhas'
+    | '/_authenticated/creditos-meta'
+    | '/_authenticated/criativos'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/financeiro'
+    | '/_authenticated/master'
+    | '/_authenticated/minha-conta'
+    | '/_authenticated/usuarios'
+    | '/_authenticated/master/campanhas'
+    | '/_authenticated/master/clientes'
+    | '/_authenticated/master/configuracoes'
+    | '/_authenticated/master/criativos'
+    | '/_authenticated/master/financeiro'
+    | '/_authenticated/master/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
+  DemoRoute: typeof DemoRoute
+  EsqueciSenhaRoute: typeof EsqueciSenhaRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +285,195 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/esqueci-senha': {
+      id: '/esqueci-senha'
+      path: '/esqueci-senha'
+      fullPath: '/esqueci-senha'
+      preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/campanhas': {
+      id: '/_authenticated/campanhas'
+      path: '/campanhas'
+      fullPath: '/campanhas'
+      preLoaderRoute: typeof AuthenticatedCampanhasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/creditos-meta': {
+      id: '/_authenticated/creditos-meta'
+      path: '/creditos-meta'
+      fullPath: '/creditos-meta'
+      preLoaderRoute: typeof AuthenticatedCreditosMetaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/criativos': {
+      id: '/_authenticated/criativos'
+      path: '/criativos'
+      fullPath: '/criativos'
+      preLoaderRoute: typeof AuthenticatedCriativosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/financeiro': {
+      id: '/_authenticated/financeiro'
+      path: '/financeiro'
+      fullPath: '/financeiro'
+      preLoaderRoute: typeof AuthenticatedFinanceiroRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/master': {
+      id: '/_authenticated/master'
+      path: '/master'
+      fullPath: '/master'
+      preLoaderRoute: typeof AuthenticatedMasterRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/minha-conta': {
+      id: '/_authenticated/minha-conta'
+      path: '/minha-conta'
+      fullPath: '/minha-conta'
+      preLoaderRoute: typeof AuthenticatedMinhaContaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/usuarios': {
+      id: '/_authenticated/usuarios'
+      path: '/usuarios'
+      fullPath: '/usuarios'
+      preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/master/': {
+      id: '/_authenticated/master/'
+      path: '/'
+      fullPath: '/master/'
+      preLoaderRoute: typeof AuthenticatedMasterIndexRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/_authenticated/master/campanhas': {
+      id: '/_authenticated/master/campanhas'
+      path: '/campanhas'
+      fullPath: '/master/campanhas'
+      preLoaderRoute: typeof AuthenticatedMasterCampanhasRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/_authenticated/master/clientes': {
+      id: '/_authenticated/master/clientes'
+      path: '/clientes'
+      fullPath: '/master/clientes'
+      preLoaderRoute: typeof AuthenticatedMasterClientesRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/_authenticated/master/configuracoes': {
+      id: '/_authenticated/master/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/master/configuracoes'
+      preLoaderRoute: typeof AuthenticatedMasterConfiguracoesRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/_authenticated/master/criativos': {
+      id: '/_authenticated/master/criativos'
+      path: '/criativos'
+      fullPath: '/master/criativos'
+      preLoaderRoute: typeof AuthenticatedMasterCriativosRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/_authenticated/master/financeiro': {
+      id: '/_authenticated/master/financeiro'
+      path: '/financeiro'
+      fullPath: '/master/financeiro'
+      preLoaderRoute: typeof AuthenticatedMasterFinanceiroRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
   }
 }
 
+interface AuthenticatedMasterRouteChildren {
+  AuthenticatedMasterCampanhasRoute: typeof AuthenticatedMasterCampanhasRoute
+  AuthenticatedMasterClientesRoute: typeof AuthenticatedMasterClientesRoute
+  AuthenticatedMasterConfiguracoesRoute: typeof AuthenticatedMasterConfiguracoesRoute
+  AuthenticatedMasterCriativosRoute: typeof AuthenticatedMasterCriativosRoute
+  AuthenticatedMasterFinanceiroRoute: typeof AuthenticatedMasterFinanceiroRoute
+  AuthenticatedMasterIndexRoute: typeof AuthenticatedMasterIndexRoute
+}
+
+const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
+  AuthenticatedMasterCampanhasRoute: AuthenticatedMasterCampanhasRoute,
+  AuthenticatedMasterClientesRoute: AuthenticatedMasterClientesRoute,
+  AuthenticatedMasterConfiguracoesRoute: AuthenticatedMasterConfiguracoesRoute,
+  AuthenticatedMasterCriativosRoute: AuthenticatedMasterCriativosRoute,
+  AuthenticatedMasterFinanceiroRoute: AuthenticatedMasterFinanceiroRoute,
+  AuthenticatedMasterIndexRoute: AuthenticatedMasterIndexRoute,
+}
+
+const AuthenticatedMasterRouteWithChildren =
+  AuthenticatedMasterRoute._addFileChildren(AuthenticatedMasterRouteChildren)
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedCampanhasRoute: typeof AuthenticatedCampanhasRoute
+  AuthenticatedCreditosMetaRoute: typeof AuthenticatedCreditosMetaRoute
+  AuthenticatedCriativosRoute: typeof AuthenticatedCriativosRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
+  AuthenticatedMasterRoute: typeof AuthenticatedMasterRouteWithChildren
+  AuthenticatedMinhaContaRoute: typeof AuthenticatedMinhaContaRoute
+  AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedCampanhasRoute: AuthenticatedCampanhasRoute,
+  AuthenticatedCreditosMetaRoute: AuthenticatedCreditosMetaRoute,
+  AuthenticatedCriativosRoute: AuthenticatedCriativosRoute,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
+  AuthenticatedMasterRoute: AuthenticatedMasterRouteWithChildren,
+  AuthenticatedMinhaContaRoute: AuthenticatedMinhaContaRoute,
+  AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
+  DemoRoute: DemoRoute,
+  EsqueciSenhaRoute: EsqueciSenhaRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

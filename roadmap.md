@@ -8,4 +8,4 @@
 - [ ] Preparar serviços Meta, Asaas e EVO sem credenciais
 - [ ] Implementar biblioteca de criativos privada
 - [ ] Validar fluxos, desktop/mobile, build e metadados
-- [ ] Substituir marca temporária pelo logo enviado
+- [x] Aplicar a logo enviada no acesso, menus e ícone do navegador

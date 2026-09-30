@@ -14,16 +14,562 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alert_events: {
+        Row: {
+          created_at: string
+          cycle_key: string
+          error_message: string | null
+          id: string
+          organization_id: string
+          recipient: string
+          status: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_key: string
+          error_message?: string | null
+          id?: string
+          organization_id: string
+          recipient: string
+          status: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          cycle_key?: string
+          error_message?: string | null
+          id?: string
+          organization_id?: string
+          recipient?: string
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          details: Json
+          entity_id: string | null
+          entity_type: string
+          id: string
+          organization_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          details?: Json
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          organization_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          details?: Json
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          organization_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          budget_cents: number | null
+          cost_per_result_cents: number | null
+          delivery_status: string
+          ends_on: string | null
+          external_campaign_id: string
+          id: string
+          impressions: number
+          meta_account_id: string
+          name: string
+          organization_id: string
+          reach: number
+          result_type: string
+          results: number
+          spent_cents: number | null
+          starts_on: string | null
+          updated_at: string
+        }
+        Insert: {
+          budget_cents?: number | null
+          cost_per_result_cents?: number | null
+          delivery_status: string
+          ends_on?: string | null
+          external_campaign_id: string
+          id?: string
+          impressions?: number
+          meta_account_id: string
+          name: string
+          organization_id: string
+          reach?: number
+          result_type: string
+          results?: number
+          spent_cents?: number | null
+          starts_on?: string | null
+          updated_at?: string
+        }
+        Update: {
+          budget_cents?: number | null
+          cost_per_result_cents?: number | null
+          delivery_status?: string
+          ends_on?: string | null
+          external_campaign_id?: string
+          id?: string
+          impressions?: number
+          meta_account_id?: string
+          name?: string
+          organization_id?: string
+          reach?: number
+          result_type?: string
+          results?: number
+          spent_cents?: number | null
+          starts_on?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contracts: {
+        Row: {
+          due_day: number
+          ends_on: string | null
+          external_subscription_id: string | null
+          fine_percent: number
+          id: string
+          interest_percent_monthly: number
+          monthly_fee_cents: number
+          organization_id: string
+          starts_on: string
+          updated_at: string
+        }
+        Insert: {
+          due_day: number
+          ends_on?: string | null
+          external_subscription_id?: string | null
+          fine_percent?: number
+          id?: string
+          interest_percent_monthly?: number
+          monthly_fee_cents: number
+          organization_id: string
+          starts_on: string
+          updated_at?: string
+        }
+        Update: {
+          due_day?: number
+          ends_on?: string | null
+          external_subscription_id?: string | null
+          fine_percent?: number
+          id?: string
+          interest_percent_monthly?: number
+          monthly_fee_cents?: number
+          organization_id?: string
+          starts_on?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      creative_files: {
+        Row: {
+          created_at: string
+          created_by: string
+          folder_id: string | null
+          id: string
+          mime_type: string
+          name: string
+          organization_id: string
+          size_bytes: number
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          folder_id?: string | null
+          id?: string
+          mime_type: string
+          name: string
+          organization_id: string
+          size_bytes: number
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          folder_id?: string | null
+          id?: string
+          mime_type?: string
+          name?: string
+          organization_id?: string
+          size_bytes?: number
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "creative_files_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "creative_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "creative_files_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      creative_folders: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          organization_id: string
+          parent_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          organization_id: string
+          parent_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          parent_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "creative_folders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "creative_folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "creative_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          base_amount_cents: number
+          competence: string
+          contract_id: string
+          due_date: string
+          external_charge_id: string | null
+          id: string
+          invoice_url: string | null
+          organization_id: string
+          paid_at: string | null
+          penalties_waived: boolean
+          pix_code: string | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          total_amount_cents: number
+          updated_at: string
+        }
+        Insert: {
+          base_amount_cents: number
+          competence: string
+          contract_id: string
+          due_date: string
+          external_charge_id?: string | null
+          id?: string
+          invoice_url?: string | null
+          organization_id: string
+          paid_at?: string | null
+          penalties_waived?: boolean
+          pix_code?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          total_amount_cents: number
+          updated_at?: string
+        }
+        Update: {
+          base_amount_cents?: number
+          competence?: string
+          contract_id?: string
+          due_date?: string
+          external_charge_id?: string | null
+          id?: string
+          invoice_url?: string | null
+          organization_id?: string
+          paid_at?: string | null
+          penalties_waived?: boolean
+          pix_code?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          total_amount_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_accounts: {
+        Row: {
+          balance_cents: number
+          currency: string
+          external_account_id: string
+          id: string
+          last_synced_at: string | null
+          name: string
+          organization_id: string
+          portfolio_id: string | null
+          sync_status: string
+        }
+        Insert: {
+          balance_cents?: number
+          currency?: string
+          external_account_id: string
+          id?: string
+          last_synced_at?: string | null
+          name: string
+          organization_id: string
+          portfolio_id?: string | null
+          sync_status?: string
+        }
+        Update: {
+          balance_cents?: number
+          currency?: string
+          external_account_id?: string
+          id?: string
+          last_synced_at?: string | null
+          name?: string
+          organization_id?: string
+          portfolio_id?: string | null
+          sync_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          document: string
+          finance_phone: string
+          id: string
+          legal_name: string
+          responsible_email: string
+          responsible_name: string
+          responsible_phone: string
+          status: Database["public"]["Enums"]["client_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          document: string
+          finance_phone: string
+          id?: string
+          legal_name: string
+          responsible_email: string
+          responsible_name: string
+          responsible_phone: string
+          status?: Database["public"]["Enums"]["client_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          document?: string
+          finance_phone?: string
+          id?: string
+          legal_name?: string
+          responsible_email?: string
+          responsible_name?: string
+          responsible_phone?: string
+          status?: Database["public"]["Enums"]["client_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          is_blocked: boolean
+          organization_id: string | null
+          theme: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email: string
+          full_name: string
+          id: string
+          is_blocked?: boolean
+          organization_id?: string | null
+          theme?: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          is_blocked?: boolean
+          organization_id?: string | null
+          theme?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_permissions: {
+        Row: {
+          can_add_meta_credit: boolean
+          can_manage_users: boolean
+          can_view_campaigns: boolean
+          can_view_meta_balance: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_add_meta_credit?: boolean
+          can_manage_users?: boolean
+          can_view_campaigns?: boolean
+          can_view_meta_balance?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_add_meta_credit?: boolean
+          can_manage_users?: boolean
+          can_view_campaigns?: boolean
+          can_view_meta_balance?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_organization_id: { Args: never; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_master: { Args: never; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "master" | "client_admin" | "client_user"
+      client_status:
+        | "active"
+        | "overdue"
+        | "blocked"
+        | "contract_ended"
+        | "disabled"
+      invoice_status: "pending" | "overdue" | "paid" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +696,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["master", "client_admin", "client_user"],
+      client_status: [
+        "active",
+        "overdue",
+        "blocked",
+        "contract_ended",
+        "disabled",
+      ],
+      invoice_status: ["pending", "overdue", "paid", "cancelled"],
+    },
   },
 } as const

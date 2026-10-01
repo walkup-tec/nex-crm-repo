@@ -7,8 +7,8 @@ import {
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
 import footerLogo from "@/assets/nex-logo-footer-transparent.png";
-import metaOfficial from "@/assets/meta-official.svg.asset.json";
-import googleOfficial from "@/assets/google-official.png.asset.json";
+import metaOfficial from "@/assets/meta-official-dark.svg.asset.json";
+import googleOfficial from "@/assets/google-official-cropped.png.asset.json";
 import attendantAvatar from "@/assets/attendant-avatar.png";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { faq, messages, sections, solutions, waLink } from "@/data/site";
@@ -257,7 +257,7 @@ function SitePage() {
                 </div>
                 <div className="hidden h-24 bg-border/60 sm:block" />
                 <div className="group text-center">
-                  <img src={googleOfficial.url} alt="Google" className="mx-auto h-10 w-auto object-contain" loading="lazy" />
+                  <img src={googleOfficial.url} alt="Google" className="mx-auto h-11 w-auto object-contain" loading="lazy" />
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#4285f4] via-[#ea4335] to-[#fbbc05] transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_35%,transparent)]" />
                   <p className="mt-3 text-base text-foreground/90">Partner</p>
                 </div>

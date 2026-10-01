@@ -230,11 +230,32 @@ function SitePage() {
         </section>
       </main>
 
-      <footer className="border-t border-border bg-[var(--surface-1)] py-10 pb-28 sm:pb-10">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm text-muted-foreground sm:flex-row sm:px-6">
-          <img src={logoAsset.url} alt="NEX Marketing Digital" className="h-8 w-auto" />
-          <p>© {new Date().getFullYear()} NEX Marketing Digital. Tecnologia desde 2006.</p>
-          <Link to="/auth" className="hover:text-foreground">Área do cliente</Link>
+      <footer className="border-t border-border bg-[var(--surface-1)] pt-12 pb-28 sm:pb-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col items-center gap-2 sm:items-start">
+              <img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto" />
+              <p className="text-xs text-muted-foreground">Marketing, tecnologia e automação desde 2006.</p>
+            </div>
+            <div className="flex flex-col items-center gap-3 sm:items-end">
+              <p className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Certificações e parceiros</p>
+              <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+                <li>
+                  <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-12 w-auto rounded-full grayscale opacity-55 transition duration-300 hover:opacity-100 hover:grayscale-0" loading="lazy" />
+                </li>
+                <li>
+                  <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-9 w-auto rounded-md grayscale opacity-55 transition duration-300 hover:opacity-100 hover:grayscale-0" loading="lazy" />
+                </li>
+                <li>
+                  <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-12 w-auto rounded-lg grayscale opacity-55 transition duration-300 hover:opacity-100 hover:grayscale-0" loading="lazy" />
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-9 flex flex-col items-center justify-between gap-3 border-t border-border/60 pt-6 text-sm text-muted-foreground sm:flex-row">
+            <p>© {new Date().getFullYear()} NEX Marketing Digital. Tecnologia desde 2006.</p>
+            <Link to="/auth" className="transition hover:text-foreground">Área do cliente</Link>
+          </div>
         </div>
       </footer>
 

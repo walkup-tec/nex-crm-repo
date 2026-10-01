@@ -25,6 +25,6 @@
 ## Em andamento (2026-10-01)
 - [x] Efeitos de movimento no site: background animado, reveal on scroll, micro-animações (concluído)
 - [x] Efeitos de fundo tecnológicos (circuitos, pontos, fluxos, órbita) removidos a pedido do usuário
-- [ ] Aplicar logo sem fundo enviada pelo usuário (rodapé e seção Sobre)
+- [x] Aplicar logo sem fundo enviada pelo usuário (rodapé e seção Sobre)
 - [x] Mockup do hero: print realista do painel NEX Ads (campanhas, KPIs, saldo Meta) substituindo o genérico (concluído)
-- [ ] Site: reduzir altura da seção Soluções ~10% (pedido 19:09)
+- [x] Site: reduzir altura da seção Soluções ~10% (concluído)

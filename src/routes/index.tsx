@@ -251,7 +251,7 @@ function SitePage() {
                   <div className="mx-auto flex h-11 w-44 items-center justify-center">
                     <img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" />
                   </div>
-                  <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-cyan via-primary to-primary transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_45%,transparent)]" />
+                  <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#0668E1] via-[#0072EC] to-[#0082FB] transition-all duration-500 group-hover:shadow-[0_0_18px_rgba(0,130,251,0.55)]" />
                   <div className="mt-3 space-y-1 text-sm text-foreground/90">
                     <p>Media Buying Professional</p>
                     <p>Tech Provider</p>

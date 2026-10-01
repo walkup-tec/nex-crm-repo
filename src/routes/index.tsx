@@ -5,6 +5,9 @@ import {
   Menu, MonitorSmartphone, Search, ShieldCheck, Sparkles, Target, Workflow, Zap, Info, Phone,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
+import credMetaCertified from "@/assets/cred-meta-certified.png.asset.json";
+import credMetaTechProvider from "@/assets/cred-meta-tech-provider.png.asset.json";
+import credGooglePartner from "@/assets/cred-google-partner.png.asset.json";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { faq, messages, sections, solutions, waLink, WHATSAPP_DISPLAY } from "@/data/site";
 
@@ -134,10 +137,10 @@ function SitePage() {
         <section aria-label="Certificações" className="border-y border-border bg-[var(--surface-2)] py-8">
           <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 text-center sm:px-6 md:flex-row md:justify-between md:text-left">
             <p className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">Credenciais</p>
-            <ul className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-sm font-semibold">
-              <li>Meta Certified Media Buying Professional</li>
-              <li>Meta Tech Provider</li>
-              <li>Google Partner</li>
+            <ul className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
+              <li><img src={credMetaCertified.url} alt="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full md:h-16" loading="lazy" /></li>
+              <li><img src={credMetaTechProvider.url} alt="Meta Tech Provider — Certified Partner" className="h-12 w-auto rounded-lg md:h-14" loading="lazy" /></li>
+              <li><img src={credGooglePartner.url} alt="Google Partner" className="h-12 w-auto rounded-lg md:h-14" loading="lazy" /></li>
             </ul>
           </div>
         </section>

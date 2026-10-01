@@ -406,7 +406,11 @@ function HeroVisual() {
       </div>
       <div className="absolute -bottom-6 -left-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Canais</p>
-        <div className="mt-2 flex gap-2"><Target className="size-5 text-primary" /><Search className="size-5 text-cyan" /><WhatsAppIcon className="size-5 text-accent-foreground" /></div>
+        <div className="mt-2 flex items-center gap-2">
+          <span className="block h-5 w-5"><img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" /></span>
+          <span className="block h-5 w-5"><img src={googleOfficial.url} alt="Google" className="h-full w-full object-contain" loading="lazy" /></span>
+          <WhatsAppIcon className="size-5 text-accent-foreground" />
+        </div>
       </div>
       <div className="animate-float absolute -right-4 -top-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block" style={{ animationDelay: "1.4s" }}>
         <p className="text-[11px] text-muted-foreground">Automação</p>

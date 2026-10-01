@@ -246,13 +246,13 @@ function SitePage() {
               <p className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Certificações e parceiros</p>
               <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
                 <li>
-                  <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-12 w-auto rounded-full grayscale opacity-55 transition duration-300 hover:opacity-100 hover:grayscale-0" loading="lazy" />
+                  <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
                 </li>
                 <li>
-                  <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-9 w-auto rounded-md grayscale opacity-55 transition duration-300 hover:opacity-100 hover:grayscale-0" loading="lazy" />
+                  <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-11 w-auto rounded-md opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
                 </li>
                 <li>
-                  <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-12 w-auto rounded-lg grayscale opacity-55 transition duration-300 hover:opacity-100 hover:grayscale-0" loading="lazy" />
+                  <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-14 w-auto rounded-lg opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
                 </li>
               </ul>
             </div>

@@ -9,7 +9,7 @@ import metaCertified from "@/assets/nex-meta-certified.png";
 import metaTechProvider from "@/assets/nex-meta-tech-provider.png";
 import googlePartner from "@/assets/nex-google-partner.svg";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { faq, messages, sections, solutions, waLink, WHATSAPP_DISPLAY } from "@/data/site";
+import { faq, messages, sections, solutions, waLink } from "@/data/site";
 
 const TITLE = "NEX Marketing Digital — Marketing, tecnologia e automação desde 2006";
 const DESC = "Tráfego pago no Meta Ads e Google Ads, WhatsApp, sistemas, sites e automação com IA. Performance apoiada por tecnologia e dados desde 2006.";

@@ -206,8 +206,9 @@ function SitePage() {
         </section>
 
         {/* SOBRE */}
-        <section id="sobre" className="bg-[var(--surface-1)] py-20 lg:py-28">
-          <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
+        <section id="sobre" className="relative overflow-hidden bg-[var(--surface-1)] py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-35 [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_80%)]" aria-hidden />
+          <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
               <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
                 <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />

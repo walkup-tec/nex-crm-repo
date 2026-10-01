@@ -312,18 +312,63 @@ function HeroVisual() {
   const bars = [38, 52, 46, 64, 58, 76, 70, 88];
   return (
     <div className="relative mx-auto w-full max-w-lg" aria-hidden>
-      <div className="border-gradient animate-float rounded-3xl p-6 shadow-panel">
-        <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Performance</span><span className="rounded-full bg-secondary px-2 py-0.5">ao vivo</span></div>
-        <div className="mt-6 flex h-40 items-end gap-2">
-          {bars.map((h, i) => <div key={i} className="flex-1 rounded-t-md bg-gradient-to-t from-primary to-cyan opacity-90" style={{ height: `${h}%` }} />)}
+      <div className="animate-float overflow-hidden rounded-2xl border border-white/10 bg-[#010317] shadow-panel">
+        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
+          <span className="size-2.5 rounded-full bg-white/20" /><span className="size-2.5 rounded-full bg-white/20" /><span className="size-2.5 rounded-full bg-white/20" />
+          <span className="ml-3 rounded-md bg-white/5 px-2.5 py-1 text-[10px] text-white/50">app.nexads.com.br/dashboard</span>
         </div>
-        <svg viewBox="0 0 300 60" className="mt-4 h-14 w-full"><defs><linearGradient id="hl" x1="0" x2="1"><stop offset="0" stopColor="#6F02FD" /><stop offset="1" stopColor="#00EAFD" /></linearGradient></defs><path d="M0 50 C40 45 60 30 100 34 S170 12 210 18 S270 4 300 6" fill="none" stroke="url(#hl)" strokeWidth="3" /></svg>
+        <div className="flex">
+          <div className="hidden w-10 flex-col items-center gap-4 border-r border-white/10 py-4 sm:flex">
+            <span className="size-5 rounded-md bg-nex-gradient" />
+            {[LayoutDashboard, BarChart3, Wallet, FolderOpen, Users].map((I, i) => <I key={i} className={`size-3.5 ${i === 0 ? "text-cyan" : "text-white/30"}`} />)}
+          </div>
+          <div className="min-w-0 flex-1 p-3.5 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-white">Visão geral</p>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/60">Últimos 30 dias</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan/30 bg-cyan/10 px-2 py-0.5 text-[10px] font-medium text-cyan"><span className="relative flex size-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan opacity-70" /><span className="relative inline-flex size-1.5 rounded-full bg-cyan" /></span>Saldo: R$ 312,50</span>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+              {[["Alcance", "128,4 mil", "+12,3%"], ["Impressões", "412,9 mil", "+8,1%"], ["Resultados", "1.847", "+23,6%"], ["Custo/result.", "R$ 8,42", "-11,2%"]].map(([k, v, d], i) => (
+                <div key={k} className={`rounded-lg border p-2.5 ${i === 2 ? "border-primary/50 bg-primary/15" : "border-white/10 bg-white/[.03]"}`}>
+                  <p className="text-[9px] text-white/50">{k}</p>
+                  <p className={`mt-0.5 text-xs font-bold ${i === 2 ? "text-nex-gradient" : "text-white"}`}>{v}</p>
+                  <p className="mt-0.5 text-[9px] text-emerald-400">{d}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2.5 rounded-lg border border-white/10 bg-white/[.03] p-3">
+              <div className="flex items-center justify-between"><p className="text-[10px] text-white/50">Resultados por dia</p><span className="text-[10px] text-white/40">Meta Ads</span></div>
+              <div className="mt-2 flex h-16 items-end gap-1">
+                {bars.map((h, i) => <div key={i} className="animate-rise flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%`, animationDelay: `${i * 60}ms` }} />)}
+              </div>
+            </div>
+            <div className="mt-2.5 overflow-hidden rounded-lg border border-white/10">
+              <table className="w-full text-left">
+                <thead><tr className="bg-white/5 text-[9px] uppercase tracking-wide text-white/40"><th className="px-2.5 py-1.5 font-medium">Campanha</th><th className="px-1.5 py-1.5 font-medium">Status</th><th className="px-2.5 py-1.5 text-right font-medium">Result.</th><th className="px-2.5 py-1.5 text-right font-medium">C/result.</th></tr></thead>
+                <tbody className="divide-y divide-white/5 text-[10px] text-white/85">
+                  {rows.map(([n, s, res, cpr]) => (
+                    <tr key={n}>
+                      <td className="max-w-0 truncate px-2.5 py-2">{n}</td>
+                      <td className="px-1.5 py-2"><span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${s === "Ativa" ? "bg-emerald-400/15 text-emerald-400" : "bg-white/10 text-white/50"}`}>{s}</span></td>
+                      <td className="px-2.5 py-2 text-right tabular-nums">{res}</td>
+                      <td className="px-2.5 py-2 text-right tabular-nums text-white/70">{cpr}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-right text-[9px] text-white/40">Sincronizado com a Meta há 12 min</p>
+          </div>
+        </div>
       </div>
       <div className="absolute -bottom-6 -left-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Canais</p>
         <div className="mt-2 flex gap-2"><Target className="size-5 text-primary" /><Search className="size-5 text-cyan" /><WhatsAppIcon className="size-5 text-accent-foreground" /></div>
       </div>
-      <div className="absolute -right-4 -top-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
+      <div className="animate-float absolute -right-4 -top-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block" style={{ animationDelay: "1.4s" }}>
         <p className="text-[11px] text-muted-foreground">Automação</p>
         <Workflow className="mt-2 size-5 text-cyan" />
       </div>

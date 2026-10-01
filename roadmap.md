@@ -29,3 +29,5 @@
 - [x] Mockup do hero: print realista do painel NEX Ads (campanhas, KPIs, saldo Meta) substituindo o genérico (concluído)
 - [x] Site: reduzir altura da seção Soluções ~10% (concluído)
 - [x] Site: tons alternados entre seções (navy/alt) com brilhos suaves e divisores para diferenciar cada seção (direção v1 aprovada)
+
+- [x] Site: restaurar fundos da primeira versão (superfícies alternadas + orbes) e aplicar linhas no fundo de Soluções (pedido 01/10)

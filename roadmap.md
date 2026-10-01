@@ -7,6 +7,7 @@
 - [x] Implementar área Master e todos os módulos
 - [ ] Preparar serviços Meta, Asaas e EVO sem credenciais
 - [ ] Implementar biblioteca de criativos privada
+- [x] Máscaras PT-BR no cadastro de clientes
 - [ ] Validar fluxos, desktop/mobile, build e metadados
 - [x] Concluir todas as telas e estados visuais restantes das áreas Cliente e Master
 - [x] Aplicar a logo enviada no acesso, menus e ícone do navegador

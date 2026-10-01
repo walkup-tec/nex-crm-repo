@@ -229,7 +229,7 @@ function SitePage() {
               <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
               <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
               <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
-              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 rounded-xl px-8 text-base font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
+              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
             </div>
           </div>
         </section>

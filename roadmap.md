@@ -8,4 +8,5 @@
 - [ ] Preparar serviços Meta, Asaas e EVO sem credenciais
 - [ ] Implementar biblioteca de criativos privada
 - [ ] Validar fluxos, desktop/mobile, build e metadados
+- [ ] Concluir todas as telas e estados visuais restantes das áreas Cliente e Master
 - [x] Aplicar a logo enviada no acesso, menus e ícone do navegador

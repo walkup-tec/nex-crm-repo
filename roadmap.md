@@ -11,5 +11,6 @@
 - [ ] Validar fluxos, desktop/mobile, build e metadados
 - [x] Concluir todas as telas e estados visuais restantes das áreas Cliente e Master
 - [x] Aplicar a logo enviada no acesso, menus e ícone do navegador
-- [ ] Site institucional: mover selos para o rodapé em alta qualidade
-- [ ] Site institucional: aprofundar seção Soluções (conteúdo detalhado por frente)
+- [x] Site institucional: mover selos para o rodapé em alta qualidade
+- [x] Site institucional: aprofundar seção Soluções (conteúdo detalhado por frente)
+- [x] Botão de contato: sem número exibido, com efeito no hover

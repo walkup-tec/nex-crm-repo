@@ -89,6 +89,7 @@ function SitePage() {
                   {sections.map((s) => { const I = navIcons[s.id]; return (
                     <a key={s.id} href={`#${s.id}`} onClick={() => setOpen(false)} className={`flex h-12 items-center gap-3 rounded-lg px-3 text-base font-medium ${active === s.id ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}><I className="size-5" />{s.label}</a>
                   ); })}
+                </nav>
                 <WaButton msg={messages.general} className="mt-6 w-full">Falar no WhatsApp</WaButton>
               </SheetContent>
             </Sheet>

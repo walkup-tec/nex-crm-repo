@@ -24,4 +24,5 @@
 
 ## Em andamento (2026-10-01)
 - [x] Efeitos de movimento no site: background animado, reveal on scroll, micro-animações (concluído)
+- [x] Fundos tecnológicos por seção: traços de circuito animados, nós piscando, pontos em deriva, linhas de fluxo de dados e órbita na seção Sobre (concluído)
 - [x] Mockup do hero: print realista do painel NEX Ads (campanhas, KPIs, saldo Meta) substituindo o genérico (concluído)

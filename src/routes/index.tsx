@@ -8,6 +8,7 @@ import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
 import metaCertified from "@/assets/nex-meta-certified.png";
 import metaTechProvider from "@/assets/nex-meta-tech-provider.png";
 import googlePartner from "@/assets/nex-google-partner.svg";
+import attendantAvatar from "@/assets/attendant-avatar.png";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { faq, messages, sections, solutions, waLink } from "@/data/site";
 
@@ -264,10 +265,21 @@ function SitePage() {
         </div>
       </footer>
 
-      {/* WhatsApp flutuante */}
-      <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp"
-        className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-5 z-50 grid size-14 place-items-center rounded-full bg-nex-gradient text-primary-foreground shadow-brand transition hover:scale-105 active:scale-95">
-        <WhatsAppIcon className="size-6" />
+      {/* WhatsApp flutuante — atendente com selo */}
+      <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp com uma atendente"
+        className="group fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-5 z-50 flex items-center gap-2 transition-transform duration-300 hover:scale-105 active:scale-95">
+        <span className="hidden opacity-0 translate-x-2 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-brand backdrop-blur transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100 md:block">
+          Falar no WhatsApp
+        </span>
+        <span className="relative grid size-16 place-items-center">
+          <span aria-hidden="true" className="absolute inset-0 rounded-full border-2 border-accent/70 motion-safe:animate-nex-ping" />
+          <span aria-hidden="true" className="absolute inset-0 rounded-full bg-nex-gradient opacity-50 blur-md transition-opacity duration-300 group-hover:opacity-75" />
+          <img src={attendantAvatar} alt="Atendente da NEX no WhatsApp" width={1024} height={1024} loading="lazy"
+            className="relative size-16 rounded-full border-2 border-accent/60 object-cover shadow-brand" />
+          <span className="absolute -bottom-0.5 -right-0.5 grid size-8 place-items-center rounded-full bg-nex-gradient text-primary-foreground shadow-brand ring-2 ring-background">
+            <WhatsAppIcon className="size-4" />
+          </span>
+        </span>
       </a>
     </div>
   );

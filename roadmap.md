@@ -14,3 +14,5 @@
 - [x] Site institucional: mover selos para o rodapé em alta qualidade
 - [x] Site institucional: aprofundar seção Soluções (conteúdo detalhado por frente)
 - [x] Botão de contato: sem número exibido, com efeito no hover
+- [x] Site institucional: selos no rodapé em painel claro com brilho ao passar o mouse
+- [x] Site institucional: onda do botão flutuante em branco para contraste no fundo escuro

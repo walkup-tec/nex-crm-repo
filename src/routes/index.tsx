@@ -245,17 +245,19 @@ function SitePage() {
             </div>
             <div className="flex flex-col items-center gap-3 sm:items-end">
               <p className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Certificações e parceiros</p>
-              <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
-                <li>
-                  <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
-                </li>
-                <li>
-                  <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-11 w-auto rounded-md opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
-                </li>
-                <li>
-                  <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-14 w-auto rounded-lg opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
-                </li>
-              </ul>
+              <div className="relative overflow-hidden rounded-2xl bg-white px-6 py-4 shadow-brand">
+                <ul className="relative flex flex-wrap items-center justify-center gap-x-7 gap-y-3">
+                  <li className="badge-shine rounded-full">
+                    <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full transition duration-300 hover:scale-105" loading="lazy" />
+                  </li>
+                  <li className="badge-shine rounded-md">
+                    <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-11 w-auto rounded-md transition duration-300 hover:scale-105" loading="lazy" />
+                  </li>
+                  <li className="badge-shine rounded-lg">
+                    <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-14 w-auto rounded-lg transition duration-300 hover:scale-105" loading="lazy" />
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
           <div className="mt-9 flex flex-col items-center justify-between gap-3 border-t border-border/60 pt-6 text-sm text-muted-foreground sm:flex-row">
@@ -272,7 +274,7 @@ function SitePage() {
           Falar no WhatsApp
         </span>
         <span className="relative grid size-16 place-items-center">
-          <span aria-hidden="true" className="absolute inset-0 rounded-full border-2 border-accent/70 motion-safe:animate-nex-ping" />
+          <span aria-hidden="true" className="absolute inset-0 rounded-full border-2 border-white/90 motion-safe:animate-nex-ping" />
           <span aria-hidden="true" className="absolute inset-0 rounded-full bg-nex-gradient opacity-50 blur-md transition-opacity duration-300 group-hover:opacity-75" />
           <img src={attendantAvatar} alt="Atendente da NEX no WhatsApp" width={1024} height={1024} loading="lazy"
             className="relative size-16 rounded-full border-2 border-accent/60 object-cover shadow-brand" />

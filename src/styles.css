@@ -20,3 +20,5 @@
 @utility border-gradient{border:1px solid transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,color-mix(in oklch,#6F02FD 70%,transparent),color-mix(in oklch,#00EAFD 50%,transparent)) border-box}
 @keyframes nex-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 @utility animate-float{animation:nex-float 7s ease-in-out infinite}
+@keyframes nex-ping{0%{transform:scale(1);opacity:.5}75%,100%{transform:scale(1.5);opacity:0}}
+@utility animate-nex-ping{animation:nex-ping 2.4s cubic-bezier(0,0,.2,1) infinite}

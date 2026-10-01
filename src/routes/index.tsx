@@ -183,12 +183,14 @@ function SitePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Tecnologia" title="Uma agência que também constrói tecnologia" text="Não dependemos apenas de ferramentas prontas. Quando sua operação precisa, desenvolvemos." />
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {[[Database, "Dados", "Decisões baseadas em métricas reais, não em impressão."], [Workflow, "Automação", "Processos repetitivos executados sem esforço manual."], [Bot, "IA aplicada", "Atendimento e qualificação de leads com inteligência artificial."], [Globe, "Sistemas web", "Plataformas sob medida, seguras e integradas."]].map(([I, t, d]) => { const Icon = I as typeof Database; return (
-                <div key={t as string} className="rounded-2xl border border-border bg-card p-6 shadow-panel">
-                  <Icon className="size-6 text-primary" />
-                  <h3 className="mt-4 font-display text-base font-semibold">{t as string}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{d as string}</p>
-                </div>
+              {[[Database, "Dados", "Decisões baseadas em métricas reais, não em impressão."], [Workflow, "Automação", "Processos repetitivos executados sem esforço manual."], [Bot, "IA aplicada", "Atendimento e qualificação de leads com inteligência artificial."], [Globe, "Sistemas web", "Plataformas sob medida, seguras e integradas."]].map(([I, t, d], i) => { const Icon = I as typeof Database; return (
+                <Reveal key={t as string} delay={i * 70} className="h-full">
+                  <div className="h-full rounded-2xl border border-border bg-card p-6 shadow-panel transition duration-300 hover:-translate-y-1 hover:border-primary/60">
+                    <Icon className="size-6 text-primary" />
+                    <h3 className="mt-4 font-display text-base font-semibold">{t as string}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">{d as string}</p>
+                  </div>
+                </Reveal>
               ); })}
             </div>
           </div>
@@ -197,18 +199,22 @@ function SitePage() {
         {/* SOBRE */}
         <section id="sobre" className="bg-[var(--surface-1)] py-20 lg:py-28">
           <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-            <div className="border-gradient rounded-3xl p-10 text-center">
-              <p className="text-sm font-semibold text-muted-foreground">No mercado de tecnologia desde</p>
-              <p className="mt-2 font-display text-7xl font-bold text-nex-gradient sm:text-8xl">2006</p>
-            </div>
-            <div>
-              <SectionHead kicker="Sobre a NEX" title="Experiência em tecnologia, aplicada à performance" text="A NEX nasceu da tecnologia. Ao longo dos anos, unimos esse conhecimento técnico ao marketing digital para oferecer algo que poucas agências entregam: campanhas de mídia apoiadas por sistemas, automações e dados." />
-              <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                {[[ShieldCheck, "Segurança"], [BarChart3, "Performance"], [Sparkles, "Inovação"]].map(([I, t]) => { const Icon = I as typeof ShieldCheck; return (
-                  <div key={t as string} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold"><Icon className="size-4 text-cyan" />{t as string}</div>
-                ); })}
+            <Reveal>
+              <div className="border-gradient rounded-3xl p-10 text-center">
+                <p className="text-sm font-semibold text-muted-foreground">No mercado de tecnologia desde</p>
+                <p className="mt-2 font-display text-7xl font-bold text-nex-gradient sm:text-8xl">2006</p>
               </div>
-            </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div>
+                <SectionHead kicker="Sobre a NEX" title="Experiência em tecnologia, aplicada à performance" text="A NEX nasceu da tecnologia. Ao longo dos anos, unimos esse conhecimento técnico ao marketing digital para oferecer algo que poucas agências entregam: campanhas de mídia apoiadas por sistemas, automações e dados." />
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  {[[ShieldCheck, "Segurança"], [BarChart3, "Performance"], [Sparkles, "Inovação"]].map(([I, t]) => { const Icon = I as typeof ShieldCheck; return (
+                    <div key={t as string} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold"><Icon className="size-4 text-cyan" />{t as string}</div>
+                  ); })}
+                </div>
+              </div>
+            </Reveal>
           </div>
         </section>
 

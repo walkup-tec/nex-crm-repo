@@ -358,7 +358,7 @@ function DashboardMock() {
             <p className="text-xs font-semibold text-white">Visão geral</p>
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-white/60">Últimos 30 dias ▾</span>
-              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-medium text-cyan">Saldo Meta: R$ 312,50</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-medium text-cyan"><span className="relative flex size-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan opacity-70" /><span className="relative inline-flex size-1.5 rounded-full bg-cyan" /></span>Saldo Meta: R$ 312,50</span>
             </div>
           </div>
           {/* KPIs */}
@@ -375,7 +375,7 @@ function DashboardMock() {
           <div className="mt-3 rounded-xl border border-white/10 bg-white/[.03] p-4">
             <div className="flex items-center justify-between"><p className="text-[10px] text-white/50">Resultados por dia</p><span className="flex items-center gap-1.5 text-[10px] text-white/40"><span className="size-2 rounded-sm bg-gradient-to-t from-primary to-cyan" />Resultados</span></div>
             <div className="mt-3 flex h-28 items-end gap-1.5">
-              {bars.map((h, i) => <div key={i} className="flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%` }} />)}
+              {bars.map((h, i) => <div key={i} className="animate-rise flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%`, animationDelay: `${i * 60}ms` }} />)}
             </div>
           </div>
         </div>

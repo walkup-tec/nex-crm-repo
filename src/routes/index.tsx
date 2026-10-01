@@ -208,7 +208,7 @@ function SitePage() {
           <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
               <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
-                <img src={footerLogo} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
+                <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
                 <p className="text-sm font-semibold tracking-wide text-muted-foreground sm:text-base">No mercado de tecnologia desde <span className="text-nex-gradient font-bold">2006</span></p>
               </div>
             </Reveal>
@@ -266,7 +266,7 @@ function SitePage() {
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
           <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col items-center gap-2 sm:items-start">
-              <img src={footerLogo} alt="NEX Marketing Digital" className="h-10 w-auto object-contain" />
+              <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-10 w-auto object-contain" />
               <p className="text-xs text-muted-foreground">Marketing, tecnologia e automação desde 2006.</p>
             </div>
             <div className="w-full max-w-xl">

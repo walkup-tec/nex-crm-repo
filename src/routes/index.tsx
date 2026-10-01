@@ -143,19 +143,21 @@ function SitePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {solutions.map((s) => { const I = solIcons[s.key]; return (
-                <article key={s.key} className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition hover:-translate-y-1 hover:border-primary/60">
-                  <div className="grid size-12 place-items-center rounded-xl bg-nex-gradient text-primary-foreground"><I className="size-5" /></div>
-                  <h3 className="mt-5 font-display text-lg font-semibold">{s.title}</h3>
-                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
-                  <div className="my-5 h-px bg-border/60" aria-hidden />
-                  <ul className="flex-1 space-y-2.5">
-                    {s.points.map((pt) => (
-                      <li key={pt} className="flex gap-2.5 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /><span>{pt}</span></li>
-                    ))}
-                  </ul>
-                  <a href={waLink(s.msg)} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent-foreground">Conversar sobre isso<ArrowRight className="size-4 transition group-hover:translate-x-1" /></a>
-                </article>
+              {solutions.map((s, i) => { const I = solIcons[s.key]; return (
+                <Reveal key={s.key} delay={(i % 3) * 80} className="h-full">
+                  <article className="group flex h-full flex-col rounded-2xl border border-border bg-card p-6 transition duration-300 hover:-translate-y-1 hover:border-primary/60 hover:shadow-brand">
+                    <div className="grid size-12 place-items-center rounded-xl bg-nex-gradient text-primary-foreground"><I className="size-5" /></div>
+                    <h3 className="mt-5 font-display text-lg font-semibold">{s.title}</h3>
+                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
+                    <div className="my-5 h-px bg-border/60" aria-hidden />
+                    <ul className="flex-1 space-y-2.5">
+                      {s.points.map((pt) => (
+                        <li key={pt} className="flex gap-2.5 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /><span>{pt}</span></li>
+                      ))}
+                    </ul>
+                    <a href={waLink(s.msg)} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent-foreground">Conversar sobre isso<ArrowRight className="size-4 transition group-hover:translate-x-1" /></a>
+                  </article>
+                </Reveal>
               ); })}
             </div>
           </div>
@@ -163,18 +165,21 @@ function SitePage() {
 
         {/* NEX ADS */}
         <section id="nex-ads" className="relative overflow-hidden bg-[var(--surface-3)] py-20 lg:py-28">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_10%_90%,color-mix(in_oklch,#00EAFD_14%,transparent),transparent_55%)]" aria-hidden />
+          <div className="animate-drift-slow absolute inset-0 bg-[radial-gradient(ellipse_at_10%_90%,color-mix(in_oklch,#00EAFD_14%,transparent),transparent_55%)]" aria-hidden />
+          <div className="animate-drift absolute -right-48 top-1/4 size-[560px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_22%,transparent),transparent_65%)]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
-            <div>
-              <SectionHead kicker="NEX Ads" title="Transparência total sobre cada real investido" text="Nossos clientes acompanham campanhas, resultados, saldo de mídia, financeiro e criativos em uma plataforma própria, desenvolvida pela NEX." />
-              <ul className="mt-8 space-y-3 text-sm">
-                {["Alcance, impressões, resultados e custo por resultado em tempo real", "Alertas de saldo de mídia antes que as campanhas parem", "Biblioteca de criativos organizada e segura", "Acesso por perfis para sua equipe"].map((t) => (
-                  <li key={t} className="flex gap-3"><Zap className="mt-0.5 size-4 shrink-0 text-cyan" />{t}</li>
-                ))}
-              </ul>
-              <WaButton msg={messages.general} className="mt-9">Quero conhecer o NEX Ads</WaButton>
-            </div>
-            <DashboardMock />
+            <Reveal>
+              <div>
+                <SectionHead kicker="NEX Ads" title="Transparência total sobre cada real investido" text="Nossos clientes acompanham campanhas, resultados, saldo de mídia, financeiro e criativos em uma plataforma própria, desenvolvida pela NEX." />
+                <ul className="mt-8 space-y-3 text-sm">
+                  {["Alcance, impressões, resultados e custo por resultado em tempo real", "Alertas de saldo de mídia antes que as campanhas parem", "Biblioteca de criativos organizada e segura", "Acesso por perfis para sua equipe"].map((t) => (
+                    <li key={t} className="flex gap-3"><Zap className="mt-0.5 size-4 shrink-0 text-cyan" />{t}</li>
+                  ))}
+                </ul>
+                <WaButton msg={messages.general} className="mt-9">Quero conhecer o NEX Ads</WaButton>
+              </div>
+            </Reveal>
+            <Reveal delay={120}><DashboardMock /></Reveal>
           </div>
         </section>
 

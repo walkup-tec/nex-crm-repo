@@ -103,7 +103,7 @@ function SitePage() {
         <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp" className="grid size-11 place-items-center rounded-xl text-cyan hover:bg-secondary"><MessageCircle className="size-[18px]" /></a>
       </nav>
 
-      <main>
+      <main className="lg:[&_section>div]:pl-24 2xl:[&_section>div]:pl-6">
         {/* HERO */}
         <section id="inicio" className="relative overflow-hidden bg-[var(--surface-1)] pt-28 pb-20 lg:pt-40 lg:pb-32">
           <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_70%_30%,black,transparent_70%)]" aria-hidden />

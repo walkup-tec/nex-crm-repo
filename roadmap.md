@@ -16,3 +16,8 @@
 - [x] Botão de contato: sem número exibido, com efeito no hover
 - [x] Site institucional: selos no rodapé em painel claro com brilho ao passar o mouse
 - [x] Site institucional: onda do botão flutuante em branco para contraste no fundo escuro
+
+- [x] Site institucional: remover fundo da logo NEX no rodapé
+- [x] Site institucional: redesenhar apresentação dos selos no rodapé
+
+- [x] Site institucional: recriar selos conforme referência horizontal enviada

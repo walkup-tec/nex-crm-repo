@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  ArrowRight, BarChart3, Bot, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
-  Menu, MonitorSmartphone, Search, ShieldCheck, Sparkles, Target, Workflow, Zap, Info, Phone,
+  ArrowRight, BarChart3, Bot, Building2, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, LayoutDashboard,
+  Megaphone, Menu, MessageCircle, MonitorSmartphone, Rocket, Search, ShieldCheck, Sparkles, Target, Workflow, Zap,
   Wallet, FolderOpen, Users,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/")({
   component: SitePage,
 });
 
-const navIcons = { inicio: Home, solucoes: Layers, "nex-ads": LayoutDashboard, tecnologia: Cpu, sobre: Info, faq: HelpCircle, contato: Phone } as const;
+const navIcons = { inicio: Home, solucoes: Rocket, "nex-ads": Megaphone, tecnologia: Cpu, sobre: Building2, faq: HelpCircle, contato: MessageCircle } as const;
 const solIcons = { meta: Target, google: Search, whatsapp: WhatsAppIcon, systems: Code2, ai: Bot, sites: MonitorSmartphone } as const;
 
 function WhatsAppIcon({ className = "" }: { className?: string }) {

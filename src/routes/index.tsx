@@ -208,9 +208,9 @@ function SitePage() {
         <section id="sobre" className="bg-[var(--surface-1)] py-20 lg:py-28">
           <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
-              <div className="border-gradient rounded-3xl p-10 text-center">
-                <p className="text-sm font-semibold text-muted-foreground">No mercado de tecnologia desde</p>
-                <p className="mt-2 font-display text-7xl font-bold text-nex-gradient sm:text-8xl">2006</p>
+              <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
+                <img src={footerLogo} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
+                <p className="text-sm font-semibold tracking-wide text-muted-foreground sm:text-base">No mercado de tecnologia desde <span className="text-nex-gradient font-bold">2006</span></p>
               </div>
             </Reveal>
             <Reveal delay={120}>

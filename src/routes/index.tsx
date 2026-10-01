@@ -128,7 +128,7 @@ function SitePage() {
               <div>
                 <p className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-accent-foreground"><Sparkles className="size-3.5" />Tecnologia e inovação desde 2006</p>
                 <h1 className="mt-6 font-display text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
-                  Marketing, tecnologia e automação para transformar <span className="text-nex-gradient motion-safe:animate-shimmer">investimento em clientes</span>.
+                  Marketing, tecnologia e automação para transformar <span className="text-nex-gradient">investimento em clientes</span>.
                 </h1>
                 <p className="mt-6 max-w-xl text-lg text-muted-foreground">Unimos tráfego pago no Meta e no Google, WhatsApp, sistemas e inteligência artificial em uma operação orientada a dados — com quase duas décadas de experiência em tecnologia.</p>
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">

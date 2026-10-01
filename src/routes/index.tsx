@@ -140,7 +140,7 @@ function SitePage() {
         </section>
 
         {/* SOLUÇÕES */}
-        <section id="solucoes" className="relative overflow-hidden bg-navy py-20 lg:py-28">
+        <section id="solucoes" className="relative overflow-hidden bg-navy py-18 lg:py-[100px]">
           <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />

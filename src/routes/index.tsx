@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight, BarChart3, Bot, Building2, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, LayoutDashboard,
   Megaphone, Menu, MessageCircle, MonitorSmartphone, Rocket, Search, ShieldCheck, Sparkles, Target, Workflow, Zap,
@@ -78,7 +78,7 @@ function SitePage() {
           <a href="#inicio" aria-label="NEX Marketing Digital — início"><img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto lg:h-11" /></a>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Principal">
             {sections.map((s) => (
-              <a key={s.id} href={`#${s.id}`} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${active === s.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{s.label}</a>
+              <a key={s.id} href={`#${s.id}`} className={`nav-link rounded-lg px-3 py-2 text-sm font-medium transition ${active === s.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{s.label}</a>
             ))}
           </nav>
           <div className="flex items-center gap-2">
@@ -121,20 +121,23 @@ function SitePage() {
         {/* HERO */}
         <section id="inicio" className="relative overflow-hidden bg-[var(--surface-1)] pt-28 pb-20 lg:pt-40 lg:pb-32">
           <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_70%_30%,black,transparent_70%)]" aria-hidden />
-          <div className="absolute -right-40 -top-40 size-[640px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_35%,transparent),transparent_65%)]" aria-hidden />
+          <div className="animate-drift-slow absolute -right-40 -top-40 size-[640px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_35%,transparent),transparent_65%)]" aria-hidden />
+          <div className="animate-drift absolute -left-32 -bottom-48 size-[520px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#00EAFD_15%,transparent),transparent_65%)]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr]">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-accent-foreground"><Sparkles className="size-3.5" />Tecnologia e inovação desde 2006</p>
-              <h1 className="mt-6 font-display text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
-                Marketing, tecnologia e automação para transformar <span className="text-nex-gradient">investimento em clientes</span>.
-              </h1>
-              <p className="mt-6 max-w-xl text-lg text-muted-foreground">Unimos tráfego pago no Meta e no Google, WhatsApp, sistemas e inteligência artificial em uma operação orientada a dados — com quase duas décadas de experiência em tecnologia.</p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <WaButton msg={messages.general} className="h-14 px-7 text-base">Falar com um especialista</WaButton>
-                <a href="#solucoes" className="inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-border px-7 text-base font-semibold transition hover:bg-secondary">Conheça nossas soluções<ArrowRight className="size-4" /></a>
+            <Reveal>
+              <div>
+                <p className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-accent-foreground"><Sparkles className="size-3.5" />Tecnologia e inovação desde 2006</p>
+                <h1 className="mt-6 font-display text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
+                  Marketing, tecnologia e automação para transformar <span className="text-nex-gradient motion-safe:animate-shimmer">investimento em clientes</span>.
+                </h1>
+                <p className="mt-6 max-w-xl text-lg text-muted-foreground">Unimos tráfego pago no Meta e no Google, WhatsApp, sistemas e inteligência artificial em uma operação orientada a dados — com quase duas décadas de experiência em tecnologia.</p>
+                <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                  <WaButton msg={messages.general} className="h-14 px-7 text-base">Falar com um especialista</WaButton>
+                  <a href="#solucoes" className="inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-border px-7 text-base font-semibold transition hover:bg-secondary">Conheça nossas soluções<ArrowRight className="size-4" /></a>
+                </div>
               </div>
-            </div>
-            <HeroVisual />
+            </Reveal>
+            <Reveal delay={140}><HeroVisual /></Reveal>
           </div>
         </section>
 

@@ -6,7 +6,7 @@ import {
   Wallet, FolderOpen, Users,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
-import footerLogo from "@/assets/nex-logo-footer-transparent.png";
+import footerLogo from "@/assets/nex-logo-dark.png.asset.json";
 import metaOfficial from "@/assets/meta-official-dark.svg.asset.json";
 import googleOfficial from "@/assets/google-official-cropped.png.asset.json";
 import attendantAvatar from "@/assets/attendant-avatar.png";
@@ -318,20 +318,6 @@ function SitePage() {
   );
 }
 
-function Circuit({ className = "", flip = false }: { className?: string; flip?: boolean }) {
-  return (
-    <svg viewBox="0 0 420 220" fill="none" aria-hidden className={`pointer-events-none absolute ${flip ? "-scale-x-100 " : ""}${className}`}>
-      <path className="trace" stroke="currentColor" d="M0 34H118V66H260V98H380" />
-      <path className="trace" stroke="currentColor" style={{ animationDelay: "-3.1s" }} d="M0 108H70V76H180V108H300" />
-      <path className="trace" stroke="currentColor" style={{ animationDelay: "-5.7s", animationDuration: "11s" }} d="M420 170H320V140H210V116H120" />
-      <circle className="node" cx="118" cy="66" r="3" fill="currentColor" />
-      <circle className="node" cx="260" cy="98" r="2.5" fill="currentColor" style={{ animationDelay: "-2.4s" }} />
-      <circle className="node" cx="180" cy="76" r="2.5" fill="currentColor" style={{ animationDelay: "-4.1s" }} />
-      <circle className="node" cx="320" cy="140" r="3" fill="currentColor" style={{ animationDelay: "-1.7s" }} />
-      <circle className="node" cx="210" cy="116" r="2" fill="currentColor" style={{ animationDelay: "-3.5s" }} />
-    </svg>
-  );
-}
 
 function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   const ref = useRef<HTMLDivElement>(null);

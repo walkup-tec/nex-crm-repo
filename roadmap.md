@@ -17,7 +17,7 @@
 - [x] Site institucional: selos no rodapé em painel claro com brilho ao passar o mouse
 - [x] Site institucional: onda do botão flutuante em branco para contraste no fundo escuro
 
-- [ ] Site institucional: remover fundo da logo NEX no rodapé
-- [ ] Site institucional: redesenhar apresentação dos selos no rodapé
+- [x] Site institucional: remover fundo da logo NEX no rodapé
+- [x] Site institucional: redesenhar apresentação dos selos no rodapé
 
-- [ ] Site institucional: recriar selos conforme referência horizontal enviada
+- [x] Site institucional: recriar selos conforme referência horizontal enviada

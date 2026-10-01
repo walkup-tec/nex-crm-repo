@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight, BarChart3, Bot, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
   Menu, MonitorSmartphone, Search, ShieldCheck, Sparkles, Target, Workflow, Zap, Info, Phone,
+  Wallet, FolderOpen, Users,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
 import metaCertified from "@/assets/nex-meta-certified.png";

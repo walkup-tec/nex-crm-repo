@@ -41,7 +41,7 @@ function WaButton({ msg, children, className = "" }: { msg: string; children: Re
   return (
     <a href={waLink(msg)} target="_blank" rel="noopener noreferrer"
       className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-nex-gradient px-6 text-sm font-semibold text-primary-foreground shadow-brand transition hover:-translate-y-0.5 hover:brightness-110 ${className}`}>
-      <MessageCircle className="size-4" />{children}
+      <WhatsAppIcon className="size-4" />{children}
     </a>
   );
 }
@@ -77,7 +77,6 @@ function SitePage() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
-            <Link to="/auth" className="hidden text-sm font-medium text-muted-foreground hover:text-foreground md:inline">Área do cliente</Link>
             <WaButton msg={messages.general} className="hidden min-h-10 px-4 sm:inline-flex">Falar no WhatsApp</WaButton>
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
@@ -90,8 +89,6 @@ function SitePage() {
                   {sections.map((s) => { const I = navIcons[s.id]; return (
                     <a key={s.id} href={`#${s.id}`} onClick={() => setOpen(false)} className={`flex h-12 items-center gap-3 rounded-lg px-3 text-base font-medium ${active === s.id ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}><I className="size-5" />{s.label}</a>
                   ); })}
-                  <Link to="/auth" className="flex h-12 items-center gap-3 rounded-lg px-3 text-base font-medium text-muted-foreground"><ShieldCheck className="size-5" />Área do cliente</Link>
-                </nav>
                 <WaButton msg={messages.general} className="mt-6 w-full">Falar no WhatsApp</WaButton>
               </SheetContent>
             </Sheet>
@@ -108,7 +105,7 @@ function SitePage() {
           </a>
         ); })}
         <div className="mx-auto my-1 h-px w-6 bg-border" />
-        <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp" className="grid size-11 place-items-center rounded-xl text-cyan hover:bg-secondary"><MessageCircle className="size-[18px]" /></a>
+        <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp" className="grid size-11 place-items-center rounded-xl text-cyan hover:bg-secondary"><WhatsAppIcon className="size-[18px]" /></a>
       </nav>
 
       <main className="lg:[&_section>div]:pl-24 2xl:[&_section>div]:pl-6">
@@ -234,7 +231,7 @@ function SitePage() {
               <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
               <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
               <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
-              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="relative mt-8 inline-flex h-14 items-center gap-2 rounded-xl bg-[var(--surface-1)] px-8 text-base font-semibold text-foreground transition hover:-translate-y-0.5"><MessageCircle className="size-5" />Falar com um especialista</a>
+              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="relative mt-8 inline-flex h-14 items-center gap-2 rounded-xl bg-[var(--surface-1)] px-8 text-base font-semibold text-foreground transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
               <p className="relative mt-4 text-sm opacity-85">{WHATSAPP_DISPLAY}</p>
             </div>
           </div>
@@ -252,7 +249,7 @@ function SitePage() {
       {/* WhatsApp flutuante */}
       <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp"
         className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-5 z-50 grid size-14 place-items-center rounded-full bg-nex-gradient text-primary-foreground shadow-brand transition hover:scale-105 active:scale-95">
-        <MessageCircle className="size-6" />
+        <WhatsAppIcon className="size-6" />
       </a>
     </div>
   );
@@ -281,7 +278,7 @@ function HeroVisual() {
       </div>
       <div className="absolute -bottom-6 -left-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Canais</p>
-        <div className="mt-2 flex gap-2"><Target className="size-5 text-primary" /><Search className="size-5 text-cyan" /><MessageCircle className="size-5 text-accent-foreground" /></div>
+        <div className="mt-2 flex gap-2"><Target className="size-5 text-primary" /><Search className="size-5 text-cyan" /><WhatsAppIcon className="size-5 text-accent-foreground" /></div>
       </div>
       <div className="absolute -right-4 -top-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Automação</p>

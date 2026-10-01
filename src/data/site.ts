@@ -25,12 +25,78 @@ export const sections = [
 ] as const;
 
 export const solutions = [
-  { key: "meta", title: "Gestão de tráfego no Meta Ads", text: "Campanhas no Facebook e Instagram estruturadas por objetivo, público e funil, com otimização contínua orientada a custo por resultado.", msg: messages.meta },
-  { key: "google", title: "Google Ads", text: "Presença nas buscas no momento em que o cliente procura pelo que você vende: Pesquisa, Performance Max, YouTube e remarketing.", msg: messages.google },
-  { key: "whatsapp", title: "Disparos via WhatsApp", text: "Comunicação em escala com sua base pelo canal que o brasileiro mais usa, com segmentação e mensagens personalizadas.", msg: messages.whatsapp },
-  { key: "systems", title: "Desenvolvimento de sistemas", text: "Sistemas web sob medida para organizar processos comerciais, integrar ferramentas e dar visibilidade aos dados da operação.", msg: messages.systems },
-  { key: "ai", title: "Automação e Inteligência Artificial", text: "Fluxos automatizados e assistentes com IA para atender, qualificar e acompanhar leads sem depender de tarefas manuais.", msg: messages.ai },
-  { key: "sites", title: "Sites e landing pages", text: "Páginas rápidas, claras e pensadas para conversão — a base técnica que faz o investimento em mídia render mais.", msg: messages.sites },
+  {
+    key: "meta",
+    title: "Gestão de tráfego no Meta Ads",
+    text: "Campanhas no Facebook e no Instagram estruturadas por objetivo, público e funil — de apresentação da marca até a decisão de compra — com otimização contínua orientada a custo por resultado.",
+    points: [
+      "Estrutura de campanha por objetivo, público e estágio do funil",
+      "Otimização contínua orientada a custo por resultado",
+      "Criativos e textos planejados junto à sua operação",
+      "Acompanhamento completo pelo NEX Ads, em tempo real",
+    ],
+    msg: messages.meta,
+  },
+  {
+    key: "google",
+    title: "Google Ads",
+    text: "Presença na busca no momento exato em que o cliente procura pelo que você vende, cobrindo Pesquisa, Performance Max, YouTube e remarketing — cada formato no papel certo dentro da estratégia.",
+    points: [
+      "Pesquisa, Performance Max, YouTube e remarketing em uma só estratégia",
+      "Estrutura de palavras-chave com negativação contínua",
+      "Anúncios alinhados à intenção de busca do cliente",
+      "Leitura clara de custo por resultado por canal e por campanha",
+    ],
+    msg: messages.google,
+  },
+  {
+    key: "whatsapp",
+    title: "Disparos via WhatsApp",
+    text: "Comunicação em escala pelo canal que o brasileiro mais usa, com segmentação da base e mensagens personalizadas por perfil — conectando a campanha ao atendimento real da sua empresa.",
+    points: [
+      "Envio em escala com segmentação da sua base",
+      "Mensagens personalizadas por perfil de cliente",
+      "Integração com sistemas, planilhas e CRM que você já usa",
+      "Envios alinhados às políticas do WhatsApp",
+    ],
+    msg: messages.whatsapp,
+  },
+  {
+    key: "systems",
+    title: "Desenvolvimento de sistemas",
+    text: "Sistemas web sob medida para organizar processos comerciais, integrar ferramentas e transformar dados dispersos em visibilidade real da operação — construídos por quem entende de tecnologia desde 2006.",
+    points: [
+      "Levantamento dos processos e requisitos do seu negócio",
+      "Painéis, portais e integradores desenvolvidos sob medida",
+      "Integração com as ferramentas que sua empresa já usa",
+      "Evolução contínua, com segurança e dados sob controle",
+    ],
+    msg: messages.systems,
+  },
+  {
+    key: "ai",
+    title: "Automação e Inteligência Artificial",
+    text: "Fluxos automatizados e assistentes com IA para atender, qualificar e acompanhar leads sem depender de tarefas manuais — reduzindo tempo de resposta e fazendo o investimento render mais.",
+    points: [
+      "Atendimento inicial e qualificação de leads automatizados",
+      "Fluxos de follow-up e retomada de base parada",
+      "Assistentes de IA treinados com o contexto do seu negócio",
+      "Integração com WhatsApp, sistemas e canais de venda",
+    ],
+    msg: messages.ai,
+  },
+  {
+    key: "sites",
+    title: "Sites e landing pages",
+    text: "Páginas rápidas, claras e pensadas para conversão — a base técnica que faz o investimento em mídia render mais, desde o primeiro clique até o contato no WhatsApp.",
+    points: [
+      "Páginas rápidas e claras, pensadas para conversão",
+      "Estrutura pronta para receber tráfego pago desde o dia 1",
+      "Rastreamento e eventos configurados desde o início",
+      "Manutenção e evolução contínuas do site",
+    ],
+    msg: messages.sites,
+  },
 ] as const;
 
 export const faq = [

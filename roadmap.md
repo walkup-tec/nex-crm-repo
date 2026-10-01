@@ -19,3 +19,5 @@
 
 - [ ] Site institucional: remover fundo da logo NEX no rodapé
 - [ ] Site institucional: redesenhar apresentação dos selos no rodapé
+
+- [ ] Site institucional: recriar selos conforme referência horizontal enviada

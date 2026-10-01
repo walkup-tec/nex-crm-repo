@@ -30,5 +30,4 @@
 - [x] Site: reduzir altura da seção Soluções ~10% (concluído)
 - [x] Site: tons alternados entre seções (navy/alt) com brilhos suaves e divisores para diferenciar cada seção (direção v1 aprovada)
 
-grep -n "linhas" roadmap.md | head -3; echo "---"; tail -3 roadmap.md
-- [ ] Soluções: aplicar linhas sutis no fundo da seção (pedido 01/10)
+- [x] Site: restaurar fundos da primeira versão (superfícies alternadas + orbes) e aplicar linhas no fundo de Soluções (pedido 01/10)

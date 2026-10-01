@@ -309,7 +309,8 @@ function SectionHead({ kicker, title, text, center }: { kicker: string; title: s
 }
 
 function HeroVisual() {
-  const bars = [38, 52, 46, 64, 58, 76, 70, 88];
+  const bars = [30, 45, 40, 60, 55, 72, 66, 80, 74, 90, 84, 96];
+  const rows = [["Campanha Leads B2B", "Ativa", "412", "R$ 9,71"], ["Black Friday — Loja Online", "Ativa", "501", "R$ 7,35"], ["Retenção CRM", "Pausada", "98", "R$ 12,10"]] as const;
   return (
     <div className="relative mx-auto w-full max-w-lg" aria-hidden>
       <div className="animate-float overflow-hidden rounded-2xl border border-white/10 bg-[#010317] shadow-panel">

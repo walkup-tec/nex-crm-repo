@@ -246,7 +246,7 @@ function SitePage() {
             </div>
             <div className="w-full max-w-xl">
               <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground lg:text-left">Certificações e parceiros</p>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_1px_1fr] sm:items-center sm:gap-8">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_1px_1fr] sm:items-start sm:gap-8">
                 <div className="group text-center">
                   <div className="mx-auto flex h-11 w-44 items-center justify-center">
                     <img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" />

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  ArrowRight, BarChart3, Bot, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
+  ArrowRight, BarChart3, Bot, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
   Menu, MonitorSmartphone, Search, ShieldCheck, Sparkles, Target, Workflow, Zap, Info, Phone,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
@@ -142,7 +142,13 @@ function SitePage() {
                 <article key={s.key} className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition hover:-translate-y-1 hover:border-primary/60">
                   <div className="grid size-12 place-items-center rounded-xl bg-nex-gradient text-primary-foreground"><I className="size-5" /></div>
                   <h3 className="mt-5 font-display text-lg font-semibold">{s.title}</h3>
-                  <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
+                  <div className="my-5 h-px bg-border/60" aria-hidden />
+                  <ul className="flex-1 space-y-2.5">
+                    {s.points.map((pt) => (
+                      <li key={pt} className="flex gap-2.5 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /><span>{pt}</span></li>
+                    ))}
+                  </ul>
                   <a href={waLink(s.msg)} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent-foreground">Conversar sobre isso<ArrowRight className="size-4 transition group-hover:translate-x-1" /></a>
                 </article>
               ); })}

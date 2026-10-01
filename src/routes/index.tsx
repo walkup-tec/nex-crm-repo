@@ -217,11 +217,13 @@ function SitePage() {
           <div className="mx-auto max-w-3xl px-4 sm:px-6">
             <SectionHead kicker="FAQ" title="Perguntas frequentes" center />
             <div className="mt-10 space-y-3">
-              {faq.map((f) => (
-                <details key={f.q} className="group rounded-xl border border-border bg-card px-5 open:border-primary/50">
-                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 font-semibold">{f.q}<span className="text-xl text-muted-foreground transition group-open:rotate-45">+</span></summary>
-                  <p className="pb-5 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
-                </details>
+              {faq.map((f, i) => (
+                <Reveal key={f.q} delay={(i % 5) * 60}>
+                  <details className="group rounded-xl border border-border bg-card px-5 open:border-primary/50">
+                    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 font-semibold">{f.q}<span className="text-xl text-muted-foreground transition group-open:rotate-45">+</span></summary>
+                    <p className="pb-5 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  </details>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -230,12 +232,16 @@ function SitePage() {
         {/* CONTATO */}
         <section id="contato" className="relative overflow-hidden bg-[var(--surface-1)] py-20 lg:py-28">
           <div className="mx-auto max-w-5xl px-4 sm:px-6">
-            <div className="relative overflow-hidden rounded-3xl bg-nex-gradient p-10 text-center text-primary-foreground sm:p-16">
-              <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
-              <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
-              <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
-              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
-            </div>
+            <Reveal>
+              <div className="relative overflow-hidden rounded-3xl bg-nex-gradient p-10 text-center text-primary-foreground sm:p-16">
+                <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
+                <div className="animate-drift-slow absolute -left-24 -top-24 size-96 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,.3),transparent_60%)]" aria-hidden />
+                <div className="animate-drift absolute -bottom-40 -right-24 size-[420px] rounded-full bg-[radial-gradient(circle,rgba(1,3,23,.4),transparent_60%)]" aria-hidden />
+                <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
+                <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
+                <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
+              </div>
+            </Reveal>
           </div>
         </section>
       </main>
@@ -298,13 +304,30 @@ function SitePage() {
   );
 }
 
+function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => { if (entry!.isIntersecting) { setShown(true); obs.disconnect(); } }, { threshold: 0.15, rootMargin: "0px 0px -48px 0px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <div ref={ref} style={delay ? { transitionDelay: `${delay}ms` } : undefined} className={`reveal ${shown ? "reveal-in" : ""} ${className}`}>
+      {children}
+    </div>
+  );
+}
+
 function SectionHead({ kicker, title, text, center }: { kicker: string; title: string; text?: string; center?: boolean }) {
   return (
-    <div className={center ? "text-center" : "max-w-2xl"}>
+    <Reveal className={center ? "text-center" : "max-w-2xl"}>
       <p className="text-xs font-bold uppercase tracking-[.18em] text-accent-foreground">{kicker}</p>
       <h2 className="mt-3 font-display text-3xl font-bold leading-tight sm:text-4xl">{title}</h2>
       {text && <p className="mt-4 text-base leading-relaxed text-muted-foreground">{text}</p>}
-    </div>
+    </Reveal>
   );
 }
 

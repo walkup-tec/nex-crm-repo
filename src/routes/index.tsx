@@ -123,6 +123,12 @@ function SitePage() {
           <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_70%_30%,black,transparent_70%)]" aria-hidden />
           <div className="animate-drift-slow absolute -right-40 -top-40 size-[640px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_35%,transparent),transparent_65%)]" aria-hidden />
           <div className="animate-drift absolute -left-32 -bottom-48 size-[520px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#00EAFD_15%,transparent),transparent_65%)]" aria-hidden />
+          <div className="absolute inset-0 bg-dots opacity-50 [mask-image:radial-gradient(ellipse_at_15%_85%,black,transparent_55%)]" aria-hidden />
+          <Circuit className="right-0 top-20 hidden h-52 w-[400px] text-cyan/25 md:block" />
+          <Circuit flip className="bottom-0 left-0 hidden h-44 w-[340px] text-primary/25 md:block" />
+          <span aria-hidden className="absolute left-[6%] top-[30%] hidden animate-float text-lg font-light text-cyan/50 lg:block" style={{ animationDelay: ".8s" }}>+</span>
+          <span aria-hidden className="absolute right-[28%] top-[12%] hidden animate-float text-base font-light text-primary/50 lg:block" style={{ animationDelay: "2.2s" }}>+</span>
+          <span aria-hidden className="absolute bottom-[20%] right-[10%] hidden size-1.5 animate-blink rounded-full bg-cyan/70 lg:block" />
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr]">
             <Reveal>
               <div>
@@ -142,8 +148,12 @@ function SitePage() {
         </section>
 
         {/* SOLUÇÕES */}
-        <section id="solucoes" className="bg-background py-20 lg:py-28">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <section id="solucoes" className="relative overflow-hidden bg-background py-20 lg:py-28">
+          <div className="edge" aria-hidden />
+          <div className="absolute inset-0 bg-dots opacity-30 [mask-image:linear-gradient(to_bottom,black,transparent_35%)]" aria-hidden />
+          <Circuit className="left-0 top-0 hidden h-40 w-[340px] text-cyan/20 md:block" />
+          <Circuit flip className="right-0 bottom-4 hidden h-40 w-[340px] text-primary/20 md:block" />
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {solutions.map((s, i) => { const I = solIcons[s.key]; return (
@@ -170,6 +180,11 @@ function SitePage() {
         <section id="nex-ads" className="relative overflow-hidden bg-[var(--surface-3)] py-20 lg:py-28">
           <div className="animate-drift-slow absolute inset-0 bg-[radial-gradient(ellipse_at_10%_90%,color-mix(in_oklch,#00EAFD_14%,transparent),transparent_55%)]" aria-hidden />
           <div className="animate-drift absolute -right-48 top-1/4 size-[560px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_22%,transparent),transparent_65%)]" aria-hidden />
+          <div className="absolute inset-x-0 top-[24%] h-px flow-x opacity-50" aria-hidden style={{ "--flow-color": "color-mix(in oklch, #00EAFD 30%, transparent)" } as React.CSSProperties} />
+          <div className="absolute inset-x-0 bottom-[16%] h-px flow-x opacity-40" aria-hidden style={{ "--flow-color": "color-mix(in oklch, #6F02FD 32%, transparent)", animationDelay: "-1.2s" } as React.CSSProperties} />
+          <Circuit flip className="right-0 top-10 hidden h-44 w-[380px] text-cyan/20 md:block" />
+          <span aria-hidden className="absolute left-[38%] top-[14%] hidden size-1.5 animate-blink rounded-full bg-cyan/60 lg:block" />
+          <span aria-hidden className="absolute bottom-[26%] left-[8%] hidden size-1 animate-blink rounded-full bg-primary/70 lg:block" style={{ animationDelay: "-2.6s" }} />
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
             <Reveal>
               <div>
@@ -187,8 +202,12 @@ function SitePage() {
         </section>
 
         {/* TECNOLOGIA (área clara) */}
-        <section id="tecnologia" className="site-light bg-background py-20 text-foreground lg:py-28">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <section id="tecnologia" className="site-light relative overflow-hidden bg-background py-20 text-foreground lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_50%_0%,black,transparent_60%)]" aria-hidden />
+          <div className="absolute inset-0 bg-dots opacity-40 [mask-image:radial-gradient(ellipse_at_85%_90%,black,transparent_50%)]" aria-hidden style={{ "--dot-color": "color-mix(in oklch, var(--primary) 22%, transparent)" } as React.CSSProperties} />
+          <div className="absolute inset-x-0 top-[38%] h-px flow-x opacity-60" aria-hidden style={{ "--flow-color": "color-mix(in oklch, var(--primary) 26%, transparent)" } as React.CSSProperties} />
+          <Circuit className="right-0 top-0 hidden h-40 w-[360px] text-primary/20 md:block" />
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Tecnologia" title="Uma agência que também constrói tecnologia" text="Não dependemos apenas de ferramentas prontas. Quando sua operação precisa, desenvolvemos." />
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {[[Database, "Dados", "Decisões baseadas em métricas reais, não em impressão."], [Workflow, "Automação", "Processos repetitivos executados sem esforço manual."], [Bot, "IA aplicada", "Atendimento e qualificação de leads com inteligência artificial."], [Globe, "Sistemas web", "Plataformas sob medida, seguras e integradas."]].map(([I, t, d], i) => { const Icon = I as typeof Database; return (
@@ -205,8 +224,17 @@ function SitePage() {
         </section>
 
         {/* SOBRE */}
-        <section id="sobre" className="bg-[var(--surface-1)] py-20 lg:py-28">
-          <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
+        <section id="sobre" className="relative overflow-hidden bg-[var(--surface-1)] py-20 lg:py-28">
+          <div className="edge" aria-hidden />
+          <div className="pointer-events-none absolute left-[6%] top-1/2 hidden -translate-y-1/2 lg:block" aria-hidden>
+            <div className="relative size-[440px]">
+              <div className="absolute inset-0 rounded-full border border-cyan/10" />
+              <div className="absolute inset-[16%] rounded-full border border-cyan/[.07]" />
+              <div className="absolute inset-[32%] rounded-full border border-cyan/10" />
+              <span className="animate-orbit absolute left-1/2 top-1/2 size-1.5 rounded-full bg-cyan/80 shadow-[0_0_12px_var(--cyan)]" style={{ "--orbit-r": "212px" } as React.CSSProperties} />
+            </div>
+          </div>
+          <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
               <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
                 <img src={footerLogo} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
@@ -227,8 +255,9 @@ function SitePage() {
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="bg-[var(--surface-2)] py-20 lg:py-28">
-          <div className="mx-auto max-w-3xl px-4 sm:px-6">
+        <section id="faq" className="relative overflow-hidden bg-[var(--surface-2)] py-20 lg:py-28">
+          <div className="absolute inset-0 bg-dots opacity-25 [mask-image:radial-gradient(ellipse_at_50%_10%,black,transparent_60%)]" aria-hidden />
+          <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
             <SectionHead kicker="FAQ" title="Perguntas frequentes" center />
             <div className="mt-10 space-y-3">
               {faq.map((f, i) => (
@@ -251,6 +280,8 @@ function SitePage() {
                 <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
                 <div className="animate-drift-slow absolute -left-24 -top-24 size-96 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,.3),transparent_60%)]" aria-hidden />
                 <div className="animate-drift absolute -bottom-40 -right-24 size-[420px] rounded-full bg-[radial-gradient(circle,rgba(1,3,23,.4),transparent_60%)]" aria-hidden />
+                <span aria-hidden className="absolute left-8 top-8 size-1.5 animate-blink rounded-full bg-white/80" />
+                <span aria-hidden className="absolute bottom-8 right-8 size-1.5 animate-blink rounded-full bg-white/60" style={{ animationDelay: "-2.5s" }} />
                 <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
                 <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
                 <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
@@ -315,6 +346,21 @@ function SitePage() {
         </span>
       </a>
     </div>
+  );
+}
+
+function Circuit({ className = "", flip = false }: { className?: string; flip?: boolean }) {
+  return (
+    <svg viewBox="0 0 420 220" fill="none" aria-hidden className={`pointer-events-none absolute ${flip ? "-scale-x-100 " : ""}${className}`}>
+      <path className="trace" stroke="currentColor" d="M0 34H118V66H260V98H380" />
+      <path className="trace" stroke="currentColor" style={{ animationDelay: "-3.1s" }} d="M0 108H70V76H180V108H300" />
+      <path className="trace" stroke="currentColor" style={{ animationDelay: "-5.7s", animationDuration: "11s" }} d="M420 170H320V140H210V116H120" />
+      <circle className="node" cx="118" cy="66" r="3" fill="currentColor" />
+      <circle className="node" cx="260" cy="98" r="2.5" fill="currentColor" style={{ animationDelay: "-2.4s" }} />
+      <circle className="node" cx="180" cy="76" r="2.5" fill="currentColor" style={{ animationDelay: "-4.1s" }} />
+      <circle className="node" cx="320" cy="140" r="3" fill="currentColor" style={{ animationDelay: "-1.7s" }} />
+      <circle className="node" cx="210" cy="116" r="2" fill="currentColor" style={{ animationDelay: "-3.5s" }} />
+    </svg>
   );
 }
 

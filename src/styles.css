@@ -35,3 +35,15 @@
 @utility reveal{opacity:0;transform:translateY(28px);transition:opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)}
 @utility reveal-in{opacity:1;transform:translateY(0)}
 @utility nav-link{position:relative;&::after{content:"";position:absolute;left:12px;right:12px;bottom:6px;height:1.5px;border-radius:9999px;background:linear-gradient(90deg,#6F02FD,#00EAFD);transform:scaleX(0);transform-origin:left;transition:transform .3s ease}&:hover::after{transform:scaleX(1)}}
+/* ——— Camadas tecnológicas de fundo ——— */
+@keyframes nex-flow{to{background-position:24px 0}}
+@utility flow-x{background-image:repeating-linear-gradient(90deg,transparent 0 9px,var(--flow-color,color-mix(in oklch,var(--cyan) 50%,transparent)) 9px 14px,transparent 14px 24px);animation:nex-flow 2.4s linear infinite}
+@keyframes nex-pan{to{background-position:22px 22px}}
+@utility bg-dots{background-image:radial-gradient(var(--dot-color,color-mix(in oklch,var(--cyan) 26%,transparent)) 1px,transparent 1.4px);background-size:22px 22px;animation:nex-pan 16s linear infinite}
+@keyframes nex-trace{to{stroke-dashoffset:-90}}
+@utility trace{stroke-dasharray:6 84;stroke-width:1.5;animation:nex-trace 8s linear infinite}
+@keyframes nex-blink{0%,100%{opacity:.15}50%{opacity:.85}}
+@utility node{fill:currentColor;animation:nex-blink 5.5s ease-in-out infinite}
+@keyframes nex-orbit{from{transform:rotate(0) translateX(var(--orbit-r,190px))}to{transform:rotate(360deg) translateX(var(--orbit-r,190px))}}
+@utility animate-orbit{animation:nex-orbit 24s linear infinite}
+@utility edge{position:absolute;inset-inline:0;top:0;height:1px;background:linear-gradient(90deg,transparent,color-mix(in oklch,var(--cyan) 45%,transparent),transparent)}

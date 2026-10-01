@@ -274,7 +274,7 @@ function SitePage() {
           Falar no WhatsApp
         </span>
         <span className="relative grid size-16 place-items-center">
-          <span aria-hidden="true" className="absolute inset-0 rounded-full border-2 border-accent/70 motion-safe:animate-nex-ping" />
+          <span aria-hidden="true" className="absolute inset-0 rounded-full border-2 border-white/90 motion-safe:animate-nex-ping" />
           <span aria-hidden="true" className="absolute inset-0 rounded-full bg-nex-gradient opacity-50 blur-md transition-opacity duration-300 group-hover:opacity-75" />
           <img src={attendantAvatar} alt="Atendente da NEX no WhatsApp" width={1024} height={1024} loading="lazy"
             className="relative size-16 rounded-full border-2 border-accent/60 object-cover shadow-brand" />

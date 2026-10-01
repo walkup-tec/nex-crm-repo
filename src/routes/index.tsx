@@ -119,10 +119,8 @@ function SitePage() {
 
       <main className="lg:[&_section>div]:pl-24 2xl:[&_section>div]:pl-6">
         {/* HERO */}
-        <section id="inicio" className="relative overflow-hidden bg-[var(--surface-1)] pt-28 pb-20 lg:pt-40 lg:pb-32">
-          <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_70%_30%,black,transparent_70%)]" aria-hidden />
-          <div className="animate-drift-slow absolute -right-40 -top-40 size-[640px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_35%,transparent),transparent_65%)]" aria-hidden />
-          <div className="animate-drift absolute -left-32 -bottom-48 size-[520px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#00EAFD_15%,transparent),transparent_65%)]" aria-hidden />
+        <section id="inicio" className="relative overflow-hidden bg-navy pt-28 pb-20 lg:pt-40 lg:pb-32">
+          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr]">
             <Reveal>
               <div>
@@ -142,8 +140,9 @@ function SitePage() {
         </section>
 
         {/* SOLUÇÕES */}
-        <section id="solucoes" className="bg-background py-20 lg:py-28">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <section id="solucoes" className="relative overflow-hidden bg-navy py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {solutions.map((s, i) => { const I = solIcons[s.key]; return (
@@ -167,9 +166,8 @@ function SitePage() {
         </section>
 
         {/* NEX ADS */}
-        <section id="nex-ads" className="relative overflow-hidden bg-[var(--surface-3)] py-20 lg:py-28">
-          <div className="animate-drift-slow absolute inset-0 bg-[radial-gradient(ellipse_at_10%_90%,color-mix(in_oklch,#00EAFD_14%,transparent),transparent_55%)]" aria-hidden />
-          <div className="animate-drift absolute -right-48 top-1/4 size-[560px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_22%,transparent),transparent_65%)]" aria-hidden />
+        <section id="nex-ads" className="relative overflow-hidden bg-navy py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
             <Reveal>
               <div>
@@ -205,8 +203,9 @@ function SitePage() {
         </section>
 
         {/* SOBRE */}
-        <section id="sobre" className="bg-[var(--surface-1)] py-20 lg:py-28">
-          <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
+        <section id="sobre" className="relative overflow-hidden bg-navy py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+          <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
               <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
                 <img src={footerLogo} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
@@ -227,8 +226,9 @@ function SitePage() {
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="bg-[var(--surface-2)] py-20 lg:py-28">
-          <div className="mx-auto max-w-3xl px-4 sm:px-6">
+        <section id="faq" className="relative overflow-hidden bg-navy py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+          <div className="relative mx-auto max-w-3xl px-4 sm:px-6">
             <SectionHead kicker="FAQ" title="Perguntas frequentes" center />
             <div className="mt-10 space-y-3">
               {faq.map((f, i) => (
@@ -244,8 +244,9 @@ function SitePage() {
         </section>
 
         {/* CONTATO */}
-        <section id="contato" className="relative overflow-hidden bg-[var(--surface-1)] py-20 lg:py-28">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <section id="contato" className="relative overflow-hidden bg-navy py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+          <div className="relative mx-auto max-w-5xl px-4 sm:px-6">
             <Reveal>
               <div className="relative overflow-hidden rounded-3xl bg-nex-gradient p-10 text-center text-primary-foreground sm:p-16">
                 <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
@@ -260,8 +261,9 @@ function SitePage() {
         </section>
       </main>
 
-      <footer className="border-t border-border bg-[var(--surface-1)] pt-12 pb-28 sm:pb-12">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <footer className="relative overflow-hidden border-t border-border bg-navy pt-12 pb-28 sm:pb-12">
+        <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
           <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col items-center gap-2 sm:items-start">
               <img src={footerLogo} alt="NEX Marketing Digital" className="h-10 w-auto object-contain" />

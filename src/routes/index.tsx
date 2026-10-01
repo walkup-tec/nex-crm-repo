@@ -249,7 +249,7 @@ function SitePage() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_1px_1fr] sm:items-center sm:gap-8">
                 <div className="group text-center">
                   <div className="mx-auto flex h-11 w-44 items-center justify-center">
-                    <img src={metaOfficial.url} alt="Meta" className="max-h-full max-w-full object-contain" loading="lazy" />
+                    <img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" />
                   </div>
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-cyan via-primary to-primary transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_45%,transparent)]" />
                   <div className="mt-3 space-y-1 text-sm text-foreground/90">
@@ -260,7 +260,7 @@ function SitePage() {
                 <div className="hidden h-24 bg-border/60 sm:block" />
                 <div className="group text-center">
                   <div className="mx-auto flex h-11 w-44 items-center justify-center">
-                    <img src={googleOfficial.url} alt="Google" className="max-h-full max-w-full object-contain" loading="lazy" />
+                    <img src={googleOfficial.url} alt="Google" className="h-full w-full object-contain" loading="lazy" />
                   </div>
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#4285f4] via-[#ea4335] to-[#fbbc05] transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_35%,transparent)]" />
                   <p className="mt-3 text-base text-foreground/90">Partner</p>

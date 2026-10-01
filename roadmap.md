@@ -31,3 +31,4 @@
 - [x] Site: tons alternados entre seções (navy/alt) com brilhos suaves e divisores para diferenciar cada seção (direção v1 aprovada)
 
 grep -n "linhas" roadmap.md | head -3; echo "---"; tail -3 roadmap.md
+- [ ] Soluções: aplicar linhas sutis no fundo da seção (pedido 01/10)

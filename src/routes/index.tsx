@@ -1,15 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  ArrowRight, BarChart3, Bot, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
+  ArrowRight, BarChart3, Bot, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
   Menu, MonitorSmartphone, Search, ShieldCheck, Sparkles, Target, Workflow, Zap, Info, Phone,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
-import credMetaCertified from "@/assets/cred-meta-certified.png.asset.json";
-import credMetaTechProvider from "@/assets/cred-meta-tech-provider.png.asset.json";
-import credGooglePartner from "@/assets/cred-google-partner.png.asset.json";
+import metaCertified from "@/assets/nex-meta-certified.png";
+import metaTechProvider from "@/assets/nex-meta-tech-provider.png";
+import googlePartner from "@/assets/nex-google-partner.svg";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { faq, messages, sections, solutions, waLink, WHATSAPP_DISPLAY } from "@/data/site";
+import { faq, messages, sections, solutions, waLink } from "@/data/site";
 
 const TITLE = "NEX Marketing Digital — Marketing, tecnologia e automação desde 2006";
 const DESC = "Tráfego pago no Meta Ads e Google Ads, WhatsApp, sistemas, sites e automação com IA. Performance apoiada por tecnologia e dados desde 2006.";
@@ -133,18 +133,6 @@ function SitePage() {
           </div>
         </section>
 
-        {/* Certificações */}
-        <section aria-label="Certificações" className="border-y border-border bg-[var(--surface-2)] py-8">
-          <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 text-center sm:px-6 md:flex-row md:justify-between md:text-left">
-            <p className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">Credenciais</p>
-            <ul className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
-              <li><img src={credMetaCertified.url} alt="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full md:h-16" loading="lazy" /></li>
-              <li><img src={credMetaTechProvider.url} alt="Meta Tech Provider — Certified Partner" className="h-12 w-auto rounded-lg md:h-14" loading="lazy" /></li>
-              <li><img src={credGooglePartner.url} alt="Google Partner" className="h-12 w-auto rounded-lg md:h-14" loading="lazy" /></li>
-            </ul>
-          </div>
-        </section>
-
         {/* SOLUÇÕES */}
         <section id="solucoes" className="bg-background py-20 lg:py-28">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -154,7 +142,13 @@ function SitePage() {
                 <article key={s.key} className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition hover:-translate-y-1 hover:border-primary/60">
                   <div className="grid size-12 place-items-center rounded-xl bg-nex-gradient text-primary-foreground"><I className="size-5" /></div>
                   <h3 className="mt-5 font-display text-lg font-semibold">{s.title}</h3>
-                  <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
+                  <div className="my-5 h-px bg-border/60" aria-hidden />
+                  <ul className="flex-1 space-y-2.5">
+                    {s.points.map((pt) => (
+                      <li key={pt} className="flex gap-2.5 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /><span>{pt}</span></li>
+                    ))}
+                  </ul>
                   <a href={waLink(s.msg)} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent-foreground">Conversar sobre isso<ArrowRight className="size-4 transition group-hover:translate-x-1" /></a>
                 </article>
               ); })}
@@ -235,18 +229,38 @@ function SitePage() {
               <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
               <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
               <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
-              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="relative mt-8 inline-flex h-14 items-center gap-2 rounded-xl bg-[var(--surface-1)] px-8 text-base font-semibold text-foreground transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
-              <p className="relative mt-4 text-sm opacity-85">{WHATSAPP_DISPLAY}</p>
+              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-border bg-[var(--surface-1)] py-10 pb-28 sm:pb-10">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm text-muted-foreground sm:flex-row sm:px-6">
-          <img src={logoAsset.url} alt="NEX Marketing Digital" className="h-8 w-auto" />
-          <p>© {new Date().getFullYear()} NEX Marketing Digital. Tecnologia desde 2006.</p>
-          <Link to="/auth" className="hover:text-foreground">Área do cliente</Link>
+      <footer className="border-t border-border bg-[var(--surface-1)] pt-12 pb-28 sm:pb-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col items-center gap-2 sm:items-start">
+              <img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto" />
+              <p className="text-xs text-muted-foreground">Marketing, tecnologia e automação desde 2006.</p>
+            </div>
+            <div className="flex flex-col items-center gap-3 sm:items-end">
+              <p className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Certificações e parceiros</p>
+              <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+                <li>
+                  <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
+                </li>
+                <li>
+                  <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-11 w-auto rounded-md opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
+                </li>
+                <li>
+                  <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-14 w-auto rounded-lg opacity-80 transition duration-300 hover:opacity-100" loading="lazy" />
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-9 flex flex-col items-center justify-between gap-3 border-t border-border/60 pt-6 text-sm text-muted-foreground sm:flex-row">
+            <p>© {new Date().getFullYear()} NEX Marketing Digital. Tecnologia desde 2006.</p>
+            <Link to="/auth" className="transition hover:text-foreground">Área do cliente</Link>
+          </div>
         </div>
       </footer>
 

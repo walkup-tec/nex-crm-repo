@@ -6,9 +6,7 @@ import {
   Wallet, FolderOpen, Users,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
-import metaCertified from "@/assets/nex-meta-certified.png";
-import metaTechProvider from "@/assets/nex-meta-tech-provider.png";
-import googlePartner from "@/assets/nex-google-partner.svg";
+import footerLogo from "@/assets/nex-logo-footer-transparent.png";
 import attendantAvatar from "@/assets/attendant-avatar.png";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { faq, messages, sections, solutions, waLink } from "@/data/site";
@@ -239,25 +237,33 @@ function SitePage() {
 
       <footer className="border-t border-border bg-[var(--surface-1)] pt-12 pb-28 sm:pb-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col items-center gap-2 sm:items-start">
-              <img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto" />
+              <img src={footerLogo} alt="NEX Marketing Digital" className="h-10 w-auto object-contain" />
               <p className="text-xs text-muted-foreground">Marketing, tecnologia e automação desde 2006.</p>
             </div>
-            <div className="flex flex-col items-center gap-3 sm:items-end">
-              <p className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Certificações e parceiros</p>
-              <div className="relative overflow-hidden rounded-2xl bg-white px-6 py-4 shadow-brand">
-                <ul className="relative flex flex-wrap items-center justify-center gap-x-7 gap-y-3">
-                  <li className="badge-shine rounded-full">
-                    <img src={metaCertified} alt="Meta Certified — Media Buying Professional" title="Meta Certified — Media Buying Professional" className="h-14 w-auto rounded-full transition duration-300 hover:scale-105" loading="lazy" />
-                  </li>
-                  <li className="badge-shine rounded-md">
-                    <img src={metaTechProvider} alt="Meta Tech Provider — Certified Partner" title="Meta Tech Provider — Certified Partner" className="h-11 w-auto rounded-md transition duration-300 hover:scale-105" loading="lazy" />
-                  </li>
-                  <li className="badge-shine rounded-lg">
-                    <img src={googlePartner} alt="Google Partner" title="Google Partner" className="h-14 w-auto rounded-lg transition duration-300 hover:scale-105" loading="lazy" />
-                  </li>
-                </ul>
+            <div className="w-full max-w-xl">
+              <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground lg:text-left">Certificações e parceiros</p>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1.35fr_1px_.85fr] sm:items-center sm:gap-8">
+                <div className="group text-center">
+                  <div className="flex items-center justify-center gap-2 text-3xl font-semibold text-foreground">
+                    <span className="font-display text-4xl font-light leading-none text-[#4f8ee8]">∞</span>
+                    <span>Meta</span>
+                  </div>
+                  <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-cyan via-primary to-primary transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_45%,transparent)]" />
+                  <div className="mt-3 space-y-1 text-sm text-foreground/90">
+                    <p>Media Buying Professional</p>
+                    <p>Tech Provider</p>
+                  </div>
+                </div>
+                <div className="hidden h-24 bg-border/60 sm:block" />
+                <div className="group text-center">
+                  <div className="text-3xl font-semibold tracking-0">
+                    <span className="text-[#4285f4]">G</span><span className="text-[#ea4335]">o</span><span className="text-[#fbbc05]">o</span><span className="text-[#4285f4]">g</span><span className="text-[#34a853]">l</span><span className="text-[#ea4335]">e</span>
+                  </div>
+                  <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#4285f4] via-[#ea4335] to-[#fbbc05] transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_35%,transparent)]" />
+                  <p className="mt-3 text-base text-foreground/90">Partner</p>
+                </div>
               </div>
             </div>
           </div>

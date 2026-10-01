@@ -5,7 +5,6 @@ import {
   Megaphone, Menu, MessageCircle, MonitorSmartphone, Rocket, Search, ShieldCheck, Sparkles, Target, Workflow, Zap,
   Wallet, FolderOpen, Users,
 } from "lucide-react";
-import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
 import footerLogo from "@/assets/nex-logo-dark.png.asset.json";
 import metaOfficial from "@/assets/meta-official-dark.svg.asset.json";
 import googleOfficial from "@/assets/google-official-cropped.png.asset.json";
@@ -75,7 +74,7 @@ function SitePage() {
       {/* Header horizontal (desktop topo) / compacto (mobile) */}
       <header className={`fixed inset-x-0 top-0 z-40 border-b border-border/60 bg-[color-mix(in_oklch,var(--surface-1)_85%,transparent)] backdrop-blur-md transition-all duration-500 ${pastHero ? "lg:pointer-events-none lg:-translate-y-full lg:opacity-0" : ""}`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-20">
-          <a href="#inicio" aria-label="NEX Marketing Digital — início"><img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto lg:h-11" /></a>
+          <a href="#inicio" aria-label="NEX Marketing Digital — início"><img src={footerLogo.url} alt="NEX Marketing Digital" className="h-9 w-auto object-contain lg:h-11" /></a>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Principal">
             {sections.map((s) => (
               <a key={s.id} href={`#${s.id}`} className={`nav-link rounded-lg px-3 py-2 text-sm font-medium transition ${active === s.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{s.label}</a>
@@ -89,7 +88,7 @@ function SitePage() {
               </SheetTrigger>
               <SheetContent side="right" className="site w-[85vw] max-w-sm border-border bg-background text-foreground">
                 <SheetTitle className="sr-only">Menu</SheetTitle>
-                <img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto self-start" />
+                <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-9 w-auto self-start object-contain" />
                 <nav className="mt-8 flex flex-col gap-1" aria-label="Menu mobile">
                   {sections.map((s) => { const I = navIcons[s.id]; return (
                     <a key={s.id} href={`#${s.id}`} onClick={() => setOpen(false)} className={`flex h-12 items-center gap-3 rounded-lg px-3 text-base font-medium ${active === s.id ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}><I className="size-5" />{s.label}</a>

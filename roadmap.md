@@ -21,3 +21,7 @@
 - [x] Site institucional: redesenhar apresentação dos selos no rodapé
 
 - [x] Site institucional: recriar selos conforme referência horizontal enviada
+
+## Em andamento (2026-10-01)
+- [ ] Efeitos de movimento no site: background animado, reveal on scroll, micro-animações (em andamento)
+- [ ] Mockup do hero: print realista do painel NEX Ads (campanhas, KPIs, saldo Meta) substituindo o genérico

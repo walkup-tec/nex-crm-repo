@@ -121,6 +121,7 @@ function SitePage() {
         {/* HERO */}
         <section id="inicio" className="relative overflow-hidden bg-navy pt-28 pb-20 lg:pt-40 lg:pb-32">
           <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+          <div className="absolute -top-44 left-1/2 h-80 w-[640px] -translate-x-1/2 rounded-full bg-accent opacity-10 blur-[130px]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr]">
             <Reveal>
               <div>
@@ -140,8 +141,9 @@ function SitePage() {
         </section>
 
         {/* SOLUÇÕES */}
-        <section id="solucoes" className="relative overflow-hidden bg-navy py-18 lg:py-[100px]">
-          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+        <section id="solucoes" className="relative overflow-hidden border-y border-border/40 bg-section-alt py-18 lg:py-[100px]">
+          <div className="absolute inset-0 bg-grid opacity-20" aria-hidden />
+          <div className="absolute -bottom-40 -right-40 size-[520px] rounded-full bg-primary opacity-[0.07] blur-[150px]" aria-hidden />
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -168,6 +170,7 @@ function SitePage() {
         {/* NEX ADS */}
         <section id="nex-ads" className="relative overflow-hidden bg-navy py-20 lg:py-28">
           <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+          <div className="absolute -bottom-48 -left-40 size-[520px] rounded-full bg-accent opacity-[0.06] blur-[150px]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
             <Reveal>
               <div>
@@ -203,8 +206,9 @@ function SitePage() {
         </section>
 
         {/* SOBRE */}
-        <section id="sobre" className="relative overflow-hidden bg-navy py-20 lg:py-28">
-          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+        <section id="sobre" className="relative overflow-hidden border-y border-border/40 bg-section-alt py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-20" aria-hidden />
+          <div className="absolute -left-40 top-1/3 size-[480px] rounded-full bg-primary opacity-[0.07] blur-[150px]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
               <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
@@ -244,8 +248,9 @@ function SitePage() {
         </section>
 
         {/* CONTATO */}
-        <section id="contato" className="relative overflow-hidden bg-navy py-20 lg:py-28">
-          <div className="absolute inset-0 bg-grid opacity-25" aria-hidden />
+        <section id="contato" className="relative overflow-hidden bg-section-alt py-20 lg:py-28">
+          <div className="absolute inset-0 bg-grid opacity-20" aria-hidden />
+          <div className="absolute -right-40 -top-40 size-[460px] rounded-full bg-primary opacity-[0.07] blur-[140px]" aria-hidden />
           <div className="relative mx-auto max-w-5xl px-4 sm:px-6">
             <Reveal>
               <div className="relative overflow-hidden rounded-3xl bg-nex-gradient p-10 text-center text-primary-foreground sm:p-16">

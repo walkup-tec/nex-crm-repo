@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight, BarChart3, Bot, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, Layers, LayoutDashboard,
   Menu, MonitorSmartphone, Search, ShieldCheck, Sparkles, Target, Workflow, Zap, Info, Phone,
+  Wallet, FolderOpen, Users,
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
 import metaCertified from "@/assets/nex-meta-certified.png";
@@ -321,18 +322,54 @@ function HeroVisual() {
 }
 
 function DashboardMock() {
+  const kpis: [string, string, string, boolean][] = [
+    ["Alcance", "128,4 mil", "+12,3%", false],
+    ["Impressões", "412,9 mil", "+8,1%", false],
+    ["Resultados", "1.847", "+23,6%", true],
+    ["Custo por resultado", "R$ 8,42", "-11,2%", false],
+  ];
+  const bars = [30, 45, 40, 60, 55, 72, 66, 80, 74, 90, 84, 96];
   return (
-    <div className="rounded-3xl border border-border bg-card p-5 shadow-panel" aria-label="Ilustração da plataforma NEX Ads" role="img">
-      <div className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-destructive/70" /><span className="size-2.5 rounded-full bg-warning/70" /><span className="size-2.5 rounded-full bg-success/70" /><span className="ml-3 text-xs text-muted-foreground">NEX Ads · Visão geral</span></div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {["Alcance", "Impressões", "Resultados"].map((k, i) => (
-          <div key={k} className="rounded-xl bg-secondary p-3"><p className="text-[11px] text-muted-foreground">{k}</p><div className={`mt-2 h-2 rounded-full bg-nex-gradient`} style={{ width: `${55 + i * 15}%` }} /></div>
-        ))}
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#010317] shadow-panel" aria-label="Captura da plataforma NEX Ads" role="img">
+      {/* barra da janela */}
+      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
+        <span className="size-2.5 rounded-full bg-white/20" /><span className="size-2.5 rounded-full bg-white/20" /><span className="size-2.5 rounded-full bg-white/20" />
+        <span className="ml-3 rounded-md bg-white/5 px-2.5 py-1 text-[10px] text-white/50">app.nexads.com.br/dashboard</span>
       </div>
-      <div className="mt-4 flex h-36 items-end gap-1.5 rounded-xl bg-secondary p-4">
-        {[30, 45, 40, 60, 55, 72, 66, 80, 74, 90].map((h, i) => <div key={i} className="flex-1 rounded-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%` }} />)}
+      <div className="flex">
+        {/* mini menu lateral */}
+        <div className="hidden w-12 flex-col items-center gap-4 border-r border-white/10 py-4 sm:flex">
+          <span className="size-6 rounded-md bg-nex-gradient" />
+          {[LayoutDashboard, BarChart3, Wallet, FolderOpen, Users].map((I, i) => { const Icon = I; return <Icon key={i} className={`size-4 ${i === 0 ? "text-cyan" : "text-white/30"}`} />; })}
+        </div>
+        <div className="flex-1 p-4 sm:p-5">
+          {/* topo: título + filtro + saldo */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-white">Visão geral</p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-white/60">Últimos 30 dias ▾</span>
+              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-medium text-cyan">Saldo Meta: R$ 312,50</span>
+            </div>
+          </div>
+          {/* KPIs */}
+          <div className="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            {kpis.map(([k, v, d, hi]) => (
+              <div key={k} className={`rounded-xl border p-3 ${hi ? "border-primary/50 bg-primary/15" : "border-white/10 bg-white/[.03]"}`}>
+                <p className="text-[10px] text-white/50">{k}</p>
+                <p className={`mt-1 text-sm font-bold ${hi ? "text-nex-gradient" : "text-white"}`}>{v}</p>
+                <p className={`mt-0.5 text-[10px] ${d.startsWith("-") ? "text-cyan" : "text-emerald-400"}`}>{d} vs. período anterior</p>
+              </div>
+            ))}
+          </div>
+          {/* gráfico */}
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/[.03] p-4">
+            <div className="flex items-center justify-between"><p className="text-[10px] text-white/50">Resultados por dia</p><span className="flex items-center gap-1.5 text-[10px] text-white/40"><span className="size-2 rounded-sm bg-gradient-to-t from-primary to-cyan" />Resultados</span></div>
+            <div className="mt-3 flex h-28 items-end gap-1.5">
+              {bars.map((h, i) => <div key={i} className="flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%` }} />)}
+            </div>
+          </div>
+        </div>
       </div>
-      <p className="mt-3 text-[11px] text-muted-foreground">Ilustração da interface</p>
     </div>
   );
 }

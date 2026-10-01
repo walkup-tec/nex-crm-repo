@@ -142,8 +142,9 @@ function SitePage() {
         </section>
 
         {/* SOLUÇÕES */}
-        <section id="solucoes" className="bg-background py-18 lg:py-[100px]">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <section id="solucoes" className="relative overflow-hidden bg-background py-18 lg:py-[100px]">
+          <div className="absolute inset-0 bg-grid opacity-[0.18] [mask-image:radial-gradient(ellipse_at_center,black_20%,transparent_75%)]" aria-hidden />
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {solutions.map((s, i) => { const I = solIcons[s.key]; return (

@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import logoAsset from "@/assets/nex-logo-header-final.png.asset.json";
 import footerLogo from "@/assets/nex-logo-footer-transparent.png";
+import metaOfficial from "@/assets/meta-official-dark.svg.asset.json";
+import googleOfficial from "@/assets/google-official-cropped.png.asset.json";
 import attendantAvatar from "@/assets/attendant-avatar.png";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { faq, messages, sections, solutions, waLink } from "@/data/site";
@@ -246,10 +248,7 @@ function SitePage() {
               <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground lg:text-left">Certificações e parceiros</p>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1.35fr_1px_.85fr] sm:items-center sm:gap-8">
                 <div className="group text-center">
-                  <div className="flex items-center justify-center gap-2 text-3xl font-semibold text-foreground">
-                    <span className="font-display text-4xl font-light leading-none text-[#4f8ee8]">∞</span>
-                    <span>Meta</span>
-                  </div>
+                  <img src={metaOfficial.url} alt="Meta" className="mx-auto h-11 w-auto" loading="lazy" />
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-cyan via-primary to-primary transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_45%,transparent)]" />
                   <div className="mt-3 space-y-1 text-sm text-foreground/90">
                     <p>Media Buying Professional</p>
@@ -258,9 +257,7 @@ function SitePage() {
                 </div>
                 <div className="hidden h-24 bg-border/60 sm:block" />
                 <div className="group text-center">
-                  <div className="text-3xl font-semibold tracking-0">
-                    <span className="text-[#4285f4]">G</span><span className="text-[#ea4335]">o</span><span className="text-[#fbbc05]">o</span><span className="text-[#4285f4]">g</span><span className="text-[#34a853]">l</span><span className="text-[#ea4335]">e</span>
-                  </div>
+                  <img src={googleOfficial.url} alt="Google" className="mx-auto h-11 w-auto object-contain" loading="lazy" />
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#4285f4] via-[#ea4335] to-[#fbbc05] transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_35%,transparent)]" />
                   <p className="mt-3 text-base text-foreground/90">Partner</p>
                 </div>

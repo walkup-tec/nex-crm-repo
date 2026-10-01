@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight, BarChart3, Bot, Building2, Check, Code2, Cpu, Database, Globe, HelpCircle, Home, LayoutDashboard,
   Megaphone, Menu, MessageCircle, MonitorSmartphone, Rocket, Search, ShieldCheck, Sparkles, Target, Workflow, Zap,
@@ -78,7 +78,7 @@ function SitePage() {
           <a href="#inicio" aria-label="NEX Marketing Digital — início"><img src={logoAsset.url} alt="NEX Marketing Digital" className="h-9 w-auto lg:h-11" /></a>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Principal">
             {sections.map((s) => (
-              <a key={s.id} href={`#${s.id}`} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${active === s.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{s.label}</a>
+              <a key={s.id} href={`#${s.id}`} className={`nav-link rounded-lg px-3 py-2 text-sm font-medium transition ${active === s.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{s.label}</a>
             ))}
           </nav>
           <div className="flex items-center gap-2">
@@ -121,20 +121,23 @@ function SitePage() {
         {/* HERO */}
         <section id="inicio" className="relative overflow-hidden bg-[var(--surface-1)] pt-28 pb-20 lg:pt-40 lg:pb-32">
           <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_70%_30%,black,transparent_70%)]" aria-hidden />
-          <div className="absolute -right-40 -top-40 size-[640px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_35%,transparent),transparent_65%)]" aria-hidden />
+          <div className="animate-drift-slow absolute -right-40 -top-40 size-[640px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_35%,transparent),transparent_65%)]" aria-hidden />
+          <div className="animate-drift absolute -left-32 -bottom-48 size-[520px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#00EAFD_15%,transparent),transparent_65%)]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr]">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-accent-foreground"><Sparkles className="size-3.5" />Tecnologia e inovação desde 2006</p>
-              <h1 className="mt-6 font-display text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
-                Marketing, tecnologia e automação para transformar <span className="text-nex-gradient">investimento em clientes</span>.
-              </h1>
-              <p className="mt-6 max-w-xl text-lg text-muted-foreground">Unimos tráfego pago no Meta e no Google, WhatsApp, sistemas e inteligência artificial em uma operação orientada a dados — com quase duas décadas de experiência em tecnologia.</p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <WaButton msg={messages.general} className="h-14 px-7 text-base">Falar com um especialista</WaButton>
-                <a href="#solucoes" className="inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-border px-7 text-base font-semibold transition hover:bg-secondary">Conheça nossas soluções<ArrowRight className="size-4" /></a>
+            <Reveal>
+              <div>
+                <p className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-accent-foreground"><Sparkles className="size-3.5" />Tecnologia e inovação desde 2006</p>
+                <h1 className="mt-6 font-display text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
+                  Marketing, tecnologia e automação para transformar <span className="text-nex-gradient motion-safe:animate-shimmer">investimento em clientes</span>.
+                </h1>
+                <p className="mt-6 max-w-xl text-lg text-muted-foreground">Unimos tráfego pago no Meta e no Google, WhatsApp, sistemas e inteligência artificial em uma operação orientada a dados — com quase duas décadas de experiência em tecnologia.</p>
+                <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                  <WaButton msg={messages.general} className="h-14 px-7 text-base">Falar com um especialista</WaButton>
+                  <a href="#solucoes" className="inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-border px-7 text-base font-semibold transition hover:bg-secondary">Conheça nossas soluções<ArrowRight className="size-4" /></a>
+                </div>
               </div>
-            </div>
-            <HeroVisual />
+            </Reveal>
+            <Reveal delay={140}><HeroVisual /></Reveal>
           </div>
         </section>
 
@@ -143,19 +146,21 @@ function SitePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Soluções" title="Da aquisição de clientes à tecnologia que sustenta a operação" text="Cada frente conversa com a outra: a mídia gera demanda, a tecnologia organiza e a automação acelera o atendimento." />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {solutions.map((s) => { const I = solIcons[s.key]; return (
-                <article key={s.key} className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition hover:-translate-y-1 hover:border-primary/60">
-                  <div className="grid size-12 place-items-center rounded-xl bg-nex-gradient text-primary-foreground"><I className="size-5" /></div>
-                  <h3 className="mt-5 font-display text-lg font-semibold">{s.title}</h3>
-                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
-                  <div className="my-5 h-px bg-border/60" aria-hidden />
-                  <ul className="flex-1 space-y-2.5">
-                    {s.points.map((pt) => (
-                      <li key={pt} className="flex gap-2.5 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /><span>{pt}</span></li>
-                    ))}
-                  </ul>
-                  <a href={waLink(s.msg)} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent-foreground">Conversar sobre isso<ArrowRight className="size-4 transition group-hover:translate-x-1" /></a>
-                </article>
+              {solutions.map((s, i) => { const I = solIcons[s.key]; return (
+                <Reveal key={s.key} delay={(i % 3) * 80} className="h-full">
+                  <article className="group flex h-full flex-col rounded-2xl border border-border bg-card p-6 transition duration-300 hover:-translate-y-1 hover:border-primary/60 hover:shadow-brand">
+                    <div className="grid size-12 place-items-center rounded-xl bg-nex-gradient text-primary-foreground"><I className="size-5" /></div>
+                    <h3 className="mt-5 font-display text-lg font-semibold">{s.title}</h3>
+                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{s.text}</p>
+                    <div className="my-5 h-px bg-border/60" aria-hidden />
+                    <ul className="flex-1 space-y-2.5">
+                      {s.points.map((pt) => (
+                        <li key={pt} className="flex gap-2.5 text-[13px] leading-snug"><Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /><span>{pt}</span></li>
+                      ))}
+                    </ul>
+                    <a href={waLink(s.msg)} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent-foreground">Conversar sobre isso<ArrowRight className="size-4 transition group-hover:translate-x-1" /></a>
+                  </article>
+                </Reveal>
               ); })}
             </div>
           </div>
@@ -163,18 +168,21 @@ function SitePage() {
 
         {/* NEX ADS */}
         <section id="nex-ads" className="relative overflow-hidden bg-[var(--surface-3)] py-20 lg:py-28">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_10%_90%,color-mix(in_oklch,#00EAFD_14%,transparent),transparent_55%)]" aria-hidden />
+          <div className="animate-drift-slow absolute inset-0 bg-[radial-gradient(ellipse_at_10%_90%,color-mix(in_oklch,#00EAFD_14%,transparent),transparent_55%)]" aria-hidden />
+          <div className="animate-drift absolute -right-48 top-1/4 size-[560px] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,#6F02FD_22%,transparent),transparent_65%)]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
-            <div>
-              <SectionHead kicker="NEX Ads" title="Transparência total sobre cada real investido" text="Nossos clientes acompanham campanhas, resultados, saldo de mídia, financeiro e criativos em uma plataforma própria, desenvolvida pela NEX." />
-              <ul className="mt-8 space-y-3 text-sm">
-                {["Alcance, impressões, resultados e custo por resultado em tempo real", "Alertas de saldo de mídia antes que as campanhas parem", "Biblioteca de criativos organizada e segura", "Acesso por perfis para sua equipe"].map((t) => (
-                  <li key={t} className="flex gap-3"><Zap className="mt-0.5 size-4 shrink-0 text-cyan" />{t}</li>
-                ))}
-              </ul>
-              <WaButton msg={messages.general} className="mt-9">Quero conhecer o NEX Ads</WaButton>
-            </div>
-            <DashboardMock />
+            <Reveal>
+              <div>
+                <SectionHead kicker="NEX Ads" title="Transparência total sobre cada real investido" text="Nossos clientes acompanham campanhas, resultados, saldo de mídia, financeiro e criativos em uma plataforma própria, desenvolvida pela NEX." />
+                <ul className="mt-8 space-y-3 text-sm">
+                  {["Alcance, impressões, resultados e custo por resultado em tempo real", "Alertas de saldo de mídia antes que as campanhas parem", "Biblioteca de criativos organizada e segura", "Acesso por perfis para sua equipe"].map((t) => (
+                    <li key={t} className="flex gap-3"><Zap className="mt-0.5 size-4 shrink-0 text-cyan" />{t}</li>
+                  ))}
+                </ul>
+                <WaButton msg={messages.general} className="mt-9">Quero conhecer o NEX Ads</WaButton>
+              </div>
+            </Reveal>
+            <Reveal delay={120}><DashboardMock /></Reveal>
           </div>
         </section>
 
@@ -183,12 +191,14 @@ function SitePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHead kicker="Tecnologia" title="Uma agência que também constrói tecnologia" text="Não dependemos apenas de ferramentas prontas. Quando sua operação precisa, desenvolvemos." />
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {[[Database, "Dados", "Decisões baseadas em métricas reais, não em impressão."], [Workflow, "Automação", "Processos repetitivos executados sem esforço manual."], [Bot, "IA aplicada", "Atendimento e qualificação de leads com inteligência artificial."], [Globe, "Sistemas web", "Plataformas sob medida, seguras e integradas."]].map(([I, t, d]) => { const Icon = I as typeof Database; return (
-                <div key={t as string} className="rounded-2xl border border-border bg-card p-6 shadow-panel">
-                  <Icon className="size-6 text-primary" />
-                  <h3 className="mt-4 font-display text-base font-semibold">{t as string}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{d as string}</p>
-                </div>
+              {[[Database, "Dados", "Decisões baseadas em métricas reais, não em impressão."], [Workflow, "Automação", "Processos repetitivos executados sem esforço manual."], [Bot, "IA aplicada", "Atendimento e qualificação de leads com inteligência artificial."], [Globe, "Sistemas web", "Plataformas sob medida, seguras e integradas."]].map(([I, t, d], i) => { const Icon = I as typeof Database; return (
+                <Reveal key={t as string} delay={i * 70} className="h-full">
+                  <div className="h-full rounded-2xl border border-border bg-card p-6 shadow-panel transition duration-300 hover:-translate-y-1 hover:border-primary/60">
+                    <Icon className="size-6 text-primary" />
+                    <h3 className="mt-4 font-display text-base font-semibold">{t as string}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">{d as string}</p>
+                  </div>
+                </Reveal>
               ); })}
             </div>
           </div>
@@ -197,18 +207,22 @@ function SitePage() {
         {/* SOBRE */}
         <section id="sobre" className="bg-[var(--surface-1)] py-20 lg:py-28">
           <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-            <div className="border-gradient rounded-3xl p-10 text-center">
-              <p className="text-sm font-semibold text-muted-foreground">No mercado de tecnologia desde</p>
-              <p className="mt-2 font-display text-7xl font-bold text-nex-gradient sm:text-8xl">2006</p>
-            </div>
-            <div>
-              <SectionHead kicker="Sobre a NEX" title="Experiência em tecnologia, aplicada à performance" text="A NEX nasceu da tecnologia. Ao longo dos anos, unimos esse conhecimento técnico ao marketing digital para oferecer algo que poucas agências entregam: campanhas de mídia apoiadas por sistemas, automações e dados." />
-              <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                {[[ShieldCheck, "Segurança"], [BarChart3, "Performance"], [Sparkles, "Inovação"]].map(([I, t]) => { const Icon = I as typeof ShieldCheck; return (
-                  <div key={t as string} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold"><Icon className="size-4 text-cyan" />{t as string}</div>
-                ); })}
+            <Reveal>
+              <div className="border-gradient rounded-3xl p-10 text-center">
+                <p className="text-sm font-semibold text-muted-foreground">No mercado de tecnologia desde</p>
+                <p className="mt-2 font-display text-7xl font-bold text-nex-gradient sm:text-8xl">2006</p>
               </div>
-            </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div>
+                <SectionHead kicker="Sobre a NEX" title="Experiência em tecnologia, aplicada à performance" text="A NEX nasceu da tecnologia. Ao longo dos anos, unimos esse conhecimento técnico ao marketing digital para oferecer algo que poucas agências entregam: campanhas de mídia apoiadas por sistemas, automações e dados." />
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  {[[ShieldCheck, "Segurança"], [BarChart3, "Performance"], [Sparkles, "Inovação"]].map(([I, t]) => { const Icon = I as typeof ShieldCheck; return (
+                    <div key={t as string} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold"><Icon className="size-4 text-cyan" />{t as string}</div>
+                  ); })}
+                </div>
+              </div>
+            </Reveal>
           </div>
         </section>
 
@@ -217,11 +231,13 @@ function SitePage() {
           <div className="mx-auto max-w-3xl px-4 sm:px-6">
             <SectionHead kicker="FAQ" title="Perguntas frequentes" center />
             <div className="mt-10 space-y-3">
-              {faq.map((f) => (
-                <details key={f.q} className="group rounded-xl border border-border bg-card px-5 open:border-primary/50">
-                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 font-semibold">{f.q}<span className="text-xl text-muted-foreground transition group-open:rotate-45">+</span></summary>
-                  <p className="pb-5 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
-                </details>
+              {faq.map((f, i) => (
+                <Reveal key={f.q} delay={(i % 5) * 60}>
+                  <details className="group rounded-xl border border-border bg-card px-5 open:border-primary/50">
+                    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 font-semibold">{f.q}<span className="text-xl text-muted-foreground transition group-open:rotate-45">+</span></summary>
+                    <p className="pb-5 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  </details>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -230,12 +246,16 @@ function SitePage() {
         {/* CONTATO */}
         <section id="contato" className="relative overflow-hidden bg-[var(--surface-1)] py-20 lg:py-28">
           <div className="mx-auto max-w-5xl px-4 sm:px-6">
-            <div className="relative overflow-hidden rounded-3xl bg-nex-gradient p-10 text-center text-primary-foreground sm:p-16">
-              <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
-              <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
-              <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
-              <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
-            </div>
+            <Reveal>
+              <div className="relative overflow-hidden rounded-3xl bg-nex-gradient p-10 text-center text-primary-foreground sm:p-16">
+                <div className="absolute inset-0 bg-grid opacity-30" aria-hidden />
+                <div className="animate-drift-slow absolute -left-24 -top-24 size-96 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,.3),transparent_60%)]" aria-hidden />
+                <div className="animate-drift absolute -bottom-40 -right-24 size-[420px] rounded-full bg-[radial-gradient(circle,rgba(1,3,23,.4),transparent_60%)]" aria-hidden />
+                <h2 className="relative font-display text-3xl font-bold sm:text-4xl">Vamos conversar sobre o crescimento da sua empresa?</h2>
+                <p className="relative mx-auto mt-4 max-w-xl opacity-90">Fale direto com um especialista no WhatsApp. Sem formulário, sem cadastro.</p>
+                <a href={waLink(messages.general)} target="_blank" rel="noopener noreferrer" className="cta-invert relative mt-8 inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-xl px-7 text-[15px] font-semibold transition hover:-translate-y-0.5"><WhatsAppIcon className="size-5" />Falar com um especialista</a>
+              </div>
+            </Reveal>
           </div>
         </section>
       </main>
@@ -298,32 +318,95 @@ function SitePage() {
   );
 }
 
-function SectionHead({ kicker, title, text, center }: { kicker: string; title: string; text?: string; center?: boolean }) {
+function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => { if (entry!.isIntersecting) { setShown(true); obs.disconnect(); } }, { threshold: 0.15, rootMargin: "0px 0px -48px 0px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   return (
-    <div className={center ? "text-center" : "max-w-2xl"}>
-      <p className="text-xs font-bold uppercase tracking-[.18em] text-accent-foreground">{kicker}</p>
-      <h2 className="mt-3 font-display text-3xl font-bold leading-tight sm:text-4xl">{title}</h2>
-      {text && <p className="mt-4 text-base leading-relaxed text-muted-foreground">{text}</p>}
+    <div ref={ref} style={delay ? { transitionDelay: `${delay}ms` } : undefined} className={`reveal ${shown ? "reveal-in" : ""} ${className}`}>
+      {children}
     </div>
   );
 }
 
+function SectionHead({ kicker, title, text, center }: { kicker: string; title: string; text?: string; center?: boolean }) {
+  return (
+    <Reveal className={center ? "text-center" : "max-w-2xl"}>
+      <p className="text-xs font-bold uppercase tracking-[.18em] text-accent-foreground">{kicker}</p>
+      <h2 className="mt-3 font-display text-3xl font-bold leading-tight sm:text-4xl">{title}</h2>
+      {text && <p className="mt-4 text-base leading-relaxed text-muted-foreground">{text}</p>}
+    </Reveal>
+  );
+}
+
 function HeroVisual() {
-  const bars = [38, 52, 46, 64, 58, 76, 70, 88];
+  const bars = [30, 45, 40, 60, 55, 72, 66, 80, 74, 90, 84, 96];
+  const rows = [["Campanha Leads B2B", "Ativa", "412", "R$ 9,71"], ["Black Friday — Loja Online", "Ativa", "501", "R$ 7,35"], ["Retenção CRM", "Pausada", "98", "R$ 12,10"]] as const;
   return (
     <div className="relative mx-auto w-full max-w-lg" aria-hidden>
-      <div className="border-gradient animate-float rounded-3xl p-6 shadow-panel">
-        <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Performance</span><span className="rounded-full bg-secondary px-2 py-0.5">ao vivo</span></div>
-        <div className="mt-6 flex h-40 items-end gap-2">
-          {bars.map((h, i) => <div key={i} className="flex-1 rounded-t-md bg-gradient-to-t from-primary to-cyan opacity-90" style={{ height: `${h}%` }} />)}
+      <div className="animate-float overflow-hidden rounded-2xl border border-white/10 bg-[#010317] shadow-panel">
+        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
+          <span className="size-2.5 rounded-full bg-white/20" /><span className="size-2.5 rounded-full bg-white/20" /><span className="size-2.5 rounded-full bg-white/20" />
+          <span className="ml-3 rounded-md bg-white/5 px-2.5 py-1 text-[10px] text-white/50">app.nexads.com.br/dashboard</span>
         </div>
-        <svg viewBox="0 0 300 60" className="mt-4 h-14 w-full"><defs><linearGradient id="hl" x1="0" x2="1"><stop offset="0" stopColor="#6F02FD" /><stop offset="1" stopColor="#00EAFD" /></linearGradient></defs><path d="M0 50 C40 45 60 30 100 34 S170 12 210 18 S270 4 300 6" fill="none" stroke="url(#hl)" strokeWidth="3" /></svg>
+        <div className="flex">
+          <div className="hidden w-10 flex-col items-center gap-4 border-r border-white/10 py-4 sm:flex">
+            <span className="size-5 rounded-md bg-nex-gradient" />
+            {[LayoutDashboard, BarChart3, Wallet, FolderOpen, Users].map((I, i) => <I key={i} className={`size-3.5 ${i === 0 ? "text-cyan" : "text-white/30"}`} />)}
+          </div>
+          <div className="min-w-0 flex-1 p-3.5 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-white">Visão geral</p>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/60">Últimos 30 dias</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan/30 bg-cyan/10 px-2 py-0.5 text-[10px] font-medium text-cyan"><span className="relative flex size-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan opacity-70" /><span className="relative inline-flex size-1.5 rounded-full bg-cyan" /></span>Saldo: R$ 312,50</span>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+              {[["Alcance", "128,4 mil", "+12,3%"], ["Impressões", "412,9 mil", "+8,1%"], ["Resultados", "1.847", "+23,6%"], ["Custo/result.", "R$ 8,42", "-11,2%"]].map(([k, v, d], i) => (
+                <div key={k} className={`rounded-lg border p-2.5 ${i === 2 ? "border-primary/50 bg-primary/15" : "border-white/10 bg-white/[.03]"}`}>
+                  <p className="text-[9px] text-white/50">{k}</p>
+                  <p className={`mt-0.5 text-xs font-bold ${i === 2 ? "text-nex-gradient" : "text-white"}`}>{v}</p>
+                  <p className="mt-0.5 text-[9px] text-emerald-400">{d}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2.5 rounded-lg border border-white/10 bg-white/[.03] p-3">
+              <div className="flex items-center justify-between"><p className="text-[10px] text-white/50">Resultados por dia</p><span className="text-[10px] text-white/40">Meta Ads</span></div>
+              <div className="mt-2 flex h-16 items-end gap-1">
+                {bars.map((h, i) => <div key={i} className="animate-rise flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%`, animationDelay: `${i * 60}ms` }} />)}
+              </div>
+            </div>
+            <div className="mt-2.5 overflow-hidden rounded-lg border border-white/10">
+              <table className="w-full text-left">
+                <thead><tr className="bg-white/5 text-[9px] uppercase tracking-wide text-white/40"><th className="px-2.5 py-1.5 font-medium">Campanha</th><th className="px-1.5 py-1.5 font-medium">Status</th><th className="px-2.5 py-1.5 text-right font-medium">Result.</th><th className="px-2.5 py-1.5 text-right font-medium">C/result.</th></tr></thead>
+                <tbody className="divide-y divide-white/5 text-[10px] text-white/85">
+                  {rows.map(([n, s, res, cpr]) => (
+                    <tr key={n}>
+                      <td className="max-w-0 truncate px-2.5 py-2">{n}</td>
+                      <td className="px-1.5 py-2"><span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${s === "Ativa" ? "bg-emerald-400/15 text-emerald-400" : "bg-white/10 text-white/50"}`}>{s}</span></td>
+                      <td className="px-2.5 py-2 text-right tabular-nums">{res}</td>
+                      <td className="px-2.5 py-2 text-right tabular-nums text-white/70">{cpr}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-right text-[9px] text-white/40">Sincronizado com a Meta há 12 min</p>
+          </div>
+        </div>
       </div>
       <div className="absolute -bottom-6 -left-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Canais</p>
         <div className="mt-2 flex gap-2"><Target className="size-5 text-primary" /><Search className="size-5 text-cyan" /><WhatsAppIcon className="size-5 text-accent-foreground" /></div>
       </div>
-      <div className="absolute -right-4 -top-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
+      <div className="animate-float absolute -right-4 -top-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block" style={{ animationDelay: "1.4s" }}>
         <p className="text-[11px] text-muted-foreground">Automação</p>
         <Workflow className="mt-2 size-5 text-cyan" />
       </div>
@@ -358,7 +441,7 @@ function DashboardMock() {
             <p className="text-xs font-semibold text-white">Visão geral</p>
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-white/60">Últimos 30 dias ▾</span>
-              <span className="rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-medium text-cyan">Saldo Meta: R$ 312,50</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan/30 bg-cyan/10 px-2.5 py-1 text-[10px] font-medium text-cyan"><span className="relative flex size-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan opacity-70" /><span className="relative inline-flex size-1.5 rounded-full bg-cyan" /></span>Saldo Meta: R$ 312,50</span>
             </div>
           </div>
           {/* KPIs */}
@@ -375,7 +458,7 @@ function DashboardMock() {
           <div className="mt-3 rounded-xl border border-white/10 bg-white/[.03] p-4">
             <div className="flex items-center justify-between"><p className="text-[10px] text-white/50">Resultados por dia</p><span className="flex items-center gap-1.5 text-[10px] text-white/40"><span className="size-2 rounded-sm bg-gradient-to-t from-primary to-cyan" />Resultados</span></div>
             <div className="mt-3 flex h-28 items-end gap-1.5">
-              {bars.map((h, i) => <div key={i} className="flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%` }} />)}
+              {bars.map((h, i) => <div key={i} className="animate-rise flex-1 rounded-t-sm bg-gradient-to-t from-primary to-cyan" style={{ height: `${h}%`, animationDelay: `${i * 60}ms` }} />)}
             </div>
           </div>
         </div>

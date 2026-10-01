@@ -246,9 +246,11 @@ function SitePage() {
             </div>
             <div className="w-full max-w-xl">
               <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground lg:text-left">Certificações e parceiros</p>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1.35fr_1px_.85fr] sm:items-center sm:gap-8">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_1px_1fr] sm:items-center sm:gap-8">
                 <div className="group text-center">
-                  <img src={metaOfficial.url} alt="Meta" className="mx-auto h-11 w-auto" loading="lazy" />
+                  <div className="mx-auto flex h-11 w-44 items-center justify-center">
+                    <img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" />
+                  </div>
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-cyan via-primary to-primary transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_45%,transparent)]" />
                   <div className="mt-3 space-y-1 text-sm text-foreground/90">
                     <p>Media Buying Professional</p>
@@ -257,7 +259,9 @@ function SitePage() {
                 </div>
                 <div className="hidden h-24 bg-border/60 sm:block" />
                 <div className="group text-center">
-                  <img src={googleOfficial.url} alt="Google" className="mx-auto h-11 w-auto object-contain" loading="lazy" />
+                  <div className="mx-auto flex h-11 w-44 items-center justify-center">
+                    <img src={googleOfficial.url} alt="Google" className="h-full w-full object-contain" loading="lazy" />
+                  </div>
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#4285f4] via-[#ea4335] to-[#fbbc05] transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_35%,transparent)]" />
                   <p className="mt-3 text-base text-foreground/90">Partner</p>
                 </div>

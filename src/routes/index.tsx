@@ -407,8 +407,8 @@ function HeroVisual() {
       <div className="absolute -bottom-6 -left-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Canais</p>
         <div className="mt-2 flex items-center gap-2">
-          <span className="block h-5 w-5"><img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" /></span>
-          <span className="block h-5 w-5"><img src={googleOfficial.url} alt="Google" className="h-full w-full object-contain" loading="lazy" /></span>
+          <img src={metaOfficial.url} alt="Meta" className="h-4 w-auto object-contain" loading="lazy" />
+          <img src={googleOfficial.url} alt="Google" className="h-5 w-auto object-contain" loading="lazy" />
           <WhatsAppIcon className="size-5 text-accent-foreground" />
         </div>
       </div>

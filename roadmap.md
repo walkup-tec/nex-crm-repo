@@ -29,3 +29,5 @@
 - [x] Mockup do hero: print realista do painel NEX Ads (campanhas, KPIs, saldo Meta) substituindo o genérico (concluído)
 - [x] Site: reduzir altura da seção Soluções ~10% (concluído)
 - [x] Site: tons alternados entre seções (navy/alt) com brilhos suaves e divisores para diferenciar cada seção (direção v1 aprovada)
+
+grep -n "linhas" roadmap.md | head -3; echo "---"; tail -3 roadmap.md

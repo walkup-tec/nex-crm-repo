@@ -12,7 +12,7 @@ Criar um único app.
 | Repositório | `walkup-tec/canvas-capturer-pro` |
 | Branch | `main` |
 | Build | Dockerfile |
-| Porta do container | `3000` |
+| Porta do container | `3000` (a imagem também aceita `80`) |
 
 Não criar Postgres, Redis nem Supabase self-hosted.
 
@@ -28,7 +28,7 @@ Copiar do projeto Supabase `vshmtfgfbuizwvqxepsv`:
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_PROJECT_ID`
 
-`HOST=0.0.0.0` já está na imagem. Se o EasyPanel definir `PORT`, o processo usa esse valor. A porta publicada no serviço deve ser a mesma.
+A imagem força escuta em `0.0.0.0` nas portas `3000` e `80`. O destino no EasyPanel pode ser `http://nex_crm:3000` ou `http://nex_crm:80`.
 
 A service role fica só nessas variáveis. Não usar prefixo `VITE_` nela.
 

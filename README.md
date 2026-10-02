@@ -22,3 +22,12 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## NEX na VPS
+
+O app sobe no EasyPanel como um único serviço Node. Banco, autenticação e arquivos continuam no Supabase. O passo a passo está em `docs/project-memory/08-DEPLOY.md`.
+
+```sh
+bun install
+bun run dev
+```

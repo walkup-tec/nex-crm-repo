@@ -5,9 +5,9 @@ import {
   Megaphone, Menu, MessageCircle, MonitorSmartphone, Rocket, Search, ShieldCheck, Sparkles, Target, Workflow, Zap,
   Wallet, FolderOpen, Users,
 } from "lucide-react";
-import footerLogo from "@/assets/nex-logo-dark.png.asset.json";
-import metaOfficial from "@/assets/meta-official-dark.svg.asset.json";
-import googleOfficial from "@/assets/google-official-cropped.png.asset.json";
+import footerLogo from "@/assets/nex-logo-dark.png";
+import metaOfficial from "@/assets/meta-official-dark.svg?url";
+import googleOfficial from "@/assets/google-official-cropped.png";
 import attendantAvatar from "@/assets/attendant-avatar.png";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { faq, messages, sections, solutions, waLink } from "@/data/site";
@@ -74,7 +74,7 @@ function SitePage() {
       {/* Header horizontal (desktop topo) / compacto (mobile) */}
       <header className={`fixed inset-x-0 top-0 z-40 border-b border-border/60 bg-[color-mix(in_oklch,var(--surface-1)_85%,transparent)] backdrop-blur-md transition-all duration-500 ${pastHero ? "lg:pointer-events-none lg:-translate-y-full lg:opacity-0" : ""}`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-20">
-          <a href="#inicio" aria-label="NEX Marketing Digital — início"><img src={footerLogo.url} alt="NEX Marketing Digital" className="h-9 w-auto object-contain lg:h-11" /></a>
+          <a href="#inicio" aria-label="NEX Marketing Digital — início"><img src={footerLogo} alt="NEX Marketing Digital" className="h-9 w-auto object-contain lg:h-11" /></a>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Principal">
             {sections.map((s) => (
               <a key={s.id} href={`#${s.id}`} className={`nav-link rounded-lg px-3 py-2 text-sm font-medium transition ${active === s.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{s.label}</a>
@@ -88,7 +88,7 @@ function SitePage() {
               </SheetTrigger>
               <SheetContent side="right" className="site w-[85vw] max-w-sm border-border bg-background text-foreground">
                 <SheetTitle className="sr-only">Menu</SheetTitle>
-                <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-9 w-auto self-start object-contain" />
+                <img src={footerLogo} alt="NEX Marketing Digital" className="h-9 w-auto self-start object-contain" />
                 <nav className="mt-8 flex flex-col gap-1" aria-label="Menu mobile">
                   {sections.map((s) => { const I = navIcons[s.id]; return (
                     <a key={s.id} href={`#${s.id}`} onClick={() => setOpen(false)} className={`flex h-12 items-center gap-3 rounded-lg px-3 text-base font-medium ${active === s.id ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}><I className="size-5" />{s.label}</a>
@@ -210,7 +210,7 @@ function SitePage() {
           <div className="relative mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center">
             <Reveal>
               <div className="flex flex-col items-center justify-center gap-6 border-gradient rounded-3xl px-10 py-14 text-center">
-                <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
+                <img src={footerLogo} alt="NEX Marketing Digital" className="h-24 w-auto object-contain sm:h-28" />
                 <p className="text-sm font-semibold tracking-wide text-muted-foreground sm:text-base">No mercado de tecnologia desde <span className="text-nex-gradient font-bold">2006</span></p>
               </div>
             </Reveal>
@@ -265,7 +265,7 @@ function SitePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-col items-center gap-2 sm:items-start">
-              <img src={footerLogo.url} alt="NEX Marketing Digital" className="h-10 w-auto object-contain" />
+              <img src={footerLogo} alt="NEX Marketing Digital" className="h-10 w-auto object-contain" />
               <p className="text-xs text-muted-foreground">Marketing, tecnologia e automação desde 2006.</p>
             </div>
             <div className="w-full max-w-xl">
@@ -273,7 +273,7 @@ function SitePage() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_1px_1fr] sm:items-start sm:gap-8">
                 <div className="group text-center">
                   <div className="mx-auto flex h-11 w-44 items-center justify-center">
-                    <img src={metaOfficial.url} alt="Meta" className="h-full w-full object-contain" loading="lazy" />
+                    <img src={metaOfficial} alt="Meta" className="h-full w-full object-contain" loading="lazy" />
                   </div>
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#0668E1] via-[#0072EC] to-[#0082FB] transition-all duration-500 group-hover:shadow-[0_0_18px_rgba(0,130,251,0.55)]" />
                   <div className="mt-3 space-y-1 text-sm text-foreground/90">
@@ -284,7 +284,7 @@ function SitePage() {
                 <div className="hidden h-24 bg-border/60 sm:block" />
                 <div className="group text-center">
                   <div className="mx-auto flex h-11 w-44 items-center justify-center">
-                    <img src={googleOfficial.url} alt="Google" className="h-full w-full object-contain" loading="lazy" />
+                    <img src={googleOfficial} alt="Google" className="h-full w-full object-contain" loading="lazy" />
                   </div>
                   <div className="mt-3 h-[3px] w-full bg-gradient-to-r from-[#4285f4] via-[#ea4335] to-[#fbbc05] transition-all duration-500 group-hover:shadow-[0_0_18px_color-mix(in_oklch,var(--cyan)_35%,transparent)]" />
                   <p className="mt-3 text-base text-foreground/90">Partner</p>
@@ -407,8 +407,8 @@ function HeroVisual() {
       <div className="absolute -bottom-6 -left-6 hidden rounded-2xl border border-border bg-card p-4 shadow-panel sm:block">
         <p className="text-[11px] text-muted-foreground">Canais</p>
         <div className="mt-2 flex items-center gap-2">
-          <img src={metaOfficial.url} alt="Meta" className="h-4 w-auto object-contain" loading="lazy" />
-          <img src={googleOfficial.url} alt="Google" className="h-5 w-auto object-contain" loading="lazy" />
+          <img src={metaOfficial} alt="Meta" className="h-4 w-auto object-contain" loading="lazy" />
+          <img src={googleOfficial} alt="Google" className="h-5 w-auto object-contain" loading="lazy" />
           <span className="flex items-center gap-1"><WhatsAppIcon className="size-5 text-accent-foreground" /><span className="text-[11px] text-muted-foreground">WhatsApp</span></span>
         </div>
       </div>

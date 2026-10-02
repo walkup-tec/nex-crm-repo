@@ -1,5 +1,8 @@
 import http from "node:http";
 
+const NEX_DEPLOY = "NEX-DEPLOY-7F3A";
+console.log(NEX_DEPLOY);
+
 const listen = http.Server.prototype.listen;
 
 http.Server.prototype.listen = function (options, ...args) {

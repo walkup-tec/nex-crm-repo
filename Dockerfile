@@ -19,5 +19,5 @@ ENV NODE_ENV=production \
     PORT=3000
 COPY --from=build /app/.output ./.output
 COPY docker-entrypoint.mjs /app/docker-entrypoint.mjs
-EXPOSE 80 3000
-CMD ["node", "docker-entrypoint.mjs"]
+EXPOSE 3000
+CMD ["node", "--import", "./docker-entrypoint.mjs", ".output/server/index.mjs"]

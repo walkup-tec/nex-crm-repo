@@ -12,7 +12,7 @@ Criar um único app.
 | Repositório | `walkup-tec/canvas-capturer-pro` |
 | Branch | `main` |
 | Build | Dockerfile |
-| Porta do container | `3000` (a imagem também aceita `80`) |
+| Porta do container | `3000` |
 
 Não criar Postgres, Redis nem Supabase self-hosted.
 
@@ -28,7 +28,7 @@ Copiar do projeto Supabase `vshmtfgfbuizwvqxepsv`:
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_PROJECT_ID`
 
-A imagem força escuta em `0.0.0.0` nas portas `3000` e `80`. O destino no EasyPanel pode ser `http://nex_crm:3000` ou `http://nex_crm:80`.
+A imagem escuta em `0.0.0.0:3000`. No EasyPanel, deixe um único domínio apontando para `http://nex_crm:3000`. Um segundo domínio fica com o IP antigo do container e responde 502 depois de cada implantação.
 
 A service role fica só nessas variáveis. Não usar prefixo `VITE_` nela.
 

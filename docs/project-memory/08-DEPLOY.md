@@ -18,7 +18,7 @@ Não criar Postgres, Redis nem Supabase self-hosted.
 
 ## Variáveis de runtime
 
-Copiar do projeto Supabase `vshmtfgfbuizwvqxepsv`:
+Copiar do projeto Supabase `djskqztincstkwvvjhsb`:
 
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`

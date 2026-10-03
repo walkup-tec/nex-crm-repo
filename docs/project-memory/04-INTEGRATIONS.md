@@ -2,7 +2,7 @@
 
 ## Supabase
 
-Ativo. URL `https://vshmtfgfbuizwvqxepsv.supabase.co`.
+Ativo. URL `https://djskqztincstkwvvjhsb.supabase.co`.
 
 Variáveis de runtime: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 

@@ -13,4 +13,4 @@ SaaS multiempresa da NEX Marketing Digital. O cliente acompanha campanhas Meta, 
 
 - GitHub: `walkup-tec/canvas-capturer-pro`
 - Cópia local de trabalho: `E:\01A-Drax-Servidor\Nex`
-- Projeto Supabase: `vshmtfgfbuizwvqxepsv`
+- Projeto Supabase: `djskqztincstkwvvjhsb`

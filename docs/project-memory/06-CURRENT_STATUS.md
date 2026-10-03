@@ -11,7 +11,7 @@
 ## Em andamento
 
 - Publicação do app na VPS pelo EasyPanel
-- Apontamento do domínio no Registro.br para o IP da VPS
+- Instalar uma vez, como root no VPS, o serviço `nex-traefik-persist`. O script está em `scripts/nex-traefik-persist.sh`. Sem ele, cada Implantar volta 502.
 
 ## Pendente
 

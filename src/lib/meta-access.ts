@@ -22,7 +22,7 @@ export type MetaConnectionView = {
   accounts: MetaAccountView[];
 };
 
-export type MetaDatePreset = "today" | "yesterday" | "last_7d" | "last_30d" | "this_month";
+export type MetaPeriod = { mode: "total" } | { mode: "custom"; since: string; until: string };
 
 export type MetaKpis = {
   reach: number;
@@ -56,7 +56,7 @@ export type MetaPerformanceView = {
   accountId: string | null;
   accountName: string | null;
   currency: string;
-  datePreset: MetaDatePreset;
+  period: MetaPeriod;
   kpis: MetaKpis | null;
   campaigns: MetaCampaignRow[];
 };

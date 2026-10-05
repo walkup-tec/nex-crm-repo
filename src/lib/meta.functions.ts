@@ -82,12 +82,14 @@ export const selectMetaAdAccountFn = createServerFn({ method: "POST" })
 
 export const getMetaPerformanceFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { organizationId?: string; datePreset?: string }) => data)
+  .validator((data: { organizationId?: string; period?: string; since?: string; until?: string }) => data)
   .handler(async ({ context, data }): Promise<Result<MetaPerformanceView>> => {
     const { getMetaPerformance } = await import("@/server/meta.server");
-    const input: { organizationId?: string; datePreset?: string } = {};
+    const input: { organizationId?: string; period?: string; since?: string; until?: string } = {};
     if (data.organizationId) input.organizationId = data.organizationId;
-    if (data.datePreset) input.datePreset = data.datePreset;
+    if (data.period) input.period = data.period;
+    if (data.since) input.since = data.since;
+    if (data.until) input.until = data.until;
     return guard(() => getMetaPerformance(context.userId, input));
   });
 

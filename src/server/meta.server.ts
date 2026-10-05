@@ -5,8 +5,8 @@ import type {
   MetaBusinessView,
   MetaCampaignRow,
   MetaConnectionView,
-  MetaDatePreset,
   MetaKpis,
+  MetaPeriod,
   MetaPerformanceView,
 } from "@/lib/meta-access";
 
@@ -473,11 +473,43 @@ export async function disconnectMeta(userId: string, organizationId: string) {
   return getMetaConnection(userId, organizationId);
 }
 
-const DATE_PRESETS: readonly MetaDatePreset[] = ["today", "yesterday", "last_7d", "last_30d", "this_month"];
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-function datePresetOf(value: string | undefined): MetaDatePreset {
-  if (value && (DATE_PRESETS as readonly string[]).includes(value)) return value as MetaDatePreset;
-  return "last_30d";
+function saoPauloToday() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function periodOf(input: { period?: string; since?: string; until?: string }): MetaPeriod {
+  if (!input.period || input.period === "total") return { mode: "total" };
+  if (input.period !== "custom") fail("Escolha Total ou um período personalizado.");
+  const since = input.since ?? "";
+  const until = input.until ?? "";
+  if (!DAY.test(since) || !DAY.test(until)) fail("Escolha o início e o fim do período.");
+  if (since > until) fail("O período personalizado precisa começar antes de terminar.");
+  if (until > saoPauloToday()) fail("O período personalizado não pode terminar no futuro.");
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(until);
+  if (!match) fail("Escolha o início e o fim do período.");
+  const oldest = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  oldest.setUTCMonth(oldest.getUTCMonth() - 37);
+  const limit = oldest.toISOString().slice(0, 10);
+  if (since < limit) fail("A Meta só devolve até 37 meses nesse período.");
+  return { mode: "custom", since, until };
+}
+
+function insightQuery(period: MetaPeriod) {
+  if (period.mode === "total") return { date_preset: "maximum" };
+  return { time_range: JSON.stringify({ since: period.since, until: period.until }) };
+}
+
+function campaignInsightField(period: MetaPeriod) {
+  const metrics = "impressions,reach,clicks,spend,actions";
+  if (period.mode === "total") return `insights.date_preset(maximum){${metrics}}`;
+  return `insights.time_range({"since":"${period.since}","until":"${period.until}"}){${metrics}}`;
 }
 
 function amount(value: unknown) {
@@ -534,10 +566,10 @@ function campaignStatus(raw: string | undefined): { label: string; group: MetaCa
   return { label: "Indisponível", group: "Outro" };
 }
 
-async function collectCampaigns(version: string, token: string, accountId: string, preset: MetaDatePreset) {
+async function collectCampaigns(version: string, token: string, accountId: string, period: MetaPeriod) {
   const rows: MetaCampaignRow[] = [];
   let next: string | null = null;
-  const fields = `id,name,effective_status,insights.date_preset(${preset}){impressions,reach,clicks,spend,actions}`;
+  const fields = `id,name,effective_status,${campaignInsightField(period)}`;
   for (let page = 0; page < 5; page += 1) {
     const body: GraphBody = next
       ? await graphFetch(new URL(next))
@@ -589,7 +621,7 @@ async function viewerContext(userId: string) {
 
 function performanceBase(
   actor: { role: MetaPerformanceView["role"]; organizationId: string | null; canConnect: boolean; canView: boolean },
-  preset: MetaDatePreset,
+  period: MetaPeriod,
 ): MetaPerformanceView {
   return {
     organizationId: actor.organizationId,
@@ -601,7 +633,7 @@ function performanceBase(
     accountId: null,
     accountName: null,
     currency: "BRL",
-    datePreset: preset,
+    period,
     kpis: null,
     campaigns: [],
   };
@@ -609,9 +641,9 @@ function performanceBase(
 
 export async function getMetaPerformance(
   userId: string,
-  input: { organizationId?: string; datePreset?: string },
+  input: { organizationId?: string; period?: string; since?: string; until?: string },
 ): Promise<MetaPerformanceView> {
-  const preset = datePresetOf(input.datePreset);
+  const period = periodOf(input);
   const actor = await viewerContext(userId);
   let organizationId = actor.organizationId;
   if (actor.role === "master") {
@@ -632,7 +664,7 @@ export async function getMetaPerformance(
     fail("Você não pode consultar esta conta.");
   }
 
-  const view = performanceBase({ ...actor, organizationId }, preset);
+  const view = performanceBase({ ...actor, organizationId }, period);
   if (!view.canView) {
     view.lastError = "Você não tem permissão para ver as campanhas.";
     return view;
@@ -656,7 +688,7 @@ export async function getMetaPerformance(
     const version = graphVersion();
     const insight = await graphGet(version, `/act_${selected.external_account_id}/insights`, token, {
       fields: "spend,impressions,reach,clicks,ctr,cpc,actions",
-      date_preset: preset,
+      ...insightQuery(period),
     });
     const stats = metricsOf(insight.data?.[0]);
     const kpis: MetaKpis = {
@@ -669,7 +701,7 @@ export async function getMetaPerformance(
       ctr: stats.ctr,
     };
     view.kpis = kpis;
-    view.campaigns = await collectCampaigns(version, token, selected.external_account_id, preset);
+    view.campaigns = await collectCampaigns(version, token, selected.external_account_id, period);
     view.lastError = null;
     return view;
   } catch (error) {

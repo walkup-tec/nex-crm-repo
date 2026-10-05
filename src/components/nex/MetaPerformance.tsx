@@ -1,19 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { MetaCampaignRow, MetaDatePreset, MetaPerformanceView } from "@/lib/meta-access";
+import type { MetaCampaignRow, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
 import { getMetaPerformanceFn } from "@/lib/meta.functions";
-
-const periods: { value: MetaDatePreset; label: string }[] = [
-  { value: "today", label: "Hoje" },
-  { value: "yesterday", label: "Ontem" },
-  { value: "last_7d", label: "Últimos 7 dias" },
-  { value: "last_30d", label: "Últimos 30 dias" },
-  { value: "this_month", label: "Este mês" },
-];
 
 function readOrg() {
   if (typeof window === "undefined") return "";
@@ -37,8 +30,10 @@ function percent(value: number | null) {
   return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value)}%`;
 }
 
+const initialPeriod: MetaPeriod = { mode: "total" };
+
 export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
-  const [preset, setPreset] = useState<MetaDatePreset>("last_30d");
+  const [period, setPeriod] = useState<MetaPeriod>(initialPeriod);
   const [view, setView] = useState<MetaPerformanceView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,10 +41,14 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   const [status, setStatus] = useState("all");
   const organizationId = readOrg();
 
-  const load = async (nextPreset: MetaDatePreset) => {
+  const load = async (nextPeriod: MetaPeriod) => {
     setLoading(true);
     setError("");
-    const data: { organizationId?: string; datePreset?: string } = { datePreset: nextPreset };
+    const data: { organizationId?: string; period?: string; since?: string; until?: string } = { period: nextPeriod.mode };
+    if (nextPeriod.mode === "custom") {
+      data.since = nextPeriod.since;
+      data.until = nextPeriod.until;
+    }
     if (organizationId) data.organizationId = organizationId;
     try {
       const result = await getMetaPerformanceFn({ data });
@@ -58,6 +57,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
         setError(result.message);
         return;
       }
+      setPeriod(result.data.period);
       setView(result.data);
     } catch {
       setLoading(false);
@@ -66,7 +66,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   };
 
   useEffect(() => {
-    void load("last_30d");
+    void load(initialPeriod);
   }, []);
 
   const campaigns = useMemo(() => {
@@ -90,26 +90,8 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Select
-            value={preset}
-            onValueChange={(value) => {
-              const next = value as MetaDatePreset;
-              setPreset(next);
-              void load(next);
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {periods.map((period) => (
-                <SelectItem key={period.value} value={period.value}>
-                  {period.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" onClick={() => void load(preset)} disabled={loading}>
+          <PeriodPicker value={period} disabled={loading} onApply={(next) => void load(next)} />
+          <Button type="button" onClick={() => void load(period)} disabled={loading}>
             <RefreshCw className={loading ? "animate-spin" : ""} />
             {loading ? "Atualizando" : "Atualizar dados"}
           </Button>
@@ -148,9 +130,6 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
 
       {ready && view?.kpis && (
         <>
-          <p className="text-sm text-muted-foreground">
-            Leitura das campanhas na Meta. O NEX não cria, pausa nem altera anúncios.
-          </p>
           {mode === "overview" && (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <Kpi label="Alcance" value={integer(view.kpis.reach)} />

@@ -230,7 +230,7 @@ export async function createUser(
     const actionLink = link.properties?.action_link;
     if (!actionLink) fail("O convite foi criado sem o link de primeiro acesso.");
     try {
-      await sendInviteEmail(email, fullName, actionLink);
+      await sendInviteEmail(email, fullName);
     } catch (error) {
       if (error instanceof Error && error.name === "InviteMailError") {
         return { id: createdId, organizationId, emailSent: false as const };

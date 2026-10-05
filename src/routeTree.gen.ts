@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
+import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
 import { Route as AuthenticatedCreditosMetaRouteImport } from './routes/_authenticated/creditos-meta'
@@ -54,6 +55,11 @@ const DemoRoute = DemoRouteImport.update({
 const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
   id: '/esqueci-senha',
   path: '/esqueci-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
+  id: '/primeiro-acesso',
+  path: '/primeiro-acesso',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -176,6 +183,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
   '/_authenticated/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -225,6 +234,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/demo'
     | '/esqueci-senha'
+    | '/primeiro-acesso'
     | '/reset-password'
     | '/campanhas'
     | '/creditos-meta'
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | '/'
     | '/demo'
     | '/esqueci-senha'
+    | '/primeiro-acesso'
     | '/reset-password'
     | '/campanhas'
     | '/creditos-meta'
@@ -270,6 +281,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/demo'
     | '/esqueci-senha'
+    | '/primeiro-acesso'
     | '/reset-password'
     | '/_authenticated/campanhas'
     | '/_authenticated/creditos-meta'
@@ -295,6 +307,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   DemoRoute: typeof DemoRoute
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
+  PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
 }
 
@@ -333,6 +346,13 @@ declare module '@tanstack/react-router' {
       path: '/esqueci-senha'
       fullPath: '/esqueci-senha'
       preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/primeiro-acesso': {
+      id: '/primeiro-acesso'
+      path: '/primeiro-acesso'
+      fullPath: '/primeiro-acesso'
+      preLoaderRoute: typeof PrimeiroAcessoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -521,6 +541,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   DemoRoute: DemoRoute,
   EsqueciSenhaRoute: EsqueciSenhaRoute,
+  PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ResetPasswordRoute: ResetPasswordRoute,
 }
 export const routeTree = rootRouteImport

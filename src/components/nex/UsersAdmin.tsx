@@ -389,7 +389,7 @@ function UserDialog({
     }
     if (mode === "create" && typeof result.data === "object" && result.data.emailSent === false) {
       if (result.data.organizationId) setCreatedOrgId(result.data.organizationId);
-      setFormError("O acesso foi criado, mas o e-mail de convite não saiu. O servidor de e-mail recusou a conexão na porta 465. A Conexão META já pode ser usada.");
+      setFormError("O acesso foi criado, mas o e-mail de convite não saiu. A pessoa pode criar a senha em Primeiro acesso, com o e-mail cadastrado. A Conexão META já pode ser usada.");
       return;
     }
     await onSaved();
@@ -439,7 +439,7 @@ function UserDialog({
                   return null;
                 }
                 if (!result.data.emailSent) {
-                  setFormError("O acesso foi criado, mas o e-mail de convite não saiu. O servidor de e-mail recusou a conexão na porta 465.");
+                  setFormError("O acesso foi criado, mas o e-mail de convite não saiu. A pessoa pode criar a senha em Primeiro acesso, com o e-mail cadastrado.");
                 }
                 setCreatedOrgId(result.data.organizationId);
                 return result.data.organizationId;

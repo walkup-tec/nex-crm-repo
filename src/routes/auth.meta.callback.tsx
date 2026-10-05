@@ -34,9 +34,24 @@ function CallbackPage() {
       if (errorReason) data.errorReason = errorReason;
       try {
         const result = await completeMetaOAuthFn({ data });
+        const popupFlow = window.name === "nex-meta-connect";
         if (!result.ok) {
+          if (window.opener) {
+            window.opener.postMessage({ source: "nex-meta", ok: false, message: result.message }, window.location.origin);
+          }
           setFailed(true);
           setMessage(result.message);
+          return;
+        }
+        if (popupFlow || window.opener) {
+          if (window.opener) {
+            window.opener.postMessage(
+              { source: "nex-meta", ok: true, organizationId: result.data.organizationId },
+              window.location.origin,
+            );
+            window.close();
+          }
+          setMessage("Conexão concluída. Volte para a janela do NEX e escolha o portfólio.");
           return;
         }
         window.location.assign(`/dashboard?org=${encodeURIComponent(result.data.organizationId)}`);

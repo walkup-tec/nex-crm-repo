@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { MetaConnectionView, MetaPerformanceView } from "@/lib/meta-access";
+import type { MetaAccountView, MetaBusinessView, MetaConnectionView, MetaPerformanceView } from "@/lib/meta-access";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -56,12 +56,28 @@ export const syncMetaAccountsFn = createServerFn({ method: "POST" })
     return guard(() => syncMetaAccounts(context.userId, data.organizationId));
   });
 
+export const listMetaBusinessesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<MetaBusinessView[]>> => {
+    const { listMetaBusinesses } = await import("@/server/meta.server");
+    return guard(() => listMetaBusinesses(context.userId, data.organizationId));
+  });
+
+export const listBusinessAdAccountsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId: string; businessId: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<MetaAccountView[]>> => {
+    const { listBusinessAdAccounts } = await import("@/server/meta.server");
+    return guard(() => listBusinessAdAccounts(context.userId, data.organizationId, data.businessId));
+  });
+
 export const selectMetaAdAccountFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { organizationId: string; accountId: string }) => data)
+  .validator((data: { organizationId: string; accountId: string; businessId: string }) => data)
   .handler(async ({ context, data }): Promise<Result<MetaConnectionView>> => {
     const { selectMetaAdAccount } = await import("@/server/meta.server");
-    return guard(() => selectMetaAdAccount(context.userId, data.organizationId, data.accountId));
+    return guard(() => selectMetaAdAccount(context.userId, data.organizationId, data.accountId, data.businessId));
   });
 
 export const getMetaPerformanceFn = createServerFn({ method: "POST" })

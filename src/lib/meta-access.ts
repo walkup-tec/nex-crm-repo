@@ -6,6 +6,11 @@ export type MetaAccountView = {
   statusLabel: string;
 };
 
+export type MetaBusinessView = {
+  id: string;
+  name: string;
+};
+
 export type MetaConnectionView = {
   status: "missing" | "pending" | "connected" | "error" | "disconnected";
   connectedAt: string | null;
@@ -13,6 +18,7 @@ export type MetaConnectionView = {
   lastError: string | null;
   selectedAccountId: string | null;
   selectedAccountName: string | null;
+  selectedPortfolioId: string | null;
   accounts: MetaAccountView[];
 };
 

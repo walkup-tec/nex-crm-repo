@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type {
   MetaAccountView,
+  MetaBusinessView,
   MetaCampaignRow,
   MetaConnectionView,
   MetaDatePreset,
@@ -152,7 +153,7 @@ async function assertOrgAccess(userId: string, organizationId: string) {
 
 function accountDigits(value: string) {
   const digits = value.trim().replace(/^act_/i, "");
-  if (!/^\d+$/.test(digits)) fail("Informe o ID numérico da conta de anúncio.");
+  if (!/^\d+$/.test(digits)) fail("Escolha uma conta de anúncio válida.");
   return digits;
 }
 
@@ -207,7 +208,7 @@ async function connectionOf(organizationId: string) {
 async function selectedAccount(organizationId: string) {
   const { data, error } = await supabaseAdmin
     .from("meta_accounts")
-    .select("external_account_id, name, currency")
+    .select("external_account_id, name, currency, portfolio_id")
     .eq("organization_id", organizationId)
     .eq("selected", true)
     .limit(1);
@@ -246,6 +247,7 @@ export async function startMetaConnect(userId: string, organizationId: string) {
   url.searchParams.set("state", state);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", SCOPES.join(","));
+  url.searchParams.set("display", "popup");
   return { url: url.toString() };
 }
 
@@ -334,20 +336,10 @@ export async function getMetaConnection(userId: string, organizationId: string):
     lastError: connection?.last_error ?? null,
     selectedAccountId: selected?.external_account_id ?? null,
     selectedAccountName: selected?.name ?? null,
+    selectedPortfolioId: selected?.portfolio_id ?? null,
     accounts: [],
   };
-  if (base.status !== "connected" || !connection?.access_token_encrypted) return base;
-  try {
-    const { token } = await loadToken(organizationId);
-    base.accounts = await collectAdAccounts(graphVersion(), token);
-    if (base.accounts.length === 0) base.lastError = "Nenhuma conta de anúncio foi autorizada nesta conexão.";
-    return base;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "A Meta não respondeu como esperado.";
-    base.status = "error";
-    base.lastError = message;
-    return base;
-  }
+  return base;
 }
 
 async function rememberAccounts(organizationId: string, connectionId: string, accounts: MetaAccountView[]) {
@@ -379,21 +371,87 @@ export async function syncMetaAccounts(userId: string, organizationId: string) {
   return getMetaConnection(userId, organizationId);
 }
 
-export async function selectMetaAdAccount(userId: string, organizationId: string, accountId: string) {
+async function collectPages(version: string, token: string, path: string, params: Record<string, string>) {
+  const rows: NonNullable<GraphBody["data"]> = [];
+  let next: string | null = null;
+  for (let page = 0; page < 5; page += 1) {
+    const body: GraphBody = next ? await graphFetch(new URL(next)) : await graphGet(version, path, token, params);
+    rows.push(...(body.data ?? []));
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  return rows;
+}
+
+function businessDigits(value: string) {
+  const digits = value.trim();
+  if (!/^\d+$/.test(digits)) fail("Escolha um portfólio válido.");
+  return digits;
+}
+
+export async function listMetaBusinesses(userId: string, organizationId: string): Promise<MetaBusinessView[]> {
+  await assertOrgAccess(userId, organizationId);
+  const { token } = await loadToken(organizationId);
+  const rows = await collectPages(graphVersion(), token, "/me/businesses", { fields: "id,name", limit: "50" });
+  const found: MetaBusinessView[] = [];
+  for (const row of rows) {
+    if (!row.id || !/^\d+$/.test(row.id) || found.some((item) => item.id === row.id)) continue;
+    found.push({ id: row.id, name: row.name?.trim() || `Portfólio ${row.id}` });
+  }
+  return found;
+}
+
+export async function listBusinessAdAccounts(userId: string, organizationId: string, businessId: string) {
+  await assertOrgAccess(userId, organizationId);
+  const portfolioId = businessDigits(businessId);
+  const { token } = await loadToken(organizationId);
+  const version = graphVersion();
+  const businesses = await listMetaBusinesses(userId, organizationId);
+  if (!businesses.some((item) => item.id === portfolioId)) fail("Esse portfólio não está disponível nesta conexão.");
+  const fields = "id,name,account_id,account_status,currency";
+  const params = { fields, limit: "50" };
+  const [owned, clients] = await Promise.all([
+    collectPages(version, token, `/${portfolioId}/owned_ad_accounts`, params).catch((error: unknown) => error),
+    collectPages(version, token, `/${portfolioId}/client_ad_accounts`, params).catch((error: unknown) => error),
+  ]);
+  const rows = [...(Array.isArray(owned) ? owned : []), ...(Array.isArray(clients) ? clients : [])];
+  if (rows.length === 0 && (owned instanceof Error || clients instanceof Error)) {
+    throw owned instanceof Error ? owned : clients;
+  }
+  const found: MetaAccountView[] = [];
+  for (const row of rows) {
+    const view = toView(row);
+    if (view && !found.some((account) => account.accountId === view.accountId)) found.push(view);
+  }
+  return found;
+}
+
+export async function selectMetaAdAccount(userId: string, organizationId: string, accountId: string, businessId: string) {
   await assertOrgAccess(userId, organizationId);
   const digits = accountDigits(accountId);
-  const { connection, token } = await loadToken(organizationId);
-  const accounts = await collectAdAccounts(graphVersion(), token);
+  const portfolioId = businessDigits(businessId);
+  const { connection } = await loadToken(organizationId);
+  const accounts = await listBusinessAdAccounts(userId, organizationId, portfolioId);
   const match = accounts.find((account) => account.accountId === digits);
-  if (!match) fail("Essa conta de anúncios não está autorizada nesta conexão Meta.");
-  await rememberAccounts(organizationId, connection.id, accounts);
+  if (!match) fail("Essa conta de anúncios não está disponível neste portfólio.");
+  const now = new Date().toISOString();
   const { error: clearError } = await supabaseAdmin.from("meta_accounts").update({ selected: false }).eq("organization_id", organizationId);
   if (clearError) schemaFail(clearError.message);
-  const { error } = await supabaseAdmin
-    .from("meta_accounts")
-    .update({ selected: true, name: match.name, account_status: match.statusLabel, currency: match.currency || "BRL" })
-    .eq("organization_id", organizationId)
-    .eq("external_account_id", digits);
+  const { error } = await supabaseAdmin.from("meta_accounts").upsert(
+    {
+      organization_id: organizationId,
+      external_account_id: digits,
+      name: match.name,
+      currency: match.currency || "BRL",
+      account_status: match.statusLabel,
+      connection_id: connection.id,
+      portfolio_id: portfolioId,
+      selected: true,
+      sync_status: "synced",
+      last_synced_at: now,
+    },
+    { onConflict: "organization_id,external_account_id" },
+  );
   if (error) schemaFail(error.message);
   return getMetaConnection(userId, organizationId);
 }

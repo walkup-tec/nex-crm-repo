@@ -28,13 +28,21 @@ export async function sendInviteEmail(to: string, name: string, link: string) {
   const greeting = name.trim() ? `Olá, ${name.trim()}.` : "Olá.";
   const safeName = escapeHtml(greeting);
   const safeLink = escapeHtml(link);
-  await transporter.sendMail({
-    from: smtp.from,
-    to,
-    subject: "Seu acesso ao NEX Ads",
-    text: `${greeting}\n\nVocê recebeu um acesso ao NEX Ads. Defina sua senha neste link:\n${link}\n\nSe você não esperava este e-mail, ignore a mensagem.`,
-    html: `<p>${safeName}</p><p>Você recebeu um acesso ao NEX Ads. Defina sua senha neste link:</p><p><a href="${safeLink}">${safeLink}</a></p><p>Se você não esperava este e-mail, ignore a mensagem.</p>`,
-  });
+  try {
+    await transporter.sendMail({
+      from: smtp.from,
+      to,
+      subject: "Seu acesso ao NEX Ads",
+      text: `${greeting}\n\nVocê recebeu um acesso ao NEX Ads. Defina sua senha neste link:\n${link}\n\nSe você não esperava este e-mail, ignore a mensagem.`,
+      html: `<p>${safeName}</p><p>Você recebeu um acesso ao NEX Ads. Defina sua senha neste link:</p><p><a href="${safeLink}">${safeLink}</a></p><p>Se você não esperava este e-mail, ignore a mensagem.</p>`,
+    });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "error";
+    console.error("smtp_send", code);
+    const failure = new Error("Não foi possível enviar o e-mail de acesso.");
+    failure.name = "InviteMailError";
+    throw failure;
+  }
 }
 
 function escapeHtml(value: string) {

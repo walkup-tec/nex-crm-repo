@@ -13,6 +13,9 @@ function publicMessage(error: unknown) {
   if (message.includes("owner_id")) {
     return "Falta aplicar a coluna owner_id em profiles no Supabase.";
   }
+  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ECONNRESET|EAUTH/i.test(message)) {
+    return "Não foi possível enviar o e-mail de acesso. O servidor de e-mail recusou a conexão.";
+  }
   if (!message || /postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(message)) {
     return "Não foi possível concluir. Tente de novo.";
   }
@@ -37,7 +40,7 @@ export const listUsersFn = createServerFn({ method: "GET" })
 export const createUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { fullName: string; email: string; kind?: "master" | "client"; permissions?: UserPermissions }) => data)
-  .handler(async ({ context, data }): Promise<Result<{ id: string; organizationId: string | null }>> => {
+  .handler(async ({ context, data }): Promise<Result<{ id: string; organizationId: string | null; emailSent: boolean }>> => {
     const { createUser } = await import("@/server/users.server");
     return guard(() => createUser(context.userId, data));
   });

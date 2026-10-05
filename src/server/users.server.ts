@@ -229,8 +229,15 @@ export async function createUser(
 
     const actionLink = link.properties?.action_link;
     if (!actionLink) fail("O convite foi criado sem o link de primeiro acesso.");
-    await sendInviteEmail(email, fullName, actionLink);
-    return { id: createdId, organizationId };
+    try {
+      await sendInviteEmail(email, fullName, actionLink);
+    } catch (error) {
+      if (error instanceof Error && error.name === "InviteMailError") {
+        return { id: createdId, organizationId, emailSent: false as const };
+      }
+      throw error;
+    }
+    return { id: createdId, organizationId, emailSent: true as const };
   } catch (error) {
     await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);

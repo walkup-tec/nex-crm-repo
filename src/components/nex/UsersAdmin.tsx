@@ -112,7 +112,11 @@ export function UsersAdmin() {
       <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            {snapshot ? `${snapshot.users.length} ${snapshot.users.length === 1 ? "acesso" : "acessos"}` : "Consultando os acessos"}
+            {loading
+              ? "Consultando os acessos"
+              : snapshot
+                ? `${snapshot.users.length} ${snapshot.users.length === 1 ? "acesso" : "acessos"}`
+                : "A lista não foi carregada"}
           </p>
           {canCreate && (
             <Button onClick={() => setEditor({ mode: "create" })}>

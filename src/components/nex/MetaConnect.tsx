@@ -1,3 +1,4 @@
+import { CheckCircle2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -227,13 +228,21 @@ export function MetaConnect({
   };
 
   const connected = view.status === "connected" || view.status === "error";
+  const connectionDone = view.status === "connected";
+  const accountSaved = Boolean(
+    connectionDone &&
+      view.selectedAccountId &&
+      view.selectedPortfolioId &&
+      businessId === view.selectedPortfolioId &&
+      accountId === view.selectedAccountId,
+  );
   const statusText =
-    view.status === "connected"
-      ? "Status: Conectado"
-      : view.status === "error"
-        ? "Status: Erro na conexão"
-        : view.status === "disconnected"
-          ? "Status: Desconectada"
+    view.status === "error"
+      ? "Status: Erro na conexão"
+      : view.status === "disconnected"
+        ? "Status: Desconectada"
+        : view.status === "connected"
+          ? "Status: Conectado"
           : "Status: Não conectada";
 
   return (
@@ -242,9 +251,16 @@ export function MetaConnect({
         <p className="text-sm font-medium">Meta</p>
         <p className="text-xs text-muted-foreground">{statusText}</p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        A conexão abre por cima desta tela. Depois escolha o portfólio e a conta de anúncio que este cliente verá ao entrar.
-      </p>
+      {connectionDone ? (
+        <div className="flex items-center gap-2 text-sm font-medium text-success">
+          <CheckCircle2 className="size-4" />
+          Conexão concluída
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          A conexão abre por cima desta tela. Depois escolha o portfólio e a conta de anúncio que este cliente verá ao entrar.
+        </p>
+      )}
       {loading && <div className="h-16 animate-pulse rounded-md bg-muted" />}
       {!loading && connected && (
         <>
@@ -285,29 +301,32 @@ export function MetaConnect({
               <p className="text-xs text-muted-foreground">Nenhuma conta de anúncio disponível para este administrador neste portfólio.</p>
             )}
           </div>
-          {view.selectedAccountName && (
-            <p className="text-xs text-muted-foreground">
-              Vinculada a este cliente: {view.selectedAccountName}
-              {view.selectedAccountId ? ` · ${view.selectedAccountId}` : ""}. Ao entrar, ele vê as campanhas desta conta.
-            </p>
+          {accountSaved && (
+            <div className="flex items-center gap-2 text-sm font-medium text-success">
+              <CheckCircle2 className="size-4" />
+              Conta vinculada: {view.selectedAccountName}
+              {view.selectedAccountId ? ` · ${view.selectedAccountId}` : ""}
+            </div>
           )}
         </>
       )}
       {view.lastError && <p className="text-sm text-destructive">{view.lastError}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={connect} disabled={pending !== ""}>
-          {pending === "connect" ? "Abrindo a Meta..." : "Conexão META"}
-        </Button>
-        {connected && orgId && (
-          <>
-            <Button type="button" variant="outline" onClick={() => void save()} disabled={pending !== "" || !businessId || !accountId}>
-              {pending === "save" ? "Salvando..." : "Vincular conta"}
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => void disconnect()} disabled={pending !== ""}>
-              Desconectar Meta
-            </Button>
-          </>
+        {!connectionDone && (
+          <Button type="button" onClick={connect} disabled={pending !== ""}>
+            {pending === "connect" ? "Abrindo a Meta..." : "Conexão META"}
+          </Button>
+        )}
+        {connected && orgId && !accountSaved && (
+          <Button type="button" variant="outline" onClick={() => void save()} disabled={pending !== "" || !businessId || !accountId}>
+            {pending === "save" ? "Salvando..." : "Vincular conta"}
+          </Button>
+        )}
+        {connectionDone && orgId && (
+          <Button type="button" variant="ghost" onClick={() => void disconnect()} disabled={pending !== ""}>
+            Desconectar Meta
+          </Button>
         )}
       </div>
     </section>

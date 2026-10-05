@@ -26,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import type { ListedUser, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
+import { MetaConnect } from "@/components/nex/MetaConnect";
 import { createUserFn, deleteUserFn, listUsersFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
 
 const roleLabel: Record<UserRole, string> = {
@@ -83,6 +84,16 @@ export function UsersAdmin() {
   }, [load]);
 
   useEffect(() => {
+    if (!snapshot) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("meta") !== "choose") return;
+    const org = params.get("org");
+    const target = snapshot.users.find((item) => item.role === "client_admin" && item.organizationId === org);
+    if (target) setEditor({ mode: "edit", user: target });
+    window.history.replaceState({}, "", "/usuarios");
+  }, [snapshot]);
+
+  useEffect(() => {
     let active = true;
     void (async () => {
       const { data } = await supabase.auth.getUser();
@@ -110,6 +121,9 @@ export function UsersAdmin() {
   return (
     <AppShell title="Usuários" subtitle={subtitleFor(role)} master={role === "master"}>
       <div className="space-y-4">
+        {role === "client_admin" && snapshot?.actor.organizationId && (
+          <MetaConnect organizationId={snapshot.actor.organizationId} />
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             {loading
@@ -323,11 +337,13 @@ function UserDialog({
   const [permissions, setPermissions] = useState<UserPermissions>(emptyPermissions);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [createdOrgId, setCreatedOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setFormError("");
     setSaving(false);
+    setCreatedOrgId(null);
     if (mode === "edit" && user) {
       setFullName(user.fullName);
       setEmail(user.email);
@@ -344,6 +360,10 @@ function UserDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (createdOrgId) {
+      await onSaved();
+      return;
+    }
     setSaving(true);
     setFormError("");
     const result =
@@ -402,6 +422,21 @@ function UserDialog({
                 ))}
               </div>
             </fieldset>
+          )}
+          {((mode === "create" && actorRole === "master" && kind === "client") || (mode === "edit" && user?.role === "client_admin")) && (
+            <MetaConnect
+              organizationId={mode === "edit" ? user?.organizationId ?? null : createdOrgId}
+              prepareOrganization={async () => {
+                if (mode !== "create") return null;
+                const result = await createUserFn({ data: { fullName, email, kind: "client" } });
+                if (!result.ok || !result.data.organizationId) {
+                  setFormError(result.ok ? "O cliente foi criado sem empresa." : result.message);
+                  return null;
+                }
+                setCreatedOrgId(result.data.organizationId);
+                return result.data.organizationId;
+              }}
+            />
           )}
           {showPermissions && (
             <fieldset className="space-y-3">

@@ -13,6 +13,7 @@ export type ListedUser = {
   email: string;
   role: UserRole;
   blocked: boolean;
+  organizationId: string | null;
   ownerId: string | null;
   ownerName: string | null;
   permissions: UserPermissions;
@@ -20,6 +21,6 @@ export type ListedUser = {
 };
 
 export type UsersSnapshot = {
-  actor: { id: string; role: UserRole; fullName: string };
+  actor: { id: string; role: UserRole; fullName: string; organizationId: string | null };
   users: ListedUser[];
 };

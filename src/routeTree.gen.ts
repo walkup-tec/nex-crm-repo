@@ -23,12 +23,14 @@ import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authentic
 import { Route as AuthenticatedMasterRouteImport } from './routes/_authenticated/master'
 import { Route as AuthenticatedMinhaContaRouteImport } from './routes/_authenticated/minha-conta'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
+import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenticated/master.index'
 import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
 import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
+import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -100,6 +102,11 @@ const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
   path: '/usuarios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthIndexRoute = AuthIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthenticatedMasterIndexRoute =
   AuthenticatedMasterIndexRouteImport.update({
     id: '/',
@@ -136,10 +143,15 @@ const AuthenticatedMasterFinanceiroRoute =
     path: '/financeiro',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
+const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
+  id: '/meta/callback',
+  path: '/meta/callback',
+  getParentRoute: () => AuthRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -151,16 +163,17 @@ export interface FileRoutesByFullPath {
   '/master': typeof AuthenticatedMasterRouteWithChildren
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/auth/': typeof AuthIndexRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -171,18 +184,20 @@ export interface FileRoutesByTo {
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/auth': typeof AuthIndexRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/master': typeof AuthenticatedMasterIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -194,11 +209,13 @@ export interface FileRoutesById {
   '/_authenticated/master': typeof AuthenticatedMasterRouteWithChildren
   '/_authenticated/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
+  '/auth/': typeof AuthIndexRoute
   '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
 }
 export interface FileRouteTypes {
@@ -217,16 +234,17 @@ export interface FileRouteTypes {
     | '/master'
     | '/minha-conta'
     | '/usuarios'
+    | '/auth/'
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
     | '/master/criativos'
     | '/master/financeiro'
+    | '/auth/meta/callback'
     | '/master/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/auth'
     | '/demo'
     | '/esqueci-senha'
     | '/reset-password'
@@ -237,11 +255,13 @@ export interface FileRouteTypes {
     | '/financeiro'
     | '/minha-conta'
     | '/usuarios'
+    | '/auth'
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
     | '/master/criativos'
     | '/master/financeiro'
+    | '/auth/meta/callback'
     | '/master'
   id:
     | '__root__'
@@ -259,18 +279,20 @@ export interface FileRouteTypes {
     | '/_authenticated/master'
     | '/_authenticated/minha-conta'
     | '/_authenticated/usuarios'
+    | '/auth/'
     | '/_authenticated/master/campanhas'
     | '/_authenticated/master/clientes'
     | '/_authenticated/master/configuracoes'
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
+    | '/auth/meta/callback'
     | '/_authenticated/master/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
-  AuthRoute: typeof AuthRoute
+  AuthRoute: typeof AuthRouteWithChildren
   DemoRoute: typeof DemoRoute
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -376,6 +398,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/auth/': {
+      id: '/auth/'
+      path: '/'
+      fullPath: '/auth/'
+      preLoaderRoute: typeof AuthIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_authenticated/master/': {
       id: '/_authenticated/master/'
       path: '/'
@@ -417,6 +446,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/master/financeiro'
       preLoaderRoute: typeof AuthenticatedMasterFinanceiroRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/auth/meta/callback': {
+      id: '/auth/meta/callback'
+      path: '/meta/callback'
+      fullPath: '/auth/meta/callback'
+      preLoaderRoute: typeof AuthMetaCallbackRouteImport
+      parentRoute: typeof AuthRoute
     }
   }
 }
@@ -467,10 +503,22 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface AuthRouteChildren {
+  AuthIndexRoute: typeof AuthIndexRoute
+  AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthIndexRoute: AuthIndexRoute,
+  AuthMetaCallbackRoute: AuthMetaCallbackRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
-  AuthRoute: AuthRoute,
+  AuthRoute: AuthRouteWithChildren,
   DemoRoute: DemoRoute,
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   ResetPasswordRoute: ResetPasswordRoute,

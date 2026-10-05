@@ -374,20 +374,97 @@ export type Database = {
           },
         ]
       }
+      meta_connections: {
+        Row: {
+          access_token_encrypted: string | null
+          connected_at: string | null
+          connected_by: string | null
+          id: string
+          last_error: string | null
+          last_sync_at: string | null
+          meta_user_id: string | null
+          organization_id: string
+          status: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          meta_user_id?: string | null
+          organization_id: string
+          status?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          meta_user_id?: string | null
+          organization_id?: string
+          status?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      meta_oauth_states: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          organization_id: string
+          state: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          state: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          state?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       meta_accounts: {
         Row: {
           balance_cents: number
           currency: string
+          account_status: string | null
+          connection_id: string | null
           external_account_id: string
           id: string
           last_synced_at: string | null
           name: string
           organization_id: string
           portfolio_id: string | null
+          selected: boolean
           sync_status: string
         }
         Insert: {
+          account_status?: string | null
           balance_cents?: number
+          connection_id?: string | null
           currency?: string
           external_account_id: string
           id?: string
@@ -395,10 +472,13 @@ export type Database = {
           name: string
           organization_id: string
           portfolio_id?: string | null
+          selected?: boolean
           sync_status?: string
         }
         Update: {
+          account_status?: string | null
           balance_cents?: number
+          connection_id?: string | null
           currency?: string
           external_account_id?: string
           id?: string
@@ -406,6 +486,7 @@ export type Database = {
           name?: string
           organization_id?: string
           portfolio_id?: string | null
+          selected?: boolean
           sync_status?: string
         }
         Relationships: [

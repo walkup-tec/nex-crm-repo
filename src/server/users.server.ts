@@ -113,6 +113,7 @@ function toListed(
     email: row.email,
     role,
     blocked: row.is_blocked,
+    organizationId: row.organization_id,
     ownerId: row.owner_id,
     ownerName: row.owner_id ? names.get(row.owner_id) ?? null : null,
     permissions: permissions.get(row.id) ?? defaultPermissions,
@@ -130,7 +131,7 @@ export async function listUsers(userId: string) {
     return false;
   });
   return {
-    actor: { id: actor.id, role: actor.role, fullName: actor.fullName },
+    actor: { id: actor.id, role: actor.role, fullName: actor.fullName, organizationId: actor.organizationId },
     users: visible.map((row) => toListed(actor, row, roles, names, permissions)),
   };
 }
@@ -229,6 +230,7 @@ export async function createUser(
     const actionLink = link.properties?.action_link;
     if (!actionLink) fail("O convite foi criado sem o link de primeiro acesso.");
     await sendInviteEmail(email, fullName, actionLink);
+    return { id: createdId, organizationId };
   } catch (error) {
     await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);

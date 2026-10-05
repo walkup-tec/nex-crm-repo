@@ -27,7 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { supabase } from "@/integrations/supabase/client";
 import type { ListedUser, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
 import { MetaConnect } from "@/components/nex/MetaConnect";
-import { createUserFn, deleteUserFn, listUsersFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
+import { createUserFn, deleteUserFn, listUsersFn, resendInviteFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
 
 const roleLabel: Record<UserRole, string> = {
   master: "Master",
@@ -284,11 +284,31 @@ function RowActions({
 }) {
   const [pending, setPending] = useState(false);
   const [rowError, setRowError] = useState("");
+  const [rowNotice, setRowNotice] = useState("");
   if (!user.canManage) return <span className="text-xs text-muted-foreground">Sem ação</span>;
   return (
     <div className="flex flex-wrap justify-end gap-2">
       <Button variant="outline" size="sm" onClick={onEdit}>
         Editar
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={pending}
+        onClick={async () => {
+          setPending(true);
+          setRowError("");
+          setRowNotice("");
+          const result = await resendInviteFn({ data: { id: user.id } });
+          setPending(false);
+          if (!result.ok) {
+            setRowError(result.message);
+            return;
+          }
+          setRowNotice("Convite reenviado.");
+        }}
+      >
+        Reenviar convite
       </Button>
       <Button
         variant="outline"
@@ -311,6 +331,7 @@ function RowActions({
       <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove}>
         Excluir
       </Button>
+      {rowNotice && <p className="w-full text-right text-xs text-success">{rowNotice}</p>}
       {rowError && <p className="w-full text-right text-xs text-destructive">{rowError}</p>}
     </div>
   );

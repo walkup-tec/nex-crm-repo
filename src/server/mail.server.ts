@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import nodemailer from "nodemailer";
 
 function smtpConfig() {
@@ -65,11 +66,25 @@ export async function sendInviteEmail(to: string, name: string) {
       <p>Até logo,<br>Equipe NEX<br>Dados claros. Decisões melhores.</p>
     </div>
   `;
+  let address = smtp.host;
+  try {
+    address = (await lookup(smtp.host, { family: 4 })).address;
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "error";
+    console.error("smtp_dns", code);
+    const failure = new Error("O servidor de e-mail não aceitou a conexão.");
+    failure.name = "InviteMailError";
+    throw failure;
+  }
   const transporter = nodemailer.createTransport({
-    host: smtp.host,
+    host: address,
     port: smtp.port,
     secure: smtp.port === 465,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
     auth: { user: smtp.user, pass: smtp.pass },
+    tls: { servername: smtp.host },
   });
   try {
     await transporter.sendMail({
@@ -81,11 +96,22 @@ export async function sendInviteEmail(to: string, name: string) {
     });
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "error";
-    console.error("smtp_send", code);
-    const failure = new Error("Não foi possível enviar o e-mail de acesso.");
+    const responseCode = error && typeof error === "object" && "responseCode" in error ? Number(error.responseCode) : 0;
+    console.error("smtp_send", code, Number.isFinite(responseCode) ? responseCode : 0);
+    const failure = new Error(mailFailureMessage(code, responseCode));
     failure.name = "InviteMailError";
     throw failure;
   }
+}
+
+function mailFailureMessage(code: string, responseCode: number) {
+  if (code === "EAUTH" || responseCode === 535 || responseCode === 534) {
+    return "A caixa de e-mail recusou o usuário ou a senha.";
+  }
+  if (code === "ENETUNREACH" || code === "EHOSTUNREACH" || code === "ECONNREFUSED" || code === "ETIMEDOUT" || code === "ESOCKET") {
+    return "O servidor de e-mail não aceitou a conexão.";
+  }
+  return "Não foi possível enviar o e-mail de acesso.";
 }
 
 function escapeHtml(value: string) {

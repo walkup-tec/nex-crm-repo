@@ -45,6 +45,17 @@ export const createUserFn = createServerFn({ method: "POST" })
     return guard(() => createUser(context.userId, data));
   });
 
+export const resendInviteFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<true>> => {
+    const { resendInvite } = await import("@/server/users.server");
+    return guard(async () => {
+      await resendInvite(context.userId, data.id);
+      return true as const;
+    });
+  });
+
 export const updateUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { id: string; fullName: string; email: string; permissions?: UserPermissions }) => data)

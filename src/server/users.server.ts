@@ -250,6 +250,16 @@ export async function createUser(
   }
 }
 
+export async function resendInvite(userId: string, targetId: string) {
+  const actor = await actorOf(userId);
+  const target = await targetOf(targetId);
+  if (!canManage(actor, { id: target.row.id, role: target.role, ownerId: target.row.owner_id })) {
+    fail("Você não pode reenviar o convite deste usuário.");
+  }
+  if (target.row.is_blocked) fail("Este acesso está bloqueado.");
+  await sendInviteEmail(target.row.email, target.row.full_name);
+}
+
 export async function updateUser(
   userId: string,
   input: { id: string; fullName: string; email: string; permissions?: UserPermissions },

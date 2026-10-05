@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  disconnectMetaFn,
   getMetaConnectionFn,
   listBusinessAdAccountsFn,
   listMetaBusinessesFn,
@@ -209,24 +208,6 @@ export function MetaConnect({
     onChanged?.();
   };
 
-  const disconnect = async () => {
-    if (!orgId) return;
-    setPending("disconnect");
-    setError("");
-    const result = await disconnectMetaFn({ data: { organizationId: orgId } });
-    setPending("");
-    if (!result.ok) {
-      setError(result.message);
-      return;
-    }
-    setView(result.data);
-    setBusinesses([]);
-    setAccounts([]);
-    setBusinessId("");
-    setAccountId("");
-    onChanged?.();
-  };
-
   const connected = view.status === "connected" || view.status === "error";
   const connectionDone = view.status === "connected";
   const accountSaved = Boolean(
@@ -312,23 +293,20 @@ export function MetaConnect({
       )}
       {view.lastError && <p className="text-sm text-destructive">{view.lastError}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <div className="flex flex-wrap gap-2">
-        {!connectionDone && (
-          <Button type="button" onClick={connect} disabled={pending !== ""}>
-            {pending === "connect" ? "Abrindo a Meta..." : "Conexão META"}
-          </Button>
-        )}
-        {connected && orgId && !accountSaved && (
-          <Button type="button" variant="outline" onClick={() => void save()} disabled={pending !== "" || !businessId || !accountId}>
-            {pending === "save" ? "Salvando..." : "Vincular conta"}
-          </Button>
-        )}
-        {connectionDone && orgId && (
-          <Button type="button" variant="ghost" onClick={() => void disconnect()} disabled={pending !== ""}>
-            Desconectar Meta
-          </Button>
-        )}
-      </div>
+      {(!connectionDone || (connected && orgId && !accountSaved)) && (
+        <div className="flex flex-wrap gap-2">
+          {!connectionDone && (
+            <Button type="button" onClick={connect} disabled={pending !== ""}>
+              {pending === "connect" ? "Abrindo a Meta..." : "Conexão META"}
+            </Button>
+          )}
+          {connected && orgId && !accountSaved && (
+            <Button type="button" variant="outline" onClick={() => void save()} disabled={pending !== "" || !businessId || !accountId}>
+              {pending === "save" ? "Salvando..." : "Vincular conta"}
+            </Button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

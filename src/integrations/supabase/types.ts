@@ -466,6 +466,7 @@ export type Database = {
           id: string
           is_blocked: boolean
           organization_id: string | null
+          owner_id: string | null
           theme: string
           updated_at: string
         }
@@ -477,6 +478,7 @@ export type Database = {
           id: string
           is_blocked?: boolean
           organization_id?: string | null
+          owner_id?: string | null
           theme?: string
           updated_at?: string
         }
@@ -488,6 +490,7 @@ export type Database = {
           id?: string
           is_blocked?: boolean
           organization_id?: string | null
+          owner_id?: string | null
           theme?: string
           updated_at?: string
         }

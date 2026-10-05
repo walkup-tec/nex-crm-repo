@@ -24,9 +24,11 @@ const missing: MetaConnectionView = {
 export function MetaConnect({
   organizationId,
   prepareOrganization,
+  onChanged,
 }: {
   organizationId: string | null;
   prepareOrganization?: () => Promise<string | null>;
+  onChanged?: () => void;
 }) {
   const [view, setView] = useState<MetaConnectionView>(missing);
   const [accountId, setAccountId] = useState("");
@@ -92,6 +94,7 @@ export function MetaConnect({
     }
     setView(result.data);
     setAccountId(result.data.selectedAccountId ?? accountId);
+    onChanged?.();
   };
 
   const connected = view.status === "connected" || view.status === "error";

@@ -39,7 +39,7 @@ function CallbackPage() {
           setMessage(result.message);
           return;
         }
-        window.location.assign(`/usuarios?meta=choose&org=${encodeURIComponent(result.data.organizationId)}`);
+        window.location.assign(`/dashboard?org=${encodeURIComponent(result.data.organizationId)}`);
       } catch {
         setFailed(true);
         setMessage("Entre novamente no NEX e repita a conexão com a Meta.");
@@ -55,7 +55,7 @@ function CallbackPage() {
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
         {failed && (
           <Button asChild className="mt-5 w-full">
-            <Link to="/usuarios">Voltar para usuários</Link>
+            <Link to="/dashboard">Voltar para a visão geral</Link>
           </Button>
         )}
       </div>

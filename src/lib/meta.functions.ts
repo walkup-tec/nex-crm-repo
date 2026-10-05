@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { MetaConnectionView } from "@/lib/meta-access";
+import type { MetaConnectionView, MetaPerformanceView } from "@/lib/meta-access";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -62,6 +62,17 @@ export const selectMetaAdAccountFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }): Promise<Result<MetaConnectionView>> => {
     const { selectMetaAdAccount } = await import("@/server/meta.server");
     return guard(() => selectMetaAdAccount(context.userId, data.organizationId, data.accountId));
+  });
+
+export const getMetaPerformanceFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId?: string; datePreset?: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<MetaPerformanceView>> => {
+    const { getMetaPerformance } = await import("@/server/meta.server");
+    const input: { organizationId?: string; datePreset?: string } = {};
+    if (data.organizationId) input.organizationId = data.organizationId;
+    if (data.datePreset) input.datePreset = data.datePreset;
+    return guard(() => getMetaPerformance(context.userId, input));
   });
 
 export const disconnectMetaFn = createServerFn({ method: "POST" })

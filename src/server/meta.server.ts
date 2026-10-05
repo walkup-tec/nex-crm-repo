@@ -1,6 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { MetaAccountView, MetaConnectionView } from "@/lib/meta-access";
+import type {
+  MetaAccountView,
+  MetaCampaignRow,
+  MetaConnectionView,
+  MetaDatePreset,
+  MetaKpis,
+  MetaPerformanceView,
+} from "@/lib/meta-access";
 
 export type { MetaAccountView, MetaConnectionView };
 
@@ -82,12 +89,28 @@ function publicMetaError(error: GraphError | undefined, status: number) {
   return "A Meta não respondeu como esperado. Tente de novo.";
 }
 
+type InsightAction = { action_type?: string; value?: string };
+type GraphInsight = {
+  spend?: string;
+  impressions?: string;
+  reach?: string;
+  clicks?: string;
+  ctr?: string;
+  cpc?: string;
+  actions?: InsightAction[];
+};
+type GraphCampaign = {
+  id?: string;
+  name?: string;
+  effective_status?: string;
+  insights?: { data?: GraphInsight[] };
+};
 type GraphBody = {
   error?: GraphError;
   access_token?: string;
   expires_in?: number;
   id?: string;
-  data?: GraphAccount[];
+  data?: Array<GraphAccount & GraphCampaign & GraphInsight>;
   paging?: { next?: string };
 };
 
@@ -184,7 +207,7 @@ async function connectionOf(organizationId: string) {
 async function selectedAccount(organizationId: string) {
   const { data, error } = await supabaseAdmin
     .from("meta_accounts")
-    .select("external_account_id, name")
+    .select("external_account_id, name, currency")
     .eq("organization_id", organizationId)
     .eq("selected", true)
     .limit(1);
@@ -392,14 +415,213 @@ export async function disconnectMeta(userId: string, organizationId: string) {
   return getMetaConnection(userId, organizationId);
 }
 
-export async function readSelectedInsights(userId: string, organizationId: string, datePreset = "last_30d") {
-  await assertOrgAccess(userId, organizationId);
-  const selected = await selectedAccount(organizationId);
-  if (!selected) fail("Informe o ID da conta de anúncio que o NEX deve acompanhar.");
-  const { token } = await loadToken(organizationId);
-  const body = await graphGet(graphVersion(), `/act_${selected.external_account_id}/insights`, token, {
-    fields: "spend,impressions,reach,clicks,ctr,cpc,cpm",
-    date_preset: datePreset,
-  });
-  return { accountId: selected.external_account_id, rows: body.data ?? [] };
+const DATE_PRESETS: readonly MetaDatePreset[] = ["today", "yesterday", "last_7d", "last_30d", "this_month"];
+
+function datePresetOf(value: string | undefined): MetaDatePreset {
+  if (value && (DATE_PRESETS as readonly string[]).includes(value)) return value as MetaDatePreset;
+  return "last_30d";
+}
+
+function amount(value: unknown) {
+  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function actionLabel(type: string | undefined) {
+  const labels: Record<string, string> = {
+    link_click: "Cliques no link",
+    lead: "Leads",
+    purchase: "Compras",
+    omni_purchase: "Compras",
+    messaging_conversation_started_7d: "Conversas",
+    post_engagement: "Engajamentos",
+    page_engagement: "Engajamentos",
+    landing_page_view: "Visualizações da página",
+    video_view: "Visualizações de vídeo",
+    complete_registration: "Cadastros",
+    contact: "Contatos",
+    add_to_cart: "Adições ao carrinho",
+    initiate_checkout: "Inícios de checkout",
+  };
+  if (!type) return "Resultados";
+  return labels[type] ?? "Resultados";
+}
+
+function metricsOf(insight: GraphInsight | undefined) {
+  const reach = amount(insight?.reach);
+  const impressions = amount(insight?.impressions);
+  const clicks = amount(insight?.clicks);
+  const spend = amount(insight?.spend);
+  const ctr = insight?.ctr ? amount(insight.ctr) : impressions > 0 ? (clicks / impressions) * 100 : null;
+  const cpc = insight?.cpc ? amount(insight.cpc) : clicks > 0 ? spend / clicks : null;
+  let results = clicks;
+  let resultLabel = "Cliques";
+  let bestValue = 0;
+  for (const action of insight?.actions ?? []) {
+    const value = amount(action.value);
+    if (value > bestValue) {
+      bestValue = value;
+      results = value;
+      resultLabel = actionLabel(action.action_type);
+    }
+  }
+  return { reach, impressions, clicks, spend, ctr, cpc, results, resultLabel };
+}
+
+function campaignStatus(raw: string | undefined): { label: string; group: MetaCampaignRow["statusGroup"] } {
+  if (raw === "ACTIVE") return { label: "Ativa", group: "Ativa" };
+  if (raw === "PAUSED" || raw === "CAMPAIGN_PAUSED" || raw === "ADSET_PAUSED") return { label: "Inativa", group: "Inativa" };
+  if (raw === "ARCHIVED" || raw === "DELETED") return { label: "Encerrada", group: "Encerrada" };
+  if (raw === "PENDING_REVIEW" || raw === "IN_PROCESS" || raw === "WITH_ISSUES") return { label: "Em análise", group: "Outro" };
+  return { label: "Indisponível", group: "Outro" };
+}
+
+async function collectCampaigns(version: string, token: string, accountId: string, preset: MetaDatePreset) {
+  const rows: MetaCampaignRow[] = [];
+  let next: string | null = null;
+  const fields = `id,name,effective_status,insights.date_preset(${preset}){impressions,reach,clicks,spend,actions}`;
+  for (let page = 0; page < 5; page += 1) {
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(version, `/act_${accountId}/campaigns`, token, { fields, limit: "100" });
+    for (const item of body.data ?? []) {
+      if (!item.id || !/^\d+$/.test(item.id)) continue;
+      const stats = metricsOf(item.insights?.data?.[0]);
+      const status = campaignStatus(item.effective_status);
+      rows.push({
+        id: item.id,
+        name: item.name?.trim() || `Campanha ${item.id}`,
+        status: status.label,
+        statusGroup: status.group,
+        reach: stats.reach,
+        impressions: stats.impressions,
+        results: stats.results,
+        resultLabel: stats.resultLabel,
+        spend: stats.spend,
+      });
+    }
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  return rows;
+}
+
+async function viewerContext(userId: string) {
+  const [{ data: profile, error: profileError }, { data: roles, error: roleError }, { data: perms, error: permError }] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id, organization_id, is_blocked").eq("id", userId).maybeSingle(),
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+    supabaseAdmin.from("user_permissions").select("can_view_campaigns").eq("user_id", userId).maybeSingle(),
+  ]);
+  if (profileError) schemaFail(profileError.message);
+  if (roleError || permError) fail("Não foi possível confirmar o acesso.");
+  if (!profile) fail("Seu perfil ainda não está ligado a um acesso.");
+  if (profile.is_blocked) fail("Este acesso está bloqueado.");
+  const role = (roles ?? []).some((item) => item.role === "master")
+    ? "master"
+    : (roles ?? []).some((item) => item.role === "client_admin")
+      ? "client_admin"
+      : "client_user";
+  return {
+    role,
+    organizationId: profile.organization_id,
+    canConnect: role === "master" || role === "client_admin",
+    canView: role !== "client_user" || perms?.can_view_campaigns !== false,
+  } as const;
+}
+
+function performanceBase(
+  actor: { role: MetaPerformanceView["role"]; organizationId: string | null; canConnect: boolean; canView: boolean },
+  preset: MetaDatePreset,
+): MetaPerformanceView {
+  return {
+    organizationId: actor.organizationId,
+    role: actor.role,
+    canConnect: actor.canConnect,
+    canView: actor.canView,
+    connectionStatus: "missing",
+    lastError: null,
+    accountId: null,
+    accountName: null,
+    currency: "BRL",
+    datePreset: preset,
+    kpis: null,
+    campaigns: [],
+  };
+}
+
+export async function getMetaPerformance(
+  userId: string,
+  input: { organizationId?: string; datePreset?: string },
+): Promise<MetaPerformanceView> {
+  const preset = datePresetOf(input.datePreset);
+  const actor = await viewerContext(userId);
+  let organizationId = actor.organizationId;
+  if (actor.role === "master") {
+    if (input.organizationId) {
+      await assertOrgAccess(userId, input.organizationId);
+      organizationId = input.organizationId;
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from("meta_connections")
+        .select("organization_id")
+        .eq("status", "connected")
+        .order("connected_at", { ascending: false })
+        .limit(1);
+      if (error) schemaFail(error.message);
+      organizationId = data?.[0]?.organization_id ?? null;
+    }
+  } else if (input.organizationId && input.organizationId !== actor.organizationId) {
+    fail("Você não pode consultar esta conta.");
+  }
+
+  const view = performanceBase({ ...actor, organizationId }, preset);
+  if (!view.canView) {
+    view.lastError = "Você não tem permissão para ver as campanhas.";
+    return view;
+  }
+  if (!organizationId) return view;
+
+  const [connection, selected] = await Promise.all([connectionOf(organizationId), selectedAccount(organizationId)]);
+  const storedStatus = connection?.status;
+  view.connectionStatus =
+    storedStatus === "connected" || storedStatus === "error" || storedStatus === "disconnected" || storedStatus === "pending"
+      ? storedStatus
+      : "missing";
+  view.lastError = connection?.last_error ?? null;
+  view.accountId = selected?.external_account_id ?? null;
+  view.accountName = selected?.name ?? null;
+  view.currency = selected?.currency || "BRL";
+  if (view.connectionStatus !== "connected" || !connection?.access_token_encrypted || !selected) return view;
+
+  try {
+    const { token } = await loadToken(organizationId);
+    const version = graphVersion();
+    const insight = await graphGet(version, `/act_${selected.external_account_id}/insights`, token, {
+      fields: "spend,impressions,reach,clicks,ctr,cpc,actions",
+      date_preset: preset,
+    });
+    const stats = metricsOf(insight.data?.[0]);
+    const kpis: MetaKpis = {
+      reach: stats.reach,
+      impressions: stats.impressions,
+      results: stats.results,
+      resultLabel: stats.resultLabel,
+      spend: stats.spend,
+      cpc: stats.cpc,
+      ctr: stats.ctr,
+    };
+    view.kpis = kpis;
+    view.campaigns = await collectCampaigns(version, token, selected.external_account_id, preset);
+    view.lastError = null;
+    return view;
+  } catch (error) {
+    view.connectionStatus = "error";
+    const message = error instanceof Error ? error.message : "A Meta não respondeu como esperado.";
+    view.lastError = /access_token|client_secret|EAA[A-Za-z0-9]/.test(message)
+      ? "A Meta não respondeu como esperado. Tente de novo."
+      : message;
+    view.kpis = null;
+    view.campaigns = [];
+    return view;
+  }
 }

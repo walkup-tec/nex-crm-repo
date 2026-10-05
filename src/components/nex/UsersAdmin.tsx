@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
 import type { ListedUser, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
 import { createUserFn, deleteUserFn, listUsersFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
 
@@ -56,6 +57,7 @@ function subtitleFor(role: UserRole) {
 
 export function UsersAdmin() {
   const [snapshot, setSnapshot] = useState<UsersSnapshot | null>(null);
+  const [knownRole, setKnownRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "edit"; user: ListedUser }>(null);
@@ -80,11 +82,33 @@ export function UsersAdmin() {
     void load();
   }, [load]);
 
-  const role = snapshot?.actor.role ?? "client_user";
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) {
+        if (active) setKnownRole("client_user");
+        return;
+      }
+      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
+      if (!active) return;
+      if (roles?.some((row) => row.role === "master")) setKnownRole("master");
+      else if (roles?.some((row) => row.role === "client_admin")) setKnownRole("client_admin");
+      else setKnownRole("client_user");
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const role = snapshot?.actor.role ?? knownRole;
+  if (!role) {
+    return <main className="grid min-h-screen place-items-center text-sm text-muted-foreground">Carregando usuários...</main>;
+  }
   const canCreate = role === "master" || role === "client_admin";
 
   return (
-    <AppShell title="Usuários" subtitle={snapshot ? subtitleFor(role) : "Carregando os acessos da conta."} master={role === "master"}>
+    <AppShell title="Usuários" subtitle={subtitleFor(role)} master={role === "master"}>
       <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">

@@ -31,6 +31,7 @@ function percent(value: number | null) {
 }
 
 const initialPeriod: MetaPeriod = { mode: "total" };
+const noCampaigns: MetaCampaignRow[] = [];
 
 export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   const [period, setPeriod] = useState<MetaPeriod>(initialPeriod);
@@ -39,6 +40,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [campaignId, setCampaignId] = useState("all");
   const organizationId = readOrg();
 
   const load = async (nextPeriod: MetaPeriod) => {
@@ -69,16 +71,35 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
     void load(initialPeriod);
   }, []);
 
+  const listedCampaigns = view?.campaigns ?? noCampaigns;
+  const showCampaignFilter = listedCampaigns.length > 1;
+  const selectedCampaign = showCampaignFilter && campaignId !== "all" ? listedCampaigns.find((row) => row.id === campaignId) ?? null : null;
+
+  useEffect(() => {
+    if (campaignId !== "all" && !listedCampaigns.some((row) => row.id === campaignId)) setCampaignId("all");
+  }, [campaignId, listedCampaigns]);
+
   const campaigns = useMemo(() => {
-    const rows = view?.campaigns ?? [];
+    const rows = selectedCampaign ? listedCampaigns.filter((row) => row.id === selectedCampaign.id) : listedCampaigns;
     return rows.filter((row) => {
       const matchesQuery = row.name.toLowerCase().includes(query.trim().toLowerCase());
       const matchesStatus = status === "all" || row.statusGroup === status;
       return matchesQuery && matchesStatus;
     });
-  }, [view, query, status]);
+  }, [listedCampaigns, selectedCampaign, query, status]);
 
   const ready = Boolean(view?.kpis && view.accountId);
+  const kpis = selectedCampaign
+    ? {
+        reach: selectedCampaign.reach,
+        impressions: selectedCampaign.impressions,
+        results: selectedCampaign.results,
+        resultLabel: selectedCampaign.resultLabel,
+        spend: selectedCampaign.spend,
+        cpc: selectedCampaign.cpc,
+        ctr: selectedCampaign.ctr,
+      }
+    : view?.kpis;
 
   return (
     <div className="space-y-5">
@@ -89,7 +110,22 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
             {view?.accountName ? `${view.accountName}${view.accountId ? ` · ${view.accountId}` : ""}` : "Conta de anúncio não vinculada"}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          {showCampaignFilter && (
+            <Select value={selectedCampaign ? selectedCampaign.id : "all"} onValueChange={setCampaignId}>
+              <SelectTrigger className="w-full bg-background sm:w-64" aria-label="Campanha">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as campanhas</SelectItem>
+                {listedCampaigns.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <PeriodPicker value={period} disabled={loading} onApply={(next) => void load(next)} />
           <Button type="button" onClick={() => void load(period)} disabled={loading}>
             <RefreshCw className={loading ? "animate-spin" : ""} />
@@ -130,14 +166,14 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
 
       {ready && view?.kpis && (
         <>
-          {mode === "overview" && (
+          {mode === "overview" && kpis && (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <Kpi label="Alcance" value={integer(view.kpis.reach)} />
-              <Kpi label="Impressões" value={integer(view.kpis.impressions)} />
-              <Kpi label="Resultados" value={integer(view.kpis.results)} hint={view.kpis.resultLabel} />
-              <Kpi label="Gasto" value={money(view.kpis.spend, view.currency)} />
-              <Kpi label="CPC" value={view.kpis.cpc == null ? "—" : money(view.kpis.cpc, view.currency)} />
-              <Kpi label="CTR" value={percent(view.kpis.ctr)} />
+              <Kpi label="Alcance" value={integer(kpis.reach)} />
+              <Kpi label="Impressões" value={integer(kpis.impressions)} />
+              <Kpi label="Resultados" value={integer(kpis.results)} hint={kpis.resultLabel} />
+              <Kpi label="Gasto" value={money(kpis.spend, view.currency)} />
+              <Kpi label="CPC" value={kpis.cpc == null ? "—" : money(kpis.cpc, view.currency)} />
+              <Kpi label="CTR" value={percent(kpis.ctr)} />
             </div>
           )}
           {mode === "campaigns" && (
@@ -156,7 +192,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
               </Select>
             </div>
           )}
-          <CampaignTable rows={mode === "campaigns" ? campaigns : view.campaigns} currency={view.currency} />
+          <CampaignTable rows={mode === "campaigns" ? campaigns : selectedCampaign ? [selectedCampaign] : view.campaigns} currency={view.currency} />
           {view.campaigns.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada nesta conta no período.</p>
           )}

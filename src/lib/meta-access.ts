@@ -44,6 +44,8 @@ export type MetaCampaignRow = {
   results: number;
   resultLabel: string;
   spend: number;
+  cpc: number | null;
+  ctr: number | null;
 };
 
 export type MetaPerformanceView = {

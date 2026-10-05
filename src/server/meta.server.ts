@@ -588,6 +588,8 @@ async function collectCampaigns(version: string, token: string, accountId: strin
         results: stats.results,
         resultLabel: stats.resultLabel,
         spend: stats.spend,
+        cpc: stats.cpc,
+        ctr: stats.ctr,
       });
     }
     next = typeof body.paging?.next === "string" ? body.paging.next : null;

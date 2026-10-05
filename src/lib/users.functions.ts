@@ -39,7 +39,7 @@ export const listUsersFn = createServerFn({ method: "GET" })
 
 export const createUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { fullName: string; email: string; kind?: "master" | "client"; permissions?: UserPermissions }) => data)
+  .validator((data: { fullName: string; email: string; kind?: "master" | "client"; permissions?: UserPermissions; sendEmail?: boolean }) => data)
   .handler(async ({ context, data }): Promise<Result<{ id: string; organizationId: string | null; emailSent: boolean }>> => {
     const { createUser } = await import("@/server/users.server");
     return guard(() => createUser(context.userId, data));

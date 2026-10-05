@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { AppShell } from "@/components/nex/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,6 +172,7 @@ export function UsersAdmin() {
                     <TableHead>Nome</TableHead>
                     <TableHead>Tipo</TableHead>
                     {role === "master" && <TableHead>Atribuído a</TableHead>}
+                    {role === "master" && <TableHead>Conta META</TableHead>}
                     <TableHead>Situação</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -186,6 +187,11 @@ export function UsersAdmin() {
                       </TableCell>
                       <TableCell>{roleLabel[user.role]}</TableCell>
                       {role === "master" && <TableCell>{user.ownerName ?? "—"}</TableCell>}
+                      {role === "master" && (
+                        <TableCell>
+                          <MetaAccountMark linked={user.metaLinked} />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Badge variant={user.blocked ? "destructive" : "secondary"}>{user.blocked ? "Bloqueado" : "Ativo"}</Badge>
                       </TableCell>
@@ -211,6 +217,12 @@ export function UsersAdmin() {
                     {roleLabel[user.role]}
                     {role === "master" && user.ownerName ? ` · atribuído a ${user.ownerName}` : ""}
                   </p>
+                  {role === "master" && (
+                    <p className="mt-2 flex items-center gap-2 text-sm">
+                      Conta META
+                      <MetaAccountMark linked={user.metaLinked} />
+                    </p>
+                  )}
                   {permissionSummary(user) && <p className="mt-1 text-xs text-muted-foreground">{permissionSummary(user)}</p>}
                   <div className="mt-4">
                     <RowActions user={user} onEdit={() => setEditor({ mode: "edit", user })} onRemove={() => setRemoving(user)} onChanged={load} />
@@ -265,6 +277,15 @@ export function UsersAdmin() {
         </AlertDialogContent>
       </AlertDialog>
     </AppShell>
+  );
+}
+
+function MetaAccountMark({ linked }: { linked: boolean }) {
+  return (
+    <span className={`inline-flex items-center ${linked ? "text-success" : "text-destructive"}`} title={linked ? "BM vinculada" : "BM não vinculada"}>
+      <Check className="size-4" />
+      <span className="sr-only">{linked ? "BM vinculada" : "BM não vinculada"}</span>
+    </span>
   );
 }
 
@@ -382,20 +403,23 @@ function UserDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (createdUserId && emailFailed) {
+    if (createdUserId) {
       setSaving(true);
       setFormError("");
+      const updated = await updateUserFn({ data: { id: createdUserId, fullName, email } });
+      if (!updated.ok) {
+        setSaving(false);
+        setFormError(updated.message);
+        return;
+      }
       const resent = await resendInviteFn({ data: { id: createdUserId } });
       setSaving(false);
       if (!resent.ok) {
+        setEmailFailed(true);
         setFormError(resent.message);
         return;
       }
       setEmailFailed(false);
-      await onSaved();
-      return;
-    }
-    if (createdOrgId) {
       await onSaved();
       return;
     }
@@ -470,16 +494,12 @@ function UserDialog({
               organizationId={mode === "edit" ? user?.organizationId ?? null : createdOrgId}
               prepareOrganization={async () => {
                 if (mode !== "create") return null;
-                const result = await createUserFn({ data: { fullName, email, kind: "client" } });
+                const result = await createUserFn({ data: { fullName, email, kind: "client", sendEmail: false } });
                 if (!result.ok || !result.data.organizationId) {
                   setFormError(result.ok ? "O cliente foi criado sem empresa." : result.message);
                   return null;
                 }
-                if (!result.data.emailSent) {
-                  setCreatedUserId(result.data.id);
-                  setEmailFailed(true);
-                  setFormError("O acesso foi criado, mas o e-mail de convite não saiu. Clique em Reenviar convite para tentar outra vez.");
-                }
+                setCreatedUserId(result.data.id);
                 setCreatedOrgId(result.data.organizationId);
                 return result.data.organizationId;
               }}

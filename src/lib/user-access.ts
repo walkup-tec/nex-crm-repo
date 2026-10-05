@@ -18,6 +18,7 @@ export type ListedUser = {
   ownerName: string | null;
   permissions: UserPermissions;
   canManage: boolean;
+  metaLinked: boolean;
 };
 
 export type UsersSnapshot = {

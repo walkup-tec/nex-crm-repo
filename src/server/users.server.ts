@@ -118,12 +118,27 @@ function toListed(
     ownerName: row.owner_id ? names.get(row.owner_id) ?? null : null,
     permissions: permissions.get(row.id) ?? defaultPermissions,
     canManage: canManage(actor, { id: row.id, role, ownerId: row.owner_id }),
+    metaLinked: false,
   };
+}
+
+async function organizationsWithPortfolio() {
+  const { data, error } = await supabaseAdmin.from("meta_accounts").select("organization_id, portfolio_id").eq("selected", true);
+  if (error) {
+    const text = error.message.toLowerCase();
+    if (text.includes("meta_accounts") || text.includes("portfolio_id") || text.includes("selected")) return new Set<string>();
+    fail(error.message);
+  }
+  const ids = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.organization_id && row.portfolio_id?.trim()) ids.add(row.organization_id);
+  }
+  return ids;
 }
 
 export async function listUsers(userId: string) {
   const actor = await actorOf(userId);
-  const [rows, roles, permissions] = await Promise.all([profiles(), roleMap(), permissionMap()]);
+  const [rows, roles, permissions, linked] = await Promise.all([profiles(), roleMap(), permissionMap(), organizationsWithPortfolio()]);
   const names = new Map(rows.map((row) => [row.id, row.full_name]));
   const visible = rows.filter((row) => {
     if (actor.role === "master") return true;
@@ -132,7 +147,11 @@ export async function listUsers(userId: string) {
   });
   return {
     actor: { id: actor.id, role: actor.role, fullName: actor.fullName, organizationId: actor.organizationId },
-    users: visible.map((row) => toListed(actor, row, roles, names, permissions)),
+    users: visible.map((row) => {
+      const listed = toListed(actor, row, roles, names, permissions);
+      listed.metaLinked = Boolean(row.organization_id && linked.has(row.organization_id));
+      return listed;
+    }),
   };
 }
 
@@ -145,7 +164,7 @@ async function targetOf(id: string) {
 
 export async function createUser(
   userId: string,
-  input: { fullName: string; email: string; kind?: "master" | "client"; permissions?: UserPermissions },
+  input: { fullName: string; email: string; kind?: "master" | "client"; permissions?: UserPermissions; sendEmail?: boolean },
 ) {
   const actor = await actorOf(userId);
   const fullName = input.fullName.trim();
@@ -227,6 +246,7 @@ export async function createUser(
     });
     if (permissionError) fail(permissionError.message);
 
+    if (input.sendEmail === false) return { id: createdId, organizationId, emailSent: false as const };
     const actionLink = link.properties?.action_link;
     if (!actionLink) fail("O convite foi criado sem o link de primeiro acesso.");
     try {

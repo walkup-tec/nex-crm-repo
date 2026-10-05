@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,6 +177,13 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
               <Kpi label="CTR" value={percent(kpis.ctr)} />
             </div>
           )}
+          {mode === "overview" && (
+            view.campaigns.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada nesta conta no período.</p>
+            ) : (
+              <ResultsChart rows={selectedCampaign ? [selectedCampaign] : view.campaigns} currency={view.currency} />
+            )
+          )}
           {mode === "campaigns" && (
             <div className="flex flex-col gap-3 sm:flex-row">
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar campanha" />
@@ -192,8 +200,8 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
               </Select>
             </div>
           )}
-          <CampaignTable rows={mode === "campaigns" ? campaigns : selectedCampaign ? [selectedCampaign] : view.campaigns} currency={view.currency} />
-          {view.campaigns.length === 0 && (
+          {mode === "campaigns" && <CampaignTable rows={campaigns} currency={view.currency} />}
+          {mode === "campaigns" && view.campaigns.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada nesta conta no período.</p>
           )}
           {mode === "campaigns" && view.campaigns.length > 0 && campaigns.length === 0 && (
@@ -202,6 +210,68 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
         </>
       )}
     </div>
+  );
+}
+
+function costPerResult(row: MetaCampaignRow) {
+  if (row.results <= 0) return 0;
+  return row.spend / row.results;
+}
+
+function shortCampaignName(name: string) {
+  const clean = name.replace(/\s+/g, " ").trim();
+  return clean.length > 22 ? `${clean.slice(0, 20)}…` : clean;
+}
+
+function ResultsChart({ rows, currency }: { rows: MetaCampaignRow[]; currency: string }) {
+  const data = rows.map((row) => ({
+    name: shortCampaignName(row.name),
+    fullName: row.name,
+    resultados: row.results,
+    custo: costPerResult(row),
+  }));
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <h2 className="font-display text-lg font-semibold">Resultados entre campanhas</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Volume de resultados e custo por resultado.</p>
+      <div className="mt-4 h-80 w-full overflow-x-auto">
+        <div className="h-full" style={{ minWidth: Math.max(320, rows.length * 88) }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} interval={0} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={36} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={48} />
+              <Tooltip
+                cursor={{ fill: "var(--muted)", fillOpacity: 0.55 }}
+                content={({ active, payload }) => {
+                  const point = payload?.[0]?.payload as { fullName?: string; resultados?: number; custo?: number } | undefined;
+                  if (!active || !point) return null;
+                  return (
+                    <div className="min-w-48 rounded-md border bg-popover px-3 py-2.5 text-popover-foreground shadow-sm">
+                      <p className="mb-2 border-b pb-2 text-xs font-semibold">{point.fullName}</p>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between gap-5">
+                          <span className="text-muted-foreground">Resultados</span>
+                          <strong>{integer(point.resultados ?? 0)}</strong>
+                        </div>
+                        <div className="flex justify-between gap-5">
+                          <span className="text-muted-foreground">Custo por resultado</span>
+                          <strong>{money(point.custo ?? 0, currency)}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar yAxisId="left" dataKey="resultados" name="Resultados" fill="var(--primary)" radius={[5, 5, 0, 0]} />
+              <Bar yAxisId="right" dataKey="custo" name="Custo por resultado" fill="var(--info)" radius={[5, 5, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </section>
   );
 }
 

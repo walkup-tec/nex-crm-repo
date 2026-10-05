@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { MetaConnect } from "@/components/nex/MetaConnect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -80,7 +79,6 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   }, [view, query, status]);
 
   const ready = Boolean(view?.kpis && view.accountId);
-  const showConnect = Boolean(view && view.canConnect && view.organizationId && !ready);
 
   return (
     <div className="space-y-5">
@@ -88,7 +86,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
         <div className="flex-1">
           <p className="text-xs font-medium text-muted-foreground">Conta de anúncios</p>
           <p className="mt-1 text-sm font-semibold">
-            {view?.accountName ? `${view.accountName}${view.accountId ? ` · ${view.accountId}` : ""}` : "Nenhuma conta selecionada"}
+            {view?.accountName ? `${view.accountName}${view.accountId ? ` · ${view.accountId}` : ""}` : "Conta de anúncio não vinculada"}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -132,20 +130,18 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
         <p className="rounded-lg border p-4 text-sm text-muted-foreground">Você não tem permissão para ver as campanhas desta conta.</p>
       )}
 
-      {view && view.canView && !view.organizationId && (
+      {view && view.canView && !view.accountId && !loading && (
         <div className="rounded-lg border p-5">
-          <p className="font-semibold">Nenhuma conta Meta ligada a este acesso</p>
+          <p className="font-semibold">Conta de anúncio não vinculada</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Abra Usuários e use Conexão META no cliente que vai autorizar a conta de anúncio. Os indicadores aparecem aqui depois dessa autorização.
+            Os indicadores desta tela são os da conta definida no cadastro do usuário.
           </p>
-          <Button asChild className="mt-4">
-            <Link to="/usuarios">Ir para usuários</Link>
-          </Button>
+          {view.role === "master" && (
+            <Button asChild className="mt-4">
+              <Link to="/usuarios">Abrir usuários</Link>
+            </Button>
+          )}
         </div>
-      )}
-
-      {showConnect && view?.organizationId && (
-        <MetaConnect organizationId={view.organizationId} onChanged={() => void load(preset)} />
       )}
 
       {view?.lastError && ready === false && <p className="text-sm text-destructive">{view.lastError}</p>}

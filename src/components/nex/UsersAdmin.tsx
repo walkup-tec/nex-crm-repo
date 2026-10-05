@@ -121,9 +121,6 @@ export function UsersAdmin() {
   return (
     <AppShell title="Usuários" subtitle={subtitleFor(role)} master={role === "master"}>
       <div className="space-y-4">
-        {role === "client_admin" && snapshot?.actor.organizationId && (
-          <MetaConnect organizationId={snapshot.actor.organizationId} />
-        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             {loading
@@ -359,12 +356,16 @@ function UserDialog({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [createdOrgId, setCreatedOrgId] = useState<string | null>(null);
+  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
+  const [emailFailed, setEmailFailed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setFormError("");
     setSaving(false);
     setCreatedOrgId(null);
+    setCreatedUserId(null);
+    setEmailFailed(false);
     if (mode === "edit" && user) {
       setFullName(user.fullName);
       setEmail(user.email);
@@ -381,6 +382,19 @@ function UserDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (createdUserId && emailFailed) {
+      setSaving(true);
+      setFormError("");
+      const resent = await resendInviteFn({ data: { id: createdUserId } });
+      setSaving(false);
+      if (!resent.ok) {
+        setFormError(resent.message);
+        return;
+      }
+      setEmailFailed(false);
+      await onSaved();
+      return;
+    }
     if (createdOrgId) {
       await onSaved();
       return;
@@ -410,7 +424,9 @@ function UserDialog({
     }
     if (mode === "create" && typeof result.data === "object" && result.data.emailSent === false) {
       if (result.data.organizationId) setCreatedOrgId(result.data.organizationId);
-      setFormError("O acesso foi criado, mas o e-mail de convite não saiu. A pessoa pode criar a senha em Primeiro acesso, com o e-mail cadastrado. A Conexão META já pode ser usada.");
+      setCreatedUserId(result.data.id);
+      setEmailFailed(true);
+      setFormError("O acesso foi criado, mas o e-mail de convite não saiu. Clique em Reenviar convite para tentar outra vez.");
       return;
     }
     await onSaved();
@@ -460,7 +476,9 @@ function UserDialog({
                   return null;
                 }
                 if (!result.data.emailSent) {
-                  setFormError("O acesso foi criado, mas o e-mail de convite não saiu. A pessoa pode criar a senha em Primeiro acesso, com o e-mail cadastrado.");
+                  setCreatedUserId(result.data.id);
+                  setEmailFailed(true);
+                  setFormError("O acesso foi criado, mas o e-mail de convite não saiu. Clique em Reenviar convite para tentar outra vez.");
                 }
                 setCreatedOrgId(result.data.organizationId);
                 return result.data.organizationId;
@@ -488,7 +506,7 @@ function UserDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Salvando..." : mode === "create" ? "Enviar acesso" : "Salvar"}
+              {saving ? "Salvando..." : emailFailed ? "Reenviar convite" : mode === "create" ? "Enviar acesso" : "Salvar"}
             </Button>
           </DialogFooter>
         </form>

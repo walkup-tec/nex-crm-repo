@@ -8,6 +8,7 @@ import type {
   MetaKpis,
   MetaPeriod,
   MetaResultSeries,
+  MasterCampaignsView,
   MetaPerformanceView,
 } from "@/lib/meta-access";
 
@@ -790,6 +791,60 @@ function performanceBase(
     campaigns: [],
     series: emptySeries,
   };
+}
+
+export async function listMasterCampaigns(
+  userId: string,
+  input: { period?: string; since?: string; until?: string },
+): Promise<MasterCampaignsView> {
+  const period = periodOf(input);
+  const actor = await viewerContext(userId);
+  if (actor.role !== "master") fail("Só o Master consulta as campanhas de todos os clientes.");
+  const { data: connections, error } = await supabaseAdmin.from("meta_connections").select("organization_id").eq("status", "connected");
+  if (error) schemaFail(error.message);
+  const organizationIds = [...new Set((connections ?? []).map((row) => row.organization_id).filter((id): id is string => Boolean(id)))];
+  if (organizationIds.length === 0) return { period, campaigns: [], clients: [], notices: [] };
+  const { data: organizations, error: orgError } = await supabaseAdmin.from("organizations").select("id, legal_name").in("id", organizationIds);
+  if (orgError) schemaFail(orgError.message);
+  const names = new Map((organizations ?? []).map((org) => [org.id, org.legal_name]));
+  const version = graphVersion();
+  const campaigns: MasterCampaignsView["campaigns"] = [];
+  const notices: string[] = [];
+  const clients: MasterCampaignsView["clients"] = [];
+
+  const readOne = async (organizationId: string) => {
+    const clientName = names.get(organizationId) ?? "Cliente";
+    clients.push({ id: organizationId, name: clientName });
+    try {
+      const selected = await selectedAccount(organizationId);
+      if (!selected) {
+        notices.push(`${clientName} ainda não tem uma conta de anúncio selecionada.`);
+        return;
+      }
+      const { token } = await loadToken(organizationId);
+      const collected = await collectCampaigns(version, token, selected.external_account_id, period);
+      for (const row of collected.rows) {
+        campaigns.push({
+          ...row,
+          organizationId,
+          clientName,
+          accountName: selected.name?.trim() || "Conta de anúncio",
+          currency: selected.currency || "BRL",
+        });
+      }
+    } catch (readError) {
+      const message = readError instanceof Error ? readError.message : "A Meta não respondeu como esperado.";
+      if (/não está configurada/.test(message)) throw readError;
+      notices.push(`${clientName}: ${/access_token|client_secret|EAA[A-Za-z0-9]/.test(message) ? "A Meta não respondeu como esperado." : message}`);
+    }
+  };
+
+  for (let index = 0; index < organizationIds.length; index += 3) {
+    await Promise.all(organizationIds.slice(index, index + 3).map((organizationId) => readOne(organizationId)));
+  }
+  clients.sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  campaigns.sort((left, right) => left.clientName.localeCompare(right.clientName, "pt-BR") || left.name.localeCompare(right.name, "pt-BR"));
+  return { period, campaigns, clients, notices };
 }
 
 export async function getMetaPerformance(

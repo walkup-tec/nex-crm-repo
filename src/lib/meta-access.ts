@@ -53,6 +53,20 @@ export type MetaCampaignRow = {
   ctr: number | null;
 };
 
+export type MasterCampaignRow = MetaCampaignRow & {
+  organizationId: string;
+  clientName: string;
+  accountName: string;
+  currency: string;
+};
+
+export type MasterCampaignsView = {
+  period: MetaPeriod;
+  campaigns: MasterCampaignRow[];
+  clients: { id: string; name: string }[];
+  notices: string[];
+};
+
 export type MetaPerformanceView = {
   organizationId: string | null;
   role: "master" | "client_admin" | "client_user";

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { MetaAccountView, MetaBusinessView, MetaConnectionView, MetaPerformanceView } from "@/lib/meta-access";
+import type { MasterCampaignsView, MetaAccountView, MetaBusinessView, MetaConnectionView, MetaPerformanceView } from "@/lib/meta-access";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -91,6 +91,18 @@ export const getMetaPerformanceFn = createServerFn({ method: "POST" })
     if (data.since) input.since = data.since;
     if (data.until) input.until = data.until;
     return guard(() => getMetaPerformance(context.userId, input));
+  });
+
+export const listMasterCampaignsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { period?: string; since?: string; until?: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<MasterCampaignsView>> => {
+    const { listMasterCampaigns } = await import("@/server/meta.server");
+    const input: { period?: string; since?: string; until?: string } = {};
+    if (data.period) input.period = data.period;
+    if (data.since) input.since = data.since;
+    if (data.until) input.until = data.until;
+    return guard(() => listMasterCampaigns(context.userId, input));
   });
 
 export const disconnectMetaFn = createServerFn({ method: "POST" })

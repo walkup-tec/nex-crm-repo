@@ -24,7 +24,13 @@ export type ListedUser = {
   metaLinked: boolean;
 };
 
+export type RegisteredClient = {
+  id: string;
+  name: string;
+};
+
 export type UsersSnapshot = {
   actor: { id: string; role: UserRole; fullName: string; organizationId: string | null };
   users: ListedUser[];
+  clients: RegisteredClient[];
 };

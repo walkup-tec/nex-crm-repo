@@ -28,7 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { applyMask } from "@/lib/masks";
-import type { ListedUser, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
+import type { ListedUser, RegisteredClient, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
 import { MetaConnect } from "@/components/nex/MetaConnect";
 import { createUserFn, deleteUserFn, listUsersFn, resendInviteFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
 
@@ -242,7 +242,7 @@ export function UsersAdmin() {
         mode={editor?.mode ?? "create"}
         user={editor && editor.mode === "edit" ? editor.user : null}
         actorRole={role}
-        clients={snapshot?.users.filter((item) => item.role === "client_admin") ?? []}
+        clients={snapshot?.clients ?? []}
         onClose={() => setEditor(null)}
         onSaved={async () => {
           setEditor(null);
@@ -372,7 +372,7 @@ function UserDialog({
   mode: "create" | "edit";
   user: ListedUser | null;
   actorRole: UserRole;
-  clients: ListedUser[];
+  clients: RegisteredClient[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -499,7 +499,7 @@ function UserDialog({
                 {...(clientId ? { value: clientId } : {})}
                 onValueChange={(value) => {
                   setClientId(value);
-                  setFullName(clients.find((item) => item.id === value)?.fullName ?? "");
+                  setFullName(clients.find((item) => item.id === value)?.name ?? "");
                 }}
                 disabled={clients.length === 0}
               >
@@ -509,7 +509,7 @@ function UserDialog({
                 <SelectContent>
                   {clients.map((client) => (
                     <SelectItem key={client.id} value={client.id}>
-                      {client.fullName}
+                      {client.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

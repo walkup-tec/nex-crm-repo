@@ -473,7 +473,7 @@ function UserDialog({
         ? await createUserFn({
             data:
               actorRole === "master"
-                ? { fullName, email, ...contact, kind }
+                ? { fullName, email, ...contact, kind, ...(kind === "client" ? { organizationId: clientId } : {}) }
                 : actorRole === "client_admin"
                   ? { fullName, email, ...contact, permissions }
                   : { fullName, email, ...contact },
@@ -590,21 +590,15 @@ function UserDialog({
           )}
           {((mode === "create" && actorRole === "master" && kind === "client") || (mode === "edit" && user?.role === "client_admin")) && (
             <MetaConnect
-              organizationId={mode === "edit" ? user?.organizationId ?? null : createdOrgId}
+              organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId}
               prepareOrganization={async () => {
                 if (mode !== "create") return null;
-                if (!fullName.trim()) {
+                if (!clientId) {
                   setFormError("Selecione o cliente.");
                   return null;
                 }
-                const result = await createUserFn({ data: { fullName, email, ...contact, kind: "client", sendEmail: false } });
-                if (!result.ok || !result.data.organizationId) {
-                  setFormError(result.ok ? "O cliente foi criado sem empresa." : result.message);
-                  return null;
-                }
-                setCreatedUserId(result.data.id);
-                setCreatedOrgId(result.data.organizationId);
-                return result.data.organizationId;
+                setFormError("");
+                return clientId;
               }}
             />
           )}

@@ -187,6 +187,7 @@ export async function createUser(
     financeEmail?: string;
     financeEmailSame?: boolean;
     kind?: "master" | "client";
+    organizationId?: string;
     permissions?: UserPermissions;
     sendEmail?: boolean;
   },
@@ -233,19 +234,14 @@ export async function createUser(
 
   try {
     if (role === "client_admin") {
+      const selectedOrganizationId = input.organizationId?.trim() ?? "";
+      if (!selectedOrganizationId) fail("Selecione o cliente.");
       const { data: org, error: orgError } = await supabaseAdmin
         .from("organizations")
-        .insert({
-          legal_name: fullName,
-          document: email,
-          responsible_name: fullName,
-          responsible_email: email,
-          responsible_phone: contact?.whatsapp || "não informado",
-          finance_phone: "não informado",
-        })
         .select("id")
-        .single();
-      if (orgError || !org) fail(orgError?.message || "Não foi possível criar a empresa.");
+        .eq("id", selectedOrganizationId)
+        .maybeSingle();
+      if (orgError || !org) fail("Cliente não encontrado.");
       organizationId = org.id;
     }
 
@@ -296,9 +292,6 @@ export async function createUser(
     await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);
     await supabaseAdmin.from("profiles").delete().eq("id", createdId);
-    if (organizationId && role === "client_admin") {
-      await supabaseAdmin.from("organizations").delete().eq("id", organizationId);
-    }
     await removeAuth();
     throw error;
   }
@@ -385,22 +378,12 @@ export async function deleteUser(userId: string, id: string) {
     if (error) fail(error.message);
     if ((count ?? 0) > 0) fail("Exclua primeiro os usuários atribuídos a este cliente.");
   }
-  const organizationId = target.row.organization_id;
   const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
   if (authError) fail("Não foi possível excluir o acesso.");
   await supabaseAdmin.from("user_permissions").delete().eq("user_id", id);
   await supabaseAdmin.from("user_roles").delete().eq("user_id", id);
   const { error: profileError } = await supabaseAdmin.from("profiles").delete().eq("id", id);
   if (profileError) fail(profileError.message);
-  if (target.role === "client_admin" && organizationId) {
-    const { count } = await supabaseAdmin
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", organizationId);
-    if ((count ?? 0) === 0) {
-      await supabaseAdmin.from("organizations").delete().eq("id", organizationId);
-    }
-  }
 }
 
 function contactOf(whatsapp: string, email: string, financeEmail: string, financeEmailSame: boolean) {

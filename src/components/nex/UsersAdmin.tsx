@@ -23,6 +23,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
@@ -241,6 +242,7 @@ export function UsersAdmin() {
         mode={editor?.mode ?? "create"}
         user={editor && editor.mode === "edit" ? editor.user : null}
         actorRole={role}
+        clients={snapshot?.users.filter((item) => item.role === "client_admin") ?? []}
         onClose={() => setEditor(null)}
         onSaved={async () => {
           setEditor(null);
@@ -362,6 +364,7 @@ function UserDialog({
   mode,
   user,
   actorRole,
+  clients,
   onClose,
   onSaved,
 }: {
@@ -369,10 +372,12 @@ function UserDialog({
   mode: "create" | "edit";
   user: ListedUser | null;
   actorRole: UserRole;
+  clients: ListedUser[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const [fullName, setFullName] = useState("");
+  const [clientId, setClientId] = useState("");
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [financeEmail, setFinanceEmail] = useState("");
@@ -392,6 +397,7 @@ function UserDialog({
     setCreatedOrgId(null);
     setCreatedUserId(null);
     setEmailFailed(false);
+    setClientId("");
     if (mode === "edit" && user) {
       setFullName(user.fullName);
       setEmail(user.email);
@@ -412,10 +418,15 @@ function UserDialog({
 
   const showPermissions = (mode === "create" && actorRole === "client_admin") || (mode === "edit" && user?.role === "client_user");
   const simpleAccess = actorRole === "client_admin" || user?.role === "client_user";
+  const chooseClient = mode === "create" && actorRole === "master" && kind === "client";
   const contact = { whatsapp, financeEmail: financeSame ? email : financeEmail, financeEmailSame: financeSame };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chooseClient && !clientId) {
+      setFormError(clients.length === 0 ? "Nenhum cliente cadastrado para selecionar." : "Selecione o cliente.");
+      return;
+    }
     if (createdUserId) {
       setSaving(true);
       setFormError("");
@@ -483,7 +494,29 @@ function UserDialog({
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="user-name">Nome</Label>
-            <Input id="user-name" value={fullName} onChange={(event) => setFullName(event.target.value)} required minLength={2} />
+            {chooseClient ? (
+              <Select
+                {...(clientId ? { value: clientId } : {})}
+                onValueChange={(value) => {
+                  setClientId(value);
+                  setFullName(clients.find((item) => item.id === value)?.fullName ?? "");
+                }}
+                disabled={clients.length === 0}
+              >
+                <SelectTrigger id="user-name" className="w-full">
+                  <SelectValue placeholder={clients.length === 0 ? "Nenhum cliente cadastrado" : "Selecione o cliente"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input id="user-name" value={fullName} onChange={(event) => setFullName(event.target.value)} required minLength={2} />
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="user-email">E-mail</Label>
@@ -538,6 +571,10 @@ function UserDialog({
               organizationId={mode === "edit" ? user?.organizationId ?? null : createdOrgId}
               prepareOrganization={async () => {
                 if (mode !== "create") return null;
+                if (!fullName.trim()) {
+                  setFormError("Selecione o cliente.");
+                  return null;
+                }
                 const result = await createUserFn({ data: { fullName, email, ...contact, kind: "client", sendEmail: false } });
                 if (!result.ok || !result.data.organizationId) {
                   setFormError(result.ok ? "O cliente foi criado sem empresa." : result.message);

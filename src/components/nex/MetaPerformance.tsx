@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,7 +181,10 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
             view.campaigns.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada nesta conta no período.</p>
             ) : (
-              <ResultsChart rows={selectedCampaign ? [selectedCampaign] : view.campaigns} currency={view.currency} />
+              <>
+                <EvolutionChart series={view.series} selectedId={selectedCampaign?.id ?? null} />
+                <ResultsChart rows={selectedCampaign ? [selectedCampaign] : view.campaigns} currency={view.currency} />
+              </>
             )
           )}
           {mode === "campaigns" && (
@@ -218,15 +221,113 @@ function costPerResult(row: MetaCampaignRow) {
   return row.spend / row.results;
 }
 
-function shortCampaignName(name: string) {
-  const clean = name.replace(/\s+/g, " ").trim();
-  return clean.length > 22 ? `${clean.slice(0, 20)}…` : clean;
+function wrapText(value: string, chars: number) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length <= chars) return [clean];
+  const lines: string[] = [];
+  let rest = clean;
+  while (rest.length > chars) {
+    let cut = rest.lastIndexOf(" ", chars);
+    if (cut < Math.floor(chars * 0.55)) cut = chars;
+    lines.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) lines.push(rest);
+  return lines;
+}
+
+const lineColors = ["var(--primary)", "var(--info)", "var(--success)", "var(--warning)", "var(--cyan)", "var(--destructive)"];
+
+function lineColor(index: number) {
+  return lineColors[index] ?? `oklch(0.62 0.16 ${(index * 47) % 360})`;
+}
+
+function dayLabel(iso: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+function EvolutionChart({ series, selectedId }: { series: MetaPerformanceView["series"]; selectedId: string | null }) {
+  const lines = (selectedId ? series.campaigns.filter((item) => item.id === selectedId) : series.campaigns).map((item, index) => ({
+    ...item,
+    color: lineColor(series.campaigns.findIndex((campaign) => campaign.id === item.id) >= 0 ? series.campaigns.findIndex((campaign) => campaign.id === item.id) : index),
+  }));
+  if (lines.length === 0 || series.points.length === 0) return null;
+  const labels = new Set(lines.map((item) => item.resultLabel));
+  const subtitle = labels.size === 1 ? `${[...labels][0]} ao longo dos dias` : "Resultados ao longo dos dias";
+  const data = series.points.map((point) => {
+    const row: Record<string, string | number> = { date: point.date, label: dayLabel(point.date) };
+    for (const line of lines) row[line.id] = point.values[line.id] ?? 0;
+    return row;
+  });
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <h2 className="font-display text-lg font-semibold">Evolução dos resultados</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+      <div className="mt-4 h-80 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={24} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={36} />
+            <Tooltip
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                return (
+                  <div className="min-w-48 rounded-md border bg-popover px-3 py-2.5 text-popover-foreground shadow-sm">
+                    <p className="mb-2 border-b pb-2 text-xs font-semibold">{label}</p>
+                    <div className="space-y-1.5 text-xs">
+                      {payload.map((item) => (
+                        <div key={String(item.dataKey)} className="flex justify-between gap-5">
+                          <span className="text-muted-foreground">{lines.find((line) => line.id === item.dataKey)?.name ?? item.name}</span>
+                          <strong>{integer(Number(item.value ?? 0))}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }}
+            />
+            <Legend
+              content={() => (
+                <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  {lines.map((line) => (
+                    <li key={line.id} className="flex max-w-full items-center gap-1.5" title={line.name}>
+                      <span className="size-2 shrink-0 rounded-full" style={{ background: line.color }} />
+                      <span className="truncate">{line.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            />
+            {lines.map((line) => (
+              <Line key={line.id} type="monotone" dataKey={line.id} name={line.name} stroke={line.color} strokeWidth={2} dot={data.length <= 31} activeDot={{ r: 4 }} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
 }
 
 function ResultsChart({ rows, currency }: { rows: MetaCampaignRow[]; currency: string }) {
+  const frame = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(640);
+  useEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    const update = () => setWidth(element.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const slot = Math.max(140, width / Math.max(rows.length, 1));
+  const chars = Math.max(12, Math.floor((slot - 20) / 6.4));
+  const maxLines = Math.min(3, Math.max(1, ...rows.map((row) => wrapText(row.name, chars).length)));
   const data = rows.map((row) => ({
-    name: shortCampaignName(row.name),
-    fullName: row.name,
+    name: row.name,
     resultados: row.results,
     custo: costPerResult(row),
   }));
@@ -234,44 +335,71 @@ function ResultsChart({ rows, currency }: { rows: MetaCampaignRow[]; currency: s
     <section className="rounded-lg border bg-card p-5">
       <h2 className="font-display text-lg font-semibold">Resultados entre campanhas</h2>
       <p className="mt-1 text-sm text-muted-foreground">Volume de resultados e custo por resultado.</p>
-      <div className="mt-4 h-80 w-full overflow-x-auto">
-        <div className="h-full" style={{ minWidth: Math.max(320, rows.length * 88) }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} interval={0} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={36} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={48} />
-              <Tooltip
-                cursor={{ fill: "var(--muted)", fillOpacity: 0.55 }}
-                content={({ active, payload }) => {
-                  const point = payload?.[0]?.payload as { fullName?: string; resultados?: number; custo?: number } | undefined;
-                  if (!active || !point) return null;
-                  return (
-                    <div className="min-w-48 rounded-md border bg-popover px-3 py-2.5 text-popover-foreground shadow-sm">
-                      <p className="mb-2 border-b pb-2 text-xs font-semibold">{point.fullName}</p>
-                      <div className="space-y-1.5 text-xs">
-                        <div className="flex justify-between gap-5">
-                          <span className="text-muted-foreground">Resultados</span>
-                          <strong>{integer(point.resultados ?? 0)}</strong>
-                        </div>
-                        <div className="flex justify-between gap-5">
-                          <span className="text-muted-foreground">Custo por resultado</span>
-                          <strong>{money(point.custo ?? 0, currency)}</strong>
-                        </div>
+      <div ref={frame} className="mt-4 h-96 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: maxLines * 16 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis
+              dataKey="name"
+              interval={0}
+              tickLine={false}
+              axisLine={false}
+              tick={(props: { x?: number; y?: number; payload?: { value?: string } }) => (
+                <CampaignTick {...props} chars={chars} slot={slot} />
+              )}
+            />
+            <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={36} />
+            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={48} />
+            <Tooltip
+              cursor={{ fill: "var(--muted)", fillOpacity: 0.55 }}
+              content={({ active, payload }) => {
+                const point = payload?.[0]?.payload as { name?: string; resultados?: number; custo?: number } | undefined;
+                if (!active || !point) return null;
+                return (
+                  <div className="min-w-48 max-w-sm rounded-md border bg-popover px-3 py-2.5 text-popover-foreground shadow-sm">
+                    <p className="mb-2 border-b pb-2 text-xs font-semibold">{point.name}</p>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between gap-5">
+                        <span className="text-muted-foreground">Resultados</span>
+                        <strong>{integer(point.resultados ?? 0)}</strong>
+                      </div>
+                      <div className="flex justify-between gap-5">
+                        <span className="text-muted-foreground">Custo por resultado</span>
+                        <strong>{money(point.custo ?? 0, currency)}</strong>
                       </div>
                     </div>
-                  );
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar yAxisId="left" dataKey="resultados" name="Resultados" fill="var(--primary)" radius={[5, 5, 0, 0]} />
-              <Bar yAxisId="right" dataKey="custo" name="Custo por resultado" fill="var(--info)" radius={[5, 5, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+                  </div>
+                );
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar yAxisId="left" dataKey="resultados" name="Resultados" fill="var(--primary)" radius={[5, 5, 0, 0]} />
+            <Bar yAxisId="right" dataKey="custo" name="Custo por resultado" fill="var(--info)" radius={[5, 5, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </section>
+  );
+}
+
+function CampaignTick({ x = 0, y = 0, payload, chars, slot }: { x?: number; y?: number; payload?: { value?: string }; chars: number; slot: number }) {
+  const name = payload?.value ?? "";
+  const wrapped = wrapText(name, chars);
+  const visible = wrapped.slice(0, 3);
+  if (wrapped.length > visible.length && visible.length > 0) {
+    const last = visible[visible.length - 1] ?? "";
+    visible[visible.length - 1] = `${last.slice(0, Math.max(1, chars - 1))}…`;
+  }
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <title>{name}</title>
+      <rect x={-slot / 2} y={4} width={slot} height={visible.length * 14 + 6} fill="transparent" />
+      {visible.map((line, index) => (
+        <text key={index} dy={16 + index * 14} textAnchor="middle" fill="var(--muted-foreground)" fontSize={11}>
+          {line}
+        </text>
+      ))}
+    </g>
   );
 }
 

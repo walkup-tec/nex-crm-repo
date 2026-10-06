@@ -34,6 +34,11 @@ export type MetaKpis = {
   ctr: number | null;
 };
 
+export type MetaResultSeries = {
+  campaigns: { id: string; name: string; resultLabel: string }[];
+  points: { date: string; values: Record<string, number> }[];
+};
+
 export type MetaCampaignRow = {
   id: string;
   name: string;
@@ -61,4 +66,5 @@ export type MetaPerformanceView = {
   period: MetaPeriod;
   kpis: MetaKpis | null;
   campaigns: MetaCampaignRow[];
+  series: MetaResultSeries;
 };

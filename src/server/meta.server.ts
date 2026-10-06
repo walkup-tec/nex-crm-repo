@@ -7,6 +7,7 @@ import type {
   MetaConnectionView,
   MetaKpis,
   MetaPeriod,
+  MetaResultSeries,
   MetaPerformanceView,
 } from "@/lib/meta-access";
 
@@ -534,6 +535,7 @@ function actionLabel(type: string | undefined) {
     initiate_checkout: "Inícios de checkout",
   };
   if (!type) return "Resultados";
+  if (type.includes("messaging_conversation") || type.includes("messaging_first_reply")) return "Conversas";
   return labels[type] ?? "Resultados";
 }
 
@@ -546,6 +548,7 @@ function metricsOf(insight: GraphInsight | undefined) {
   const cpc = insight?.cpc ? amount(insight.cpc) : clicks > 0 ? spend / clicks : null;
   let results = clicks;
   let resultLabel = "Cliques";
+  let resultActionType: string | null = null;
   let bestValue = 0;
   for (const action of insight?.actions ?? []) {
     const value = amount(action.value);
@@ -553,9 +556,10 @@ function metricsOf(insight: GraphInsight | undefined) {
       bestValue = value;
       results = value;
       resultLabel = actionLabel(action.action_type);
+      resultActionType = action.action_type ?? null;
     }
   }
-  return { reach, impressions, clicks, spend, ctr, cpc, results, resultLabel };
+  return { reach, impressions, clicks, spend, ctr, cpc, results, resultLabel, resultActionType };
 }
 
 function campaignStatus(raw: string | undefined): { label: string; group: MetaCampaignRow["statusGroup"] } {
@@ -568,6 +572,7 @@ function campaignStatus(raw: string | undefined): { label: string; group: MetaCa
 
 async function collectCampaigns(version: string, token: string, accountId: string, period: MetaPeriod) {
   const rows: MetaCampaignRow[] = [];
+  const actionTypes = new Map<string, string | null>();
   let next: string | null = null;
   const fields = `id,name,effective_status,${campaignInsightField(period)}`;
   for (let page = 0; page < 5; page += 1) {
@@ -591,11 +596,82 @@ async function collectCampaigns(version: string, token: string, accountId: strin
         cpc: stats.cpc,
         ctr: stats.ctr,
       });
+      actionTypes.set(item.id, stats.resultActionType);
     }
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
     if (!next) break;
   }
-  return rows;
+  return { rows, actionTypes };
+}
+
+function nextDay(iso: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function daysFrom(start: string, end: string) {
+  const days: string[] = [];
+  let cursor = start;
+  while (cursor <= end && days.length < 1200) {
+    days.push(cursor);
+    cursor = nextDay(cursor);
+  }
+  return days;
+}
+
+const emptySeries: MetaResultSeries = { campaigns: [], points: [] };
+
+async function collectDaily(
+  version: string,
+  token: string,
+  accountId: string,
+  period: MetaPeriod,
+  campaigns: MetaCampaignRow[],
+  actionTypes: Map<string, string | null>,
+): Promise<MetaResultSeries> {
+  if (campaigns.length === 0) return emptySeries;
+  const known = new Set(campaigns.map((row) => row.id));
+  const totals = new Map<string, Map<string, number>>();
+  let next: string | null = null;
+  for (let page = 0; page < 20; page += 1) {
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(version, `/act_${accountId}/insights`, token, {
+          level: "campaign",
+          fields: "campaign_id,actions,clicks,date_start",
+          time_increment: "1",
+          limit: "500",
+          ...insightQuery(period),
+        });
+    for (const item of body.data ?? []) {
+      const row = item as GraphInsight & { campaign_id?: string; date_start?: string };
+      if (!row.campaign_id || !row.date_start || !known.has(row.campaign_id) || !/^\d{4}-\d{2}-\d{2}$/.test(row.date_start)) continue;
+      const actionType = actionTypes.get(row.campaign_id);
+      const action = actionType ? row.actions?.find((entry) => entry.action_type === actionType) : undefined;
+      const value = actionType ? amount(action?.value) : amount(row.clicks);
+      const byCampaign = totals.get(row.date_start) ?? new Map<string, number>();
+      byCampaign.set(row.campaign_id, (byCampaign.get(row.campaign_id) ?? 0) + value);
+      totals.set(row.date_start, byCampaign);
+    }
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  const found = [...totals.keys()].sort();
+  const first = found[0];
+  const last = found[found.length - 1];
+  const dates = period.mode === "custom" ? daysFrom(period.since, period.until) : first && last ? daysFrom(first, last) : [];
+  return {
+    campaigns: campaigns.map((row) => ({ id: row.id, name: row.name, resultLabel: row.resultLabel })),
+    points: dates.map((date) => {
+      const byCampaign = totals.get(date);
+      const values: Record<string, number> = {};
+      for (const row of campaigns) values[row.id] = byCampaign?.get(row.id) ?? 0;
+      return { date, values };
+    }),
+  };
 }
 
 async function viewerContext(userId: string) {
@@ -638,6 +714,7 @@ function performanceBase(
     period,
     kpis: null,
     campaigns: [],
+    series: emptySeries,
   };
 }
 
@@ -703,7 +780,14 @@ export async function getMetaPerformance(
       ctr: stats.ctr,
     };
     view.kpis = kpis;
-    view.campaigns = await collectCampaigns(version, token, selected.external_account_id, period);
+    const collected = await collectCampaigns(version, token, selected.external_account_id, period);
+    view.campaigns = collected.rows;
+    try {
+      view.series = await collectDaily(version, token, selected.external_account_id, period, collected.rows, collected.actionTypes);
+    } catch (seriesError) {
+      console.error("meta_daily", seriesError instanceof Error ? seriesError.name : "error");
+      view.series = emptySeries;
+    }
     view.lastError = null;
     return view;
   } catch (error) {
@@ -714,6 +798,7 @@ export async function getMetaPerformance(
       : message;
     view.kpis = null;
     view.campaigns = [];
+    view.series = emptySeries;
     return view;
   }
 }

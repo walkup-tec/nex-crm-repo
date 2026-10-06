@@ -41,6 +41,7 @@ export type OwnFinance = {
   overdueDays: number;
   charges: FinanceCharge[];
   openChargeId: string | null;
+  overdueChargeId: string | null;
   notice: string;
 };
 

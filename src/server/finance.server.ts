@@ -290,8 +290,10 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const contract = contracts[0] ?? null;
   const charges = rows.map((row) => toCharge(row, names));
   const today = todayKey();
-  const open = charges.find((item) => item.status === "overdue") ?? charges.find((item) => item.status === "pending") ?? null;
-  const overdueDays = open?.status === "overdue" ? Math.max(daysPast(open.dueDate, today), 1) : 0;
+  const overdue = charges.filter((item) => item.status === "overdue").sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+  const oldestOverdue = overdue[0] ?? null;
+  const open = oldestOverdue ?? charges.find((item) => item.status === "pending") ?? null;
+  const overdueDays = oldestOverdue ? Math.max(daysPast(oldestOverdue.dueDate, today), 1) : 0;
   const situation = overdueDays > 0 ? "Em atraso" : open ? "Em aberto" : "Em dia";
   return {
     clientName: names.get(actor.organizationId) ?? actor.fullName,
@@ -304,6 +306,7 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     overdueDays,
     charges,
     openChargeId: open?.id ?? null,
+    overdueChargeId: oldestOverdue?.id ?? null,
     notice,
   };
 }

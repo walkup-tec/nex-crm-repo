@@ -12,6 +12,37 @@ import { getMetaPerformanceFn, listMasterCampaignsFn } from "@/lib/meta.function
 
 const initialPeriod: MetaPeriod = { mode: "total" };
 
+function periodsMatch(left: MetaPeriod, right: MetaPeriod) {
+  if (left.mode === "total" || right.mode === "total") return left.mode === right.mode;
+  return left.since === right.since && left.until === right.until;
+}
+
+function chartCacheKey(organizationId: string, period: MetaPeriod) {
+  return period.mode === "custom" ? `${organizationId}|${period.since}|${period.until}` : `${organizationId}|total`;
+}
+
+function chartRequestData(organizationId: string, period: MetaPeriod) {
+  const data: { organizationId: string; period: string; since?: string; until?: string } = {
+    organizationId,
+    period: period.mode,
+  };
+  if (period.mode === "custom") {
+    data.since = period.since;
+    data.until = period.until;
+  }
+  return data;
+}
+
+function periodCaption(period: MetaPeriod) {
+  if (period.mode === "total") return "Total";
+  const label = (iso: string) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!match) return iso;
+    return `${match[3]}/${match[2]}/${match[1]}`;
+  };
+  return `${label(period.since)} – ${label(period.until)}`;
+}
+
 function integer(value: number) {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
@@ -60,6 +91,12 @@ export function MasterCampaigns() {
     }
     setPeriod(result.data.period);
     setView(result.data);
+    setSelected((current) => {
+      if (!current) return null;
+      return (
+        result.data.campaigns.find((row) => row.organizationId === current.organizationId && row.id === current.id) ?? current
+      );
+    });
   };
 
   useEffect(() => {
@@ -67,19 +104,29 @@ export function MasterCampaigns() {
   }, []);
 
   const openCampaign = (row: MasterCampaignRow) => {
-    setSelected(row);
+    const cached = chartCache.current.get(chartCacheKey(row.organizationId, period));
     setChartError("");
-    const cached = chartCache.current.get(row.organizationId);
+    setChartView(cached ?? null);
+    setChartLoading(!cached);
+    setSelected(row);
+  };
+
+  useEffect(() => {
+    if (!selected) return;
+    const key = chartCacheKey(selected.organizationId, period);
+    const cached = chartCache.current.get(key);
     if (cached) {
       setChartView(cached);
       setChartLoading(false);
+      setChartError("");
       return;
     }
     const ticket = chartRequest.current + 1;
     chartRequest.current = ticket;
     setChartView(null);
     setChartLoading(true);
-    void getMetaPerformanceFn({ data: { organizationId: row.organizationId, period: "total" } })
+    setChartError("");
+    void getMetaPerformanceFn({ data: chartRequestData(selected.organizationId, period) })
       .then((result) => {
         if (ticket !== chartRequest.current) return;
         setChartLoading(false);
@@ -87,7 +134,7 @@ export function MasterCampaigns() {
           setChartError(result.message);
           return;
         }
-        chartCache.current.set(row.organizationId, result.data);
+        chartCache.current.set(key, result.data);
         setChartView(result.data);
       })
       .catch(() => {
@@ -95,7 +142,7 @@ export function MasterCampaigns() {
         setChartLoading(false);
         setChartError("Não foi possível carregar os gráficos desta campanha.");
       });
-  };
+  }, [selected, period]);
 
   const rows = view?.campaigns ?? [];
   const shown = useMemo(() => {
@@ -228,7 +275,8 @@ export function MasterCampaigns() {
           <DialogHeader>
             <DialogTitle className="pr-8">{selected?.name}</DialogTitle>
             <DialogDescription>
-              {selected ? `${selected.clientName} • ${selected.accountName}` : ""} • somente leitura
+              {selected ? `${selected.clientName} • ${selected.accountName} • ` : ""}
+              {periodCaption(period)} • somente leitura
             </DialogDescription>
           </DialogHeader>
           {selected && (
@@ -248,9 +296,9 @@ export function MasterCampaigns() {
               ))}
             </div>
           )}
-          {chartLoading && <div className="h-80 animate-pulse rounded-lg bg-muted" />}
           {chartError && <p className="text-sm text-destructive">{chartError}</p>}
-          {selected && chartView && !chartLoading && !chartError && <CampaignCharts row={selected} view={chartView} />}
+          {selected && !chartError && !chartsMatch(chartView, selected, period) && <div className="h-80 animate-pulse rounded-lg bg-muted" />}
+          {selected && chartsMatch(chartView, selected, period) && !chartError && <CampaignCharts row={selected} view={chartView} periodLabel={periodCaption(period)} />}
           <p className="text-sm text-muted-foreground">A campanha não pode ser alterada pelo NEX Ads.</p>
         </DialogContent>
       </Dialog>
@@ -258,18 +306,22 @@ export function MasterCampaigns() {
   );
 }
 
-function CampaignCharts({ row, view }: { row: MasterCampaignRow; view: MetaPerformanceView }) {
+function chartsMatch(view: MetaPerformanceView | null, row: MasterCampaignRow, period: MetaPeriod): view is MetaPerformanceView {
+  return Boolean(view && view.organizationId === row.organizationId && periodsMatch(view.period, period));
+}
+
+function CampaignCharts({ row, view, periodLabel }: { row: MasterCampaignRow; view: MetaPerformanceView; periodLabel: string }) {
   const campaign = view.campaigns.find((item) => item.id === row.id) ?? null;
   const hasLine = Boolean(campaign && view.series.points.length > 0 && view.series.campaigns.some((item) => item.id === campaign.id));
-  if (!campaign) return <p className="text-sm text-muted-foreground">Não há indicadores desta campanha no período máximo.</p>;
+  if (!campaign) return <p className="text-sm text-muted-foreground">Não há indicadores desta campanha no período {periodLabel}.</p>;
   return (
     <div className="space-y-5">
       {hasLine ? (
         <EvolutionChart series={view.series} selectedId={campaign.id} />
       ) : (
-        <p className="text-sm text-muted-foreground">Não há evolução diária desta campanha no período máximo.</p>
+        <p className="text-sm text-muted-foreground">Não há evolução diária desta campanha no período {periodLabel}.</p>
       )}
-      <ResultsChart rows={[campaign]} currency={view.currency || row.currency} title="Resultados da campanha" description="Volume de resultados e custo por resultado no período máximo." />
+      <ResultsChart rows={[campaign]} currency={view.currency || row.currency} title="Resultados da campanha" description={`Volume de resultados e custo por resultado no período ${periodLabel}.`} />
     </div>
   );
 }

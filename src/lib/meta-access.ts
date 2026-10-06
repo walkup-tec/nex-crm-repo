@@ -27,11 +27,14 @@ export type MetaPeriod = { mode: "total" } | { mode: "custom"; since: string; un
 export type MetaKpis = {
   reach: number;
   impressions: number;
+  clicks: number;
   results: number;
   resultLabel: string;
   spend: number;
   cpc: number | null;
   ctr: number | null;
+  cpm: number | null;
+  frequency: number | null;
 };
 
 export type MetaResultSeries = {
@@ -46,11 +49,30 @@ export type MetaCampaignRow = {
   statusGroup: "Ativa" | "Inativa" | "Encerrada" | "Outro";
   reach: number;
   impressions: number;
+  clicks: number;
   results: number;
   resultLabel: string;
   spend: number;
   cpc: number | null;
   ctr: number | null;
+};
+
+export type MetaDayPoint = {
+  date: string;
+  campaignId: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  results: number;
+};
+
+export type MetaCampaignSnapshot = {
+  id: string;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  results: number;
 };
 
 export type MasterCampaignRow = MetaCampaignRow & {
@@ -79,6 +101,10 @@ export type MetaPerformanceView = {
   currency: string;
   period: MetaPeriod;
   kpis: MetaKpis | null;
+  previous: MetaKpis | null;
+  previousReady: boolean;
+  previousCampaigns: MetaCampaignSnapshot[];
   campaigns: MetaCampaignRow[];
   series: MetaResultSeries;
+  days: MetaDayPoint[];
 };

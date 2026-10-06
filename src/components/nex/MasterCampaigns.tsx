@@ -1,13 +1,30 @@
 import { Eye } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EvolutionChart, ResultsChart } from "@/components/nex/MetaPerformance";
+import { EvolutionChart } from "@/components/nex/MetaPerformance";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { MasterCampaignRow, MasterCampaignsView, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type {
+  MasterCampaignRow,
+  MasterCampaignsView,
+  MetaPerformanceView,
+  MetaPeriod,
+} from "@/lib/meta-access";
 import { getMetaPerformanceFn, listMasterCampaignsFn } from "@/lib/meta.functions";
 
 const initialPeriod: MetaPeriod = { mode: "total" };
@@ -18,7 +35,9 @@ function periodsMatch(left: MetaPeriod, right: MetaPeriod) {
 }
 
 function chartCacheKey(organizationId: string, period: MetaPeriod) {
-  return period.mode === "custom" ? `${organizationId}|${period.since}|${period.until}` : `${organizationId}|total`;
+  return period.mode === "custom"
+    ? `${organizationId}|${period.since}|${period.until}`
+    : `${organizationId}|total`;
 }
 
 function chartRequestData(organizationId: string, period: MetaPeriod) {
@@ -61,9 +80,18 @@ function datesBetween(since: string, until: string) {
   return days;
 }
 
-function seriesForSelection(row: MasterCampaignRow, view: MetaPerformanceView, period: MetaPeriod): MetaPerformanceView["series"] {
-  const values = new Map(view.series.points.map((point) => [point.date, point.values[row.id] ?? 0]));
-  const dates = period.mode === "custom" ? datesBetween(period.since, period.until) : view.series.points.map((point) => point.date);
+function seriesForSelection(
+  row: MasterCampaignRow,
+  view: MetaPerformanceView,
+  period: MetaPeriod,
+): MetaPerformanceView["series"] {
+  const values = new Map(
+    view.series.points.map((point) => [point.date, point.values[row.id] ?? 0]),
+  );
+  const dates =
+    period.mode === "custom"
+      ? datesBetween(period.since, period.until)
+      : view.series.points.map((point) => point.date);
   return {
     campaigns: [{ id: row.id, name: row.name, resultLabel: row.resultLabel }],
     points: dates.map((date) => ({ date, values: { [row.id]: values.get(date) ?? 0 } })),
@@ -121,7 +149,9 @@ export function MasterCampaigns() {
     setSelected((current) => {
       if (!current) return null;
       return (
-        result.data.campaigns.find((row) => row.organizationId === current.organizationId && row.id === current.id) ?? current
+        result.data.campaigns.find(
+          (row) => row.organizationId === current.organizationId && row.id === current.id,
+        ) ?? current
       );
     });
   };
@@ -176,7 +206,10 @@ export function MasterCampaigns() {
     const needle = query.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesClient = clientId === "all" || row.organizationId === clientId;
-      const matchesQuery = !needle || row.name.toLowerCase().includes(needle) || row.clientName.toLowerCase().includes(needle);
+      const matchesQuery =
+        !needle ||
+        row.name.toLowerCase().includes(needle) ||
+        row.clientName.toLowerCase().includes(needle);
       const matchesStatus = status === "all" || row.statusGroup === status;
       return matchesClient && matchesQuery && matchesStatus;
     });
@@ -186,7 +219,11 @@ export function MasterCampaigns() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="relative min-w-0 flex-1">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar campanha ou cliente" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar campanha ou cliente"
+          />
         </div>
         <Select value={clientId} onValueChange={setClientId}>
           <SelectTrigger className="w-full sm:w-64" aria-label="Cliente">
@@ -223,8 +260,16 @@ export function MasterCampaigns() {
         </p>
       ))}
 
-      {view && rows.length === 0 && !loading && <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada nas contas vinculadas.</p>}
-      {view && rows.length > 0 && shown.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada com esse filtro.</p>}
+      {view && rows.length === 0 && !loading && (
+        <p className="text-sm text-muted-foreground">
+          Nenhuma campanha encontrada nas contas vinculadas.
+        </p>
+      )}
+      {view && rows.length > 0 && shown.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Nenhuma campanha encontrada com esse filtro.
+        </p>
+      )}
 
       {shown.length > 0 && (
         <>
@@ -232,7 +277,17 @@ export function MasterCampaigns() {
             <table className="w-full min-w-[980px] text-sm">
               <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                 <tr>
-                  {["Cliente", "Campanha", "Status", "Alcance", "Impressões", "Resultados", "Custo / resultado", "Gasto", ""].map((heading) => (
+                  {[
+                    "Cliente",
+                    "Campanha",
+                    "Status",
+                    "Alcance",
+                    "Impressões",
+                    "Resultados",
+                    "Custo / resultado",
+                    "Gasto",
+                    "",
+                  ].map((heading) => (
                     <th key={heading || "acao"} className="px-4 py-3 font-medium">
                       {heading}
                     </th>
@@ -250,12 +305,22 @@ export function MasterCampaigns() {
                     <td className="px-4 py-4">{integer(row.reach)}</td>
                     <td className="px-4 py-4">{integer(row.impressions)}</td>
                     <td className="px-4 py-4">
-                      <strong>{integer(row.results)}</strong> <span className="text-xs text-muted-foreground">{row.resultLabel}</span>
+                      <strong>{integer(row.results)}</strong>{" "}
+                      <span className="text-xs text-muted-foreground">{row.resultLabel}</span>
                     </td>
-                    <td className="px-4 py-4">{costPerResult(row) == null ? "—" : money(costPerResult(row) ?? 0, row.currency)}</td>
+                    <td className="px-4 py-4">
+                      {costPerResult(row) == null
+                        ? "—"
+                        : money(costPerResult(row) ?? 0, row.currency)}
+                    </td>
                     <td className="px-4 py-4">{money(row.spend, row.currency)}</td>
                     <td className="px-4 py-4">
-                      <Button variant="ghost" size="icon" aria-label={`Ver ${row.name}`} onClick={() => openCampaign(row)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Ver ${row.name}`}
+                        onClick={() => openCampaign(row)}
+                      >
                         <Eye />
                       </Button>
                     </td>
@@ -275,7 +340,12 @@ export function MasterCampaigns() {
                       <StatusBadge status={row.status} group={row.statusGroup} />
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" aria-label={`Ver ${row.name}`} onClick={() => openCampaign(row)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Ver ${row.name}`}
+                    onClick={() => openCampaign(row)}
+                  >
                     <Eye />
                   </Button>
                 </div>
@@ -313,7 +383,12 @@ export function MasterCampaigns() {
                 ["Alcance", integer(selected.reach)],
                 ["Impressões", integer(selected.impressions)],
                 ["Resultados", `${integer(selected.results)} ${selected.resultLabel}`],
-                ["Custo por resultado", costPerResult(selected) == null ? "—" : money(costPerResult(selected) ?? 0, selected.currency)],
+                [
+                  "Custo por resultado",
+                  costPerResult(selected) == null
+                    ? "—"
+                    : money(costPerResult(selected) ?? 0, selected.currency),
+                ],
                 ["Gasto", money(selected.spend, selected.currency)],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg border p-4">
@@ -324,20 +399,40 @@ export function MasterCampaigns() {
             </div>
           )}
           {chartError && <p className="text-sm text-destructive">{chartError}</p>}
-          {selected && !chartError && !chartsMatch(chartView, selected, period) && <div className="h-80 animate-pulse rounded-lg bg-muted" />}
-          {selected && chartsMatch(chartView, selected, period) && !chartError && <CampaignCharts row={selected} view={chartView} period={period} />}
-          <p className="text-sm text-muted-foreground">A campanha não pode ser alterada pelo NEX Ads.</p>
+          {selected && !chartError && !chartsMatch(chartView, selected, period) && (
+            <div className="h-80 animate-pulse rounded-lg bg-muted" />
+          )}
+          {selected && chartsMatch(chartView, selected, period) && !chartError && (
+            <CampaignCharts row={selected} view={chartView} period={period} />
+          )}
+          <p className="text-sm text-muted-foreground">
+            A campanha não pode ser alterada pelo NEX Ads.
+          </p>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function chartsMatch(view: MetaPerformanceView | null, row: MasterCampaignRow, period: MetaPeriod): view is MetaPerformanceView {
-  return Boolean(view && view.organizationId === row.organizationId && periodsMatch(view.period, period));
+function chartsMatch(
+  view: MetaPerformanceView | null,
+  row: MasterCampaignRow,
+  period: MetaPeriod,
+): view is MetaPerformanceView {
+  return Boolean(
+    view && view.organizationId === row.organizationId && periodsMatch(view.period, period),
+  );
 }
 
-function CampaignCharts({ row, view, period }: { row: MasterCampaignRow; view: MetaPerformanceView; period: MetaPeriod }) {
+function CampaignCharts({
+  row,
+  view,
+  period,
+}: {
+  row: MasterCampaignRow;
+  view: MetaPerformanceView;
+  period: MetaPeriod;
+}) {
   const periodLabel = periodCaption(period);
   const series = seriesForSelection(row, view, period);
   return (
@@ -345,14 +440,26 @@ function CampaignCharts({ row, view, period }: { row: MasterCampaignRow; view: M
       {series.points.length > 0 ? (
         <EvolutionChart series={series} selectedId={row.id} />
       ) : (
-        <p className="text-sm text-muted-foreground">Não há evolução diária desta campanha no período {periodLabel}.</p>
+        <p className="text-sm text-muted-foreground">
+          Não há evolução diária desta campanha no período {periodLabel}.
+        </p>
       )}
-      <ResultsChart rows={[row]} currency={view.currency || row.currency} title="Resultados da campanha" description={`Volume de resultados e custo por resultado no período ${periodLabel}.`} />
+      <p className="text-sm text-muted-foreground">
+        {integer(row.results)} {row.resultLabel} · custo por resultado{" "}
+        {row.results > 0 ? money(row.spend / row.results, view.currency || row.currency) : "—"} no
+        período {periodLabel}.
+      </p>
     </div>
   );
 }
 
-function StatusBadge({ status, group }: { status: string; group: MasterCampaignRow["statusGroup"] }) {
+function StatusBadge({
+  status,
+  group,
+}: {
+  status: string;
+  group: MasterCampaignRow["statusGroup"];
+}) {
   const variant = group === "Ativa" ? "default" : group === "Encerrada" ? "secondary" : "outline";
   return <Badge variant={variant}>{status}</Badge>;
 }

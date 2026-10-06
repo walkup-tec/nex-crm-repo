@@ -5,6 +5,8 @@ import type {
   MetaBusinessView,
   MetaCampaignRow,
   MetaConnectionView,
+  MetaCampaignSnapshot,
+  MetaDayPoint,
   MetaKpis,
   MetaPeriod,
   MetaResultSeries,
@@ -37,7 +39,8 @@ function graphVersion() {
 function metaConfig() {
   const appId = process.env["META_APP_ID"];
   const appSecret = process.env["META_APP_SECRET"];
-  const redirectUri = process.env["META_REDIRECT_URI"] || "https://app.nexmeta.com.br/auth/meta/callback";
+  const redirectUri =
+    process.env["META_REDIRECT_URI"] || "https://app.nexmeta.com.br/auth/meta/callback";
   if (!appId || !appSecret) fail("A conexão com a Meta não está configurada no servidor.");
   return { appId, appSecret, redirectUri, version: graphVersion() };
 }
@@ -64,7 +67,10 @@ function decryptToken(payload: string) {
   try {
     const decipher = createDecipheriv("aes-256-gcm", tokenKey(), Buffer.from(iv, "base64url"));
     decipher.setAuthTag(Buffer.from(tag, "base64url"));
-    return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
+    return Buffer.concat([
+      decipher.update(Buffer.from(data, "base64url")),
+      decipher.final(),
+    ]).toString("utf8");
   } catch (error) {
     if (error instanceof Error && error.message.includes("configurada")) throw error;
     fail("A conexão Meta precisa ser refeita.");
@@ -73,7 +79,13 @@ function decryptToken(payload: string) {
 
 function missingSchema(message: string) {
   const text = message.toLowerCase();
-  return text.includes("meta_oauth_states") || text.includes("meta_connections") || text.includes("account_status") || text.includes("selected") || text.includes("connection_id");
+  return (
+    text.includes("meta_oauth_states") ||
+    text.includes("meta_connections") ||
+    text.includes("account_status") ||
+    text.includes("selected") ||
+    text.includes("connection_id")
+  );
 }
 
 function schemaFail(message: string): never {
@@ -88,7 +100,8 @@ function publicMetaError(error: GraphError | undefined, status: number) {
     return "A Meta limitou as consultas. Tente de novo em alguns minutos.";
   }
   if (code === 190) return "A conexão com a Meta expirou. Conecte novamente.";
-  if (code === 10 || code === 200 || code === 294) return "A autorização não inclui a permissão para ler as contas de anúncio.";
+  if (code === 10 || code === 200 || code === 294)
+    return "A autorização não inclui a permissão para ler as contas de anúncio.";
   return "A Meta não respondeu como esperado. Tente de novo.";
 }
 
@@ -100,7 +113,11 @@ type GraphInsight = {
   clicks?: string;
   ctr?: string;
   cpc?: string;
+  cpm?: string;
+  frequency?: string;
   actions?: InsightAction[];
+  campaign_id?: string;
+  date_start?: string;
 };
 type GraphCampaign = {
   id?: string;
@@ -130,7 +147,12 @@ async function graphFetch(url: URL): Promise<GraphBody> {
   return body;
 }
 
-async function graphGet(version: string, path: string, token: string, params: Record<string, string>): Promise<GraphBody> {
+async function graphGet(
+  version: string,
+  path: string,
+  token: string,
+  params: Record<string, string>,
+): Promise<GraphBody> {
   const url = new URL(`https://graph.facebook.com/${version}${path}`);
   url.searchParams.set("access_token", token);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
@@ -138,10 +160,15 @@ async function graphGet(version: string, path: string, token: string, params: Re
 }
 
 async function assertOrgAccess(userId: string, organizationId: string) {
-  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id, organization_id, is_blocked").eq("id", userId).maybeSingle(),
-    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
-  ]);
+  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] =
+    await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("id, organization_id, is_blocked")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+    ]);
   if (profileError) schemaFail(profileError.message);
   if (roleError) fail("Não foi possível confirmar o acesso.");
   if (!profile) fail("Seu perfil ainda não está ligado a um acesso.");
@@ -186,7 +213,10 @@ async function collectAdAccounts(version: string, token: string) {
   for (let page = 0; page < 5; page += 1) {
     const body: GraphBody = next
       ? await graphFetch(new URL(next))
-      : await graphGet(version, "/me/adaccounts", token, { fields: "id,name,account_id,account_status,currency", limit: "50" });
+      : await graphGet(version, "/me/adaccounts", token, {
+          fields: "id,name,account_id,account_status,currency",
+          limit: "50",
+        });
     for (const item of body.data ?? []) {
       const view = toView(item);
       if (view && !found.some((account) => account.accountId === view.accountId)) found.push(view);
@@ -200,7 +230,9 @@ async function collectAdAccounts(version: string, token: string) {
 async function connectionOf(organizationId: string) {
   const { data, error } = await supabaseAdmin
     .from("meta_connections")
-    .select("id, organization_id, status, connected_at, last_sync_at, last_error, access_token_encrypted, token_expires_at")
+    .select(
+      "id, organization_id, status, connected_at, last_sync_at, last_error, access_token_encrypted, token_expires_at",
+    )
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (error) schemaFail(error.message);
@@ -224,7 +256,14 @@ async function loadToken(organizationId: string) {
     fail("Conecte a Meta antes de consultar as contas de anúncio.");
   }
   if (connection.token_expires_at && new Date(connection.token_expires_at).getTime() < Date.now()) {
-    await supabaseAdmin.from("meta_connections").update({ status: "error", last_error: "A conexão com a Meta expirou.", updated_at: new Date().toISOString() }).eq("id", connection.id);
+    await supabaseAdmin
+      .from("meta_connections")
+      .update({
+        status: "error",
+        last_error: "A conexão com a Meta expirou.",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", connection.id);
     fail("A conexão com a Meta expirou. Conecte novamente.");
   }
   return { connection, token: decryptToken(connection.access_token_encrypted) };
@@ -270,19 +309,28 @@ async function exchangeCode(code: string) {
   try {
     const longLived = await graphFetch(extended);
     if (longLived.access_token) {
-      return { token: longLived.access_token, expiresIn: longLived.expires_in, version: config.version };
+      return {
+        token: longLived.access_token,
+        expiresIn: longLived.expires_in,
+        version: config.version,
+      };
     }
   } catch (error) {
     console.error("meta_extend", error instanceof Error ? error.name : "error");
   }
-  return { token: shortLived.access_token, expiresIn: shortLived.expires_in, version: config.version };
+  return {
+    token: shortLived.access_token,
+    expiresIn: shortLived.expires_in,
+    version: config.version,
+  };
 }
 
 export async function completeMetaOAuth(
   userId: string,
   input: { code?: string; state?: string; error?: string; errorReason?: string },
 ) {
-  if (input.error === "access_denied" || input.errorReason === "user_denied") fail("A autorização da Meta foi cancelada.");
+  if (input.error === "access_denied" || input.errorReason === "user_denied")
+    fail("A autorização da Meta foi cancelada.");
   if (input.error) fail("A Meta não concluiu a autorização.");
   if (!input.code || !input.state) fail("A autorização da Meta voltou incompleta.");
 
@@ -294,7 +342,8 @@ export async function completeMetaOAuth(
   if (error) schemaFail(error.message);
   if (!row || row.user_id !== userId) fail("Esta conexão da Meta não é válida. Comece de novo.");
   if (row.used_at) fail("Esta conexão da Meta já foi utilizada.");
-  if (new Date(row.expires_at).getTime() < Date.now()) fail("Esta conexão da Meta expirou. Comece de novo.");
+  if (new Date(row.expires_at).getTime() < Date.now())
+    fail("Esta conexão da Meta expirou. Comece de novo.");
 
   const { data: consumed, error: consumeError } = await supabaseAdmin
     .from("meta_oauth_states")
@@ -309,7 +358,9 @@ export async function completeMetaOAuth(
   const exchanged = await exchangeCode(input.code);
   const me = await graphGet(exchanged.version, "/me", exchanged.token, { fields: "id" });
   const now = new Date().toISOString();
-  const expiresAt = exchanged.expiresIn ? new Date(Date.now() + exchanged.expiresIn * 1000).toISOString() : null;
+  const expiresAt = exchanged.expiresIn
+    ? new Date(Date.now() + exchanged.expiresIn * 1000).toISOString()
+    : null;
   const payload = {
     organization_id: row.organization_id,
     connected_by: userId,
@@ -321,16 +372,30 @@ export async function completeMetaOAuth(
     updated_at: now,
     last_error: null,
   };
-  const { error: saveError } = await supabaseAdmin.from("meta_connections").upsert(payload, { onConflict: "organization_id" });
+  const { error: saveError } = await supabaseAdmin
+    .from("meta_connections")
+    .upsert(payload, { onConflict: "organization_id" });
   if (saveError) schemaFail(saveError.message);
   return { organizationId: row.organization_id };
 }
 
-export async function getMetaConnection(userId: string, organizationId: string): Promise<MetaConnectionView> {
+export async function getMetaConnection(
+  userId: string,
+  organizationId: string,
+): Promise<MetaConnectionView> {
   await assertOrgAccess(userId, organizationId);
-  const [connection, selected] = await Promise.all([connectionOf(organizationId), selectedAccount(organizationId)]);
+  const [connection, selected] = await Promise.all([
+    connectionOf(organizationId),
+    selectedAccount(organizationId),
+  ]);
   const storedStatus = connection?.status;
-  const status = storedStatus === "connected" || storedStatus === "error" || storedStatus === "disconnected" || storedStatus === "pending" ? storedStatus : "missing";
+  const status =
+    storedStatus === "connected" ||
+    storedStatus === "error" ||
+    storedStatus === "disconnected" ||
+    storedStatus === "pending"
+      ? storedStatus
+      : "missing";
   const base: MetaConnectionView = {
     status,
     connectedAt: connection?.connected_at ?? null,
@@ -344,7 +409,11 @@ export async function getMetaConnection(userId: string, organizationId: string):
   return base;
 }
 
-async function rememberAccounts(organizationId: string, connectionId: string, accounts: MetaAccountView[]) {
+async function rememberAccounts(
+  organizationId: string,
+  connectionId: string,
+  accounts: MetaAccountView[],
+) {
   const now = new Date().toISOString();
   for (const account of accounts) {
     const { error } = await supabaseAdmin.from("meta_accounts").upsert(
@@ -362,7 +431,10 @@ async function rememberAccounts(organizationId: string, connectionId: string, ac
     );
     if (error) schemaFail(error.message);
   }
-  await supabaseAdmin.from("meta_connections").update({ last_sync_at: now, updated_at: now, last_error: null, status: "connected" }).eq("id", connectionId);
+  await supabaseAdmin
+    .from("meta_connections")
+    .update({ last_sync_at: now, updated_at: now, last_error: null, status: "connected" })
+    .eq("id", connectionId);
 }
 
 export async function syncMetaAccounts(userId: string, organizationId: string) {
@@ -373,11 +445,18 @@ export async function syncMetaAccounts(userId: string, organizationId: string) {
   return getMetaConnection(userId, organizationId);
 }
 
-async function collectPages(version: string, token: string, path: string, params: Record<string, string>) {
+async function collectPages(
+  version: string,
+  token: string,
+  path: string,
+  params: Record<string, string>,
+) {
   const rows: NonNullable<GraphBody["data"]> = [];
   let next: string | null = null;
   for (let page = 0; page < 5; page += 1) {
-    const body: GraphBody = next ? await graphFetch(new URL(next)) : await graphGet(version, path, token, params);
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(version, path, token, params);
     rows.push(...(body.data ?? []));
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
     if (!next) break;
@@ -391,10 +470,16 @@ function businessDigits(value: string) {
   return digits;
 }
 
-export async function listMetaBusinesses(userId: string, organizationId: string): Promise<MetaBusinessView[]> {
+export async function listMetaBusinesses(
+  userId: string,
+  organizationId: string,
+): Promise<MetaBusinessView[]> {
   await assertOrgAccess(userId, organizationId);
   const { token } = await loadToken(organizationId);
-  const rows = await collectPages(graphVersion(), token, "/me/businesses", { fields: "id,name", limit: "50" });
+  const rows = await collectPages(graphVersion(), token, "/me/businesses", {
+    fields: "id,name",
+    limit: "50",
+  });
   const found: MetaBusinessView[] = [];
   for (const row of rows) {
     if (!row.id || !/^\d+$/.test(row.id) || found.some((item) => item.id === row.id)) continue;
@@ -403,18 +488,27 @@ export async function listMetaBusinesses(userId: string, organizationId: string)
   return found;
 }
 
-export async function listBusinessAdAccounts(userId: string, organizationId: string, businessId: string) {
+export async function listBusinessAdAccounts(
+  userId: string,
+  organizationId: string,
+  businessId: string,
+) {
   await assertOrgAccess(userId, organizationId);
   const portfolioId = businessDigits(businessId);
   const { token } = await loadToken(organizationId);
   const version = graphVersion();
   const businesses = await listMetaBusinesses(userId, organizationId);
-  if (!businesses.some((item) => item.id === portfolioId)) fail("Esse portfólio não está disponível nesta conexão.");
+  if (!businesses.some((item) => item.id === portfolioId))
+    fail("Esse portfólio não está disponível nesta conexão.");
   const fields = "id,name,account_id,account_status,currency";
   const params = { fields, limit: "50" };
   const [owned, clients] = await Promise.all([
-    collectPages(version, token, `/${portfolioId}/owned_ad_accounts`, params).catch((error: unknown) => error),
-    collectPages(version, token, `/${portfolioId}/client_ad_accounts`, params).catch((error: unknown) => error),
+    collectPages(version, token, `/${portfolioId}/owned_ad_accounts`, params).catch(
+      (error: unknown) => error,
+    ),
+    collectPages(version, token, `/${portfolioId}/client_ad_accounts`, params).catch(
+      (error: unknown) => error,
+    ),
   ]);
   const rows = [...(Array.isArray(owned) ? owned : []), ...(Array.isArray(clients) ? clients : [])];
   if (rows.length === 0 && (owned instanceof Error || clients instanceof Error)) {
@@ -428,7 +522,12 @@ export async function listBusinessAdAccounts(userId: string, organizationId: str
   return found;
 }
 
-export async function selectMetaAdAccount(userId: string, organizationId: string, accountId: string, businessId: string) {
+export async function selectMetaAdAccount(
+  userId: string,
+  organizationId: string,
+  accountId: string,
+  businessId: string,
+) {
   await assertOrgAccess(userId, organizationId);
   const digits = accountDigits(accountId);
   const portfolioId = businessDigits(businessId);
@@ -437,7 +536,10 @@ export async function selectMetaAdAccount(userId: string, organizationId: string
   const match = accounts.find((account) => account.accountId === digits);
   if (!match) fail("Essa conta de anúncios não está disponível neste portfólio.");
   const now = new Date().toISOString();
-  const { error: clearError } = await supabaseAdmin.from("meta_accounts").update({ selected: false }).eq("organization_id", organizationId);
+  const { error: clearError } = await supabaseAdmin
+    .from("meta_accounts")
+    .update({ selected: false })
+    .eq("organization_id", organizationId);
   if (clearError) schemaFail(clearError.message);
   const { error } = await supabaseAdmin.from("meta_accounts").upsert(
     {
@@ -515,7 +617,8 @@ function campaignInsightField(period: MetaPeriod) {
 }
 
 function amount(value: unknown) {
-  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
+  const parsed =
+    typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -536,7 +639,8 @@ function actionLabel(type: string | undefined) {
     initiate_checkout: "Inícios de checkout",
   };
   if (!type) return "Resultados";
-  if (type.includes("messaging_conversation") || type.includes("messaging_first_reply")) return "Conversas";
+  if (type.includes("messaging_conversation") || type.includes("messaging_first_reply"))
+    return "Conversas";
   return labels[type] ?? "Resultados";
 }
 
@@ -555,14 +659,28 @@ function metricsOf(insight: GraphInsight | undefined) {
   const impressions = amount(insight?.impressions);
   const clicks = amount(insight?.clicks);
   const spend = amount(insight?.spend);
-  const ctr = insight?.ctr ? amount(insight.ctr) : impressions > 0 ? (clicks / impressions) * 100 : null;
+  const ctr = insight?.ctr
+    ? amount(insight.ctr)
+    : impressions > 0
+      ? (clicks / impressions) * 100
+      : null;
   const cpc = insight?.cpc ? amount(insight.cpc) : clicks > 0 ? spend / clicks : null;
   for (const group of resultGroups) {
     for (const type of group) {
       const found = insight?.actions?.find((entry) => entry.action_type === type);
       const value = amount(found?.value);
       if (found && value > 0) {
-        return { reach, impressions, clicks, spend, ctr, cpc, results: value, resultLabel: actionLabel(type), resultActionTypes: group };
+        return {
+          reach,
+          impressions,
+          clicks,
+          spend,
+          ctr,
+          cpc,
+          results: value,
+          resultLabel: actionLabel(type),
+          resultActionTypes: group,
+        };
       }
     }
   }
@@ -582,15 +700,59 @@ function metricsOf(insight: GraphInsight | undefined) {
   return { reach, impressions, clicks, spend, ctr, cpc, results, resultLabel, resultActionTypes };
 }
 
-function campaignStatus(raw: string | undefined): { label: string; group: MetaCampaignRow["statusGroup"] } {
+function optionalAmount(value: string | undefined) {
+  if (value == null || value === "") return null;
+  const parsed = amount(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function kpisFrom(stats: ReturnType<typeof metricsOf>, insight?: GraphInsight): MetaKpis {
+  const metaCpm = optionalAmount(insight?.cpm);
+  const metaFrequency = optionalAmount(insight?.frequency);
+  const cpm = metaCpm ?? (stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : null);
+  const frequency = metaFrequency ?? (stats.reach > 0 ? stats.impressions / stats.reach : null);
+  return {
+    reach: stats.reach,
+    impressions: stats.impressions,
+    clicks: stats.clicks,
+    results: stats.results,
+    resultLabel: stats.resultLabel,
+    spend: stats.spend,
+    cpc: stats.cpc,
+    ctr: stats.ctr,
+    cpm: cpm != null && Number.isFinite(cpm) ? cpm : null,
+    frequency: frequency != null && Number.isFinite(frequency) ? frequency : null,
+  };
+}
+
+function countResults(actions: InsightAction[] | undefined, types: string[], clicks: number) {
+  if (types.length === 0) return clicks;
+  for (const type of types) {
+    const found = actions?.find((entry) => entry.action_type === type);
+    if (found) return amount(found.value);
+  }
+  return 0;
+}
+
+function campaignStatus(raw: string | undefined): {
+  label: string;
+  group: MetaCampaignRow["statusGroup"];
+} {
   if (raw === "ACTIVE") return { label: "Ativa", group: "Ativa" };
-  if (raw === "PAUSED" || raw === "CAMPAIGN_PAUSED" || raw === "ADSET_PAUSED") return { label: "Inativa", group: "Inativa" };
+  if (raw === "PAUSED" || raw === "CAMPAIGN_PAUSED" || raw === "ADSET_PAUSED")
+    return { label: "Inativa", group: "Inativa" };
   if (raw === "ARCHIVED" || raw === "DELETED") return { label: "Encerrada", group: "Encerrada" };
-  if (raw === "PENDING_REVIEW" || raw === "IN_PROCESS" || raw === "WITH_ISSUES") return { label: "Em análise", group: "Outro" };
+  if (raw === "PENDING_REVIEW" || raw === "IN_PROCESS" || raw === "WITH_ISSUES")
+    return { label: "Em análise", group: "Outro" };
   return { label: "Indisponível", group: "Outro" };
 }
 
-async function collectCampaigns(version: string, token: string, accountId: string, period: MetaPeriod) {
+async function collectCampaigns(
+  version: string,
+  token: string,
+  accountId: string,
+  period: MetaPeriod,
+) {
   const rows: MetaCampaignRow[] = [];
   const actionTypes = new Map<string, string[]>();
   let next: string | null = null;
@@ -610,6 +772,7 @@ async function collectCampaigns(version: string, token: string, accountId: strin
         statusGroup: status.group,
         reach: stats.reach,
         impressions: stats.impressions,
+        clicks: stats.clicks,
         results: stats.results,
         resultLabel: stats.resultLabel,
         spend: stats.spend,
@@ -675,6 +838,22 @@ function dailyResult(actions: InsightAction[] | undefined, types: string[], clic
   return 0;
 }
 
+function shiftDays(iso: string, days: number) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function previousWindow(period: MetaPeriod) {
+  if (period.mode !== "custom") return null;
+  const length = daysFrom(period.since, period.until).length;
+  if (length === 0) return null;
+  const until = shiftDays(period.since, -1);
+  return { since: shiftDays(until, -(length - 1)), until };
+}
+
 async function collectDaily(
   version: string,
   token: string,
@@ -682,32 +861,42 @@ async function collectDaily(
   period: MetaPeriod,
   campaigns: MetaCampaignRow[],
   actionTypes: Map<string, string[]>,
-): Promise<MetaResultSeries> {
-  if (campaigns.length === 0) return emptySeries;
+): Promise<{ series: MetaResultSeries; days: MetaDayPoint[] }> {
+  if (campaigns.length === 0) return { series: emptySeries, days: [] };
   const known = new Set(campaigns.map((row) => row.id));
-  const totals = new Map<string, Map<string, number>>();
+  const totals = new Map<string, Map<string, MetaDayPoint>>();
+  const covered = new Set<string>();
   const ranges = dailyRanges(period);
   const readRange = async (range: { since: string; until: string }) => {
-    const found: { date: string; campaignId: string; value: number }[] = [];
+    const found: MetaDayPoint[] = [];
     let next: string | null = null;
     for (let page = 0; page < 20; page += 1) {
       const body: GraphBody = next
         ? await graphFetch(new URL(next))
         : await graphGet(version, `/act_${accountId}/insights`, token, {
             level: "campaign",
-            fields: "campaign_id,actions,clicks,date_start",
+            fields: "campaign_id,spend,impressions,clicks,actions,date_start",
             time_increment: "1",
             limit: "500",
             use_unified_attribution_setting: "true",
             time_range: JSON.stringify(range),
           });
       for (const item of body.data ?? []) {
-        const row = item as GraphInsight & { campaign_id?: string; date_start?: string };
-        if (!row.campaign_id || !row.date_start || !known.has(row.campaign_id) || !/^\d{4}-\d{2}-\d{2}$/.test(row.date_start)) continue;
+        const row = item as GraphInsight;
+        if (
+          !row.campaign_id ||
+          !row.date_start ||
+          !known.has(row.campaign_id) ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(row.date_start)
+        )
+          continue;
         found.push({
           date: row.date_start,
           campaignId: row.campaign_id,
-          value: dailyResult(row.actions, actionTypes.get(row.campaign_id) ?? [], row.clicks),
+          spend: amount(row.spend),
+          impressions: amount(row.impressions),
+          clicks: amount(row.clicks),
+          results: dailyResult(row.actions, actionTypes.get(row.campaign_id) ?? [], row.clicks),
         });
       }
       next = typeof body.paging?.next === "string" ? body.paging.next : null;
@@ -719,41 +908,155 @@ async function collectDaily(
     const batch = await Promise.all(
       ranges.slice(index, index + 4).map(async (range) => {
         try {
-          return await readRange(range);
+          return { range, rows: await readRange(range) };
         } catch (error) {
           console.error("meta_daily_range", error instanceof Error ? error.name : "error");
-          return [];
+          return { range, rows: null };
         }
       }),
     );
-    for (const rows of batch) {
-      for (const row of rows) {
-        const byCampaign = totals.get(row.date) ?? new Map<string, number>();
-        byCampaign.set(row.campaignId, (byCampaign.get(row.campaignId) ?? 0) + row.value);
+    for (const item of batch) {
+      if (!item.rows) continue;
+      for (const date of daysFrom(item.range.since, item.range.until)) covered.add(date);
+      for (const row of item.rows) {
+        const byCampaign = totals.get(row.date) ?? new Map<string, MetaDayPoint>();
+        const current = byCampaign.get(row.campaignId);
+        byCampaign.set(
+          row.campaignId,
+          current
+            ? {
+                ...current,
+                spend: current.spend + row.spend,
+                impressions: current.impressions + row.impressions,
+                clicks: current.clicks + row.clicks,
+                results: current.results + row.results,
+              }
+            : row,
+        );
         totals.set(row.date, byCampaign);
       }
     }
   }
-  const found = [...totals.keys()].sort();
-  const first = found[0];
-  const last = found[found.length - 1];
-  const dates = period.mode === "custom" ? daysFrom(period.since, period.until) : first && last ? daysFrom(first, last) : [];
+  const coveredDates = [...covered].sort();
+  const first = coveredDates[0];
+  const last = coveredDates[coveredDates.length - 1];
+  const dates =
+    period.mode === "custom"
+      ? daysFrom(period.since, period.until).filter((date) => covered.has(date))
+      : first && last
+        ? daysFrom(first, last).filter((date) => covered.has(date))
+        : [];
+  const days: MetaDayPoint[] = [];
+  for (const date of dates) {
+    const byCampaign = totals.get(date);
+    for (const row of campaigns) {
+      const point = byCampaign?.get(row.id);
+      days.push(
+        point ?? { date, campaignId: row.id, spend: 0, impressions: 0, clicks: 0, results: 0 },
+      );
+    }
+  }
   return {
-    campaigns: campaigns.map((row) => ({ id: row.id, name: row.name, resultLabel: row.resultLabel })),
-    points: dates.map((date) => {
-      const byCampaign = totals.get(date);
-      const values: Record<string, number> = {};
-      for (const row of campaigns) values[row.id] = byCampaign?.get(row.id) ?? 0;
-      return { date, values };
-    }),
+    series: {
+      campaigns: campaigns.map((row) => ({
+        id: row.id,
+        name: row.name,
+        resultLabel: row.resultLabel,
+      })),
+      points: dates.map((date) => {
+        const byCampaign = totals.get(date);
+        const values: Record<string, number> = {};
+        for (const row of campaigns) values[row.id] = byCampaign?.get(row.id)?.results ?? 0;
+        return { date, values };
+      }),
+    },
+    days,
   };
 }
 
+async function collectPrevious(
+  version: string,
+  token: string,
+  accountId: string,
+  period: MetaPeriod,
+  campaigns: MetaCampaignRow[],
+  actionTypes: Map<string, string[]>,
+  accountTypes: string[],
+  accountLabel: string,
+): Promise<{
+  previous: MetaKpis | null;
+  previousCampaigns: MetaCampaignSnapshot[];
+  previousReady: boolean;
+}> {
+  const window = previousWindow(period);
+  if (!window) return { previous: null, previousCampaigns: [], previousReady: false };
+  const range = JSON.stringify(window);
+  const accountInsight = await graphGet(version, `/act_${accountId}/insights`, token, {
+    fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions",
+    time_range: range,
+  });
+  const snapshots: MetaCampaignSnapshot[] = [];
+  let next: string | null = null;
+  for (let page = 0; page < 5; page += 1) {
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(version, `/act_${accountId}/insights`, token, {
+          level: "campaign",
+          fields: "campaign_id,spend,impressions,reach,clicks,actions",
+          time_range: range,
+          limit: "500",
+        });
+    for (const item of body.data ?? []) {
+      const row = item as GraphInsight;
+      if (!row.campaign_id) continue;
+      snapshots.push({
+        id: row.campaign_id,
+        spend: amount(row.spend),
+        impressions: amount(row.impressions),
+        reach: amount(row.reach),
+        clicks: amount(row.clicks),
+        results: countResults(
+          row.actions,
+          actionTypes.get(row.campaign_id) ?? accountTypes,
+          amount(row.clicks),
+        ),
+      });
+    }
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  const known = new Set(campaigns.map((row) => row.id));
+  const comparable = snapshots.filter((row) => known.has(row.id));
+  const stats = metricsOf(accountInsight.data?.[0]);
+  const previous = kpisFrom(
+    {
+      ...stats,
+      results: comparable.reduce((sum, row) => sum + row.results, 0),
+      resultLabel: accountLabel,
+      resultActionTypes: accountTypes,
+    },
+    accountInsight.data?.[0],
+  );
+  return { previous, previousCampaigns: comparable, previousReady: true };
+}
+
 async function viewerContext(userId: string) {
-  const [{ data: profile, error: profileError }, { data: roles, error: roleError }, { data: perms, error: permError }] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id, organization_id, is_blocked").eq("id", userId).maybeSingle(),
+  const [
+    { data: profile, error: profileError },
+    { data: roles, error: roleError },
+    { data: perms, error: permError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("profiles")
+      .select("id, organization_id, is_blocked")
+      .eq("id", userId)
+      .maybeSingle(),
     supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
-    supabaseAdmin.from("user_permissions").select("can_view_campaigns").eq("user_id", userId).maybeSingle(),
+    supabaseAdmin
+      .from("user_permissions")
+      .select("can_view_campaigns")
+      .eq("user_id", userId)
+      .maybeSingle(),
   ]);
   if (profileError) schemaFail(profileError.message);
   if (roleError || permError) fail("Não foi possível confirmar o acesso.");
@@ -773,7 +1076,12 @@ async function viewerContext(userId: string) {
 }
 
 function performanceBase(
-  actor: { role: MetaPerformanceView["role"]; organizationId: string | null; canConnect: boolean; canView: boolean },
+  actor: {
+    role: MetaPerformanceView["role"];
+    organizationId: string | null;
+    canConnect: boolean;
+    canView: boolean;
+  },
   period: MetaPeriod,
 ): MetaPerformanceView {
   return {
@@ -788,8 +1096,12 @@ function performanceBase(
     currency: "BRL",
     period,
     kpis: null,
+    previous: null,
+    previousReady: false,
+    previousCampaigns: [],
     campaigns: [],
     series: emptySeries,
+    days: [],
   };
 }
 
@@ -800,11 +1112,23 @@ export async function listMasterCampaigns(
   const period = periodOf(input);
   const actor = await viewerContext(userId);
   if (actor.role !== "master") fail("Só o Master consulta as campanhas de todos os clientes.");
-  const { data: connections, error } = await supabaseAdmin.from("meta_connections").select("organization_id").eq("status", "connected");
+  const { data: connections, error } = await supabaseAdmin
+    .from("meta_connections")
+    .select("organization_id")
+    .eq("status", "connected");
   if (error) schemaFail(error.message);
-  const organizationIds = [...new Set((connections ?? []).map((row) => row.organization_id).filter((id): id is string => Boolean(id)))];
+  const organizationIds = [
+    ...new Set(
+      (connections ?? [])
+        .map((row) => row.organization_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
   if (organizationIds.length === 0) return { period, campaigns: [], clients: [], notices: [] };
-  const { data: organizations, error: orgError } = await supabaseAdmin.from("organizations").select("id, legal_name").in("id", organizationIds);
+  const { data: organizations, error: orgError } = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name")
+    .in("id", organizationIds);
   if (orgError) schemaFail(orgError.message);
   const names = new Map((organizations ?? []).map((org) => [org.id, org.legal_name]));
   const version = graphVersion();
@@ -822,7 +1146,12 @@ export async function listMasterCampaigns(
         return;
       }
       const { token } = await loadToken(organizationId);
-      const collected = await collectCampaigns(version, token, selected.external_account_id, period);
+      const collected = await collectCampaigns(
+        version,
+        token,
+        selected.external_account_id,
+        period,
+      );
       for (const row of collected.rows) {
         campaigns.push({
           ...row,
@@ -833,17 +1162,26 @@ export async function listMasterCampaigns(
         });
       }
     } catch (readError) {
-      const message = readError instanceof Error ? readError.message : "A Meta não respondeu como esperado.";
+      const message =
+        readError instanceof Error ? readError.message : "A Meta não respondeu como esperado.";
       if (/não está configurada/.test(message)) throw readError;
-      notices.push(`${clientName}: ${/access_token|client_secret|EAA[A-Za-z0-9]/.test(message) ? "A Meta não respondeu como esperado." : message}`);
+      notices.push(
+        `${clientName}: ${/access_token|client_secret|EAA[A-Za-z0-9]/.test(message) ? "A Meta não respondeu como esperado." : message}`,
+      );
     }
   };
 
   for (let index = 0; index < organizationIds.length; index += 3) {
-    await Promise.all(organizationIds.slice(index, index + 3).map((organizationId) => readOne(organizationId)));
+    await Promise.all(
+      organizationIds.slice(index, index + 3).map((organizationId) => readOne(organizationId)),
+    );
   }
   clients.sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
-  campaigns.sort((left, right) => left.clientName.localeCompare(right.clientName, "pt-BR") || left.name.localeCompare(right.name, "pt-BR"));
+  campaigns.sort(
+    (left, right) =>
+      left.clientName.localeCompare(right.clientName, "pt-BR") ||
+      left.name.localeCompare(right.name, "pt-BR"),
+  );
   return { period, campaigns, clients, notices };
 }
 
@@ -879,36 +1217,39 @@ export async function getMetaPerformance(
   }
   if (!organizationId) return view;
 
-  const [connection, selected] = await Promise.all([connectionOf(organizationId), selectedAccount(organizationId)]);
+  const [connection, selected] = await Promise.all([
+    connectionOf(organizationId),
+    selectedAccount(organizationId),
+  ]);
   const storedStatus = connection?.status;
   view.connectionStatus =
-    storedStatus === "connected" || storedStatus === "error" || storedStatus === "disconnected" || storedStatus === "pending"
+    storedStatus === "connected" ||
+    storedStatus === "error" ||
+    storedStatus === "disconnected" ||
+    storedStatus === "pending"
       ? storedStatus
       : "missing";
   view.lastError = connection?.last_error ?? null;
   view.accountId = selected?.external_account_id ?? null;
   view.accountName = selected?.name ?? null;
   view.currency = selected?.currency || "BRL";
-  if (view.connectionStatus !== "connected" || !connection?.access_token_encrypted || !selected) return view;
+  if (view.connectionStatus !== "connected" || !connection?.access_token_encrypted || !selected)
+    return view;
 
   try {
     const { token } = await loadToken(organizationId);
     const version = graphVersion();
-    const insight = await graphGet(version, `/act_${selected.external_account_id}/insights`, token, {
-      fields: "spend,impressions,reach,clicks,ctr,cpc,actions",
-      ...insightQuery(period),
-    });
+    const insight = await graphGet(
+      version,
+      `/act_${selected.external_account_id}/insights`,
+      token,
+      {
+        fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions",
+        ...insightQuery(period),
+      },
+    );
     const stats = metricsOf(insight.data?.[0]);
-    const kpis: MetaKpis = {
-      reach: stats.reach,
-      impressions: stats.impressions,
-      results: stats.results,
-      resultLabel: stats.resultLabel,
-      spend: stats.spend,
-      cpc: stats.cpc,
-      ctr: stats.ctr,
-    };
-    view.kpis = kpis;
+    view.kpis = kpisFrom(stats, insight.data?.[0]);
     const collected = await collectCampaigns(version, token, selected.external_account_id, period);
     view.campaigns = collected.rows;
     if (view.kpis && collected.rows.length > 0) {
@@ -917,10 +1258,40 @@ export async function getMetaPerformance(
       view.kpis.resultLabel = labels.size === 1 ? ([...labels][0] ?? "Resultados") : "Resultados";
     }
     try {
-      view.series = await collectDaily(version, token, selected.external_account_id, period, collected.rows, collected.actionTypes);
+      const timeline = await collectDaily(
+        version,
+        token,
+        selected.external_account_id,
+        period,
+        collected.rows,
+        collected.actionTypes,
+      );
+      view.series = timeline.series;
+      view.days = timeline.days;
     } catch (seriesError) {
       console.error("meta_daily", seriesError instanceof Error ? seriesError.name : "error");
       view.series = emptySeries;
+      view.days = [];
+    }
+    try {
+      const compared = await collectPrevious(
+        version,
+        token,
+        selected.external_account_id,
+        period,
+        collected.rows,
+        collected.actionTypes,
+        stats.resultActionTypes,
+        view.kpis?.resultLabel ?? stats.resultLabel,
+      );
+      view.previous = compared.previous;
+      view.previousCampaigns = compared.previousCampaigns;
+      view.previousReady = compared.previousReady;
+    } catch (previousError) {
+      console.error("meta_previous", previousError instanceof Error ? previousError.name : "error");
+      view.previous = null;
+      view.previousCampaigns = [];
+      view.previousReady = false;
     }
     view.lastError = null;
     return view;
@@ -931,8 +1302,12 @@ export async function getMetaPerformance(
       ? "A Meta não respondeu como esperado. Tente de novo."
       : message;
     view.kpis = null;
+    view.previous = null;
+    view.previousReady = false;
+    view.previousCampaigns = [];
     view.campaigns = [];
     view.series = emptySeries;
+    view.days = [];
     return view;
   }
 }

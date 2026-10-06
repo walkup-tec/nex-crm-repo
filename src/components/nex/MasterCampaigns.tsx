@@ -1,13 +1,14 @@
 import { Eye } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EvolutionChart, ResultsChart } from "@/components/nex/MetaPerformance";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { MasterCampaignRow, MasterCampaignsView, MetaPeriod } from "@/lib/meta-access";
-import { listMasterCampaignsFn } from "@/lib/meta.functions";
+import type { MasterCampaignRow, MasterCampaignsView, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
+import { getMetaPerformanceFn, listMasterCampaignsFn } from "@/lib/meta.functions";
 
 const initialPeriod: MetaPeriod = { mode: "total" };
 
@@ -37,6 +38,11 @@ export function MasterCampaigns() {
   const [status, setStatus] = useState("all");
   const [clientId, setClientId] = useState("all");
   const [selected, setSelected] = useState<MasterCampaignRow | null>(null);
+  const [chartView, setChartView] = useState<MetaPerformanceView | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState("");
+  const chartCache = useRef(new Map<string, MetaPerformanceView>());
+  const chartRequest = useRef(0);
 
   const load = async (nextPeriod: MetaPeriod) => {
     setLoading(true);
@@ -59,6 +65,37 @@ export function MasterCampaigns() {
   useEffect(() => {
     void load(initialPeriod);
   }, []);
+
+  const openCampaign = (row: MasterCampaignRow) => {
+    setSelected(row);
+    setChartError("");
+    const cached = chartCache.current.get(row.organizationId);
+    if (cached) {
+      setChartView(cached);
+      setChartLoading(false);
+      return;
+    }
+    const ticket = chartRequest.current + 1;
+    chartRequest.current = ticket;
+    setChartView(null);
+    setChartLoading(true);
+    void getMetaPerformanceFn({ data: { organizationId: row.organizationId, period: "total" } })
+      .then((result) => {
+        if (ticket !== chartRequest.current) return;
+        setChartLoading(false);
+        if (!result.ok) {
+          setChartError(result.message);
+          return;
+        }
+        chartCache.current.set(row.organizationId, result.data);
+        setChartView(result.data);
+      })
+      .catch(() => {
+        if (ticket !== chartRequest.current) return;
+        setChartLoading(false);
+        setChartError("Não foi possível carregar os gráficos desta campanha.");
+      });
+  };
 
   const rows = view?.campaigns ?? [];
   const shown = useMemo(() => {
@@ -144,7 +181,7 @@ export function MasterCampaigns() {
                     <td className="px-4 py-4">{costPerResult(row) == null ? "—" : money(costPerResult(row) ?? 0, row.currency)}</td>
                     <td className="px-4 py-4">{money(row.spend, row.currency)}</td>
                     <td className="px-4 py-4">
-                      <Button variant="ghost" size="icon" aria-label={`Ver ${row.name}`} onClick={() => setSelected(row)}>
+                      <Button variant="ghost" size="icon" aria-label={`Ver ${row.name}`} onClick={() => openCampaign(row)}>
                         <Eye />
                       </Button>
                     </td>
@@ -164,7 +201,7 @@ export function MasterCampaigns() {
                       <StatusBadge status={row.status} group={row.statusGroup} />
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" aria-label={`Ver ${row.name}`} onClick={() => setSelected(row)}>
+                  <Button variant="ghost" size="icon" aria-label={`Ver ${row.name}`} onClick={() => openCampaign(row)}>
                     <Eye />
                   </Button>
                 </div>
@@ -187,9 +224,9 @@ export function MasterCampaigns() {
       )}
 
       <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{selected?.name}</DialogTitle>
+            <DialogTitle className="pr-8">{selected?.name}</DialogTitle>
             <DialogDescription>
               {selected ? `${selected.clientName} • ${selected.accountName}` : ""} • somente leitura
             </DialogDescription>
@@ -211,9 +248,28 @@ export function MasterCampaigns() {
               ))}
             </div>
           )}
+          {chartLoading && <div className="h-80 animate-pulse rounded-lg bg-muted" />}
+          {chartError && <p className="text-sm text-destructive">{chartError}</p>}
+          {selected && chartView && !chartLoading && !chartError && <CampaignCharts row={selected} view={chartView} />}
           <p className="text-sm text-muted-foreground">A campanha não pode ser alterada pelo NEX Ads.</p>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function CampaignCharts({ row, view }: { row: MasterCampaignRow; view: MetaPerformanceView }) {
+  const campaign = view.campaigns.find((item) => item.id === row.id) ?? null;
+  const hasLine = Boolean(campaign && view.series.points.length > 0 && view.series.campaigns.some((item) => item.id === campaign.id));
+  if (!campaign) return <p className="text-sm text-muted-foreground">Não há indicadores desta campanha no período máximo.</p>;
+  return (
+    <div className="space-y-5">
+      {hasLine ? (
+        <EvolutionChart series={view.series} selectedId={campaign.id} />
+      ) : (
+        <p className="text-sm text-muted-foreground">Não há evolução diária desta campanha no período máximo.</p>
+      )}
+      <ResultsChart rows={[campaign]} currency={view.currency || row.currency} title="Resultados da campanha" description="Volume de resultados e custo por resultado no período máximo." />
     </div>
   );
 }

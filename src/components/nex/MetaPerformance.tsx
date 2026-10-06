@@ -294,7 +294,7 @@ function dayLabel(iso: string) {
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
-function EvolutionChart({ series, selectedId }: { series: MetaPerformanceView["series"]; selectedId: string | null }) {
+export function EvolutionChart({ series, selectedId }: { series: MetaPerformanceView["series"]; selectedId: string | null }) {
   const lines = (selectedId ? series.campaigns.filter((item) => item.id === selectedId) : series.campaigns).map((item, index) => ({
     ...item,
     color: lineColor(series.campaigns.findIndex((campaign) => campaign.id === item.id) >= 0 ? series.campaigns.findIndex((campaign) => campaign.id === item.id) : index),
@@ -357,7 +357,7 @@ function EvolutionChart({ series, selectedId }: { series: MetaPerformanceView["s
   );
 }
 
-function ResultsChart({ rows, currency, title = "Resultados entre campanhas", description = "Volume de resultados e custo por resultado." }: { rows: MetaCampaignRow[]; currency: string; title?: string; description?: string }) {
+export function ResultsChart({ rows, currency, title = "Resultados entre campanhas", description = "Volume de resultados e custo por resultado." }: { rows: MetaCampaignRow[]; currency: string; title?: string; description?: string }) {
   const frame = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   useEffect(() => {

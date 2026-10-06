@@ -42,7 +42,7 @@ export const listUsersFn = createServerFn({ method: "GET" })
 
 export const createUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { fullName: string; email: string; whatsapp: string; financeEmail: string; financeEmailSame: boolean; kind?: "master" | "client"; permissions?: UserPermissions; sendEmail?: boolean }) => data)
+  .validator((data: { fullName: string; email: string; whatsapp?: string; financeEmail?: string; financeEmailSame?: boolean; kind?: "master" | "client"; permissions?: UserPermissions; sendEmail?: boolean }) => data)
   .handler(async ({ context, data }): Promise<Result<{ id: string; organizationId: string | null; emailSent: boolean }>> => {
     const { createUser } = await import("@/server/users.server");
     return guard(() => createUser(context.userId, data));
@@ -61,7 +61,7 @@ export const resendInviteFn = createServerFn({ method: "POST" })
 
 export const updateUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { id: string; fullName: string; email: string; whatsapp: string; financeEmail: string; financeEmailSame: boolean; permissions?: UserPermissions }) => data)
+  .validator((data: { id: string; fullName: string; email: string; whatsapp?: string; financeEmail?: string; financeEmailSame?: boolean; permissions?: UserPermissions }) => data)
   .handler(async ({ context, data }): Promise<Result<true>> => {
     const { updateUser } = await import("@/server/users.server");
     return guard(async () => {

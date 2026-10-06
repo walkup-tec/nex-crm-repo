@@ -178,9 +178,9 @@ export async function createUser(
   input: {
     fullName: string;
     email: string;
-    whatsapp: string;
-    financeEmail: string;
-    financeEmailSame: boolean;
+    whatsapp?: string;
+    financeEmail?: string;
+    financeEmailSame?: boolean;
     kind?: "master" | "client";
     permissions?: UserPermissions;
     sendEmail?: boolean;
@@ -191,7 +191,7 @@ export async function createUser(
   const email = input.email.trim().toLowerCase();
   if (fullName.length < 2) fail("Informe o nome.");
   if (!email.includes("@")) fail("Informe um e-mail válido.");
-  const contact = contactOf(input.whatsapp, email, input.financeEmail, input.financeEmailSame);
+  const contact = actor.role === "client_admin" ? null : contactOf(input.whatsapp ?? "", email, input.financeEmail ?? "", input.financeEmailSame === true);
 
   let role: Role;
   let organizationId: string | null = null;
@@ -235,7 +235,7 @@ export async function createUser(
           document: email,
           responsible_name: fullName,
           responsible_email: email,
-          responsible_phone: contact.whatsapp,
+          responsible_phone: contact?.whatsapp || "não informado",
           finance_phone: "não informado",
         })
         .select("id")
@@ -248,9 +248,9 @@ export async function createUser(
       id: createdId,
       full_name: fullName,
       email,
-      whatsapp: contact.whatsapp,
-      finance_email: contact.financeEmail,
-      finance_email_same: contact.financeEmailSame,
+      ...(contact
+        ? { whatsapp: contact.whatsapp, finance_email: contact.financeEmail, finance_email_same: contact.financeEmailSame }
+        : {}),
       organization_id: organizationId,
       owner_id: ownerId,
     });
@@ -311,7 +311,7 @@ export async function resendInvite(userId: string, targetId: string) {
 
 export async function updateUser(
   userId: string,
-  input: { id: string; fullName: string; email: string; whatsapp: string; financeEmail: string; financeEmailSame: boolean; permissions?: UserPermissions },
+  input: { id: string; fullName: string; email: string; whatsapp?: string; financeEmail?: string; financeEmailSame?: boolean; permissions?: UserPermissions },
 ) {
   const actor = await actorOf(userId);
   const target = await targetOf(input.id);
@@ -322,7 +322,7 @@ export async function updateUser(
   const email = input.email.trim().toLowerCase();
   if (fullName.length < 2) fail("Informe o nome.");
   if (!email.includes("@")) fail("Informe um e-mail válido.");
-  const contact = contactOf(input.whatsapp, email, input.financeEmail, input.financeEmailSame);
+  const contact = target.role === "client_user" ? null : contactOf(input.whatsapp ?? "", email, input.financeEmail ?? "", input.financeEmailSame === true);
 
   const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(input.id, { email, email_confirm: true });
   if (authError) fail(emailTaken(authError.message) ? "Já existe um acesso com este e-mail." : "Não foi possível atualizar o acesso.");
@@ -331,9 +331,9 @@ export async function updateUser(
     .update({
       full_name: fullName,
       email,
-      whatsapp: contact.whatsapp,
-      finance_email: contact.financeEmail,
-      finance_email_same: contact.financeEmailSame,
+      ...(contact
+        ? { whatsapp: contact.whatsapp, finance_email: contact.financeEmail, finance_email_same: contact.financeEmailSame }
+        : {}),
     })
     .eq("id", input.id);
   if (error) {
@@ -343,11 +343,8 @@ export async function updateUser(
     }
     fail(error.message);
   }
-  if (target.role === "client_admin" && target.row.organization_id) {
-    await supabaseAdmin
-      .from("organizations")
-      .update({ responsible_phone: contact.whatsapp })
-      .eq("id", target.row.organization_id);
+  if (contact && target.role === "client_admin" && target.row.organization_id) {
+    await supabaseAdmin.from("organizations").update({ responsible_phone: contact.whatsapp }).eq("id", target.row.organization_id);
   }
 
   if (target.role === "client_user" && input.permissions) {

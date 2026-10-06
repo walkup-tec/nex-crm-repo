@@ -411,6 +411,7 @@ function UserDialog({
   }, [open, mode, user]);
 
   const showPermissions = (mode === "create" && actorRole === "client_admin") || (mode === "edit" && user?.role === "client_user");
+  const simpleAccess = actorRole === "client_admin" || user?.role === "client_user";
   const contact = { whatsapp, financeEmail: financeSame ? email : financeEmail, financeEmailSame: financeSame };
 
   const submit = async (event: React.FormEvent) => {
@@ -488,33 +489,37 @@ function UserDialog({
             <Label htmlFor="user-email">E-mail</Label>
             <Input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="user-whatsapp">WhatsApp</Label>
-            <Input
-              id="user-whatsapp"
-              inputMode="numeric"
-              autoComplete="tel"
-              placeholder="(00) 00000-0000"
-              value={whatsapp}
-              onChange={(event) => setWhatsapp(applyMask("phone", event.target.value))}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="user-finance-email">E-mail financeiro</Label>
-            <Input
-              id="user-finance-email"
-              type="email"
-              value={financeSame ? email : financeEmail}
-              onChange={(event) => setFinanceEmail(event.target.value)}
-              disabled={financeSame}
-              required={!financeSame}
-            />
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={financeSame} onCheckedChange={(checked) => setFinanceSame(checked === true)} />
-              Usar o mesmo e-mail do usuário
-            </label>
-          </div>
+          {!simpleAccess && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="user-whatsapp">WhatsApp</Label>
+                <Input
+                  id="user-whatsapp"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  placeholder="(00) 00000-0000"
+                  value={whatsapp}
+                  onChange={(event) => setWhatsapp(applyMask("phone", event.target.value))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="user-finance-email">E-mail financeiro</Label>
+                <Input
+                  id="user-finance-email"
+                  type="email"
+                  value={financeSame ? email : financeEmail}
+                  onChange={(event) => setFinanceEmail(event.target.value)}
+                  disabled={financeSame}
+                  required={!financeSame}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox checked={financeSame} onCheckedChange={(checked) => setFinanceSame(checked === true)} />
+                  Usar o mesmo e-mail do usuário
+                </label>
+              </div>
+            </>
+          )}
           {mode === "create" && actorRole === "master" && (
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Tipo</legend>

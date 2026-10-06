@@ -32,5 +32,4 @@ export type RegisteredClient = {
 export type UsersSnapshot = {
   actor: { id: string; role: UserRole; fullName: string; organizationId: string | null };
   users: ListedUser[];
-  clients: RegisteredClient[];
 };

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { appUrl, sendInviteEmail } from "@/server/mail.server";
 
-import type { ListedUser, RegisteredClient, UserPermissions, UserRole } from "@/lib/user-access";
+import type { ListedUser, UserPermissions, UserRole } from "@/lib/user-access";
 
 type Role = UserRole;
 
@@ -147,22 +147,13 @@ async function organizationsWithPortfolio() {
   return ids;
 }
 
-async function registeredClients(): Promise<RegisteredClient[]> {
-  const { data, error } = await supabaseAdmin.from("organizations").select("id, legal_name").order("legal_name");
-  if (error) return [];
-  return (data ?? [])
-    .map((row) => ({ id: row.id, name: row.legal_name.trim() }))
-    .filter((row) => row.name.length > 0);
-}
-
 export async function listUsers(userId: string) {
   const actor = await actorOf(userId);
-  const [rows, roles, permissions, linked, clients] = await Promise.all([
+  const [rows, roles, permissions, linked] = await Promise.all([
     profiles(),
     roleMap(),
     permissionMap(),
     organizationsWithPortfolio(),
-    actor.role === "master" ? registeredClients() : Promise.resolve([]),
   ]);
   const names = new Map(rows.map((row) => [row.id, row.full_name]));
   const visible = rows.filter((row) => {
@@ -177,7 +168,6 @@ export async function listUsers(userId: string) {
       listed.metaLinked = Boolean(row.organization_id && linked.has(row.organization_id));
       return listed;
     }),
-    clients,
   };
 }
 

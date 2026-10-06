@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import { clients as clientDirectory } from "@/data/demo";
 import { applyMask } from "@/lib/masks";
 import type { ListedUser, RegisteredClient, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
 import { MetaConnect } from "@/components/nex/MetaConnect";
@@ -46,6 +47,11 @@ const permissionFields: { key: keyof UserPermissions; label: string }[] = [
 ];
 
 const emptyPermissions: UserPermissions = { campaigns: true, balance: false, credit: false, manage: false };
+
+const registeredClients: RegisteredClient[] = clientDirectory.map((client) => ({
+  id: client.name,
+  name: client.name,
+}));
 
 function permissionSummary(user: ListedUser) {
   if (user.role !== "client_user") return null;
@@ -242,7 +248,7 @@ export function UsersAdmin() {
         mode={editor?.mode ?? "create"}
         user={editor && editor.mode === "edit" ? editor.user : null}
         actorRole={role}
-        clients={snapshot?.clients ?? []}
+        clients={registeredClients}
         onClose={() => setEditor(null)}
         onSaved={async () => {
           setEditor(null);

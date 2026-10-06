@@ -7,6 +7,15 @@ import { moneyFromCents } from "@/lib/client-access";
 import type { ChargePix } from "@/lib/finance-access";
 import { chargePixFn, listOwnFinanceFn } from "@/lib/finance.functions";
 
+function penaltyNote(pix: ChargePix) {
+  const parts = [
+    pix.fineCents > 0 ? `multa de ${moneyFromCents(pix.fineCents)}` : "",
+    pix.interestCents > 0 ? `juros de ${moneyFromCents(pix.interestCents)}` : "",
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return `Inclui ${parts.join(" e ")}.`;
+}
+
 export function OverdueAccess({ children }: { children: React.ReactNode }) {
   const [overdueChargeId, setOverdueChargeId] = useState<string | null>(null);
   const [pixOpen, setPixOpen] = useState(false);
@@ -74,7 +83,13 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
         <DialogContent className="z-[60]">
           <DialogHeader>
             <DialogTitle>Regularizar pendência</DialogTitle>
-            <DialogDescription>Pix do valor nominal desta parcela. A cobrança vencida sai do Asaas quando este pagamento for identificado.</DialogDescription>
+            <DialogDescription>
+              {pix
+                ? pix.nominal
+                  ? "Pix do valor nominal desta parcela. A cobrança vencida sai do Asaas quando este pagamento for identificado."
+                  : "Pix desta parcela com multa e juros calculados. A cobrança vencida sai do Asaas quando este pagamento for identificado."
+                : "A cobrança vencida sai do Asaas quando este pagamento for identificado."}
+            </DialogDescription>
           </DialogHeader>
           {pixLoading && <p className="text-sm text-muted-foreground">Consultando o Pix...</p>}
           {pixError && <p className="text-sm text-destructive">{pixError}</p>}
@@ -86,6 +101,7 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-xs text-muted-foreground">Total devido</p>
                 <p className="mt-1 text-2xl font-bold">{moneyFromCents(pix.totalCents)}</p>
+                {penaltyNote(pix) && <p className="mt-2 text-xs text-muted-foreground">{penaltyNote(pix)}</p>}
                 <Badge className="mt-3" variant="outline">Aguardando pagamento</Badge>
                 <Button
                   className="mt-4 w-full"

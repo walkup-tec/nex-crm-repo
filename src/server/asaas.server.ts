@@ -90,7 +90,7 @@ async function asaasRequest<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: 
 
 function asaasFailure(method: "GET" | "POST" | "PUT" | "DELETE") {
   if (method === "GET") return "Não foi possível consultar o Asaas agora.";
-  if (method === "POST") return "Não foi possível gerar o Pix do valor nominal no Asaas.";
+  if (method === "POST") return "Não foi possível gerar o Pix no Asaas.";
   if (method === "DELETE") return "Não foi possível excluir a cobrança vencida no Asaas.";
   return "Não foi possível atualizar a cobrança no Asaas.";
 }

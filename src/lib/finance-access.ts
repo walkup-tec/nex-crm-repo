@@ -50,6 +50,9 @@ export type ChargePix = {
   image: string;
   invoiceUrl: string | null;
   totalCents: number;
+  nominal: boolean;
+  fineCents: number;
+  interestCents: number;
 };
 
 const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
@@ -98,14 +101,59 @@ export function competenceLabel(iso: string) {
 export const waivedOnCharge = "nex-waived";
 export const nominalPayPrefix = "nex-pay:";
 
+export function replacementPayment(pixCode: string | null): { id: string; cents: number | null } | null {
+  if (!pixCode) return null;
+  if (pixCode.startsWith(nominalPayPrefix)) {
+    const id = pixCode.slice(nominalPayPrefix.length);
+    return /^[A-Za-z0-9_]{1,64}$/.test(id) ? { id, cents: null } : null;
+  }
+  const calculated = /^nex-calc:([A-Za-z0-9_]{1,64}):(\d{1,12})$/.exec(pixCode);
+  const id = calculated?.[1];
+  const cents = calculated?.[2];
+  if (!id || !cents) return null;
+  return { id, cents: Number(cents) };
+}
+
 export function nominalPaymentId(pixCode: string | null) {
-  if (!pixCode?.startsWith(nominalPayPrefix)) return null;
-  const id = pixCode.slice(nominalPayPrefix.length);
-  return /^[A-Za-z0-9_]{1,64}$/.test(id) ? id : null;
+  const replacement = replacementPayment(pixCode);
+  if (!replacement || replacement.cents != null) return null;
+  return replacement.id;
 }
 
 export function keepsNominalValue(pixCode: string | null) {
   return pixCode === waivedOnCharge || nominalPaymentId(pixCode) !== null;
+}
+
+export function chargeQuote(input: {
+  baseCents: number;
+  daysLate: number;
+  penaltiesWaived: boolean;
+  paymentFine?: { value?: number; type?: string } | null;
+  paymentInterest?: { value?: number } | null;
+  contractFinePercent: number;
+  contractInterestPercent: number;
+}) {
+  const days = Math.max(0, Math.floor(input.daysLate));
+  const fineWaived = input.penaltiesWaived && (input.paymentFine?.value ?? 0) <= 0;
+  const interestWaived = input.penaltiesWaived && (input.paymentInterest?.value ?? 0) <= 0;
+  let fineCents = 0;
+  let interestCents = 0;
+  if (days > 0 && !fineWaived) {
+    const value = input.paymentFine?.value;
+    if (input.contractFinePercent <= 0 && input.paymentFine?.type === "FIXED" && typeof value === "number" && value > 0) {
+      fineCents = centsFromReais(value);
+    } else {
+      const percent = input.contractFinePercent > 0 ? input.contractFinePercent : typeof value === "number" && value > 0 ? value : 0;
+      fineCents = Math.round((input.baseCents * percent) / 100);
+    }
+  }
+  if (days > 0 && !interestWaived) {
+    const value = input.paymentInterest?.value;
+    const percent = input.contractInterestPercent > 0 ? input.contractInterestPercent : typeof value === "number" && value > 0 ? value : 0;
+    interestCents = Math.round((input.baseCents * percent * days) / 3000);
+  }
+  const totalCents = input.baseCents + fineCents + interestCents;
+  return { fineCents, interestCents, totalCents, nominal: totalCents === input.baseCents };
 }
 
 export function penaltiesRemain(payment: { fine?: { value?: number } | null; interest?: { value?: number } | null; interestValue?: number | null }) {

@@ -56,12 +56,20 @@ export type ChargePix = {
 };
 
 const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
-const cancelledStatuses = new Set(["REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "CHARGEBACK_REQUESTED", "CHARGEBACK_DISPUTE", "AWAITING_CHARGEBACK_REVERSAL"]);
+const cancelledStatuses = new Set([
+  "REFUNDED",
+  "REFUND_REQUESTED",
+  "REFUND_IN_PROGRESS",
+  "CHARGEBACK_REQUESTED",
+  "CHARGEBACK_DISPUTE",
+  "AWAITING_CHARGEBACK_REVERSAL",
+]);
 
 export function chargeStatus(asaasStatus: string, dueDate: string, today: string): InvoiceStatus {
   if (paidStatuses.has(asaasStatus)) return "paid";
   if (cancelledStatuses.has(asaasStatus)) return "cancelled";
-  if (asaasStatus === "OVERDUE" || asaasStatus === "DUNNING_REQUESTED" || dueDate < today) return "overdue";
+  if (asaasStatus === "OVERDUE" || asaasStatus === "DUNNING_REQUESTED" || dueDate < today)
+    return "overdue";
   return "pending";
 }
 
@@ -73,8 +81,31 @@ export function competenceOf(dueDate: string) {
   return `${dueDate.slice(0, 7)}-01`;
 }
 
+const localPaidCharge = {
+  legalName: "MMS MARKETING E SISTEMAS DIGITAIS LTDA",
+  competence: "2026-06-01",
+  dueDate: "2026-06-27",
+};
+
+export function preservesLocalPayment(input: {
+  legalName: string;
+  competence: string;
+  dueDate: string;
+}) {
+  return (
+    input.legalName.trim().toLocaleUpperCase("pt-BR") === localPaidCharge.legalName &&
+    input.competence.slice(0, 10) === localPaidCharge.competence &&
+    input.dueDate.slice(0, 10) === localPaidCharge.dueDate
+  );
+}
+
 export function todayKey(now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }
 
 export type FinancePeriod = "all" | "past-week" | "next-week" | "past-month" | "current-month";
@@ -85,7 +116,10 @@ export function shiftDate(iso: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function financePeriodBounds(period: FinancePeriod, today = todayKey()): { start: string; end: string } | null {
+export function financePeriodBounds(
+  period: FinancePeriod,
+  today = todayKey(),
+): { start: string; end: string } | null {
   if (period === "all") return null;
   if (period === "past-week") return { start: shiftDate(today, -6), end: today };
   if (period === "next-week") return { start: today, end: shiftDate(today, 6) };
@@ -94,7 +128,10 @@ export function financePeriodBounds(period: FinancePeriod, today = todayKey()): 
   const month = Number(monthText);
   if (period === "current-month") {
     const end = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    return { start: `${yearText}-${monthText}-01`, end: `${yearText}-${monthText}-${String(end).padStart(2, "0")}` };
+    return {
+      start: `${yearText}-${monthText}-01`,
+      end: `${yearText}-${monthText}-${String(end).padStart(2, "0")}`,
+    };
   }
   const startDate = new Date(Date.UTC(year, month - 2, 1));
   const endDate = new Date(Date.UTC(year, month - 1, 0));
@@ -107,10 +144,25 @@ export function chargeInPeriod(dueDate: string, bounds: { start: string; end: st
   return due >= bounds.start && due <= bounds.end;
 }
 
-export function dailyChargeTotals(charges: { dueDate: string; totalCents: number; status: string }[], bounds: { start: string; end: string } | null) {
-  const rows = charges.filter((item) => item.status !== "cancelled" && chargeInPeriod(item.dueDate, bounds));
-  const start = bounds?.start ?? rows.reduce((min, item) => (item.dueDate.slice(0, 10) < min ? item.dueDate.slice(0, 10) : min), rows[0]?.dueDate.slice(0, 10) ?? "");
-  const end = bounds?.end ?? rows.reduce((max, item) => (item.dueDate.slice(0, 10) > max ? item.dueDate.slice(0, 10) : max), rows[0]?.dueDate.slice(0, 10) ?? "");
+export function dailyChargeTotals(
+  charges: { dueDate: string; totalCents: number; status: string }[],
+  bounds: { start: string; end: string } | null,
+) {
+  const rows = charges.filter(
+    (item) => item.status !== "cancelled" && chargeInPeriod(item.dueDate, bounds),
+  );
+  const start =
+    bounds?.start ??
+    rows.reduce(
+      (min, item) => (item.dueDate.slice(0, 10) < min ? item.dueDate.slice(0, 10) : min),
+      rows[0]?.dueDate.slice(0, 10) ?? "",
+    );
+  const end =
+    bounds?.end ??
+    rows.reduce(
+      (max, item) => (item.dueDate.slice(0, 10) > max ? item.dueDate.slice(0, 10) : max),
+      rows[0]?.dueDate.slice(0, 10) ?? "",
+    );
   if (!start || !end) return [];
   const totals = new Map<string, number>();
   for (const item of rows) {
@@ -120,7 +172,11 @@ export function dailyChargeTotals(charges: { dueDate: string; totalCents: number
   const days: { day: string; label: string; totalCents: number }[] = [];
   let cursor = start;
   while (cursor <= end && days.length < 400) {
-    days.push({ day: cursor, label: `${cursor.slice(8, 10)}/${cursor.slice(5, 7)}`, totalCents: totals.get(cursor) ?? 0 });
+    days.push({
+      day: cursor,
+      label: `${cursor.slice(8, 10)}/${cursor.slice(5, 7)}`,
+      totalCents: totals.get(cursor) ?? 0,
+    });
     cursor = shiftDate(cursor, 1);
   }
   return days;
@@ -129,7 +185,11 @@ export function dailyChargeTotals(charges: { dueDate: string; totalCents: number
 export function monthKey(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso.slice(0, 7);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(date);
 }
 
 export function daysPast(dueDate: string, today: string) {
@@ -140,7 +200,20 @@ export function daysPast(dueDate: string, today: string) {
 }
 
 export function competenceLabel(iso: string) {
-  const months = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const months = [
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+  ];
   const [year, month] = iso.slice(0, 10).split("-");
   const name = months[Number(month) - 1];
   if (!year || !name) return iso;
@@ -150,7 +223,9 @@ export function competenceLabel(iso: string) {
 export const waivedOnCharge = "nex-waived";
 export const nominalPayPrefix = "nex-pay:";
 
-export function replacementPayment(pixCode: string | null): { id: string; cents: number | null } | null {
+export function replacementPayment(
+  pixCode: string | null,
+): { id: string; cents: number | null } | null {
   if (!pixCode) return null;
   if (pixCode.startsWith(nominalPayPrefix)) {
     const id = pixCode.slice(nominalPayPrefix.length);
@@ -189,28 +264,55 @@ export function chargeQuote(input: {
   let interestCents = 0;
   if (days > 0 && !fineWaived) {
     const value = input.paymentFine?.value;
-    if (input.contractFinePercent <= 0 && input.paymentFine?.type === "FIXED" && typeof value === "number" && value > 0) {
+    if (
+      input.contractFinePercent <= 0 &&
+      input.paymentFine?.type === "FIXED" &&
+      typeof value === "number" &&
+      value > 0
+    ) {
       fineCents = centsFromReais(value);
     } else {
-      const percent = input.contractFinePercent > 0 ? input.contractFinePercent : typeof value === "number" && value > 0 ? value : 0;
+      const percent =
+        input.contractFinePercent > 0
+          ? input.contractFinePercent
+          : typeof value === "number" && value > 0
+            ? value
+            : 0;
       fineCents = Math.round((input.baseCents * percent) / 100);
     }
   }
   if (days > 0 && !interestWaived) {
     const value = input.paymentInterest?.value;
-    const percent = input.contractInterestPercent > 0 ? input.contractInterestPercent : typeof value === "number" && value > 0 ? value : 0;
+    const percent =
+      input.contractInterestPercent > 0
+        ? input.contractInterestPercent
+        : typeof value === "number" && value > 0
+          ? value
+          : 0;
     interestCents = Math.round((input.baseCents * percent * days) / 3000);
   }
   const totalCents = input.baseCents + fineCents + interestCents;
   return { fineCents, interestCents, totalCents, nominal: totalCents === input.baseCents };
 }
 
-export function penaltiesRemain(payment: { fine?: { value?: number } | null; interest?: { value?: number } | null; interestValue?: number | null }) {
-  return (payment.fine?.value ?? 0) > 0 || (payment.interest?.value ?? 0) > 0 || (payment.interestValue ?? 0) > 0.009;
+export function penaltiesRemain(payment: {
+  fine?: { value?: number } | null;
+  interest?: { value?: number } | null;
+  interestValue?: number | null;
+}) {
+  return (
+    (payment.fine?.value ?? 0) > 0 ||
+    (payment.interest?.value ?? 0) > 0 ||
+    (payment.interestValue ?? 0) > 0.009
+  );
 }
 
 export function whenLabel(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
+  return date.toLocaleString("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  });
 }

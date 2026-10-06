@@ -1,6 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
-import { appUrl, sendInviteEmail } from "@/server/mail.server";
 
 type Draft = {
   legalName: string;
@@ -15,9 +14,7 @@ type Draft = {
   endsOn: string;
   finePercent: string;
   interestPercent: string;
-  portfolioId: string;
-  adAccountIds: string;
-  accessEmail: string;
+  asaasSubscriptionId: string;
 };
 
 function fail(message: string): never {
@@ -68,11 +65,8 @@ function parseDraft(input: Draft) {
   const interestPercent = input.interestPercent.trim() ? Number(digits(input.interestPercent)) / 100 : 0;
   if (!Number.isFinite(finePercent) || finePercent < 0 || finePercent > 100) fail("Informe a multa entre 0% e 100%.");
   if (!Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100) fail("Informe os juros entre 0% e 100%.");
-  const portfolioId = input.portfolioId.trim();
-  if (portfolioId.length > 80) fail("O ID do portfólio está longo demais.");
-  const adAccountIds = [...new Set(input.adAccountIds.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))];
-  if (adAccountIds.some((id) => id.length > 80)) fail("Um ID de conta de anúncio está longo demais.");
-  const accessEmail = emailOf(input.accessEmail, "e-mail de acesso");
+  const asaasSubscriptionId = input.asaasSubscriptionId.trim();
+  if (asaasSubscriptionId && !/^[A-Za-z0-9_]{1,64}$/.test(asaasSubscriptionId)) fail("A assinatura do Asaas é inválida.");
   const whatsapp = input.whatsapp.trim();
   return {
     legalName,
@@ -87,9 +81,7 @@ function parseDraft(input: Draft) {
     endsOn,
     finePercent,
     interestPercent,
-    portfolioId,
-    adAccountIds,
-    accessEmail,
+    asaasSubscriptionId,
   };
 }
 
@@ -107,11 +99,6 @@ async function requireMaster(userId: string) {
 
 function duplicateDocument(message: string, code?: string) {
   return code === "23505" || /duplicate|unique/i.test(message);
-}
-
-function emailTaken(message: string | undefined) {
-  const text = (message ?? "").toLowerCase();
-  return text.includes("already") || text.includes("registered") || text.includes("exists");
 }
 
 async function audit(actorId: string, organizationId: string, action: string) {
@@ -141,7 +128,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
   const [{ data: organizations, error: orgError }, { data: contracts, error: contractError }, { data: accounts, error: accountError }, { data: invoices, error: invoiceError }, { data: profiles, error: profileError }] =
     await Promise.all([
       supabaseAdmin.from("organizations").select("id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status").order("legal_name"),
-      supabaseAdmin.from("contracts").select("organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly"),
+      supabaseAdmin.from("contracts").select("organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, external_subscription_id"),
       supabaseAdmin.from("meta_accounts").select("organization_id, external_account_id, name, portfolio_id, balance_cents, sync_status, last_synced_at"),
       supabaseAdmin.from("invoices").select("organization_id, competence, due_date, total_amount_cents, status, paid_at").order("due_date", { ascending: false }),
       supabaseAdmin.from("profiles").select("id, email, organization_id"),
@@ -197,6 +184,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       endsOn: contract?.ends_on ?? null,
       finePercent: contract ? Number(contract.fine_percent) : null,
       interestPercent: contract ? Number(contract.interest_percent_monthly) : null,
+      asaasSubscriptionId: contract?.external_subscription_id ?? "",
       portfolioId: portfolio,
       adAccountIds: manualAccounts.map((row) => row.external_account_id),
       metaAccounts: orgAccounts
@@ -207,34 +195,6 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       invoices: orgInvoices,
     };
   });
-}
-
-async function replaceManualAccounts(organizationId: string, portfolioId: string, adAccountIds: string[]) {
-  const { error: deleteError } = await supabaseAdmin.from("meta_accounts").delete().eq("organization_id", organizationId).eq("sync_status", "manual");
-  if (deleteError) fail(deleteError.message);
-  const rows = adAccountIds.map((externalId) => ({
-    organization_id: organizationId,
-    external_account_id: externalId,
-    name: externalId,
-    portfolio_id: portfolioId || null,
-    sync_status: "manual",
-    balance_cents: 0,
-    currency: "BRL",
-  }));
-  if (!rows.length && portfolioId) {
-    rows.push({
-      organization_id: organizationId,
-      external_account_id: `${manualPrefix}${portfolioId}`,
-      name: "Portfólio empresarial",
-      portfolio_id: portfolioId,
-      sync_status: "manual",
-      balance_cents: 0,
-      currency: "BRL",
-    });
-  }
-  if (!rows.length) return;
-  const { error } = await supabaseAdmin.from("meta_accounts").insert(rows);
-  if (error) fail(error.message);
 }
 
 async function saveContract(
@@ -250,61 +210,12 @@ async function saveContract(
       ends_on: parsed.endsOn,
       fine_percent: parsed.finePercent,
       interest_percent_monthly: parsed.interestPercent,
+      ...(parsed.asaasSubscriptionId ? { external_subscription_id: parsed.asaasSubscriptionId } : {}),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "organization_id" },
   );
   if (error) fail(error.message);
-}
-
-async function insertProfile(id: string, parsed: ReturnType<typeof parseDraft>, organizationId: string) {
-  const withPhone = await supabaseAdmin.from("profiles").insert({
-    id,
-    full_name: parsed.responsibleName,
-    email: parsed.accessEmail,
-    whatsapp: parsed.whatsapp,
-    organization_id: organizationId,
-  });
-  if (!withPhone.error) return;
-  const text = withPhone.error.message.toLowerCase();
-  if (!text.includes("whatsapp") && !text.includes("finance_email")) fail(withPhone.error.message);
-  const withoutPhone = await supabaseAdmin.from("profiles").insert({
-    id,
-    full_name: parsed.responsibleName,
-    email: parsed.accessEmail,
-    organization_id: organizationId,
-  });
-  if (withoutPhone.error) fail(withoutPhone.error.message);
-}
-
-async function createAccess(parsed: ReturnType<typeof parseDraft>, organizationId: string) {
-  const { data: link, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-    type: "invite",
-    email: parsed.accessEmail,
-    options: { redirectTo: `${appUrl()}/reset-password`, data: { full_name: parsed.responsibleName } },
-  });
-  if (linkError || !link.user) fail(emailTaken(linkError?.message) ? "Já existe um acesso com este e-mail." : "Não foi possível criar o primeiro acesso.");
-  const createdId = link.user.id;
-  try {
-    await insertProfile(createdId, parsed, organizationId);
-    const { error: roleError } = await supabaseAdmin.from("user_roles").insert({ user_id: createdId, role: "client_admin" });
-    if (roleError) fail(roleError.message);
-    const { error: permissionError } = await supabaseAdmin.from("user_permissions").insert({
-      user_id: createdId,
-      can_view_campaigns: true,
-      can_view_meta_balance: true,
-      can_add_meta_credit: true,
-      can_manage_users: true,
-    });
-    if (permissionError) fail(permissionError.message);
-    return createdId;
-  } catch (error) {
-    await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);
-    await supabaseAdmin.from("profiles").delete().eq("id", createdId);
-    await supabaseAdmin.auth.admin.deleteUser(createdId);
-    throw error;
-  }
 }
 
 export async function createClient(userId: string, input: Draft) {
@@ -324,33 +235,14 @@ export async function createClient(userId: string, input: Draft) {
     .select("id")
     .single();
   if (orgError || !org) fail(orgError && duplicateDocument(orgError.message, orgError.code) ? "Já existe um cliente com este CPF ou CNPJ." : orgError?.message || "Não foi possível criar o cliente.");
-  let accessId: string | null = null;
   try {
     await saveContract(org.id, parsed);
-    await replaceManualAccounts(org.id, parsed.portfolioId, parsed.adAccountIds);
-    accessId = await createAccess(parsed, org.id);
     await audit(userId, org.id, "client.create");
   } catch (error) {
-    if (accessId) {
-      await supabaseAdmin.from("user_permissions").delete().eq("user_id", accessId);
-      await supabaseAdmin.from("user_roles").delete().eq("user_id", accessId);
-      await supabaseAdmin.from("profiles").delete().eq("id", accessId);
-      await supabaseAdmin.auth.admin.deleteUser(accessId);
-    }
     await supabaseAdmin.from("organizations").delete().eq("id", org.id);
     throw error;
   }
-  return deliverInvite(org.id, parsed.accessEmail, parsed.responsibleName);
-}
-
-async function deliverInvite(organizationId: string, email: string, name: string) {
-  try {
-    await sendInviteEmail(email, name);
-    return { id: organizationId, emailSent: true as const, emailMessage: "" };
-  } catch (error) {
-    const emailMessage = error instanceof Error ? error.message : "Não foi possível enviar o e-mail de acesso.";
-    return { id: organizationId, emailSent: false as const, emailMessage };
-  }
+  return { id: org.id };
 }
 
 export async function updateClient(userId: string, id: string, input: Draft) {
@@ -373,30 +265,8 @@ export async function updateClient(userId: string, id: string, input: Draft) {
     .eq("id", id);
   if (error) fail(duplicateDocument(error.message, error.code) ? "Já existe um cliente com este CPF ou CNPJ." : error.message);
   await saveContract(id, parsed);
-  await replaceManualAccounts(id, parsed.portfolioId, parsed.adAccountIds);
-
-  const clients = await listClients(userId);
-  const saved = clients.find((client) => client.id === id);
-  if (!saved) fail("Cliente não encontrado.");
-  if (!saved.accessUserId) {
-    await createAccess(parsed, id);
-    await audit(userId, id, "client.update");
-    return deliverInvite(id, parsed.accessEmail, parsed.responsibleName);
-  }
-  if (saved.accessEmail !== parsed.accessEmail || saved.responsibleName !== parsed.responsibleName) {
-    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(saved.accessUserId, {
-      email: parsed.accessEmail,
-      email_confirm: true,
-    });
-    if (authError) fail(emailTaken(authError.message) ? "Já existe um acesso com este e-mail." : "Não foi possível atualizar o acesso.");
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .update({ full_name: parsed.responsibleName, email: parsed.accessEmail })
-      .eq("id", saved.accessUserId);
-    if (profileError) fail(profileError.message);
-  }
   await audit(userId, id, "client.update");
-  return { id, emailSent: true as const, emailMessage: "" };
+  return { id };
 }
 
 export async function setClientStatus(userId: string, id: string, active: boolean) {

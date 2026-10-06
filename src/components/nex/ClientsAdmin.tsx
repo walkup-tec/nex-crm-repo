@@ -5,7 +5,7 @@ import { applyMask } from "@/lib/masks";
 import type { ClientDraft, ListedClient } from "@/lib/client-access";
 import { clientStatusLabel, dateBr, invoiceStatusLabel, isInactiveClient, moneyFromCents, percentBr } from "@/lib/client-access";
 import { lookupCnpjFn } from "@/lib/cnpj.functions";
-import { createClientFn, listClientsFn, setClientStatusFn, updateClientFn } from "@/lib/clients.functions";
+import { createClientFn, listClientsFn, lookupAsaasSubscriptionFn, setClientStatusFn, updateClientFn } from "@/lib/clients.functions";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -23,7 +23,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 
 const emptyDraft: ClientDraft = {
   legalName: "",
@@ -38,9 +37,7 @@ const emptyDraft: ClientDraft = {
   endsOn: "",
   finePercent: "",
   interestPercent: "",
-  portfolioId: "",
-  adAccountIds: "",
-  accessEmail: "",
+  asaasSubscriptionId: "",
 };
 
 function draftFrom(client: ListedClient): ClientDraft {
@@ -58,9 +55,7 @@ function draftFrom(client: ListedClient): ClientDraft {
     endsOn: dateBr(client.endsOn, ""),
     finePercent: client.finePercent == null ? "" : percentBr(client.finePercent),
     interestPercent: client.interestPercent == null ? "" : percentBr(client.interestPercent),
-    portfolioId: client.portfolioId,
-    adAccountIds: client.adAccountIds.join("\n"),
-    accessEmail: client.accessEmail,
+    asaasSubscriptionId: client.asaasSubscriptionId,
   };
 }
 
@@ -153,7 +148,7 @@ export function ClientsAdmin() {
               <p className="font-medium">{tab === "active" ? "Nenhum cliente ativo" : "Nenhum cliente inativo"}</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
                 {tab === "active"
-                  ? "Cadastre a empresa, o contrato e o primeiro acesso. O cliente passa a aparecer aqui."
+                  ? "Cadastre a empresa e o contrato. O acesso do cliente continua em Usuários."
                   : "Os clientes desativados, bloqueados ou com contrato encerrado ficam nesta lista."}
               </p>
             </div>
@@ -350,6 +345,8 @@ function ClientForm({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [cnpjNote, setCnpjNote] = useState("");
+  const [asaasNote, setAsaasNote] = useState("");
+  const [asaasLoading, setAsaasLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -357,6 +354,8 @@ function ClientForm({
     setSaving(false);
     setFormError("");
     setCnpjNote("");
+    setAsaasNote("");
+    setAsaasLoading(false);
     setDraft(client ? draftFrom(client) : emptyDraft);
   }, [open, client]);
 
@@ -398,12 +397,7 @@ function ClientForm({
       setFormError(result.message);
       return;
     }
-    const message = result.data.emailSent
-      ? client
-        ? "Cliente atualizado."
-        : "Cliente criado. O responsável recebe o e-mail para definir a senha."
-      : `Cliente salvo, mas o e-mail de acesso não saiu. ${result.data.emailMessage}`;
-    await onSaved(message);
+    await onSaved(client ? "Cliente atualizado." : "Cliente criado.");
   };
 
   return (
@@ -412,10 +406,10 @@ function ClientForm({
         <DialogHeader>
           <DialogTitle>{client ? "Editar cliente" : "Novo cliente"}</DialogTitle>
           <DialogDescription>
-            Etapa {step} de 4 • {["Empresa e responsável", "Contrato", "Contas Meta", "Primeiro acesso"][step - 1]}
+            Etapa {step} de 2 • {["Empresa e responsável", "Contrato"][step - 1]}
           </DialogDescription>
         </DialogHeader>
-        <Progress value={step * 25} />
+        <Progress value={step * 50} />
         {formError && (
           <p role="alert" className="text-sm text-destructive">
             {formError}
@@ -431,7 +425,42 @@ function ClientForm({
               </p>
             )}
             <Field label="Responsável" value={draft.responsibleName} onChange={(value) => set({ responsibleName: value })} placeholder="Nome completo" />
-            <Field label="E-mail" value={draft.responsibleEmail} onChange={(value) => set({ responsibleEmail: value })} placeholder="nome@empresa.com.br" />
+            <div>
+              <Field label="E-mail" value={draft.responsibleEmail} onChange={(value) => set({ responsibleEmail: value })} placeholder="nome@empresa.com.br" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-8 px-2 text-muted-foreground"
+                disabled={asaasLoading || !draft.responsibleEmail.includes("@")}
+                onClick={() => {
+                  setAsaasLoading(true);
+                  setAsaasNote("");
+                  void lookupAsaasSubscriptionFn({ data: { email: draft.responsibleEmail } }).then((result) => {
+                    setAsaasLoading(false);
+                    if (!result.ok) {
+                      setAsaasNote(result.message);
+                      return;
+                    }
+                    setAsaasNote(result.data.note);
+                    set({
+                      monthlyFee: result.data.monthlyFee,
+                      dueDay: result.data.dueDay,
+                      startsOn: result.data.startsOn,
+                      endsOn: result.data.endsOn,
+                      finePercent: result.data.finePercent,
+                      interestPercent: result.data.interestPercent,
+                      asaasSubscriptionId: result.data.subscriptionId,
+                    });
+                  });
+                }}
+              >
+                {asaasLoading ? "Consultando o Asaas..." : "Integrar Asaas"}
+              </Button>
+              {asaasNote && (
+                <p className={`mt-1 text-xs ${asaasNote.startsWith("Assinatura localizada") ? "text-muted-foreground" : "text-destructive"}`}>{asaasNote}</p>
+              )}
+            </div>
             <Field label="WhatsApp" value={draft.whatsapp} onChange={(value) => set({ whatsapp: applyMask("phone", value) })} placeholder="(00) 00000-0000" />
             <label className="flex items-center gap-2 self-end pb-2 text-sm">
               <Checkbox checked={draft.sameFinancePhone} onCheckedChange={(value) => set({ sameFinancePhone: value === true })} />
@@ -449,32 +478,11 @@ function ClientForm({
             <Field label="Juros mensais" value={draft.interestPercent} onChange={(value) => set({ interestPercent: applyMask("percent", value) })} placeholder="1,00%" />
           </div>
         )}
-        {step === 3 && (
-          <div className="grid gap-4">
-            <Field label="ID do portfólio empresarial" value={draft.portfolioId} onChange={(value) => set({ portfolioId: value })} placeholder="BM-00000000" />
-            <div>
-              <label htmlFor="contas-meta" className="text-sm font-medium">
-                IDs das contas de anúncios
-              </label>
-              <Textarea id="contas-meta" className="mt-2" placeholder="Uma conta por linha" value={draft.adAccountIds} onChange={(event) => set({ adAccountIds: event.target.value })} />
-            </div>
-            <p className="rounded-lg border p-4 text-sm text-muted-foreground">Os IDs ficam salvos neste cliente. A Meta só é consultada depois da conexão.</p>
-          </div>
-        )}
-        {step === 4 && (
-          <div className="grid gap-4">
-            <Field label="E-mail de acesso" value={draft.accessEmail} onChange={(value) => set({ accessEmail: value })} placeholder="nome@empresa.com.br" />
-            <div className="rounded-lg border p-4">
-              <p className="font-semibold">Primeiro acesso seguro</p>
-              <p className="mt-1 text-sm text-muted-foreground">O cliente recebe um link para definir a própria senha. Nenhuma senha é enviada em texto.</p>
-            </div>
-          </div>
-        )}
         <DialogFooter>
           <Button type="button" variant="outline" disabled={step === 1 || saving} onClick={() => setStep((current) => current - 1)}>
             Voltar
           </Button>
-          {step < 4 ? (
+          {step < 2 ? (
             <Button type="button" disabled={saving} onClick={() => setStep((current) => current + 1)}>
               Continuar
             </Button>

@@ -23,9 +23,7 @@ export type ClientDraft = {
   endsOn: string;
   finePercent: string;
   interestPercent: string;
-  portfolioId: string;
-  adAccountIds: string;
-  accessEmail: string;
+  asaasSubscriptionId: string;
 };
 
 export type ListedClient = {
@@ -46,6 +44,7 @@ export type ListedClient = {
   endsOn: string | null;
   finePercent: number | null;
   interestPercent: number | null;
+  asaasSubscriptionId: string;
   portfolioId: string;
   adAccountIds: string[];
   metaAccounts: { id: string; name: string }[];

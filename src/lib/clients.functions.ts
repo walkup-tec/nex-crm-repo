@@ -3,13 +3,16 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { ClientDraft, ListedClient } from "@/lib/client-access";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
-type SavedClient = { id: string; emailSent: boolean; emailMessage: string };
+type SavedClient = { id: string };
 
 function publicMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   console.error(error);
   if (message.includes("SUPABASE_SERVICE_ROLE_KEY")) {
     return "O servidor ainda não tem a chave de administração do Supabase.";
+  }
+  if (/\$aact|access_token|ASAAS_API_KEY/i.test(message)) {
+    return "Não foi possível consultar o Asaas.";
   }
   if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ECONNRESET|EAUTH/i.test(message)) {
     return "Não foi possível enviar o e-mail de acesso. O servidor de e-mail recusou a conexão.";
@@ -60,6 +63,14 @@ export const setClientStatusFn = createServerFn({ method: "POST" })
       await setClientStatus(context.userId, data.id, data.active);
       return true as const;
     });
+  });
+
+export const lookupAsaasSubscriptionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { email: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { lookupAsaasSubscription } = await import("@/server/asaas.server");
+    return guard(() => lookupAsaasSubscription(context.userId, data.email));
   });
 
 export const openClientSupportFn = createServerFn({ method: "POST" })

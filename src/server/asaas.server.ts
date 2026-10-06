@@ -67,7 +67,7 @@ function asaasError(text: string) {
   }
 }
 
-async function asaasRequest<T>(method: "GET" | "PUT", path: string, params: Record<string, string>, body?: unknown): Promise<T> {
+async function asaasRequest<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, params: Record<string, string>, body?: unknown): Promise<T> {
   const { key, base } = config();
   const url = new URL(`${base}${path}`);
   for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
@@ -84,8 +84,15 @@ async function asaasRequest<T>(method: "GET" | "PUT", path: string, params: Reco
   });
   const text = await response.text();
   if (response.status === 401 || response.status === 403) fail("A chave do Asaas foi recusada.");
-  if (!response.ok) fail(asaasError(text) || (method === "GET" ? "Não foi possível consultar o Asaas agora." : "Não foi possível atualizar a cobrança no Asaas."));
+  if (!response.ok) fail(asaasError(text) || asaasFailure(method));
   return (text ? JSON.parse(text) : {}) as T;
+}
+
+function asaasFailure(method: "GET" | "POST" | "PUT" | "DELETE") {
+  if (method === "GET") return "Não foi possível consultar o Asaas agora.";
+  if (method === "POST") return "Não foi possível gerar o Pix do valor nominal no Asaas.";
+  if (method === "DELETE") return "Não foi possível excluir a cobrança vencida no Asaas.";
+  return "Não foi possível atualizar a cobrança no Asaas.";
 }
 
 async function asaasGet<T>(path: string, params: Record<string, string>) {
@@ -94,14 +101,19 @@ async function asaasGet<T>(path: string, params: Record<string, string>) {
 
 export type AsaasPayment = {
   id?: string;
+  customer?: string;
+  billingType?: string;
   value?: number;
   originalValue?: number | null;
+  interestValue?: number | null;
   dueDate?: string | null;
   status?: string;
   paymentDate?: string | null;
   clientPaymentDate?: string | null;
   invoiceUrl?: string | null;
   deleted?: boolean;
+  fine?: { value?: number; type?: string } | null;
+  interest?: { value?: number } | null;
 };
 
 function externalId(value: string, label: string) {
@@ -127,13 +139,53 @@ export async function listSubscriptionPayments(subscriptionId: string): Promise<
   return all;
 }
 
-export async function waivePaymentPenalties(paymentId: string, input: { waiveFine: boolean; waiveInterest: boolean; value: number | null }) {
+export async function getPayment(paymentId: string) {
   const id = externalId(paymentId, "A cobrança");
-  const body: { fine?: { value: number }; interest?: { value: number }; value?: number } = {};
-  if (input.waiveFine) body.fine = { value: 0 };
+  return asaasRequest<AsaasPayment>("GET", `/payments/${id}`, {});
+}
+
+export async function waivePaymentPenalties(paymentId: string, input: { waiveFine: boolean; waiveInterest: boolean; nominal: number | null }) {
+  const id = externalId(paymentId, "A cobrança");
+  const current = await getPayment(id);
+  if (!current.billingType || !current.dueDate || typeof current.value !== "number") fail("A cobrança do Asaas está incompleta.");
+  const body: {
+    billingType: string;
+    value: number;
+    dueDate: string;
+    fine?: { value: number; type: "PERCENTAGE" };
+    interest?: { value: number };
+  } = {
+    billingType: current.billingType,
+    value: input.nominal ?? current.value,
+    dueDate: current.dueDate.slice(0, 10),
+  };
+  if (input.waiveFine) body.fine = { value: 0, type: "PERCENTAGE" };
   if (input.waiveInterest) body.interest = { value: 0 };
-  if (input.value != null) body.value = input.value;
   return asaasRequest<AsaasPayment>("PUT", `/payments/${id}`, {}, body);
+}
+
+export async function createNominalPix(input: { customer: string; value: number; dueDate: string; description: string; externalReference: string }) {
+  return asaasRequest<AsaasPayment>("POST", "/payments", {}, {
+    customer: input.customer,
+    billingType: "PIX",
+    value: input.value,
+    dueDate: input.dueDate,
+    description: input.description,
+    externalReference: input.externalReference,
+    fine: { value: 0, type: "PERCENTAGE" },
+    interest: { value: 0 },
+  });
+}
+
+export async function deletePayment(paymentId: string) {
+  const id = externalId(paymentId, "A cobrança");
+  try {
+    await asaasRequest<AsaasPayment>("DELETE", `/payments/${id}`, {});
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/não encontrad|não existe|já foi removid|deleted/i.test(message)) return;
+    throw error;
+  }
 }
 
 export async function readPaymentPix(paymentId: string): Promise<{ payload: string; image: string } | null> {

@@ -94,6 +94,23 @@ export function competenceLabel(iso: string) {
   return `${name}/${year}`;
 }
 
+export const waivedOnCharge = "nex-waived";
+export const nominalPayPrefix = "nex-pay:";
+
+export function nominalPaymentId(pixCode: string | null) {
+  if (!pixCode?.startsWith(nominalPayPrefix)) return null;
+  const id = pixCode.slice(nominalPayPrefix.length);
+  return /^[A-Za-z0-9_]{1,64}$/.test(id) ? id : null;
+}
+
+export function keepsNominalValue(pixCode: string | null) {
+  return pixCode === waivedOnCharge || nominalPaymentId(pixCode) !== null;
+}
+
+export function penaltiesRemain(payment: { fine?: { value?: number } | null; interest?: { value?: number } | null; interestValue?: number | null }) {
+  return (payment.fine?.value ?? 0) > 0 || (payment.interest?.value ?? 0) > 0 || (payment.interestValue ?? 0) > 0.009;
+}
+
 export function whenLabel(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;

@@ -133,7 +133,7 @@ export function ClientFinance() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Regularizar com Pix</DialogTitle>
-            <DialogDescription>A cobrança atualizada vem do Asaas.</DialogDescription>
+            <DialogDescription>Se a negociação retirou multa e juros, este Pix é só o valor nominal desta cobrança.</DialogDescription>
           </DialogHeader>
           {pixLoading && <p className="text-sm text-muted-foreground">Consultando o Pix...</p>}
           {pixError && <p className="text-sm text-destructive">{pixError}</p>}

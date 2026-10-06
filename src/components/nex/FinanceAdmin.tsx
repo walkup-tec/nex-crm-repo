@@ -191,7 +191,11 @@ function NegotiateDialog({ charge, onClose, onSaved }: { charge: FinanceCharge |
               Remover juros desta cobrança
               <Switch checked={waiveInterest} onCheckedChange={setWaiveInterest} />
             </label>
-            <p className="text-xs text-muted-foreground">A alteração é gravada no Asaas e nesta cobrança.</p>
+            <p className="text-xs text-muted-foreground">
+              {waiveFine && waiveInterest
+                ? "Só esta cobrança fica no valor nominal. A multa e os juros dela saem no Asaas. As outras cobranças não mudam."
+                : "A alteração vale apenas para esta cobrança no Asaas."}
+            </p>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
         )}

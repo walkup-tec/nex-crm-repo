@@ -2,17 +2,22 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   centsFromReais,
   chargeStatus,
+  competenceLabel,
   competenceOf,
   daysPast,
+  keepsNominalValue,
   monthKey,
+  nominalPaymentId,
+  penaltiesRemain,
   todayKey,
+  waivedOnCharge,
   type FinanceAudit,
   type FinanceCharge,
   type MasterFinance,
   type OwnFinance,
 } from "@/lib/finance-access";
 import type { InvoiceStatus } from "@/lib/client-access";
-import { asaasConfigured, listSubscriptionPayments, readPaymentPix, waivePaymentPenalties, type AsaasPayment } from "@/server/asaas.server";
+import { asaasConfigured, createNominalPix, deletePayment, getPayment, listSubscriptionPayments, readPaymentPix, waivePaymentPenalties, type AsaasPayment } from "@/server/asaas.server";
 
 type Role = "master" | "client_admin" | "client_user";
 type Actor = { id: string; role: Role; organizationId: string | null; fullName: string };
@@ -82,9 +87,14 @@ async function savePayment(contract: ContractRow, payment: AsaasPayment): Promis
     invoice_url: payment.invoiceUrl || null,
     updated_at: new Date().toISOString(),
   };
-  const { data: current, error: readError } = await supabaseAdmin.from("invoices").select("id").eq("external_charge_id", payment.id).maybeSingle();
+  const { data: current, error: readError } = await supabaseAdmin.from("invoices").select("id, pix_code, status, base_amount_cents").eq("external_charge_id", payment.id).maybeSingle();
   if (readError) fail(readError.message);
   if (current) {
+    if (current.status === "paid") return "updated";
+    if (keepsNominalValue(current.pix_code)) {
+      row.total_amount_cents = Number(current.base_amount_cents);
+      if (nominalPaymentId(current.pix_code)) return "updated";
+    }
     const { error } = await supabaseAdmin.from("invoices").update(row).eq("id", current.id);
     if (error) fail(error.message);
     return "updated";
@@ -92,6 +102,9 @@ async function savePayment(contract: ContractRow, payment: AsaasPayment): Promis
   const { error } = await supabaseAdmin.from("invoices").insert(row);
   if (!error) return "inserted";
   if (!/duplicate|unique|23505/i.test(error.message)) fail(error.message);
+  const { data: sameMonth } = await supabaseAdmin.from("invoices").select("id, pix_code, status, base_amount_cents").eq("organization_id", contract.organization_id).eq("competence", row.competence).maybeSingle();
+  if (sameMonth?.status === "paid" || nominalPaymentId(sameMonth?.pix_code ?? null)) return "skipped";
+  if (sameMonth && keepsNominalValue(sameMonth.pix_code)) row.total_amount_cents = Number(sameMonth.base_amount_cents);
   const { error: updateError } = await supabaseAdmin.from("invoices").update(row).eq("organization_id", contract.organization_id).eq("competence", row.competence);
   if (updateError) return "skipped";
   return "updated";
@@ -141,7 +154,50 @@ export async function syncFinance(userId: string, organizationId?: string) {
   if (inserted > 0) {
     await audit(actor.id, target ?? null, "finance.sync", null, { count: inserted });
   }
+  await settleNominalPayments(target);
   return problem;
+}
+
+const paidAsaas = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
+
+async function settleNominalPayments(organizationId?: string) {
+  let query = supabaseAdmin
+    .from("invoices")
+    .select("id, organization_id, external_charge_id, pix_code, base_amount_cents, status")
+    .like("pix_code", "nex-%")
+    .in("status", ["pending", "overdue"]);
+  if (organizationId) query = query.eq("organization_id", organizationId);
+  const { data, error } = await query;
+  if (error) fail(error.message);
+  for (const invoice of data ?? []) {
+    if (!keepsNominalValue(invoice.pix_code) || !invoice.external_charge_id) continue;
+    const payableId = nominalPaymentId(invoice.pix_code) ?? invoice.external_charge_id;
+    let payment: AsaasPayment;
+    try {
+      payment = await getPayment(payableId);
+    } catch {
+      continue;
+    }
+    if (!payment.status || !paidAsaas.has(payment.status)) continue;
+    if (payableId !== invoice.external_charge_id) {
+      try {
+        await deletePayment(invoice.external_charge_id);
+      } catch (deleteError) {
+        console.error("asaas_delete_overdue", deleteError instanceof Error ? deleteError.message : "error");
+      }
+    }
+    const paidOn = payment.clientPaymentDate || payment.paymentDate;
+    await supabaseAdmin
+      .from("invoices")
+      .update({
+        status: "paid",
+        total_amount_cents: Number(invoice.base_amount_cents),
+        paid_at: paidOn ? new Date(`${paidOn.slice(0, 10)}T12:00:00Z`).toISOString() : new Date().toISOString(),
+        penalties_waived: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoice.id);
+  }
 }
 
 async function invoicesOf(organizationId?: string) {
@@ -258,25 +314,42 @@ export async function negotiateCharge(userId: string, input: { invoiceId: string
   if (!input.waiveFine && !input.waiveInterest) fail("Escolha remover a multa, os juros ou os dois.");
   const { data: invoice, error } = await supabaseAdmin
     .from("invoices")
-    .select("id, organization_id, competence, due_date, base_amount_cents, total_amount_cents, status, paid_at, invoice_url, external_charge_id, contract_id")
+    .select("id, organization_id, competence, due_date, base_amount_cents, total_amount_cents, status, paid_at, invoice_url, external_charge_id, contract_id, pix_code")
     .eq("id", input.invoiceId)
     .maybeSingle();
   if (error) fail(error.message);
   if (!invoice) fail("Cobrança não encontrada.");
   if (invoice.status === "paid" || invoice.status === "cancelled") fail("Esta cobrança não pode mais ser negociada.");
   if (!invoice.external_charge_id) fail("Esta cobrança não está ligada ao Asaas.");
-  const value = input.waiveFine && input.waiveInterest ? Number(invoice.base_amount_cents) / 100 : null;
-  const payment = await waivePaymentPenalties(invoice.external_charge_id, { waiveFine: input.waiveFine, waiveInterest: input.waiveInterest, value });
+  const nominal = input.waiveFine && input.waiveInterest ? Number(invoice.base_amount_cents) / 100 : null;
+  const payment = await waivePaymentPenalties(invoice.external_charge_id, { waiveFine: input.waiveFine, waiveInterest: input.waiveInterest, nominal });
+  let pixCode: string | null = nominal != null ? nominalPaymentId(invoice.pix_code) ? invoice.pix_code : waivedOnCharge : null;
+  if (nominal != null && !nominalPaymentId(invoice.pix_code)) {
+    const refreshed = await getPayment(invoice.external_charge_id);
+    if (penaltiesRemain(refreshed)) {
+      if (!refreshed.customer) fail("A cobrança do Asaas não informa o cliente para gerar o Pix.");
+      const created = await createNominalPix({
+        customer: refreshed.customer,
+        value: nominal,
+        dueDate: todayKey(),
+        description: `Mensalidade ${competenceLabel(invoice.competence)} sem multa e sem juros`,
+        externalReference: `nex-${invoice.id}`,
+      });
+      if (!created.id) fail("O Asaas não devolveu o Pix do valor nominal.");
+      pixCode = `nex-pay:${created.id}`;
+    }
+  }
   const names = await namesOf([invoice.organization_id]);
   const due = (payment.dueDate || invoice.due_date).slice(0, 10);
   const status = chargeStatus(payment.status ?? invoice.status, due, todayKey());
-  const total = typeof payment.value === "number" ? centsFromReais(payment.value) : input.waiveFine && input.waiveInterest ? Number(invoice.base_amount_cents) : Number(invoice.total_amount_cents);
+  const total = nominal != null ? Number(invoice.base_amount_cents) : typeof payment.value === "number" ? centsFromReais(payment.value) : Number(invoice.total_amount_cents);
   const { error: updateError } = await supabaseAdmin
     .from("invoices")
     .update({
       total_amount_cents: total,
       status,
       penalties_waived: true,
+      ...(pixCode ? { pix_code: pixCode } : {}),
       invoice_url: payment.invoiceUrl || invoice.invoice_url,
       updated_at: new Date().toISOString(),
     })
@@ -292,16 +365,41 @@ export async function negotiateCharge(userId: string, input: { invoiceId: string
 
 export async function chargePix(userId: string, invoiceId: string) {
   const actor = await actorOf(userId);
+  if (actor.role !== "master" && !actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
+  await settleNominalPayments(actor.role === "master" ? undefined : actor.organizationId ?? undefined);
   const { data: invoice, error } = await supabaseAdmin
     .from("invoices")
-    .select("id, organization_id, total_amount_cents, status, external_charge_id, invoice_url")
+    .select("id, organization_id, competence, base_amount_cents, total_amount_cents, status, external_charge_id, invoice_url, pix_code")
     .eq("id", invoiceId)
     .maybeSingle();
   if (error) fail(error.message);
   if (!invoice) fail("Cobrança não encontrada.");
   if (actor.role !== "master" && invoice.organization_id !== actor.organizationId) fail("Você não pode abrir esta cobrança.");
   if (invoice.status === "paid" || invoice.status === "cancelled") fail("Esta cobrança não está em aberto.");
-  const pix = invoice.external_charge_id ? await readPaymentPix(invoice.external_charge_id) : null;
+  let payableId = invoice.external_charge_id;
+  let totalCents = Number(invoice.total_amount_cents);
+  if (keepsNominalValue(invoice.pix_code)) {
+    const replacement = nominalPaymentId(invoice.pix_code);
+    if (replacement) payableId = replacement;
+    else if (invoice.external_charge_id) {
+      const current = await getPayment(invoice.external_charge_id);
+      if (penaltiesRemain(current)) {
+        if (!current.customer) fail("A cobrança do Asaas não informa o cliente para gerar o Pix.");
+        const created = await createNominalPix({
+          customer: current.customer,
+          value: Number(invoice.base_amount_cents) / 100,
+          dueDate: todayKey(),
+          description: `Mensalidade ${competenceLabel(invoice.competence)} sem multa e sem juros`,
+          externalReference: `nex-${invoice.id}`,
+        });
+        if (!created.id) fail("O Asaas não devolveu o Pix do valor nominal.");
+        payableId = created.id;
+        await supabaseAdmin.from("invoices").update({ pix_code: `nex-pay:${created.id}`, updated_at: new Date().toISOString() }).eq("id", invoice.id);
+      }
+    }
+    totalCents = Number(invoice.base_amount_cents);
+  }
+  const pix = payableId ? await readPaymentPix(payableId) : null;
   if (!pix && !invoice.invoice_url) fail("O Asaas ainda não disponibilizou o Pix desta cobrança.");
-  return { payload: pix?.payload ?? "", image: pix?.image ?? "", invoiceUrl: invoice.invoice_url, totalCents: Number(invoice.total_amount_cents) };
+  return { payload: pix?.payload ?? "", image: pix?.image ?? "", invoiceUrl: invoice.invoice_url, totalCents };
 }

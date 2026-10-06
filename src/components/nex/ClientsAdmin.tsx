@@ -4,6 +4,7 @@ import { CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoundCog } 
 import { applyMask } from "@/lib/masks";
 import type { ClientDraft, ListedClient } from "@/lib/client-access";
 import { clientStatusLabel, dateBr, invoiceStatusLabel, isInactiveClient, moneyFromCents, percentBr } from "@/lib/client-access";
+import { lookupCnpjFn } from "@/lib/cnpj.functions";
 import { createClientFn, listClientsFn, setClientStatusFn, updateClientFn } from "@/lib/clients.functions";
 import {
   AlertDialog,
@@ -348,14 +349,43 @@ function ClientForm({
   const [draft, setDraft] = useState<ClientDraft>(emptyDraft);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [cnpjNote, setCnpjNote] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setStep(1);
     setSaving(false);
     setFormError("");
+    setCnpjNote("");
     setDraft(client ? draftFrom(client) : emptyDraft);
   }, [open, client]);
+
+  useEffect(() => {
+    if (!open || step !== 1) return;
+    const digits = draft.document.replace(/\D/g, "");
+    const savedDigits = client?.document.replace(/\D/g, "") ?? "";
+    if (digits.length !== 14 || digits === savedDigits) {
+      if (digits.length !== 14) setCnpjNote("");
+      return;
+    }
+    let active = true;
+    setCnpjNote("Consultando o CNPJ...");
+    const timer = setTimeout(() => {
+      void lookupCnpjFn({ data: { document: digits } }).then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          setCnpjNote(result.message);
+          return;
+        }
+        setCnpjNote("Razão social encontrada.");
+        setDraft((current) => ({ ...current, legalName: result.data.legalName }));
+      });
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [open, step, draft.document, client]);
 
   const set = (patch: Partial<ClientDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
@@ -393,8 +423,13 @@ function ClientForm({
         )}
         {step === 1 && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Razão social" value={draft.legalName} onChange={(value) => set({ legalName: value })} placeholder="Nome empresarial" />
             <Field label="CPF ou CNPJ" value={draft.document} onChange={(value) => set({ document: applyMask("doc", value) })} placeholder="00.000.000/0000-00" />
+            <Field label="Razão social" value={draft.legalName} onChange={(value) => set({ legalName: value })} placeholder="Preenchida pelo CNPJ" />
+            {cnpjNote && (
+              <p className={`sm:col-span-2 text-xs ${cnpjNote.includes("encontrada") || cnpjNote.startsWith("Consultando") ? "text-muted-foreground" : "text-destructive"}`}>
+                {cnpjNote}
+              </p>
+            )}
             <Field label="Responsável" value={draft.responsibleName} onChange={(value) => set({ responsibleName: value })} placeholder="Nome completo" />
             <Field label="E-mail" value={draft.responsibleEmail} onChange={(value) => set({ responsibleEmail: value })} placeholder="nome@empresa.com.br" />
             <Field label="WhatsApp" value={draft.whatsapp} onChange={(value) => set({ whatsapp: applyMask("phone", value) })} placeholder="(00) 00000-0000" />

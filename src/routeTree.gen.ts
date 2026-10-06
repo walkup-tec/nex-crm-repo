@@ -32,6 +32,8 @@ import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
+import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
+import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -154,6 +156,18 @@ const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   path: '/meta/callback',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthenticatedMasterFinanceiroOrgIdRoute =
+  AuthenticatedMasterFinanceiroOrgIdRouteImport.update({
+    id: '/$orgId',
+    path: '/$orgId',
+    getParentRoute: () => AuthenticatedMasterFinanceiroRoute,
+  } as any)
+const AuthenticatedMasterSuporteOrgIdRoute =
+  AuthenticatedMasterSuporteOrgIdRouteImport.update({
+    id: '/suporte/$orgId',
+    path: '/suporte/$orgId',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -175,9 +189,11 @@ export interface FileRoutesByFullPath {
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
-  '/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
+  '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
+  '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -197,9 +213,11 @@ export interface FileRoutesByTo {
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
-  '/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/master': typeof AuthenticatedMasterIndexRoute
+  '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
+  '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -223,9 +241,11 @@ export interface FileRoutesById {
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
-  '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRoute
+  '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
+  '/_authenticated/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
+  '/_authenticated/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -252,6 +272,8 @@ export interface FileRouteTypes {
     | '/master/financeiro'
     | '/auth/meta/callback'
     | '/master/'
+    | '/master/financeiro/$orgId'
+    | '/master/suporte/$orgId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -274,6 +296,8 @@ export interface FileRouteTypes {
     | '/master/financeiro'
     | '/auth/meta/callback'
     | '/master'
+    | '/master/financeiro/$orgId'
+    | '/master/suporte/$orgId'
   id:
     | '__root__'
     | '/'
@@ -299,6 +323,8 @@ export interface FileRouteTypes {
     | '/_authenticated/master/financeiro'
     | '/auth/meta/callback'
     | '/_authenticated/master/'
+    | '/_authenticated/master/financeiro/$orgId'
+    | '/_authenticated/master/suporte/$orgId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -474,16 +500,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthMetaCallbackRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_authenticated/master/financeiro/$orgId': {
+      id: '/_authenticated/master/financeiro/$orgId'
+      path: '/$orgId'
+      fullPath: '/master/financeiro/$orgId'
+      preLoaderRoute: typeof AuthenticatedMasterFinanceiroOrgIdRouteImport
+      parentRoute: typeof AuthenticatedMasterFinanceiroRoute
+    }
+    '/_authenticated/master/suporte/$orgId': {
+      id: '/_authenticated/master/suporte/$orgId'
+      path: '/suporte/$orgId'
+      fullPath: '/master/suporte/$orgId'
+      preLoaderRoute: typeof AuthenticatedMasterSuporteOrgIdRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
   }
 }
+
+interface AuthenticatedMasterFinanceiroRouteChildren {
+  AuthenticatedMasterFinanceiroOrgIdRoute: typeof AuthenticatedMasterFinanceiroOrgIdRoute
+}
+
+const AuthenticatedMasterFinanceiroRouteChildren: AuthenticatedMasterFinanceiroRouteChildren =
+  {
+    AuthenticatedMasterFinanceiroOrgIdRoute:
+      AuthenticatedMasterFinanceiroOrgIdRoute,
+  }
+
+const AuthenticatedMasterFinanceiroRouteWithChildren =
+  AuthenticatedMasterFinanceiroRoute._addFileChildren(
+    AuthenticatedMasterFinanceiroRouteChildren,
+  )
 
 interface AuthenticatedMasterRouteChildren {
   AuthenticatedMasterCampanhasRoute: typeof AuthenticatedMasterCampanhasRoute
   AuthenticatedMasterClientesRoute: typeof AuthenticatedMasterClientesRoute
   AuthenticatedMasterConfiguracoesRoute: typeof AuthenticatedMasterConfiguracoesRoute
   AuthenticatedMasterCriativosRoute: typeof AuthenticatedMasterCriativosRoute
-  AuthenticatedMasterFinanceiroRoute: typeof AuthenticatedMasterFinanceiroRoute
+  AuthenticatedMasterFinanceiroRoute: typeof AuthenticatedMasterFinanceiroRouteWithChildren
   AuthenticatedMasterIndexRoute: typeof AuthenticatedMasterIndexRoute
+  AuthenticatedMasterSuporteOrgIdRoute: typeof AuthenticatedMasterSuporteOrgIdRoute
 }
 
 const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
@@ -491,8 +547,10 @@ const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
   AuthenticatedMasterClientesRoute: AuthenticatedMasterClientesRoute,
   AuthenticatedMasterConfiguracoesRoute: AuthenticatedMasterConfiguracoesRoute,
   AuthenticatedMasterCriativosRoute: AuthenticatedMasterCriativosRoute,
-  AuthenticatedMasterFinanceiroRoute: AuthenticatedMasterFinanceiroRoute,
+  AuthenticatedMasterFinanceiroRoute:
+    AuthenticatedMasterFinanceiroRouteWithChildren,
   AuthenticatedMasterIndexRoute: AuthenticatedMasterIndexRoute,
+  AuthenticatedMasterSuporteOrgIdRoute: AuthenticatedMasterSuporteOrgIdRoute,
 }
 
 const AuthenticatedMasterRouteWithChildren =

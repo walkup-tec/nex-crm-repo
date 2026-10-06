@@ -35,7 +35,7 @@ function percent(value: number | null) {
 const initialPeriod: MetaPeriod = { mode: "total" };
 const noCampaigns: MetaCampaignRow[] = [];
 
-export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
+export function MetaPerformance({ mode, organizationId: organizationFromRoute = "" }: { mode: "overview" | "campaigns"; organizationId?: string }) {
   const [period, setPeriod] = useState<MetaPeriod>(initialPeriod);
   const [view, setView] = useState<MetaPerformanceView | null>(null);
   const [maximumView, setMaximumView] = useState<MetaPerformanceView | null>(null);
@@ -47,7 +47,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   const [chartId, setChartId] = useState<string | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState("");
-  const organizationId = readOrg();
+  const organizationId = organizationFromRoute || readOrg();
 
   const load = async (nextPeriod: MetaPeriod) => {
     setLoading(true);

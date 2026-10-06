@@ -27,10 +27,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
-import { clients as clientDirectory } from "@/data/demo";
 import { applyMask } from "@/lib/masks";
 import type { ListedUser, RegisteredClient, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
 import { MetaConnect } from "@/components/nex/MetaConnect";
+import { listClientsFn } from "@/lib/clients.functions";
 import { createUserFn, deleteUserFn, listUsersFn, resendInviteFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
 
 const roleLabel: Record<UserRole, string> = {
@@ -47,11 +47,6 @@ const permissionFields: { key: keyof UserPermissions; label: string }[] = [
 ];
 
 const emptyPermissions: UserPermissions = { campaigns: true, balance: false, credit: false, manage: false };
-
-const registeredClients: RegisteredClient[] = clientDirectory.map((client) => ({
-  id: client.name,
-  name: client.name,
-}));
 
 function permissionSummary(user: ListedUser) {
   if (user.role !== "client_user") return null;
@@ -73,6 +68,7 @@ export function UsersAdmin() {
   const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "edit"; user: ListedUser }>(null);
   const [removing, setRemoving] = useState<ListedUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [registeredClients, setRegisteredClients] = useState<RegisteredClient[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,7 +76,15 @@ export function UsersAdmin() {
     try {
       const result = await listUsersFn();
       if (!result.ok) setError(result.message);
-      else setSnapshot(result.data);
+      else {
+        setSnapshot(result.data);
+        if (result.data.actor.role === "master") {
+          const clientsResult = await listClientsFn();
+          setRegisteredClients(clientsResult.ok ? clientsResult.data.map((client) => ({ id: client.id, name: client.legalName })) : []);
+        } else {
+          setRegisteredClients([]);
+        }
+      }
     } catch {
       setError("Não foi possível carregar os usuários.");
     } finally {

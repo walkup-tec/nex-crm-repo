@@ -80,7 +80,16 @@ export function UsersAdmin() {
         setSnapshot(result.data);
         if (result.data.actor.role === "master") {
           const clientsResult = await listClientsFn();
-          setRegisteredClients(clientsResult.ok ? clientsResult.data.map((client) => ({ id: client.id, name: client.legalName })) : []);
+          setRegisteredClients(
+            clientsResult.ok
+              ? clientsResult.data.map((client) => ({
+                  id: client.id,
+                  name: client.legalName,
+                  email: client.responsibleEmail,
+                  whatsapp: client.whatsapp,
+                }))
+              : [],
+          );
         } else {
           setRegisteredClients([]);
         }
@@ -508,8 +517,11 @@ function UserDialog({
               <Select
                 {...(clientId ? { value: clientId } : {})}
                 onValueChange={(value) => {
+                  const client = clients.find((item) => item.id === value);
                   setClientId(value);
-                  setFullName(clients.find((item) => item.id === value)?.name ?? "");
+                  setFullName(client?.name ?? "");
+                  setEmail(client?.email ?? "");
+                  setWhatsapp(client?.whatsapp ? applyMask("phone", client.whatsapp) : "");
                 }}
                 disabled={clients.length === 0}
               >

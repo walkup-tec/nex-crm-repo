@@ -27,6 +27,8 @@ export type ListedUser = {
 export type RegisteredClient = {
   id: string;
   name: string;
+  email: string;
+  whatsapp: string;
 };
 
 export type UsersSnapshot = {

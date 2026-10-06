@@ -11,6 +11,9 @@ export type ListedUser = {
   id: string;
   fullName: string;
   email: string;
+  whatsapp: string;
+  financeEmail: string;
+  financeEmailSame: boolean;
   role: UserRole;
   blocked: boolean;
   organizationId: string | null;

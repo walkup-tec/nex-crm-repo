@@ -16,6 +16,9 @@ type ProfileRow = {
   id: string;
   full_name: string;
   email: string;
+  whatsapp: string | null;
+  finance_email: string | null;
+  finance_email_same: boolean;
   is_blocked: boolean;
   organization_id: string | null;
   owner_id: string | null;
@@ -58,15 +61,20 @@ function canManage(actor: Actor, target: { id: string; role: Role; ownerId: stri
 async function profiles(): Promise<ProfileRow[]> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, email, is_blocked, organization_id, owner_id")
+    .select("id, full_name, email, whatsapp, finance_email, finance_email_same, is_blocked, organization_id, owner_id")
     .order("full_name");
-  if (error) {
-    if (error.message.toLowerCase().includes("owner_id")) {
-      fail("Falta aplicar a coluna owner_id em profiles no Supabase.");
+  if (!error) return data ?? [];
+  const text = error.message.toLowerCase();
+  if (text.includes("owner_id")) fail("Falta aplicar a coluna owner_id em profiles no Supabase.");
+  if (text.includes("whatsapp") || text.includes("finance_email")) {
+    const legacy = await supabaseAdmin.from("profiles").select("id, full_name, email, is_blocked, organization_id, owner_id").order("full_name");
+    if (legacy.error) {
+      if (legacy.error.message.toLowerCase().includes("owner_id")) fail("Falta aplicar a coluna owner_id em profiles no Supabase.");
+      fail(legacy.error.message);
     }
-    fail(error.message);
+    return (legacy.data ?? []).map((row) => ({ ...row, whatsapp: null, finance_email: null, finance_email_same: false }));
   }
-  return data ?? [];
+  fail(error.message);
 }
 
 async function roleMap() {
@@ -111,6 +119,9 @@ function toListed(
     id: row.id,
     fullName: row.full_name,
     email: row.email,
+    whatsapp: row.whatsapp ?? "",
+    financeEmail: row.finance_email ?? "",
+    financeEmailSame: row.finance_email_same,
     role,
     blocked: row.is_blocked,
     organizationId: row.organization_id,
@@ -164,13 +175,23 @@ async function targetOf(id: string) {
 
 export async function createUser(
   userId: string,
-  input: { fullName: string; email: string; kind?: "master" | "client"; permissions?: UserPermissions; sendEmail?: boolean },
+  input: {
+    fullName: string;
+    email: string;
+    whatsapp: string;
+    financeEmail: string;
+    financeEmailSame: boolean;
+    kind?: "master" | "client";
+    permissions?: UserPermissions;
+    sendEmail?: boolean;
+  },
 ) {
   const actor = await actorOf(userId);
   const fullName = input.fullName.trim();
   const email = input.email.trim().toLowerCase();
   if (fullName.length < 2) fail("Informe o nome.");
   if (!email.includes("@")) fail("Informe um e-mail válido.");
+  const contact = contactOf(input.whatsapp, email, input.financeEmail, input.financeEmailSame);
 
   let role: Role;
   let organizationId: string | null = null;
@@ -214,7 +235,7 @@ export async function createUser(
           document: email,
           responsible_name: fullName,
           responsible_email: email,
-          responsible_phone: "não informado",
+          responsible_phone: contact.whatsapp,
           finance_phone: "não informado",
         })
         .select("id")
@@ -227,11 +248,19 @@ export async function createUser(
       id: createdId,
       full_name: fullName,
       email,
+      whatsapp: contact.whatsapp,
+      finance_email: contact.financeEmail,
+      finance_email_same: contact.financeEmailSame,
       organization_id: organizationId,
       owner_id: ownerId,
     });
     if (profileError) {
-      fail(profileError.message.toLowerCase().includes("owner_id") ? "Falta aplicar a coluna owner_id em profiles no Supabase." : profileError.message);
+      const text = profileError.message.toLowerCase();
+      if (text.includes("owner_id")) fail("Falta aplicar a coluna owner_id em profiles no Supabase.");
+      if (text.includes("whatsapp") || text.includes("finance_email")) {
+        fail("Falta aplicar as colunas de WhatsApp e e-mail financeiro em profiles no Supabase.");
+      }
+      fail(profileError.message);
     }
 
     const { error: roleError } = await supabaseAdmin.from("user_roles").insert({ user_id: createdId, role });
@@ -282,7 +311,7 @@ export async function resendInvite(userId: string, targetId: string) {
 
 export async function updateUser(
   userId: string,
-  input: { id: string; fullName: string; email: string; permissions?: UserPermissions },
+  input: { id: string; fullName: string; email: string; whatsapp: string; financeEmail: string; financeEmailSame: boolean; permissions?: UserPermissions },
 ) {
   const actor = await actorOf(userId);
   const target = await targetOf(input.id);
@@ -293,11 +322,33 @@ export async function updateUser(
   const email = input.email.trim().toLowerCase();
   if (fullName.length < 2) fail("Informe o nome.");
   if (!email.includes("@")) fail("Informe um e-mail válido.");
+  const contact = contactOf(input.whatsapp, email, input.financeEmail, input.financeEmailSame);
 
   const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(input.id, { email, email_confirm: true });
   if (authError) fail(emailTaken(authError.message) ? "Já existe um acesso com este e-mail." : "Não foi possível atualizar o acesso.");
-  const { error } = await supabaseAdmin.from("profiles").update({ full_name: fullName, email }).eq("id", input.id);
-  if (error) fail(error.message);
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      email,
+      whatsapp: contact.whatsapp,
+      finance_email: contact.financeEmail,
+      finance_email_same: contact.financeEmailSame,
+    })
+    .eq("id", input.id);
+  if (error) {
+    const text = error.message.toLowerCase();
+    if (text.includes("whatsapp") || text.includes("finance_email")) {
+      fail("Falta aplicar as colunas de WhatsApp e e-mail financeiro em profiles no Supabase.");
+    }
+    fail(error.message);
+  }
+  if (target.role === "client_admin" && target.row.organization_id) {
+    await supabaseAdmin
+      .from("organizations")
+      .update({ responsible_phone: contact.whatsapp })
+      .eq("id", target.row.organization_id);
+  }
 
   if (target.role === "client_user" && input.permissions) {
     const { error: permissionError } = await supabaseAdmin.from("user_permissions").upsert({
@@ -348,6 +399,14 @@ export async function deleteUser(userId: string, id: string) {
       await supabaseAdmin.from("organizations").delete().eq("id", organizationId);
     }
   }
+}
+
+function contactOf(whatsapp: string, email: string, financeEmail: string, financeEmailSame: boolean) {
+  const digits = whatsapp.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 11) fail("Informe o WhatsApp com DDD.");
+  const finance = (financeEmailSame ? email : financeEmail).trim().toLowerCase();
+  if (!finance.includes("@")) fail("Informe o e-mail financeiro.");
+  return { whatsapp: whatsapp.trim(), financeEmail: finance, financeEmailSame };
 }
 
 function emailTaken(message: string | undefined) {

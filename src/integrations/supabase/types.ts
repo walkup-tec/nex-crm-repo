@@ -543,6 +543,8 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           email: string
+          finance_email: string | null
+          finance_email_same: boolean
           full_name: string
           id: string
           is_blocked: boolean
@@ -550,11 +552,14 @@ export type Database = {
           owner_id: string | null
           theme: string
           updated_at: string
+          whatsapp: string | null
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
           email: string
+          finance_email?: string | null
+          finance_email_same?: boolean
           full_name: string
           id: string
           is_blocked?: boolean
@@ -562,11 +567,14 @@ export type Database = {
           owner_id?: string | null
           theme?: string
           updated_at?: string
+          whatsapp?: string | null
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
           email?: string
+          finance_email?: string | null
+          finance_email_same?: boolean
           full_name?: string
           id?: string
           is_blocked?: boolean
@@ -574,6 +582,7 @@ export type Database = {
           owner_id?: string | null
           theme?: string
           updated_at?: string
+          whatsapp?: string | null
         }
         Relationships: [
           {

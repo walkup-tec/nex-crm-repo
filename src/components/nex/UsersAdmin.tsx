@@ -20,11 +20,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import { applyMask } from "@/lib/masks";
 import type { ListedUser, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
 import { MetaConnect } from "@/components/nex/MetaConnect";
 import { createUserFn, deleteUserFn, listUsersFn, resendInviteFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
@@ -372,6 +374,9 @@ function UserDialog({
 }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [financeEmail, setFinanceEmail] = useState("");
+  const [financeSame, setFinanceSame] = useState(false);
   const [kind, setKind] = useState<"master" | "client">("client");
   const [permissions, setPermissions] = useState<UserPermissions>(emptyPermissions);
   const [saving, setSaving] = useState(false);
@@ -390,23 +395,30 @@ function UserDialog({
     if (mode === "edit" && user) {
       setFullName(user.fullName);
       setEmail(user.email);
+      setWhatsapp(user.whatsapp);
+      setFinanceEmail(user.financeEmailSame ? user.email : user.financeEmail);
+      setFinanceSame(user.financeEmailSame);
       setPermissions(user.permissions);
       return;
     }
     setFullName("");
     setEmail("");
+    setWhatsapp("");
+    setFinanceEmail("");
+    setFinanceSame(false);
     setKind("client");
     setPermissions(emptyPermissions);
   }, [open, mode, user]);
 
   const showPermissions = (mode === "create" && actorRole === "client_admin") || (mode === "edit" && user?.role === "client_user");
+  const contact = { whatsapp, financeEmail: financeSame ? email : financeEmail, financeEmailSame: financeSame };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (createdUserId) {
       setSaving(true);
       setFormError("");
-      const updated = await updateUserFn({ data: { id: createdUserId, fullName, email } });
+      const updated = await updateUserFn({ data: { id: createdUserId, fullName, email, ...contact } });
       if (!updated.ok) {
         setSaving(false);
         setFormError(updated.message);
@@ -430,16 +442,16 @@ function UserDialog({
         ? await createUserFn({
             data:
               actorRole === "master"
-                ? { fullName, email, kind }
+                ? { fullName, email, ...contact, kind }
                 : actorRole === "client_admin"
-                  ? { fullName, email, permissions }
-                  : { fullName, email },
+                  ? { fullName, email, ...contact, permissions }
+                  : { fullName, email, ...contact },
           })
         : await updateUserFn({
             data:
               user?.role === "client_user"
-                ? { id: user.id, fullName, email, permissions }
-                : { id: user?.id ?? "", fullName, email },
+                ? { id: user.id, fullName, email, ...contact, permissions }
+                : { id: user?.id ?? "", fullName, email, ...contact },
           });
     setSaving(false);
     if (!result.ok) {
@@ -458,7 +470,7 @@ function UserDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !saving && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "Novo acesso" : "Editar acesso"}</DialogTitle>
           <DialogDescription>
@@ -475,6 +487,33 @@ function UserDialog({
           <div className="space-y-2">
             <Label htmlFor="user-email">E-mail</Label>
             <Input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="user-whatsapp">WhatsApp</Label>
+            <Input
+              id="user-whatsapp"
+              inputMode="numeric"
+              autoComplete="tel"
+              placeholder="(00) 00000-0000"
+              value={whatsapp}
+              onChange={(event) => setWhatsapp(applyMask("phone", event.target.value))}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="user-finance-email">E-mail financeiro</Label>
+            <Input
+              id="user-finance-email"
+              type="email"
+              value={financeSame ? email : financeEmail}
+              onChange={(event) => setFinanceEmail(event.target.value)}
+              disabled={financeSame}
+              required={!financeSame}
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={financeSame} onCheckedChange={(checked) => setFinanceSame(checked === true)} />
+              Usar o mesmo e-mail do usuário
+            </label>
           </div>
           {mode === "create" && actorRole === "master" && (
             <fieldset className="space-y-2">
@@ -494,7 +533,7 @@ function UserDialog({
               organizationId={mode === "edit" ? user?.organizationId ?? null : createdOrgId}
               prepareOrganization={async () => {
                 if (mode !== "create") return null;
-                const result = await createUserFn({ data: { fullName, email, kind: "client", sendEmail: false } });
+                const result = await createUserFn({ data: { fullName, email, ...contact, kind: "client", sendEmail: false } });
                 if (!result.ok || !result.data.organizationId) {
                   setFormError(result.ok ? "O cliente foi criado sem empresa." : result.message);
                   return null;

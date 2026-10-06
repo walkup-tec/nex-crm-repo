@@ -1,1 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";import { AppShell } from "@/components/nex/AppShell";import { FinanceView } from "@/components/nex/DashboardViews";export const Route=createFileRoute("/_authenticated/financeiro")({head:()=>({meta:[{title:"Financeiro — NEX Ads"},{name:"description",content:"Mensalidades, pagamentos e documentos do seu contrato."},{property:"og:title",content:"Financeiro — NEX Ads"},{property:"og:description",content:"Mensalidades, pagamentos e documentos do seu contrato."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary_large_image"}]}),component:()=> <AppShell title="Financeiro" subtitle="Mensalidades, pagamentos e documentos do seu contrato."><FinanceView/></AppShell>});
+import { createFileRoute } from "@tanstack/react-router";
+import { AppShell } from "@/components/nex/AppShell";
+import { ClientFinance } from "@/components/nex/ClientFinance";
+
+export const Route = createFileRoute("/_authenticated/financeiro")({
+  head: () => ({
+    meta: [
+      { title: "Financeiro — NEX Ads" },
+      { name: "description", content: "Mensalidades, pagamentos e documentos do seu contrato." },
+      { property: "og:title", content: "Financeiro — NEX Ads" },
+      { property: "og:description", content: "Mensalidades, pagamentos e documentos do seu contrato." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: () => (
+    <AppShell live notes={false} title="Financeiro" subtitle="Mensalidades, pagamentos e documentos do seu contrato.">
+      <ClientFinance />
+    </AppShell>
+  ),
+});

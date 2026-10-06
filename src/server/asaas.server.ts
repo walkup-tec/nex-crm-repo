@@ -51,21 +51,101 @@ function config() {
   return { key: key.trim(), base };
 }
 
-async function asaasGet<T>(path: string, params: Record<string, string>) {
+export function asaasConfigured() {
+  const key = process.env["ASAAS_API_KEY"] || process.env["ASAAS_ACCESS_TOKEN"] || process.env["ASAAS_TOKEN"];
+  return Boolean(key?.trim());
+}
+
+function asaasError(text: string) {
+  try {
+    const body = JSON.parse(text) as { errors?: { description?: string }[] };
+    const description = (body.errors ?? []).map((item) => item.description?.trim() ?? "").filter(Boolean).join(" ");
+    if (!description || /\$aact|access_token|ASAAS_API_KEY/i.test(description)) return "";
+    return description.slice(0, 180);
+  } catch {
+    return "";
+  }
+}
+
+async function asaasRequest<T>(method: "GET" | "PUT", path: string, params: Record<string, string>, body?: unknown): Promise<T> {
   const { key, base } = config();
   const url = new URL(`${base}${path}`);
   for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
   const response = await fetch(url, {
+    method,
     headers: {
       accept: "application/json",
+      "content-type": "application/json",
       access_token: key,
       "User-Agent": "NEX-Ads/1.0 (https://app.nexmeta.com.br)",
     },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(12000),
   });
+  const text = await response.text();
   if (response.status === 401 || response.status === 403) fail("A chave do Asaas foi recusada.");
-  if (!response.ok) fail("Não foi possível consultar o Asaas agora.");
-  return (await response.json()) as T;
+  if (!response.ok) fail(asaasError(text) || (method === "GET" ? "Não foi possível consultar o Asaas agora." : "Não foi possível atualizar a cobrança no Asaas."));
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+async function asaasGet<T>(path: string, params: Record<string, string>) {
+  return asaasRequest<T>("GET", path, params);
+}
+
+export type AsaasPayment = {
+  id?: string;
+  value?: number;
+  originalValue?: number | null;
+  dueDate?: string | null;
+  status?: string;
+  paymentDate?: string | null;
+  clientPaymentDate?: string | null;
+  invoiceUrl?: string | null;
+  deleted?: boolean;
+};
+
+function externalId(value: string, label: string) {
+  const id = value.trim();
+  if (!/^[A-Za-z0-9_]{1,64}$/.test(id)) fail(`${label} do Asaas é inválido.`);
+  return id;
+}
+
+export async function listSubscriptionPayments(subscriptionId: string): Promise<AsaasPayment[]> {
+  const id = externalId(subscriptionId, "A assinatura");
+  const all: AsaasPayment[] = [];
+  let offset = 0;
+  for (let page = 0; page < 5; page += 1) {
+    const result = await asaasGet<{ data?: AsaasPayment[]; hasMore?: boolean }>("/payments", {
+      subscription: id,
+      limit: "100",
+      offset: String(offset),
+    });
+    all.push(...(result.data ?? []).filter((item) => item.id && !item.deleted));
+    if (!result.hasMore) break;
+    offset += 100;
+  }
+  return all;
+}
+
+export async function waivePaymentPenalties(paymentId: string, input: { waiveFine: boolean; waiveInterest: boolean; value: number | null }) {
+  const id = externalId(paymentId, "A cobrança");
+  const body: { fine?: { value: number }; interest?: { value: number }; value?: number } = {};
+  if (input.waiveFine) body.fine = { value: 0 };
+  if (input.waiveInterest) body.interest = { value: 0 };
+  if (input.value != null) body.value = input.value;
+  return asaasRequest<AsaasPayment>("PUT", `/payments/${id}`, {}, body);
+}
+
+export async function readPaymentPix(paymentId: string): Promise<{ payload: string; image: string } | null> {
+  const id = externalId(paymentId, "A cobrança");
+  try {
+    const data = await asaasRequest<{ payload?: string; encodedImage?: string }>("GET", `/payments/${id}/pixQrCode`, {});
+    if (!data.payload) return null;
+    return { payload: data.payload, image: data.encodedImage ?? "" };
+  } catch (error) {
+    if (error instanceof Error && error.message === "Não foi possível consultar o Asaas agora.") return null;
+    throw error;
+  }
 }
 
 export function contractFromSubscription(subscription: Subscription): AsaasContract {

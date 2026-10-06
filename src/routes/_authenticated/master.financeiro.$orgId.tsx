@@ -5,6 +5,7 @@ import { AppShell } from "@/components/nex/AppShell";
 import { Button } from "@/components/ui/button";
 import { dateBr, invoiceStatusLabel, moneyFromCents, percentBr, type ListedClient } from "@/lib/client-access";
 import { listClientsFn } from "@/lib/clients.functions";
+import { syncFinanceFn } from "@/lib/finance.functions";
 
 export const Route = createFileRoute("/_authenticated/master/financeiro/$orgId")({
   head: () => ({
@@ -20,19 +21,24 @@ function FinancePage() {
   const { orgId } = Route.useParams();
   const [client, setClient] = useState<ListedClient | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    void listClientsFn().then((result) => {
+    void (async () => {
+      const synced = await syncFinanceFn({ data: { organizationId: orgId } });
+      const result = await listClientsFn();
       if (!active) return;
       setLoading(false);
+      if (!synced.ok) setNotice(synced.message);
+      else if (synced.data) setNotice(synced.data);
       if (!result.ok) {
         setError(result.message);
         return;
       }
       setClient(result.data.find((item) => item.id === orgId) ?? null);
-    });
+    })();
     return () => {
       active = false;
     };
@@ -49,6 +55,7 @@ function FinancePage() {
         </Button>
       </div>
       {loading && <p className="text-sm text-muted-foreground">Consultando o financeiro...</p>}
+      {notice && <p className="mb-3 text-sm text-muted-foreground">{notice}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {!loading && !error && !client && <p className="text-sm text-muted-foreground">Cliente não encontrado.</p>}
       {client && (
@@ -62,7 +69,7 @@ function FinancePage() {
           <div className="rounded-lg border">
             <div className="border-b px-4 py-3">
               <p className="font-semibold">Cobranças</p>
-              <p className="text-sm text-muted-foreground">As cobranças aparecem aqui quando o Asaas registrar a fatura. O contrato acima já está gravado.</p>
+              <p className="text-sm text-muted-foreground">Cobranças trazidas da assinatura deste cliente no Asaas.</p>
             </div>
             {client.invoices.length === 0 ? (
               <p className="px-4 py-8 text-sm text-muted-foreground">Nenhuma cobrança deste cliente.</p>

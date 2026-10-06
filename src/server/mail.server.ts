@@ -29,11 +29,11 @@ export async function sendInviteEmail(to: string, name: string) {
   const text = [
     hello,
     "",
-    "Seja bem-vindo ao NEX.",
+    "Seja bem-vindo a Agência NEX.",
     "",
     "Seu acesso à nossa plataforma foi criado e já está quase tudo pronto para você começar.",
     "",
-    "No NEX, você poderá acompanhar de forma simples e centralizada os principais indicadores e resultados das suas campanhas, facilitando a análise do desempenho dos seus anúncios.",
+    "Na NEX, você poderá acompanhar de forma simples e centralizada os principais indicadores e resultados das suas campanhas, facilitando a análise do desempenho dos seus anúncios.",
     "",
     "Para concluir a ativação da sua conta, clique no botão abaixo e crie sua senha de acesso.",
     "",
@@ -53,9 +53,9 @@ export async function sendInviteEmail(to: string, name: string) {
   const html = `
     <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:16px">
       <p>${safeHello}</p>
-      <p>Seja bem-vindo ao NEX.</p>
+      <p>Seja bem-vindo a Agência NEX.</p>
       <p>Seu acesso à nossa plataforma foi criado e já está quase tudo pronto para você começar.</p>
-      <p>No NEX, você poderá acompanhar de forma simples e centralizada os principais indicadores e resultados das suas campanhas, facilitando a análise do desempenho dos seus anúncios.</p>
+      <p>Na NEX, você poderá acompanhar de forma simples e centralizada os principais indicadores e resultados das suas campanhas, facilitando a análise do desempenho dos seus anúncios.</p>
       <p>Para concluir a ativação da sua conta, clique no botão abaixo e crie sua senha de acesso.</p>
       <p style="margin:28px 0">
         <a href="${safeLink}" style="display:inline-block;background:#5b21b6;color:#ffffff;text-decoration:none;font-weight:700;letter-spacing:.04em;padding:14px 22px;border-radius:8px">CRIAR MINHA SENHA</a>
@@ -90,7 +90,7 @@ export async function sendInviteEmail(to: string, name: string) {
     await transporter.sendMail({
       from: smtp.from,
       to,
-      subject: "Seja bem-vindo ao NEX",
+      subject: "Seja bem-vindo a Agência NEX",
       text,
       html,
     });

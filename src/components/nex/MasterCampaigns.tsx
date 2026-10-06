@@ -43,6 +43,33 @@ function periodCaption(period: MetaPeriod) {
   return `${label(period.since)} – ${label(period.until)}`;
 }
 
+function nextIso(iso: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function datesBetween(since: string, until: string) {
+  const days: string[] = [];
+  let cursor = since;
+  while (cursor <= until && days.length < 400) {
+    days.push(cursor);
+    cursor = nextIso(cursor);
+  }
+  return days;
+}
+
+function seriesForSelection(row: MasterCampaignRow, view: MetaPerformanceView, period: MetaPeriod): MetaPerformanceView["series"] {
+  const values = new Map(view.series.points.map((point) => [point.date, point.values[row.id] ?? 0]));
+  const dates = period.mode === "custom" ? datesBetween(period.since, period.until) : view.series.points.map((point) => point.date);
+  return {
+    campaigns: [{ id: row.id, name: row.name, resultLabel: row.resultLabel }],
+    points: dates.map((date) => ({ date, values: { [row.id]: values.get(date) ?? 0 } })),
+  };
+}
+
 function integer(value: number) {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
@@ -298,7 +325,7 @@ export function MasterCampaigns() {
           )}
           {chartError && <p className="text-sm text-destructive">{chartError}</p>}
           {selected && !chartError && !chartsMatch(chartView, selected, period) && <div className="h-80 animate-pulse rounded-lg bg-muted" />}
-          {selected && chartsMatch(chartView, selected, period) && !chartError && <CampaignCharts row={selected} view={chartView} periodLabel={periodCaption(period)} />}
+          {selected && chartsMatch(chartView, selected, period) && !chartError && <CampaignCharts row={selected} view={chartView} period={period} />}
           <p className="text-sm text-muted-foreground">A campanha não pode ser alterada pelo NEX Ads.</p>
         </DialogContent>
       </Dialog>
@@ -310,18 +337,17 @@ function chartsMatch(view: MetaPerformanceView | null, row: MasterCampaignRow, p
   return Boolean(view && view.organizationId === row.organizationId && periodsMatch(view.period, period));
 }
 
-function CampaignCharts({ row, view, periodLabel }: { row: MasterCampaignRow; view: MetaPerformanceView; periodLabel: string }) {
-  const campaign = view.campaigns.find((item) => item.id === row.id) ?? null;
-  const hasLine = Boolean(campaign && view.series.points.length > 0 && view.series.campaigns.some((item) => item.id === campaign.id));
-  if (!campaign) return <p className="text-sm text-muted-foreground">Não há indicadores desta campanha no período {periodLabel}.</p>;
+function CampaignCharts({ row, view, period }: { row: MasterCampaignRow; view: MetaPerformanceView; period: MetaPeriod }) {
+  const periodLabel = periodCaption(period);
+  const series = seriesForSelection(row, view, period);
   return (
     <div className="space-y-5">
-      {hasLine ? (
-        <EvolutionChart series={view.series} selectedId={campaign.id} />
+      {series.points.length > 0 ? (
+        <EvolutionChart series={series} selectedId={row.id} />
       ) : (
         <p className="text-sm text-muted-foreground">Não há evolução diária desta campanha no período {periodLabel}.</p>
       )}
-      <ResultsChart rows={[campaign]} currency={view.currency || row.currency} title="Resultados da campanha" description={`Volume de resultados e custo por resultado no período ${periodLabel}.`} />
+      <ResultsChart rows={[row]} currency={view.currency || row.currency} title="Resultados da campanha" description={`Volume de resultados e custo por resultado no período ${periodLabel}.`} />
     </div>
   );
 }

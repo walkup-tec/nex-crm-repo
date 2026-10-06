@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
+import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
 
 type Draft = {
   legalName: string;
@@ -195,6 +196,10 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       invoices: orgInvoices,
     };
   });
+}
+
+export async function masterDashboard(userId: string): Promise<MasterDashboard> {
+  return masterDashboardFrom(await listClients(userId));
 }
 
 async function saveContract(

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { ClientDraft, ListedClient } from "@/lib/client-access";
+import type { MasterDashboard } from "@/lib/master-dashboard";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 type SavedClient = { id: string };
@@ -36,6 +37,13 @@ export const listClientsFn = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<Result<ListedClient[]>> => {
     const { listClients } = await import("@/server/clients.server");
     return guard(() => listClients(context.userId));
+  });
+
+export const masterDashboardFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<Result<MasterDashboard>> => {
+    const { masterDashboard } = await import("@/server/clients.server");
+    return guard(() => masterDashboard(context.userId));
   });
 
 export const createClientFn = createServerFn({ method: "POST" })

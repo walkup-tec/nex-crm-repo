@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { RefreshCw } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { MetaCampaignRow, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
@@ -37,11 +38,15 @@ const noCampaigns: MetaCampaignRow[] = [];
 export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
   const [period, setPeriod] = useState<MetaPeriod>(initialPeriod);
   const [view, setView] = useState<MetaPerformanceView | null>(null);
+  const [maximumView, setMaximumView] = useState<MetaPerformanceView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [campaignId, setCampaignId] = useState("all");
+  const [chartId, setChartId] = useState<string | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState("");
   const organizationId = readOrg();
 
   const load = async (nextPeriod: MetaPeriod) => {
@@ -62,6 +67,7 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
       }
       setPeriod(result.data.period);
       setView(result.data);
+      if (result.data.period.mode === "total") setMaximumView(result.data);
     } catch {
       setLoading(false);
       setError("Não foi possível carregar os indicadores da Meta.");
@@ -88,6 +94,31 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
       return matchesQuery && matchesStatus;
     });
   }, [listedCampaigns, selectedCampaign, query, status]);
+
+  const chartCampaign = chartId ? maximumView?.campaigns.find((row) => row.id === chartId) ?? null : null;
+  const chartName = chartCampaign?.name ?? listedCampaigns.find((row) => row.id === chartId)?.name ?? "Campanha";
+
+  const openCharts = (id: string) => {
+    setChartId(id);
+    setChartError("");
+    if (maximumView) return;
+    setChartLoading(true);
+    const data: { organizationId?: string; period?: string } = { period: "total" };
+    if (organizationId) data.organizationId = organizationId;
+    void getMetaPerformanceFn({ data })
+      .then((result) => {
+        setChartLoading(false);
+        if (!result.ok) {
+          setChartError(result.message);
+          return;
+        }
+        setMaximumView(result.data);
+      })
+      .catch(() => {
+        setChartLoading(false);
+        setChartError("Não foi possível carregar os gráficos do período máximo.");
+      });
+  };
 
   const ready = Boolean(view?.kpis && view.accountId);
   const kpis = selectedCampaign
@@ -203,7 +234,22 @@ export function MetaPerformance({ mode }: { mode: "overview" | "campaigns" }) {
               </Select>
             </div>
           )}
-          {mode === "campaigns" && <CampaignTable rows={campaigns} currency={view.currency} />}
+          {mode === "campaigns" && <CampaignTable rows={campaigns} currency={view.currency} onOpenCharts={openCharts} />}
+          {mode === "campaigns" && (
+            <CampaignChartsDialog
+              open={chartId !== null}
+              name={chartName}
+              resultLabel={chartCampaign?.resultLabel ?? ""}
+              campaign={chartCampaign}
+              currency={maximumView?.currency ?? view.currency}
+              series={maximumView?.series ?? null}
+              loading={chartLoading}
+              error={chartError}
+              onOpenChange={(open) => {
+                if (!open) setChartId(null);
+              }}
+            />
+          )}
           {mode === "campaigns" && view.campaigns.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhuma campanha encontrada nesta conta no período.</p>
           )}
@@ -311,7 +357,7 @@ function EvolutionChart({ series, selectedId }: { series: MetaPerformanceView["s
   );
 }
 
-function ResultsChart({ rows, currency }: { rows: MetaCampaignRow[]; currency: string }) {
+function ResultsChart({ rows, currency, title = "Resultados entre campanhas", description = "Volume de resultados e custo por resultado." }: { rows: MetaCampaignRow[]; currency: string; title?: string; description?: string }) {
   const frame = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   useEffect(() => {
@@ -333,8 +379,8 @@ function ResultsChart({ rows, currency }: { rows: MetaCampaignRow[]; currency: s
   }));
   return (
     <section className="rounded-lg border bg-card p-5">
-      <h2 className="font-display text-lg font-semibold">Resultados entre campanhas</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Volume de resultados e custo por resultado.</p>
+      <h2 className="font-display text-lg font-semibold">{title}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       <div ref={frame} className="mt-4 h-96 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: maxLines * 16 }}>
@@ -348,8 +394,8 @@ function ResultsChart({ rows, currency }: { rows: MetaCampaignRow[]; currency: s
                 <CampaignTick {...props} chars={chars} slot={slot} />
               )}
             />
-            <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={36} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={48} />
+            <YAxis yAxisId="left" domain={[0, "auto"]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={36} />
+            <YAxis yAxisId="right" orientation="right" domain={[0, "auto"]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={48} />
             <Tooltip
               cursor={{ fill: "var(--muted)", fillOpacity: 0.55 }}
               content={({ active, payload }) => {
@@ -413,11 +459,11 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   );
 }
 
-function CampaignTable({ rows, currency }: { rows: MetaCampaignRow[]; currency: string }) {
+function CampaignTable({ rows, currency, onOpenCharts }: { rows: MetaCampaignRow[]; currency: string; onOpenCharts: (id: string) => void }) {
   if (rows.length === 0) return null;
   return (
     <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full min-w-[760px] text-left text-sm">
+      <table className="w-full min-w-[920px] text-left text-sm">
         <thead className="border-b bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">Nome</th>
@@ -425,6 +471,7 @@ function CampaignTable({ rows, currency }: { rows: MetaCampaignRow[]; currency: 
             <th className="px-4 py-3 font-medium">Alcance</th>
             <th className="px-4 py-3 font-medium">Impressões</th>
             <th className="px-4 py-3 font-medium">Resultados</th>
+            <th className="px-4 py-3 font-medium">Custo/Resultado</th>
             <th className="px-4 py-3 font-medium">Gasto</th>
           </tr>
         </thead>
@@ -432,18 +479,73 @@ function CampaignTable({ rows, currency }: { rows: MetaCampaignRow[]; currency: 
           {rows.map((row) => (
             <tr key={row.id} className="border-b last:border-0">
               <td className="px-4 py-3">
-                <p className="font-medium">{row.name}</p>
-                <p className="text-xs text-muted-foreground">{row.resultLabel}</p>
+                <div className="flex items-start gap-2">
+                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 text-primary" aria-label={`Ver gráficos de ${row.name}`} onClick={() => onOpenCharts(row.id)}>
+                    <Eye className="size-4" />
+                  </Button>
+                  <div className="min-w-0">
+                    <p className="font-medium">{row.name}</p>
+                    <p className="text-xs text-muted-foreground">{row.resultLabel}</p>
+                  </div>
+                </div>
               </td>
               <td className="px-4 py-3">{row.status}</td>
               <td className="px-4 py-3">{integer(row.reach)}</td>
               <td className="px-4 py-3">{integer(row.impressions)}</td>
               <td className="px-4 py-3">{integer(row.results)}</td>
+              <td className="px-4 py-3">{row.results > 0 ? money(costPerResult(row), currency) : "—"}</td>
               <td className="px-4 py-3">{money(row.spend, currency)}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CampaignChartsDialog({
+  open,
+  name,
+  resultLabel,
+  campaign,
+  currency,
+  series,
+  loading,
+  error,
+  onOpenChange,
+}: {
+  open: boolean;
+  name: string;
+  resultLabel: string;
+  campaign: MetaCampaignRow | null;
+  currency: string;
+  series: MetaPerformanceView["series"] | null;
+  loading: boolean;
+  error: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const hasLine = Boolean(campaign && series && series.points.length > 0 && series.campaigns.some((item) => item.id === campaign.id));
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="pr-8 font-display">{name}</DialogTitle>
+          <DialogDescription>Período máximo{resultLabel ? ` · ${resultLabel}` : ""}</DialogDescription>
+        </DialogHeader>
+        {loading && <div className="h-80 animate-pulse rounded-lg bg-muted" />}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && campaign && series && (
+          <div className="space-y-5">
+            {hasLine ? (
+              <EvolutionChart series={series} selectedId={campaign.id} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Não há evolução diária desta campanha no período máximo.</p>
+            )}
+            <ResultsChart rows={[campaign]} currency={currency} title="Resultados da campanha" description="Volume de resultados e custo por resultado no período máximo." />
+          </div>
+        )}
+        {!loading && !error && !campaign && <p className="text-sm text-muted-foreground">Não há indicadores desta campanha no período máximo.</p>}
+      </DialogContent>
+    </Dialog>
   );
 }

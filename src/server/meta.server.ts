@@ -539,6 +539,16 @@ function actionLabel(type: string | undefined) {
   return labels[type] ?? "Resultados";
 }
 
+const resultGroups = [
+  ["onsite_conversion.messaging_conversation_started_7d", "messaging_conversation_started_7d"],
+  ["onsite_conversion.messaging_first_reply", "messaging_first_reply"],
+  ["onsite_conversion.lead_grouped", "lead", "offsite_conversion.fb_pixel_lead"],
+  ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"],
+  ["complete_registration"],
+  ["landing_page_view"],
+  ["link_click"],
+];
+
 function metricsOf(insight: GraphInsight | undefined) {
   const reach = amount(insight?.reach);
   const impressions = amount(insight?.impressions);
@@ -546,9 +556,18 @@ function metricsOf(insight: GraphInsight | undefined) {
   const spend = amount(insight?.spend);
   const ctr = insight?.ctr ? amount(insight.ctr) : impressions > 0 ? (clicks / impressions) * 100 : null;
   const cpc = insight?.cpc ? amount(insight.cpc) : clicks > 0 ? spend / clicks : null;
+  for (const group of resultGroups) {
+    for (const type of group) {
+      const found = insight?.actions?.find((entry) => entry.action_type === type);
+      const value = amount(found?.value);
+      if (found && value > 0) {
+        return { reach, impressions, clicks, spend, ctr, cpc, results: value, resultLabel: actionLabel(type), resultActionTypes: group };
+      }
+    }
+  }
   let results = clicks;
   let resultLabel = "Cliques";
-  let resultActionType: string | null = null;
+  let resultActionTypes: string[] = [];
   let bestValue = 0;
   for (const action of insight?.actions ?? []) {
     const value = amount(action.value);
@@ -556,10 +575,10 @@ function metricsOf(insight: GraphInsight | undefined) {
       bestValue = value;
       results = value;
       resultLabel = actionLabel(action.action_type);
-      resultActionType = action.action_type ?? null;
+      resultActionTypes = action.action_type ? [action.action_type] : [];
     }
   }
-  return { reach, impressions, clicks, spend, ctr, cpc, results, resultLabel, resultActionType };
+  return { reach, impressions, clicks, spend, ctr, cpc, results, resultLabel, resultActionTypes };
 }
 
 function campaignStatus(raw: string | undefined): { label: string; group: MetaCampaignRow["statusGroup"] } {
@@ -572,7 +591,7 @@ function campaignStatus(raw: string | undefined): { label: string; group: MetaCa
 
 async function collectCampaigns(version: string, token: string, accountId: string, period: MetaPeriod) {
   const rows: MetaCampaignRow[] = [];
-  const actionTypes = new Map<string, string | null>();
+  const actionTypes = new Map<string, string[]>();
   let next: string | null = null;
   const fields = `id,name,effective_status,${campaignInsightField(period)}`;
   for (let page = 0; page < 5; page += 1) {
@@ -596,7 +615,7 @@ async function collectCampaigns(version: string, token: string, accountId: strin
         cpc: stats.cpc,
         ctr: stats.ctr,
       });
-      actionTypes.set(item.id, stats.resultActionType);
+      actionTypes.set(item.id, stats.resultActionTypes);
     }
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
     if (!next) break;
@@ -624,40 +643,95 @@ function daysFrom(start: string, end: string) {
 
 const emptySeries: MetaResultSeries = { campaigns: [], points: [] };
 
+function shiftMonths(iso: string, months: number) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function dailyRanges(period: MetaPeriod) {
+  const until = period.mode === "custom" ? period.until : saoPauloToday();
+  const since = period.mode === "custom" ? period.since : shiftMonths(until, -37);
+  const ranges: { since: string; until: string }[] = [];
+  let cursor = since;
+  while (cursor <= until && ranges.length < 16) {
+    let end = cursor;
+    for (let step = 1; step < 90 && nextDay(end) <= until; step += 1) end = nextDay(end);
+    ranges.push({ since: cursor, until: end });
+    cursor = nextDay(end);
+  }
+  return ranges;
+}
+
+function dailyResult(actions: InsightAction[] | undefined, types: string[], clicks: unknown) {
+  if (types.length === 0) return amount(clicks);
+  for (const type of types) {
+    const found = actions?.find((entry) => entry.action_type === type);
+    if (found) return amount(found.value);
+  }
+  return 0;
+}
+
 async function collectDaily(
   version: string,
   token: string,
   accountId: string,
   period: MetaPeriod,
   campaigns: MetaCampaignRow[],
-  actionTypes: Map<string, string | null>,
+  actionTypes: Map<string, string[]>,
 ): Promise<MetaResultSeries> {
   if (campaigns.length === 0) return emptySeries;
   const known = new Set(campaigns.map((row) => row.id));
   const totals = new Map<string, Map<string, number>>();
-  let next: string | null = null;
-  for (let page = 0; page < 20; page += 1) {
-    const body: GraphBody = next
-      ? await graphFetch(new URL(next))
-      : await graphGet(version, `/act_${accountId}/insights`, token, {
-          level: "campaign",
-          fields: "campaign_id,actions,clicks,date_start",
-          time_increment: "1",
-          limit: "500",
-          ...insightQuery(period),
+  const ranges = dailyRanges(period);
+  const readRange = async (range: { since: string; until: string }) => {
+    const found: { date: string; campaignId: string; value: number }[] = [];
+    let next: string | null = null;
+    for (let page = 0; page < 20; page += 1) {
+      const body: GraphBody = next
+        ? await graphFetch(new URL(next))
+        : await graphGet(version, `/act_${accountId}/insights`, token, {
+            level: "campaign",
+            fields: "campaign_id,actions,clicks,date_start",
+            time_increment: "1",
+            limit: "500",
+            use_unified_attribution_setting: "true",
+            time_range: JSON.stringify(range),
+          });
+      for (const item of body.data ?? []) {
+        const row = item as GraphInsight & { campaign_id?: string; date_start?: string };
+        if (!row.campaign_id || !row.date_start || !known.has(row.campaign_id) || !/^\d{4}-\d{2}-\d{2}$/.test(row.date_start)) continue;
+        found.push({
+          date: row.date_start,
+          campaignId: row.campaign_id,
+          value: dailyResult(row.actions, actionTypes.get(row.campaign_id) ?? [], row.clicks),
         });
-    for (const item of body.data ?? []) {
-      const row = item as GraphInsight & { campaign_id?: string; date_start?: string };
-      if (!row.campaign_id || !row.date_start || !known.has(row.campaign_id) || !/^\d{4}-\d{2}-\d{2}$/.test(row.date_start)) continue;
-      const actionType = actionTypes.get(row.campaign_id);
-      const action = actionType ? row.actions?.find((entry) => entry.action_type === actionType) : undefined;
-      const value = actionType ? amount(action?.value) : amount(row.clicks);
-      const byCampaign = totals.get(row.date_start) ?? new Map<string, number>();
-      byCampaign.set(row.campaign_id, (byCampaign.get(row.campaign_id) ?? 0) + value);
-      totals.set(row.date_start, byCampaign);
+      }
+      next = typeof body.paging?.next === "string" ? body.paging.next : null;
+      if (!next) break;
     }
-    next = typeof body.paging?.next === "string" ? body.paging.next : null;
-    if (!next) break;
+    return found;
+  };
+  for (let index = 0; index < ranges.length; index += 4) {
+    const batch = await Promise.all(
+      ranges.slice(index, index + 4).map(async (range) => {
+        try {
+          return await readRange(range);
+        } catch (error) {
+          console.error("meta_daily_range", error instanceof Error ? error.name : "error");
+          return [];
+        }
+      }),
+    );
+    for (const rows of batch) {
+      for (const row of rows) {
+        const byCampaign = totals.get(row.date) ?? new Map<string, number>();
+        byCampaign.set(row.campaignId, (byCampaign.get(row.campaignId) ?? 0) + row.value);
+        totals.set(row.date, byCampaign);
+      }
+    }
   }
   const found = [...totals.keys()].sort();
   const first = found[0];
@@ -782,6 +856,11 @@ export async function getMetaPerformance(
     view.kpis = kpis;
     const collected = await collectCampaigns(version, token, selected.external_account_id, period);
     view.campaigns = collected.rows;
+    if (view.kpis && collected.rows.length > 0) {
+      const labels = new Set(collected.rows.map((row) => row.resultLabel));
+      view.kpis.results = collected.rows.reduce((sum, row) => sum + row.results, 0);
+      view.kpis.resultLabel = labels.size === 1 ? ([...labels][0] ?? "Resultados") : "Resultados";
+    }
     try {
       view.series = await collectDaily(version, token, selected.external_account_id, period, collected.rows, collected.actionTypes);
     } catch (seriesError) {

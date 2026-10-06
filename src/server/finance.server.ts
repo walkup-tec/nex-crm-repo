@@ -160,6 +160,37 @@ export async function syncFinance(userId: string, organizationId?: string) {
 
 const paidAsaas = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
 
+function pixRefused(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return /não permite pagamentos via pix/i.test(message);
+}
+
+async function issueNominalPix(invoice: { id: string; competence: string; base_amount_cents: number; external_charge_id: string | null; pix_code: string | null }) {
+  const existing = nominalPaymentId(invoice.pix_code);
+  if (existing) return existing;
+  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada ao Asaas.");
+  const current = await getPayment(invoice.external_charge_id);
+  if (!current.customer) fail("A cobrança do Asaas não informa o cliente para gerar o Pix.");
+  const created = await createNominalPix({
+    customer: current.customer,
+    value: Number(invoice.base_amount_cents) / 100,
+    dueDate: todayKey(),
+    description: `Mensalidade ${competenceLabel(invoice.competence)} — valor nominal`,
+    externalReference: `nex-${invoice.id}`,
+  });
+  if (!created.id) fail("O Asaas não devolveu o Pix do valor nominal.");
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      pix_code: `nex-pay:${created.id}`,
+      total_amount_cents: Number(invoice.base_amount_cents),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoice.id);
+  if (error) fail(error.message);
+  return created.id;
+}
+
 async function settleNominalPayments(organizationId?: string) {
   let query = supabaseAdmin
     .from("invoices")
@@ -329,18 +360,7 @@ export async function negotiateCharge(userId: string, input: { invoiceId: string
   let pixCode: string | null = nominal != null ? nominalPaymentId(invoice.pix_code) ? invoice.pix_code : waivedOnCharge : null;
   if (nominal != null && !nominalPaymentId(invoice.pix_code)) {
     const refreshed = await getPayment(invoice.external_charge_id);
-    if (penaltiesRemain(refreshed)) {
-      if (!refreshed.customer) fail("A cobrança do Asaas não informa o cliente para gerar o Pix.");
-      const created = await createNominalPix({
-        customer: refreshed.customer,
-        value: nominal,
-        dueDate: todayKey(),
-        description: `Mensalidade ${competenceLabel(invoice.competence)} sem multa e sem juros`,
-        externalReference: `nex-${invoice.id}`,
-      });
-      if (!created.id) fail("O Asaas não devolveu o Pix do valor nominal.");
-      pixCode = `nex-pay:${created.id}`;
-    }
+    if (penaltiesRemain(refreshed)) pixCode = `nex-pay:${await issueNominalPix(invoice)}`;
   }
   const names = await namesOf([invoice.organization_id]);
   const due = (payment.dueDate || invoice.due_date).slice(0, 10);
@@ -379,30 +399,24 @@ export async function chargePix(userId: string, invoiceId: string) {
   if (!invoice) fail("Cobrança não encontrada.");
   if (actor.role !== "master" && invoice.organization_id !== actor.organizationId) fail("Você não pode abrir esta cobrança.");
   if (invoice.status === "paid" || invoice.status === "cancelled") fail("Esta cobrança não está em aberto.");
-  let payableId = invoice.external_charge_id;
-  let totalCents = Number(invoice.total_amount_cents);
-  if (keepsNominalValue(invoice.pix_code)) {
-    const replacement = nominalPaymentId(invoice.pix_code);
-    if (replacement) payableId = replacement;
-    else if (invoice.external_charge_id) {
-      const current = await getPayment(invoice.external_charge_id);
-      if (penaltiesRemain(current)) {
-        if (!current.customer) fail("A cobrança do Asaas não informa o cliente para gerar o Pix.");
-        const created = await createNominalPix({
-          customer: current.customer,
-          value: Number(invoice.base_amount_cents) / 100,
-          dueDate: todayKey(),
-          description: `Mensalidade ${competenceLabel(invoice.competence)} sem multa e sem juros`,
-          externalReference: `nex-${invoice.id}`,
-        });
-        if (!created.id) fail("O Asaas não devolveu o Pix do valor nominal.");
-        payableId = created.id;
-        await supabaseAdmin.from("invoices").update({ pix_code: `nex-pay:${created.id}`, updated_at: new Date().toISOString() }).eq("id", invoice.id);
-      }
+  let payableId = nominalPaymentId(invoice.pix_code) ?? invoice.external_charge_id;
+  let totalCents = nominalPaymentId(invoice.pix_code) ? Number(invoice.base_amount_cents) : Number(invoice.total_amount_cents);
+  if (invoice.pix_code === waivedOnCharge && invoice.external_charge_id) {
+    const current = await getPayment(invoice.external_charge_id);
+    if (penaltiesRemain(current)) {
+      payableId = await issueNominalPix(invoice);
+      totalCents = Number(invoice.base_amount_cents);
     }
-    totalCents = Number(invoice.base_amount_cents);
   }
-  const pix = payableId ? await readPaymentPix(payableId) : null;
+  let pix = null;
+  try {
+    pix = payableId ? await readPaymentPix(payableId) : null;
+  } catch (error) {
+    if (!pixRefused(error)) throw error;
+    payableId = await issueNominalPix({ ...invoice, pix_code: nominalPaymentId(invoice.pix_code) ? invoice.pix_code : null });
+    totalCents = Number(invoice.base_amount_cents);
+    pix = await readPaymentPix(payableId);
+  }
   if (!pix && !invoice.invoice_url) fail("O Asaas ainda não disponibilizou o Pix desta cobrança.");
   return { payload: pix?.payload ?? "", image: pix?.image ?? "", invoiceUrl: invoice.invoice_url, totalCents };
 }

@@ -74,7 +74,7 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
         <DialogContent className="z-[60]">
           <DialogHeader>
             <DialogTitle>Regularizar pendência</DialogTitle>
-            <DialogDescription>O Pix é da parcela em atraso.</DialogDescription>
+            <DialogDescription>Pix do valor nominal desta parcela. A cobrança vencida sai do Asaas quando este pagamento for identificado.</DialogDescription>
           </DialogHeader>
           {pixLoading && <p className="text-sm text-muted-foreground">Consultando o Pix...</p>}
           {pixError && <p className="text-sm text-destructive">{pixError}</p>}

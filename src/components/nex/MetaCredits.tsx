@@ -245,13 +245,15 @@ export function MetaCredits() {
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.text}</p>
                 </div>
               </div>
-              <img
-                src={item.image}
-                width={item.width}
-                height={item.height}
-                alt={item.alt}
-                className="h-auto w-full border-t"
-              />
+              <div className="border-t">
+                <img
+                  src={item.image}
+                  width={item.width}
+                  height={item.height}
+                  alt={item.alt}
+                  className={item.step === "2" ? "mx-auto h-auto w-1/2" : "h-auto w-full"}
+                />
+              </div>
             </li>
           ))}
         </ol>

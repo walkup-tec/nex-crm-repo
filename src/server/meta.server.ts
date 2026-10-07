@@ -318,7 +318,7 @@ export async function startSimpleFacebookLogin(userId: string, organizationId: s
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "public_profile");
+  url.searchParams.set("scope", SCOPES.join(","));
   url.searchParams.set("display", "popup");
   return { url: url.toString() };
 }

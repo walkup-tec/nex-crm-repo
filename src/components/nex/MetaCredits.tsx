@@ -227,33 +227,38 @@ export function MetaCredits() {
           Depois de entrar, clique em Adicionar saldo. Na conta de anúncios da Meta, siga estes dois
           passos.
         </p>
-        <ol className="mt-5 grid items-start gap-4 md:grid-cols-2">
+        <ol className="mt-5 flex flex-col items-start gap-4 md:flex-row">
           {guide.map((item) => (
-            <li key={item.step} className="overflow-hidden rounded-lg border bg-background">
+            <li
+              key={item.step}
+              className={
+                item.step === "2"
+                  ? "w-1/2 max-w-full overflow-hidden rounded-lg border bg-background md:w-1/4"
+                  : "w-full max-w-full overflow-hidden rounded-lg border bg-background md:w-1/2"
+              }
+            >
               <div className="flex gap-3 p-4">
                 <span
                   className={
                     item.step === "1"
-                      ? "grid size-8 shrink-0 place-items-center rounded-full bg-navy font-display text-sm font-bold text-cyan"
+                      ? "grid size-8 shrink-0 place-items-center rounded-full bg-cyan font-display text-sm font-bold text-navy"
                       : "grid size-8 shrink-0 place-items-center rounded-full bg-primary font-display text-sm font-bold text-primary-foreground"
                   }
                 >
                   {item.step}
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="font-display text-sm font-semibold">{item.title}</p>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.text}</p>
                 </div>
               </div>
-              <div className="border-t">
-                <img
-                  src={item.image}
-                  width={item.width}
-                  height={item.height}
-                  alt={item.alt}
-                  className={item.step === "2" ? "mx-auto h-auto w-1/2" : "h-auto w-full"}
-                />
-              </div>
+              <img
+                src={item.image}
+                width={item.width}
+                height={item.height}
+                alt={item.alt}
+                className="h-auto w-full border-t"
+              />
             </li>
           ))}
         </ol>

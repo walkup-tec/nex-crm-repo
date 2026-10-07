@@ -1,6 +1,7 @@
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import tutorial from "@/assets/meta-adicionar-saldo.webp";
+import stepAccount from "@/assets/meta-saldo-etapa-1.webp";
+import stepPayment from "@/assets/meta-saldo-etapa-2.webp";
 import { Button } from "@/components/ui/button";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
@@ -11,11 +12,19 @@ const guide = [
     step: "1",
     title: "Acesse a conta de anúncios",
     text: "Na página da sua conta de anúncios, clique em “Adicionar fundos” para iniciar a recarga do saldo.",
+    image: stepAccount,
+    width: 1541,
+    height: 1020,
+    alt: "Conta de anúncios da Meta, com a seta indicando o botão Adicionar fundos.",
   },
   {
     step: "2",
     title: "Escolha o valor e a forma de pagamento",
     text: "Defina o valor que deseja adicionar, selecione a forma de pagamento e clique em “Avançar” para concluir.",
+    image: stepPayment,
+    width: 1012,
+    height: 1555,
+    alt: "Tela Adicionar fundos da Meta, com o valor, o Pix e o botão Avançar.",
   },
 ] as const;
 
@@ -218,32 +227,34 @@ export function MetaCredits() {
           Depois de entrar, clique em Adicionar saldo. Na conta de anúncios da Meta, siga estes dois
           passos.
         </p>
-        <ol className="mt-5 grid gap-3 md:grid-cols-2">
+        <ol className="mt-5 grid items-start gap-4 md:grid-cols-2">
           {guide.map((item) => (
-            <li key={item.step} className="flex gap-3 rounded-lg border bg-background p-4">
-              <span
-                className={
-                  item.step === "1"
-                    ? "grid size-8 shrink-0 place-items-center rounded-full bg-navy font-display text-sm font-bold text-cyan"
-                    : "grid size-8 shrink-0 place-items-center rounded-full bg-primary font-display text-sm font-bold text-primary-foreground"
-                }
-              >
-                {item.step}
-              </span>
-              <div>
-                <p className="font-display text-sm font-semibold">{item.title}</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.text}</p>
+            <li key={item.step} className="overflow-hidden rounded-lg border bg-background">
+              <div className="flex gap-3 p-4">
+                <span
+                  className={
+                    item.step === "1"
+                      ? "grid size-8 shrink-0 place-items-center rounded-full bg-navy font-display text-sm font-bold text-cyan"
+                      : "grid size-8 shrink-0 place-items-center rounded-full bg-primary font-display text-sm font-bold text-primary-foreground"
+                  }
+                >
+                  {item.step}
+                </span>
+                <div>
+                  <p className="font-display text-sm font-semibold">{item.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.text}</p>
+                </div>
               </div>
+              <img
+                src={item.image}
+                width={item.width}
+                height={item.height}
+                alt={item.alt}
+                className="h-auto w-full border-t"
+              />
             </li>
           ))}
         </ol>
-        <figure className="mt-5 overflow-hidden rounded-lg border bg-navy">
-          <img
-            src={tutorial}
-            alt="Na conta de anúncios, clique em Adicionar fundos. Depois escolha o valor, selecione a forma de pagamento e clique em Avançar."
-            className="h-auto w-full"
-          />
-        </figure>
       </section>
     </div>
   );

@@ -132,24 +132,58 @@ async function readNode(organizationId: string, accountId: string) {
     : new Error("A Meta não respondeu como esperado. Tente de novo.");
 }
 
+const transactionFields =
+  "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
+const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
+
 async function paymentRows(accountId: string, organizationId: string, businessId: string | null) {
-  try {
-    const transactions = await listAdAccountEdge(organizationId, accountId, "transactions", {
-      limit: "100",
-    });
-    if (transactions.some((item) => classifyGraphPayment(item)?.direction === "credit")) {
-      return transactions;
-    }
-  } catch (error) {
-    console.error("meta_transactions", error instanceof Error ? error.name : "error");
+  const transactions = await transactionRows(accountId, organizationId);
+  if (transactions.some((item) => classifyGraphPayment(item)?.direction === "credit")) {
+    return transactions;
   }
-  const params: Record<string, string> = {
-    fields: "event_type,event_time,extra_data,object_id,translated_event_type",
-    limit: "100",
-    since: "1514764800",
-  };
-  if (businessId && /^\d+$/.test(businessId)) params["business_id"] = businessId;
-  return listAdAccountEdge(organizationId, accountId, "activities", params);
+  return activityRows(accountId, organizationId, businessId);
+}
+
+async function transactionRows(accountId: string, organizationId: string) {
+  const attempts = [{ limit: "100", fields: transactionFields }, { limit: "100" }];
+  for (const params of attempts) {
+    try {
+      return await listAdAccountEdge(organizationId, accountId, "transactions", params);
+    } catch (error) {
+      console.error("meta_transactions", error instanceof Error ? error.name : "error");
+    }
+  }
+  return [];
+}
+
+async function activityRows(accountId: string, organizationId: string, businessId: string | null) {
+  const merged: Record<string, unknown>[] = [];
+  const recent = { fields: activityFields, limit: "100" };
+  const history = { fields: activityFields, limit: "100", since: "1514764800" };
+  for (const params of [recent, history]) {
+    try {
+      merged.push(...(await listAdAccountEdge(organizationId, accountId, "activities", params)));
+    } catch (error) {
+      console.error("meta_activities", error instanceof Error ? error.name : "error");
+    }
+  }
+  if (businessId && /^\d+$/.test(businessId) && !merged.some(hasCredit)) {
+    try {
+      merged.push(
+        ...(await listAdAccountEdge(organizationId, accountId, "activities", {
+          ...recent,
+          business_id: businessId,
+        })),
+      );
+    } catch (error) {
+      console.error("meta_activities", error instanceof Error ? error.name : "error");
+    }
+  }
+  return merged;
+}
+
+function hasCredit(item: Record<string, unknown>) {
+  return classifyGraphPayment(item)?.direction === "credit";
 }
 
 async function prepaidLedger(
@@ -199,8 +233,16 @@ async function readBalance(
     ...(funding !== undefined ? { funding } : {}),
   });
   const storedCents = funding === undefined ? null : availableBalanceCents(funding);
+  const hasCard = hasCreditCard(funding);
   let result = reading;
-  if (hasCreditCard(funding) && (storedCents == null || storedCents === 0)) {
+  if (
+    shouldUsePrepaidLedger({
+      hasCard,
+      displayedCents: reading.cents,
+      storedCents,
+      creditCount: 1,
+    })
+  ) {
     const ledger = await prepaidLedger(
       organizationId,
       accountId,
@@ -211,7 +253,8 @@ async function readBalance(
     if (
       ledger &&
       shouldUsePrepaidLedger({
-        hasCard: true,
+        hasCard,
+        displayedCents: reading.cents,
         storedCents,
         creditCount: ledger.credits,
       })

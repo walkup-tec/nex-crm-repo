@@ -56,12 +56,13 @@ export function hasCreditCard(
 
 export function shouldUsePrepaidLedger(input: {
   hasCard: boolean;
+  displayedCents: number | null;
   storedCents: number | null;
   creditCount: number;
 }) {
-  return (
-    input.hasCard && (input.storedCents == null || input.storedCents === 0) && input.creditCount > 0
-  );
+  const noStoredBalance = input.storedCents == null || input.storedCents === 0;
+  const displayedIsZero = input.displayedCents == null || input.displayedCents === 0;
+  return noStoredBalance && (input.hasCard || displayedIsZero) && input.creditCount > 0;
 }
 
 export function prepaidBalanceCents(entries: Pick<LedgerEntry, "direction" | "cents">[]) {
@@ -119,7 +120,7 @@ export function classifyGraphPayment(item: unknown): LedgerEntry | null {
   if (!item || typeof item !== "object" || Array.isArray(item)) return null;
   const record = item as GraphPayment;
   const extra = parseExtra(record.extra_data);
-  const direction = directionFromStatus(statusText(record, extra));
+  const direction = paymentDirection(record, extra);
   if (!direction) return null;
   const cents = centsFromMetaAmount(
     record.app_amount ??
@@ -141,21 +142,48 @@ function statusText(record: GraphPayment, extra: Record<string, unknown> | null)
   return readable(extra["status"] ?? extra["payment_status"]).trim();
 }
 
-function directionFromStatus(value: string): LedgerDirection | null {
-  const status = normalizeText(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!status) return null;
-  if (
-    status === "falha" ||
-    status === "failed" ||
-    status === "failure" ||
-    status === "pendente" ||
-    status === "pending"
-  ) {
-    return null;
-  }
+function paymentDirection(
+  record: GraphPayment,
+  extra: Record<string, unknown> | null,
+): LedgerDirection | null {
+  const status = canonical(statusText(record, extra));
   if (status === "com saldo" || status === "with balance") return "credit";
   if (status === "pago" || status === "paid") return "debit";
+  if (ignoredStatus.has(status)) return null;
+
+  const event = canonical(readable(record.event_type));
+  if (ignoredEvent.has(event)) return null;
+  if (event === "funding event successful") return "credit";
+  if (event === "ad account billing charge") return "debit";
+
+  if (!settledStatus.has(status)) return null;
+  if (record.is_funding_event === true) return "credit";
+  const charge = canonical(readable(record.charge_type));
+  if (charge === "payment" || charge === "charge") return "debit";
   return null;
+}
+
+const ignoredStatus = new Set([
+  "falha",
+  "failed",
+  "failure",
+  "declined",
+  "pendente",
+  "pending",
+  "in progress",
+  "initiated",
+]);
+
+const ignoredEvent = new Set([
+  "ad account billing decline",
+  "ad account billing charge failed",
+  "funding event initiated",
+]);
+
+const settledStatus = new Set(["completed", "successful", "settled", "success"]);
+
+function canonical(value: string) {
+  return normalizeText(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function paymentId(record: GraphPayment) {

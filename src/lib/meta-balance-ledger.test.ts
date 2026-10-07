@@ -83,25 +83,52 @@ assert.equal(
   null,
 );
 
+const cardCharge = classifyGraphPayment({
+  id: "card-1",
+  status: "completed",
+  charge_type: "payment",
+  payment_option: "credit_card",
+  app_amount: { amount: "2100.40" },
+});
+assert.equal(cardCharge?.direction, "debit");
+assert.equal(cardCharge?.cents, 210040);
+
+const funding = classifyGraphPayment({
+  id: "fund-1",
+  is_funding_event: true,
+  status: "completed",
+  payment_option: "altpay",
+  billing_reason: "add_funds",
+  app_amount: { amount: "150.00" },
+});
+assert.equal(funding?.direction, "credit");
+assert.equal(funding?.cents, 15000);
+
+const added = classifyGraphPayment({
+  event_type: "funding_event_successful",
+  event_time: 1759795200,
+  object_id: "886574174420761",
+  extra_data: JSON.stringify({ new_value: "20000", currency: "BRL" }),
+});
+assert.equal(added?.direction, "credit");
+assert.equal(added?.cents, 20000);
+
 assert.equal(
   classifyGraphPayment({
-    id: "card-1",
-    status: "completed",
-    charge_type: "payment",
-    payment_option: "credit_card",
-    app_amount: { amount: "2100.40" },
+    event_type: "funding_event_initiated",
+    event_time: 1759795200,
+    object_id: "886574174420761",
+    extra_data: JSON.stringify({ new_value: "50000" }),
   }),
   null,
 );
 
 assert.equal(
   classifyGraphPayment({
-    id: "fund-1",
-    is_funding_event: true,
-    status: "completed",
-    payment_option: "altpay",
-    billing_reason: "add_funds",
-    app_amount: { amount: "150.00" },
+    event_type: "ad_account_billing_decline",
+    event_time: 1759795300,
+    object_id: "886574174420761",
+    extra_data: JSON.stringify({ new_value: "2808" }),
   }),
   null,
 );
@@ -126,9 +153,42 @@ assert.equal(mergeLedger([received!], [received!, charge!]).length, 2);
 
 assert.equal(hasCreditCard({ type: 1, display_string: "Cartão" }), true);
 assert.equal(hasCreditCard({ type: 20, amount: "0" }), false);
-assert.equal(shouldUsePrepaidLedger({ hasCard: true, storedCents: 0, creditCount: 1 }), true);
-assert.equal(shouldUsePrepaidLedger({ hasCard: true, storedCents: 900, creditCount: 1 }), false);
-assert.equal(shouldUsePrepaidLedger({ hasCard: false, storedCents: 0, creditCount: 1 }), false);
+assert.equal(
+  shouldUsePrepaidLedger({
+    hasCard: true,
+    displayedCents: 0,
+    storedCents: 0,
+    creditCount: 1,
+  }),
+  true,
+);
+assert.equal(
+  shouldUsePrepaidLedger({
+    hasCard: true,
+    displayedCents: 900,
+    storedCents: 900,
+    creditCount: 1,
+  }),
+  false,
+);
+assert.equal(
+  shouldUsePrepaidLedger({
+    hasCard: false,
+    displayedCents: 500,
+    storedCents: null,
+    creditCount: 1,
+  }),
+  false,
+);
+assert.equal(
+  shouldUsePrepaidLedger({
+    hasCard: false,
+    displayedCents: 0,
+    storedCents: null,
+    creditCount: 1,
+  }),
+  true,
+);
 
 const stored = readLedger({
   entries: [

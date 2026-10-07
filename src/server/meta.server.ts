@@ -250,6 +250,13 @@ async function selectedAccount(organizationId: string) {
   return data?.[0] ?? null;
 }
 
+export async function readAdAccountNode(organizationId: string, accountId: string, fields: string) {
+  const digits = accountId.trim().replace(/^act_/i, "");
+  if (!/^\d+$/.test(digits)) fail("Escolha uma conta de anúncio válida.");
+  const { token } = await loadToken(organizationId);
+  return graphGet(graphVersion(), `/act_${digits}`, token, { fields });
+}
+
 async function loadToken(organizationId: string) {
   const connection = await connectionOf(organizationId);
   if (!connection || connection.status === "disconnected" || !connection.access_token_encrypted) {

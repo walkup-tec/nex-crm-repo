@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { MetaCreditCharge, MetaCreditView } from "@/lib/meta-credit";
+import type { MetaCreditView } from "@/lib/meta-credit";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -32,12 +32,4 @@ export const getMetaCreditFn = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<Result<MetaCreditView>> => {
     const { getMetaCredit } = await import("@/server/meta-credit.server");
     return guard(() => getMetaCredit(context.userId));
-  });
-
-export const requestMetaCreditFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .validator((data: { cents: number }) => data)
-  .handler(async ({ context, data }): Promise<Result<MetaCreditCharge>> => {
-    const { requestMetaCredit } = await import("@/server/meta-credit.server");
-    return guard(() => requestMetaCredit(context.userId, data.cents));
   });

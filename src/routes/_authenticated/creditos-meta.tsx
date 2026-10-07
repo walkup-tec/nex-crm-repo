@@ -8,14 +8,12 @@ export const Route = createFileRoute("/_authenticated/creditos-meta")({
       { title: "Créditos Meta — NEX Ads" },
       {
         name: "description",
-        content:
-          "Adicione saldo Pix na conta de anúncio integrada. O QR Code é o que a Meta gerar.",
+        content: "Entre com o Facebook e abra a adição de saldo da conta integrada.",
       },
       { property: "og:title", content: "Créditos Meta — NEX Ads" },
       {
         property: "og:description",
-        content:
-          "Adicione saldo Pix na conta de anúncio integrada. O QR Code é o que a Meta gerar.",
+        content: "Entre com o Facebook e abra a adição de saldo da conta integrada.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -25,7 +23,7 @@ export const Route = createFileRoute("/_authenticated/creditos-meta")({
     <AppShell
       live
       title="Créditos Meta"
-      subtitle="Adicione saldo Pix na conta de anúncio integrada."
+      subtitle="Entre com o Facebook e abra a adição de saldo da conta integrada."
     >
       <MetaCredits />
     </AppShell>

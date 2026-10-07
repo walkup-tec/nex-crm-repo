@@ -2,10 +2,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
   balanceFromAccount,
-  pixFromMeta,
   type BalanceKind,
   type FundingSource,
-  type MetaCreditCharge,
   type MetaCreditView,
 } from "@/lib/meta-credit";
 import { readAdAccountNode } from "@/server/meta.server";
@@ -114,7 +112,16 @@ async function readBalance(organizationId: string, accountId: string, accountRow
   });
   await rememberBalance(accountRowId, reading.cents, reading.kind);
   const prepay = typeof node.is_prepay_account === "boolean" ? node.is_prepay_account : null;
-  return { reading, prepay, node };
+  return { reading, prepay };
+}
+
+function facebookLoginConfig() {
+  const raw = process.env["META_APP_ID"]?.trim() ?? "";
+  const facebookAppId = /^\d{5,32}$/.test(raw) ? raw : null;
+  const versionRaw = (process.env["META_GRAPH_VERSION"] || "v23.0").trim();
+  const version = versionRaw.startsWith("v") ? versionRaw : `v${versionRaw}`;
+  const facebookSdkVersion = /^v\d+\.\d+$/.test(version) ? version : "v23.0";
+  return { facebookAppId, facebookSdkVersion };
 }
 
 function emptyView(canAdd: boolean): MetaCreditView {
@@ -128,6 +135,7 @@ function emptyView(canAdd: boolean): MetaCreditView {
     syncedAt: null,
     prepay: null,
     balanceUrl: null,
+    ...facebookLoginConfig(),
   };
 }
 
@@ -150,33 +158,6 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     syncedAt: new Date().toISOString(),
     prepay,
     balanceUrl: normalizeBalanceLink(account.balance_url ?? ""),
-  };
-}
-
-export async function requestMetaCredit(userId: string, cents: number): Promise<MetaCreditCharge> {
-  const actor = await actorOf(userId);
-  if (!actor.canAdd) fail("Você não tem permissão para adicionar créditos Meta.");
-  if (!Number.isInteger(cents) || cents <= 0) fail("Informe um valor maior que zero.");
-  const account = await selectedAccount(actor.organizationId);
-  if (!account) fail("Nenhuma conta de anúncio está integrada a este acesso.");
-  const { reading, node } = await readBalance(
-    actor.organizationId,
-    account.external_account_id,
-    account.id,
-  );
-  const billingUrl = normalizeBalanceLink(account.balance_url ?? "");
-  if (!billingUrl) fail("O link de saldo desta conta de anúncio ainda não foi informado.");
-  const pix = pixFromMeta(node);
-  return {
-    currency: account.currency || "BRL",
-    totalCents: cents,
-    balanceCents: reading.cents,
-    balanceKind: reading.kind,
-    accountName: account.name,
-    pix,
-    billingUrl,
-    notice: pix
-      ? null
-      : "Abra o link de saldo desta conta de anúncio. O Pix é gerado pela Meta nessa página.",
+    ...facebookLoginConfig(),
   };
 }

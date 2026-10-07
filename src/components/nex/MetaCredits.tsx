@@ -1,24 +1,10 @@
-import { Copy, ExternalLink, RefreshCw, WalletCards } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { normalizeBalanceLink } from "@/lib/balance-link";
-import { getMetaCreditFn, requestMetaCreditFn } from "@/lib/meta-credit.functions";
-import {
-  balanceGrew,
-  centsFromMoneyInput,
-  type MetaCreditCharge,
-  type MetaCreditView,
-} from "@/lib/meta-credit";
-import { applyMask } from "@/lib/masks";
+import { loadFacebookSdk, type FacebookSdk } from "@/lib/facebook-login";
+import { getMetaCreditFn } from "@/lib/meta-credit.functions";
+import type { MetaCreditView } from "@/lib/meta-credit";
 
 function money(cents: number | null, currency: string) {
   if (cents == null || !Number.isFinite(cents)) return "—";
@@ -37,34 +23,14 @@ function balanceHint(kind: MetaCreditView["balanceKind"]) {
   return "A Meta não informou o saldo desta conta.";
 }
 
-function qrSrc(image: string) {
-  if (image.startsWith("data:image/") || image.startsWith("https://")) return image;
-  if (image.startsWith("iVBORw0KGgo") && image.length > 80) return `data:image/png;base64,${image}`;
-  return "";
-}
-
-function billingHref(value: string | null) {
-  if (!value) return null;
-  return normalizeBalanceLink(value);
-}
-
 export function MetaCredits() {
   const [view, setView] = useState<MetaCreditView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [amount, setAmount] = useState("");
-  const [chargeOpen, setChargeOpen] = useState(false);
-  const [charge, setCharge] = useState<MetaCreditCharge | null>(null);
-  const chargeRef = useRef<MetaCreditCharge | null>(null);
-  const [chargeError, setChargeError] = useState("");
-  const [chargeLoading, setChargeLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [grew, setGrew] = useState(false);
-
-  const rememberCharge = (next: MetaCreditCharge | null) => {
-    chargeRef.current = next;
-    setCharge(next);
-  };
+  const [sdk, setSdk] = useState<FacebookSdk | null>(null);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [entering, setEntering] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,99 +42,94 @@ export function MetaCredits() {
       return;
     }
     setView(result.data);
-    const baseline = chargeRef.current;
-    if (
-      baseline &&
-      result.data.balanceKind === "available" &&
-      balanceGrew(baseline.balanceCents, result.data.balanceCents, baseline.totalCents)
-    ) {
-      setGrew(true);
-    }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const requestPix = async () => {
-    const cents = centsFromMoneyInput(amount);
-    if (cents == null) {
-      setChargeError("Informe um valor maior que zero.");
-      rememberCharge(null);
-      setChargeOpen(true);
-      return;
-    }
-    setChargeOpen(true);
-    rememberCharge(null);
-    setChargeError("");
-    setCopied(false);
-    setGrew(false);
-    setChargeLoading(true);
-    const result = await requestMetaCreditFn({ data: { cents } });
-    setChargeLoading(false);
-    if (!result.ok) {
-      setChargeError(result.message);
-      return;
-    }
-    rememberCharge(result.data);
-    setView((current) =>
-      current
-        ? {
-            ...current,
-            accountName: result.data.accountName,
-            currency: result.data.currency,
-            balanceCents: result.data.balanceCents,
-            balanceKind: result.data.balanceKind,
-            syncedAt: new Date().toISOString(),
-          }
-        : current,
+  useEffect(() => {
+    const appId = view?.facebookAppId;
+    const version = view?.facebookSdkVersion;
+    if (!appId || !version) return;
+    let cancelled = false;
+    void loadFacebookSdk(appId, version)
+      .then((next) => {
+        if (cancelled) return;
+        setSdk(next);
+        next.getLoginStatus((response) => {
+          if (!cancelled) setLoggedIn(response.status === "connected");
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setLoginError("Não foi possível abrir o login do Facebook.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view?.facebookAppId, view?.facebookSdkVersion]);
+
+  const enter = () => {
+    if (!sdk) return;
+    setEntering(true);
+    setLoginError("");
+    sdk.login(
+      (response) => {
+        setEntering(false);
+        if (response.status === "connected") {
+          setLoggedIn(true);
+          return;
+        }
+        setLoginError("O login no Facebook não foi concluído.");
+      },
+      { scope: "public_profile" },
     );
   };
 
-  const step = grew ? 3 : charge?.pix || charge?.notice ? 2 : amount ? 1 : 0;
-  const href = billingHref(charge?.billingUrl ?? null);
-  const image = qrSrc(charge?.pix?.image ?? "");
+  const href = normalizeBalanceLink(view?.balanceUrl ?? "");
+  const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
       <section className="rounded-lg border bg-card p-5">
-        <h2 className="font-display text-lg font-semibold">Adicionar créditos</h2>
+        <h2 className="font-display text-lg font-semibold">Adicionar saldo</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Informe o valor e abra o link de saldo desta conta de anúncio. O Pix é gerado pela Meta
-          nessa página.
+          Entre com o Facebook. Em seguida, abra a página da Meta em que o saldo desta conta de
+          anúncio é adicionado.
         </p>
-        <div className="mt-5">
-          <label className="text-sm font-medium" htmlFor="credit">
-            Valor
-          </label>
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-            <Input
-              id="credit"
-              inputMode="numeric"
-              value={amount}
-              onChange={(event) => setAmount(applyMask("money", event.target.value))}
-              placeholder="R$ 0,00"
-              disabled={!view?.canAdd || !view.accountId || !view.balanceUrl}
-            />
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          {!loggedIn && (
             <Button
               type="button"
-              disabled={
-                !view?.canAdd || !view.accountId || !view.balanceUrl || !amount || chargeLoading
-              }
-              onClick={() => void requestPix()}
+              onClick={enter}
+              disabled={!view?.canAdd || !view.accountId || !view.facebookAppId || !sdk || entering}
             >
-              Continuar
+              {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
             </Button>
-          </div>
+          )}
+          {canOpen && href && (
+            <Button asChild>
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                <ExternalLink />
+                Adicionar saldo
+              </a>
+            </Button>
+          )}
         </div>
+        {loggedIn && <p className="mt-4 text-sm text-muted-foreground">Facebook conectado.</p>}
         {view && !view.canAdd && (
           <p className="mt-4 text-sm text-muted-foreground">
-            Seu acesso pode consultar o saldo, mas não pode solicitar recarga.
+            Seu acesso pode consultar o saldo, mas não pode adicionar saldo.
           </p>
         )}
-        {!loading && view?.accountId && !view.balanceUrl && (
+        {!loading && view?.accountId && view.canAdd && !href && (
           <p className="mt-4 text-sm text-muted-foreground">
             O link de saldo desta conta de anúncio ainda não foi informado no cadastro.
+          </p>
+        )}
+        {!loading && view?.canAdd && view.accountId && !view.facebookAppId && (
+          <p className="mt-4 text-sm text-muted-foreground">
+            O login do Facebook ainda não está configurado no servidor.
           </p>
         )}
         {!loading && view && !view.accountId && (
@@ -176,18 +137,7 @@ export function MetaCredits() {
             Nenhuma conta de anúncio está integrada a este acesso.
           </p>
         )}
-        <ol className="mt-5 grid gap-3 sm:grid-cols-3">
-          {["Valor informado", "Pix gerado pela Meta", "Saldo atualizado"].map((label, index) => (
-            <li key={label} className="flex items-center gap-2 text-xs">
-              <span
-                className={`grid size-6 place-items-center rounded-full font-bold ${step === index + 1 ? "bg-primary text-primary-foreground" : "bg-secondary"}`}
-              >
-                {index + 1}
-              </span>
-              {label}
-            </li>
-          ))}
-        </ol>
+        {loginError && <p className="mt-4 text-sm text-destructive">{loginError}</p>}
         {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
         {loading && (
           <p className="mt-4 text-sm text-muted-foreground">Lendo a conta integrada na Meta...</p>
@@ -222,78 +172,6 @@ export function MetaCredits() {
           </p>
         </div>
       </section>
-
-      <Dialog open={chargeOpen} onOpenChange={setChargeOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Recarga da conta Meta</DialogTitle>
-            <DialogDescription>
-              {charge
-                ? `${charge.accountName} · ${money(charge.totalCents, charge.currency)}`
-                : "A Meta gera o Pix de saldo da conta integrada."}
-            </DialogDescription>
-          </DialogHeader>
-          {chargeLoading && <p className="text-sm text-muted-foreground">Consultando a Meta...</p>}
-          {chargeError && <p className="text-sm text-destructive">{chargeError}</p>}
-          {charge?.pix && (
-            <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
-              <div className="grid aspect-square place-items-center overflow-hidden rounded-lg border bg-white">
-                {image ? (
-                  <img
-                    src={image}
-                    alt="QR Code Pix gerado pela Meta"
-                    className="h-full w-full object-contain"
-                  />
-                ) : (
-                  <WalletCards className="size-8 text-muted-foreground" />
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Pix da Meta</p>
-                <p className="mt-1 text-2xl font-bold">
-                  {money(charge.totalCents, charge.currency)}
-                </p>
-                <Badge className="mt-3" variant="outline">
-                  {grew ? "Saldo atualizado" : "Aguardando pagamento na Meta"}
-                </Badge>
-                <Button
-                  className="mt-4 w-full"
-                  disabled={grew}
-                  onClick={() => {
-                    void navigator.clipboard
-                      .writeText(charge.pix?.payload ?? "")
-                      .then(() => setCopied(true));
-                  }}
-                >
-                  <Copy />
-                  {copied ? "Código copiado" : "Copiar código Pix"}
-                </Button>
-              </div>
-            </div>
-          )}
-          {charge?.notice && <p className="text-sm text-muted-foreground">{charge.notice}</p>}
-          {href && !charge?.pix && (
-            <Button asChild>
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                <ExternalLink />
-                Abrir adição de saldo
-              </a>
-            </Button>
-          )}
-          {grew && (
-            <p className="text-sm text-muted-foreground">
-              A Meta informou um saldo maior nesta conta:{" "}
-              {money(view?.balanceCents ?? null, view?.currency || "BRL")}.
-            </p>
-          )}
-          {charge && (
-            <Button type="button" variant="outline" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={loading ? "animate-spin" : ""} />
-              Atualizar saldo
-            </Button>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

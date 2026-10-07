@@ -46,6 +46,43 @@ const charge = classifyGraphPayment({
 assert.equal(charge?.direction, "debit");
 assert.equal(charge?.cents, 2808);
 
+const cardPaid = classifyGraphPayment({
+  id: "card-paid",
+  status: "Pago",
+  payment_option: "Cartão de crédito",
+  app_amount: { amount: "40,59" },
+});
+assert.equal(cardPaid?.direction, "debit");
+assert.equal(cardPaid?.cents, 4059);
+
+const anyCredit = classifyGraphPayment({
+  id: "pix-1",
+  status: "Com saldo",
+  payment_option: "Pix",
+  app_amount: { amount: "150,00" },
+});
+assert.equal(anyCredit?.direction, "credit");
+assert.equal(anyCredit?.cents, 15000);
+
+assert.equal(
+  classifyGraphPayment({
+    id: "fail-1",
+    status: "Falha",
+    payment_option: "Pagamento manual",
+    app_amount: { amount: "80,00" },
+  }),
+  null,
+);
+
+assert.equal(
+  classifyGraphPayment({
+    id: "method-only",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "10,00" },
+  }),
+  null,
+);
+
 assert.equal(
   classifyGraphPayment({
     id: "card-1",
@@ -57,16 +94,17 @@ assert.equal(
   null,
 );
 
-const funding = classifyGraphPayment({
-  id: "fund-1",
-  is_funding_event: true,
-  status: "completed",
-  payment_option: "altpay",
-  billing_reason: "add_funds",
-  app_amount: { amount: "150.00" },
-});
-assert.equal(funding?.direction, "credit");
-assert.equal(funding?.cents, 15000);
+assert.equal(
+  classifyGraphPayment({
+    id: "fund-1",
+    is_funding_event: true,
+    status: "completed",
+    payment_option: "altpay",
+    billing_reason: "add_funds",
+    app_amount: { amount: "150.00" },
+  }),
+  null,
+);
 
 const activity = classifyGraphPayment({
   event_type: "ad_account_billing_charge",

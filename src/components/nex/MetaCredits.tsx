@@ -42,7 +42,7 @@ function money(cents: number | null, currency: string) {
 function balanceHint(kind: MetaCreditView["balanceKind"]) {
   if (kind === "available") return "Disponível para anúncios";
   if (kind === "prepaid")
-    return "Pix recebido, menos as cobranças do saldo pré-pago. A Meta cobra o cartão antes.";
+    return "Pagamentos com saldo, menos os que constam como pagos. A Meta cobra o cartão antes.";
   if (kind === "due") return "Valor em aberto com a Meta";
   return "A Meta não informou o saldo desta conta.";
 }

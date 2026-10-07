@@ -119,41 +119,7 @@ export function classifyGraphPayment(item: unknown): LedgerEntry | null {
   if (!item || typeof item !== "object" || Array.isArray(item)) return null;
   const record = item as GraphPayment;
   const extra = parseExtra(record.extra_data);
-  const blob = normalizeText(
-    [
-      record.status,
-      record.charge_type,
-      record.payment_option,
-      record.billing_reason,
-      record.transaction_type,
-      record.event_type,
-      record.translated_event_type,
-      record.extra_data,
-      extra,
-    ]
-      .map(readable)
-      .join(" "),
-  );
-  const status = normalizeText(readable(record.status) || blob);
-  const method = normalizeText(readable(record.payment_option));
-  const pending = /pendente|pending|in_progress|initiated|failed|recusad|declin|unsuccessful/.test(
-    status,
-  );
-  const funding =
-    record.is_funding_event === true ||
-    /pagamento manual|manual payment|add_funds|funding_event|adicionar fundos/.test(blob);
-  const received =
-    /com saldo|with balance/.test(blob) ||
-    (/successful|completed|settled/.test(status) && !pending);
-  const card = /credit_card|debit_card|cart[aã]o/.test(method);
-  const prepaid = /pre[- ]?pago|stored[_\s-]?balance|prepaid|prepay/.test(`${method} ${blob}`);
-  const paid = /pago|paid|completed|successful|settled/.test(`${status} ${blob}`) && !pending;
-  const direction: LedgerDirection | null =
-    funding && received && !card && !pending
-      ? "credit"
-      : prepaid && paid && !funding
-        ? "debit"
-        : null;
+  const direction = directionFromStatus(statusText(record, extra));
   if (!direction) return null;
   const cents = centsFromMetaAmount(
     record.app_amount ??
@@ -166,6 +132,30 @@ export function classifyGraphPayment(item: unknown): LedgerEntry | null {
   if (!id || cents == null) return null;
   const at = occurredAt(record.time ?? record.event_time);
   return { id, direction, cents, at };
+}
+
+function statusText(record: GraphPayment, extra: Record<string, unknown> | null) {
+  const direct = readable(record.status).trim();
+  if (direct) return direct;
+  if (!extra) return "";
+  return readable(extra["status"] ?? extra["payment_status"]).trim();
+}
+
+function directionFromStatus(value: string): LedgerDirection | null {
+  const status = normalizeText(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!status) return null;
+  if (
+    status === "falha" ||
+    status === "failed" ||
+    status === "failure" ||
+    status === "pendente" ||
+    status === "pending"
+  ) {
+    return null;
+  }
+  if (status === "com saldo" || status === "with balance") return "credit";
+  if (status === "pago" || status === "paid") return "debit";
+  return null;
 }
 
 function paymentId(record: GraphPayment) {

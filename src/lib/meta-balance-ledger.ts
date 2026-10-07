@@ -65,11 +65,25 @@ export function shouldUsePrepaidLedger(input: {
   return noStoredBalance && (input.hasCard || displayedIsZero) && input.creditCount > 0;
 }
 
-export function prepaidBalanceCents(entries: Pick<LedgerEntry, "direction" | "cents">[]) {
-  return entries.reduce(
-    (total, entry) => total + (entry.direction === "credit" ? entry.cents : -entry.cents),
-    0,
-  );
+export function prepaidBalanceCents(entries: Pick<LedgerEntry, "direction" | "cents" | "at">[]) {
+  const ordered = [...entries].sort((left, right) => {
+    const delta = occurredMillis(left.at) - occurredMillis(right.at);
+    if (delta !== 0) return delta;
+    if (left.direction === right.direction) return 0;
+    return left.direction === "credit" ? -1 : 1;
+  });
+  let balance = 0;
+  for (const entry of ordered) {
+    balance =
+      entry.direction === "credit" ? balance + entry.cents : Math.max(0, balance - entry.cents);
+  }
+  return balance;
+}
+
+function occurredMillis(at: string | null | undefined) {
+  if (!at) return Number.NEGATIVE_INFINITY;
+  const parsed = Date.parse(at);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }
 
 export function mergeLedger(existing: LedgerEntry[], incoming: LedgerEntry[]) {

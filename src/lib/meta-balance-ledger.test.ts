@@ -42,6 +42,7 @@ const charge = classifyGraphPayment({
   status: "Pago",
   payment_option: "Saldo pré-pago",
   app_amount: { amount: "28,08" },
+  time: 1759881600,
 });
 assert.equal(charge?.direction, "debit");
 assert.equal(charge?.cents, 2808);
@@ -149,6 +150,27 @@ assert.equal(activity?.cents, 3605);
 assert.equal(activity?.id, "ad_account_billing_charge:act_1:1754600000");
 
 assert.equal(prepaidBalanceCents([received!, charge!]), 17192);
+assert.equal(
+  prepaidBalanceCents([
+    { direction: "credit", cents: 15000, at: "2026-08-11T15:00:00.000Z" },
+    { direction: "debit", cents: 1054, at: "2026-08-12T15:00:00.000Z" },
+    { direction: "debit", cents: 4059, at: "2026-08-13T15:00:00.000Z" },
+    { direction: "debit", cents: 3643, at: "2026-08-14T15:00:00.000Z" },
+    { direction: "debit", cents: 5305, at: "2026-08-15T15:00:00.000Z" },
+    { direction: "debit", cents: 2808, at: "2026-08-18T12:00:00.000Z" },
+    { direction: "debit", cents: 3347, at: "2026-08-18T18:00:00.000Z" },
+    { direction: "debit", cents: 10327, at: "2026-09-04T15:00:00.000Z" },
+    { direction: "credit", cents: 20000, at: "2026-10-07T15:00:00.000Z" },
+  ]),
+  20000,
+);
+assert.equal(
+  prepaidBalanceCents([
+    { direction: "credit", cents: 20000, at: "2026-10-07T15:00:00.000Z" },
+    { direction: "debit", cents: 3000, at: "2026-10-08T15:00:00.000Z" },
+  ]),
+  17000,
+);
 assert.equal(mergeLedger([received!], [received!, charge!]).length, 2);
 
 assert.equal(hasCreditCard({ type: 1, display_string: "Cartão" }), true);

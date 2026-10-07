@@ -1,4 +1,4 @@
-export type BalanceKind = "available" | "due" | "unknown";
+export type BalanceKind = "available" | "due" | "prepaid" | "unknown";
 
 export type MetaCreditPix = {
   payload: string;
@@ -20,6 +20,7 @@ export type MetaCreditView = {
 export type FundingSource = {
   type?: number | string;
   amount?: string | number | null;
+  display_string?: string;
   coupons?: { amount?: string | number | null }[] | null;
 };
 

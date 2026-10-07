@@ -259,6 +259,29 @@ export async function readAdAccountNode(organizationId: string, accountId: strin
   return graphGet(graphVersion(), `/act_${digits}`, token, { fields });
 }
 
+export async function listAdAccountEdge(
+  organizationId: string,
+  accountId: string,
+  edge: string,
+  params: Record<string, string>,
+) {
+  const digits = accountId.trim().replace(/^act_/i, "");
+  if (!/^\d+$/.test(digits) || !/^[a-z_]+$/.test(edge))
+    fail("Escolha uma conta de anúncio válida.");
+  const { token } = await loadToken(organizationId);
+  const rows: Record<string, unknown>[] = [];
+  let next: string | null = null;
+  for (let page = 0; page < 10; page += 1) {
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(graphVersion(), `/act_${digits}/${edge}`, token, params);
+    for (const item of body.data ?? []) rows.push(item as unknown as Record<string, unknown>);
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  return rows;
+}
+
 async function loadToken(organizationId: string) {
   const connection = await connectionOf(organizationId);
   if (!connection || connection.status === "disconnected" || !connection.access_token_encrypted) {

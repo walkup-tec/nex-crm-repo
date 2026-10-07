@@ -450,6 +450,7 @@ export type Database = {
         Row: {
           balance_cents: number
           balance_url: string | null
+          prepaid_ledger: Json | null
           currency: string
           account_status: string | null
           connection_id: string | null
@@ -469,6 +470,7 @@ export type Database = {
           connection_id?: string | null
           currency?: string
           external_account_id: string
+          prepaid_ledger?: Json | null
           id?: string
           last_synced_at?: string | null
           name: string
@@ -484,6 +486,7 @@ export type Database = {
           connection_id?: string | null
           currency?: string
           external_account_id?: string
+          prepaid_ledger?: Json | null
           id?: string
           last_synced_at?: string | null
           name?: string

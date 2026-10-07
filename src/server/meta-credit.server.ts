@@ -1,12 +1,27 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { Json } from "@/integrations/supabase/types";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
+  classifyGraphPayment,
+  hasCreditCard,
+  mergeLedger,
+  prepaidBalanceCents,
+  readLedger,
+  shouldUsePrepaidLedger,
+  type LedgerEntry,
+} from "@/lib/meta-balance-ledger";
+import {
+  availableBalanceCents,
   balanceFromAccount,
   type BalanceKind,
   type FundingSource,
   type MetaCreditView,
 } from "@/lib/meta-credit";
-import { readAdAccountNode, startSimpleFacebookLogin } from "@/server/meta.server";
+import {
+  listAdAccountEdge,
+  readAdAccountNode,
+  startSimpleFacebookLogin,
+} from "@/server/meta.server";
 
 type Role = "master" | "client_admin" | "client_user";
 
@@ -63,18 +78,31 @@ async function actorOf(userId: string) {
 }
 
 async function selectedAccount(organizationId: string) {
-  const { data, error } = await supabaseAdmin
+  const columns =
+    "id, external_account_id, name, currency, portfolio_id, balance_url, prepaid_ledger";
+  const query = await supabaseAdmin
     .from("meta_accounts")
-    .select("id, external_account_id, name, currency, portfolio_id, balance_url")
+    .select(columns)
     .eq("organization_id", organizationId)
     .eq("selected", true)
     .limit(1);
-  if (error) fail("Não foi possível ler a conta de anúncio.");
-  return data?.[0] ?? null;
+  if (query.error && /prepaid_ledger/i.test(query.error.message)) {
+    const plain = await supabaseAdmin
+      .from("meta_accounts")
+      .select("id, external_account_id, name, currency, portfolio_id, balance_url")
+      .eq("organization_id", organizationId)
+      .eq("selected", true)
+      .limit(1);
+    if (plain.error) fail("Não foi possível ler a conta de anúncio.");
+    const row = plain.data?.[0];
+    return row ? { ...row, prepaid_ledger: null } : null;
+  }
+  if (query.error) fail("Não foi possível ler a conta de anúncio.");
+  return query.data?.[0] ?? null;
 }
 
 async function rememberBalance(accountRowId: string, cents: number | null, kind: BalanceKind) {
-  if (kind !== "available" || cents == null) return;
+  if ((kind !== "available" && kind !== "prepaid") || cents == null) return;
   await supabaseAdmin
     .from("meta_accounts")
     .update({
@@ -104,15 +132,96 @@ async function readNode(organizationId: string, accountId: string) {
     : new Error("A Meta não respondeu como esperado. Tente de novo.");
 }
 
-async function readBalance(organizationId: string, accountId: string, accountRowId: string) {
+async function paymentRows(accountId: string, organizationId: string, businessId: string | null) {
+  try {
+    const transactions = await listAdAccountEdge(organizationId, accountId, "transactions", {
+      limit: "100",
+    });
+    if (transactions.some((item) => classifyGraphPayment(item)?.direction === "credit")) {
+      return transactions;
+    }
+  } catch (error) {
+    console.error("meta_transactions", error instanceof Error ? error.name : "error");
+  }
+  const params: Record<string, string> = {
+    fields: "event_type,event_time,extra_data,object_id,translated_event_type",
+    limit: "100",
+    since: "1514764800",
+  };
+  if (businessId && /^\d+$/.test(businessId)) params["business_id"] = businessId;
+  return listAdAccountEdge(organizationId, accountId, "activities", params);
+}
+
+async function prepaidLedger(
+  organizationId: string,
+  accountId: string,
+  accountRowId: string,
+  businessId: string | null,
+  stored: Json | null,
+) {
+  let rows: Record<string, unknown>[];
+  try {
+    rows = await paymentRows(accountId, organizationId, businessId);
+  } catch (error) {
+    console.error("meta_activities", error instanceof Error ? error.name : "error");
+    return null;
+  }
+  const incoming = rows.flatMap((item) => {
+    const entry = classifyGraphPayment(item);
+    return entry ? [entry] : [];
+  });
+  if (!incoming.some((entry) => entry.direction === "credit")) return null;
+  const entries = mergeLedger(readLedger(stored), incoming);
+  const { error } = await supabaseAdmin
+    .from("meta_accounts")
+    .update({ prepaid_ledger: { entries } })
+    .eq("id", accountRowId)
+    .eq("organization_id", organizationId);
+  if (error) console.error("meta_prepaid_ledger", error.code ?? "error");
+  return { cents: prepaidBalanceCents(entries), credits: creditCount(entries) };
+}
+
+function creditCount(entries: LedgerEntry[]) {
+  return entries.filter((entry) => entry.direction === "credit").length;
+}
+
+async function readBalance(
+  organizationId: string,
+  accountId: string,
+  accountRowId: string,
+  businessId: string | null,
+  storedLedger: Json | null,
+) {
   const node = await readNode(organizationId, accountId);
+  const funding = node.funding_source_details;
   const reading = balanceFromAccount({
     ...(node.balance !== undefined ? { balance: node.balance } : {}),
-    ...(node.funding_source_details !== undefined ? { funding: node.funding_source_details } : {}),
+    ...(funding !== undefined ? { funding } : {}),
   });
-  await rememberBalance(accountRowId, reading.cents, reading.kind);
+  const storedCents = funding === undefined ? null : availableBalanceCents(funding);
+  let result = reading;
+  if (hasCreditCard(funding) && (storedCents == null || storedCents === 0)) {
+    const ledger = await prepaidLedger(
+      organizationId,
+      accountId,
+      accountRowId,
+      businessId,
+      storedLedger,
+    );
+    if (
+      ledger &&
+      shouldUsePrepaidLedger({
+        hasCard: true,
+        storedCents,
+        creditCount: ledger.credits,
+      })
+    ) {
+      result = { cents: ledger.cents, kind: "prepaid" };
+    }
+  }
+  await rememberBalance(accountRowId, result.cents, result.kind);
   const prepay = typeof node.is_prepay_account === "boolean" ? node.is_prepay_account : null;
-  return { reading, prepay };
+  return { reading: result, prepay };
 }
 
 function emptyView(canAdd: boolean): MetaCreditView {
@@ -137,6 +246,8 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     actor.organizationId,
     account.external_account_id,
     account.id,
+    account.portfolio_id,
+    account.prepaid_ledger,
   );
   return {
     accountName: account.name,

@@ -227,14 +227,14 @@ export function MetaCredits() {
           Depois de entrar, clique em Adicionar saldo. Na conta de anúncios da Meta, siga estes dois
           passos.
         </p>
-        <ol className="mt-5 flex flex-col items-start gap-4 md:flex-row">
+        <ol className="mt-5 grid grid-cols-1 items-start gap-4 md:grid-cols-12">
           {guide.map((item) => (
             <li
               key={item.step}
               className={
                 item.step === "2"
-                  ? "w-1/2 max-w-full overflow-hidden rounded-lg border bg-background md:w-1/4"
-                  : "w-full max-w-full overflow-hidden rounded-lg border bg-background md:w-1/2"
+                  ? "w-1/2 max-w-full overflow-hidden rounded-lg border bg-background md:col-span-3 md:w-auto"
+                  : "w-full overflow-hidden rounded-lg border bg-background md:col-span-9"
               }
             >
               <div className="flex gap-3 p-4">

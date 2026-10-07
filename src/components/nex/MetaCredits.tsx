@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { normalizeBalanceLink } from "@/lib/balance-link";
 import { getMetaCreditFn, requestMetaCreditFn } from "@/lib/meta-credit.functions";
 import {
   balanceGrew,
@@ -44,13 +45,7 @@ function qrSrc(image: string) {
 
 function billingHref(value: string | null) {
   if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.hostname !== "business.facebook.com") return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
+  return normalizeBalanceLink(value);
 }
 
 export function MetaCredits() {
@@ -139,8 +134,8 @@ export function MetaCredits() {
       <section className="rounded-lg border bg-card p-5">
         <h2 className="font-display text-lg font-semibold">Adicionar créditos</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          O valor entra como saldo Pix na conta de anúncio integrada. O QR Code exibido é o que a
-          Meta gerar para essa recarga.
+          Informe o valor e abra o link de saldo desta conta de anúncio. O Pix é gerado pela Meta
+          nessa página.
         </p>
         <div className="mt-5">
           <label className="text-sm font-medium" htmlFor="credit">
@@ -153,16 +148,12 @@ export function MetaCredits() {
               value={amount}
               onChange={(event) => setAmount(applyMask("money", event.target.value))}
               placeholder="R$ 0,00"
-              disabled={!view?.canAdd || !view.accountId || view.prepay === false}
+              disabled={!view?.canAdd || !view.accountId || !view.balanceUrl}
             />
             <Button
               type="button"
               disabled={
-                !view?.canAdd ||
-                !view.accountId ||
-                view.prepay === false ||
-                !amount ||
-                chargeLoading
+                !view?.canAdd || !view.accountId || !view.balanceUrl || !amount || chargeLoading
               }
               onClick={() => void requestPix()}
             >
@@ -175,10 +166,9 @@ export function MetaCredits() {
             Seu acesso pode consultar o saldo, mas não pode solicitar recarga.
           </p>
         )}
-        {view?.prepay === false && (
+        {!loading && view?.accountId && !view.balanceUrl && (
           <p className="mt-4 text-sm text-muted-foreground">
-            Esta conta não está em saldo pré-pago na Meta. O Pix de recarga só existe nesse tipo de
-            conta.
+            O link de saldo desta conta de anúncio ainda não foi informado no cadastro.
           </p>
         )}
         {!loading && view && !view.accountId && (
@@ -286,7 +276,7 @@ export function MetaCredits() {
             <Button asChild>
               <a href={href} target="_blank" rel="noopener noreferrer">
                 <ExternalLink />
-                Abrir pagamento na Meta
+                Abrir adição de saldo
               </a>
             </Button>
           )}

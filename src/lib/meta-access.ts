@@ -19,6 +19,7 @@ export type MetaConnectionView = {
   selectedAccountId: string | null;
   selectedAccountName: string | null;
   selectedPortfolioId: string | null;
+  balanceUrl: string | null;
   accounts: MetaAccountView[];
 };
 

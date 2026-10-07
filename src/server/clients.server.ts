@@ -39,7 +39,11 @@ function parseDate(value: string, label: string) {
   const month = Number(match[2]);
   const year = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
     fail(`${label} não é uma data válida.`);
   }
   return `${String(year).padStart(4, "0")}-${match[2]}-${match[1]}`;
@@ -58,16 +62,22 @@ function parseDraft(input: Draft) {
   const feeDigits = digits(input.monthlyFee);
   if (!feeDigits) fail("Informe a mensalidade.");
   const dueDay = Number(digits(input.dueDay));
-  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) fail("O vencimento precisa ser um dia entre 1 e 28.");
+  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28)
+    fail("O vencimento precisa ser um dia entre 1 e 28.");
   const startsOn = parseDate(input.startsOn, "o início do contrato");
   const endsOn = input.endsOn.trim() ? parseDate(input.endsOn, "o término do contrato") : null;
   if (endsOn && endsOn < startsOn) fail("O término do contrato não pode ser antes do início.");
   const finePercent = input.finePercent.trim() ? Number(digits(input.finePercent)) / 100 : 0;
-  const interestPercent = input.interestPercent.trim() ? Number(digits(input.interestPercent)) / 100 : 0;
-  if (!Number.isFinite(finePercent) || finePercent < 0 || finePercent > 100) fail("Informe a multa entre 0% e 100%.");
-  if (!Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100) fail("Informe os juros entre 0% e 100%.");
+  const interestPercent = input.interestPercent.trim()
+    ? Number(digits(input.interestPercent)) / 100
+    : 0;
+  if (!Number.isFinite(finePercent) || finePercent < 0 || finePercent > 100)
+    fail("Informe a multa entre 0% e 100%.");
+  if (!Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100)
+    fail("Informe os juros entre 0% e 100%.");
   const asaasSubscriptionId = input.asaasSubscriptionId.trim();
-  if (asaasSubscriptionId && !/^[A-Za-z0-9_]{1,64}$/.test(asaasSubscriptionId)) fail("A assinatura do Asaas é inválida.");
+  if (asaasSubscriptionId && !/^[A-Za-z0-9_]{1,64}$/.test(asaasSubscriptionId))
+    fail("A assinatura do Asaas é inválida.");
   const whatsapp = input.whatsapp.trim();
   return {
     legalName,
@@ -87,10 +97,11 @@ function parseDraft(input: Draft) {
 }
 
 async function requireMaster(userId: string) {
-  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id, is_blocked").eq("id", userId).maybeSingle(),
-    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
-  ]);
+  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] =
+    await Promise.all([
+      supabaseAdmin.from("profiles").select("id, is_blocked").eq("id", userId).maybeSingle(),
+      supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+    ]);
   if (profileError) fail(profileError.message);
   if (roleError) fail(roleError.message);
   if (!profile) fail("Seu perfil ainda não está ligado a um acesso.");
@@ -126,14 +137,35 @@ function financeLabel(invoices: ClientInvoice[]) {
 
 export async function listClients(userId: string): Promise<ListedClient[]> {
   await requireMaster(userId);
-  const [{ data: organizations, error: orgError }, { data: contracts, error: contractError }, { data: accounts, error: accountError }, { data: invoices, error: invoiceError }, { data: profiles, error: profileError }] =
-    await Promise.all([
-      supabaseAdmin.from("organizations").select("id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status").order("legal_name"),
-      supabaseAdmin.from("contracts").select("organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, external_subscription_id"),
-      supabaseAdmin.from("meta_accounts").select("organization_id, external_account_id, name, portfolio_id, balance_cents, sync_status, last_synced_at"),
-      supabaseAdmin.from("invoices").select("organization_id, competence, due_date, total_amount_cents, status, paid_at").order("due_date", { ascending: false }),
-      supabaseAdmin.from("profiles").select("id, email, organization_id"),
-    ]);
+  const [
+    { data: organizations, error: orgError },
+    { data: contracts, error: contractError },
+    { data: accounts, error: accountError },
+    { data: invoices, error: invoiceError },
+    { data: profiles, error: profileError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("organizations")
+      .select(
+        "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status",
+      )
+      .order("legal_name"),
+    supabaseAdmin
+      .from("contracts")
+      .select(
+        "organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, external_subscription_id",
+      ),
+    supabaseAdmin
+      .from("meta_accounts")
+      .select(
+        "organization_id, external_account_id, name, portfolio_id, balance_cents, balance_url, selected, sync_status, last_synced_at",
+      ),
+    supabaseAdmin
+      .from("invoices")
+      .select("organization_id, competence, due_date, total_amount_cents, status, paid_at")
+      .order("due_date", { ascending: false }),
+    supabaseAdmin.from("profiles").select("id, email, organization_id"),
+  ]);
   if (orgError) fail(orgError.message);
   if (contractError) fail(contractError.message);
   if (accountError) fail(accountError.message);
@@ -145,15 +177,21 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
     ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", profileIds)
     : { data: [], error: null };
   if (roles.error) fail(roles.error.message);
-  const adminIds = new Set((roles.data ?? []).filter((row) => row.role === "client_admin").map((row) => row.user_id));
+  const adminIds = new Set(
+    (roles.data ?? []).filter((row) => row.role === "client_admin").map((row) => row.user_id),
+  );
 
   return (organizations ?? []).map((org) => {
     const contract = (contracts ?? []).find((row) => row.organization_id === org.id) ?? null;
     const orgAccounts = (accounts ?? []).filter((row) => row.organization_id === org.id);
-    const manualAccounts = orgAccounts.filter((row) => row.sync_status === "manual" && !row.external_account_id.startsWith(manualPrefix));
+    const manualAccounts = orgAccounts.filter(
+      (row) => row.sync_status === "manual" && !row.external_account_id.startsWith(manualPrefix),
+    );
     const portfolio =
       orgAccounts.find((row) => row.portfolio_id?.trim())?.portfolio_id?.trim() ||
-      orgAccounts.find((row) => row.external_account_id.startsWith(manualPrefix))?.external_account_id.slice(manualPrefix.length) ||
+      orgAccounts
+        .find((row) => row.external_account_id.startsWith(manualPrefix))
+        ?.external_account_id.slice(manualPrefix.length) ||
       "";
     const orgInvoices: ClientInvoice[] = (invoices ?? [])
       .filter((row) => row.organization_id === org.id)
@@ -164,7 +202,9 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
         status: row.status as InvoiceStatus,
         paidAt: row.paid_at,
       }));
-    const access = (profiles ?? []).find((row) => row.organization_id === org.id && adminIds.has(row.id)) ?? null;
+    const access =
+      (profiles ?? []).find((row) => row.organization_id === org.id && adminIds.has(row.id)) ??
+      null;
     const balanceKnown = orgAccounts.some((row) => row.last_synced_at);
     const status = org.status as ClientStatus;
     return {
@@ -174,7 +214,8 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       responsibleName: org.responsible_name,
       responsibleEmail: org.responsible_email,
       whatsapp: org.responsible_phone === "não informado" ? "" : org.responsible_phone,
-      sameFinancePhone: org.finance_phone !== "não informado" && org.finance_phone === org.responsible_phone,
+      sameFinancePhone:
+        org.finance_phone !== "não informado" && org.finance_phone === org.responsible_phone,
       status,
       balanceCents: orgAccounts.reduce((sum, row) => sum + Number(row.balance_cents), 0),
       balanceKnown,
@@ -187,6 +228,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       interestPercent: contract ? Number(contract.interest_percent_monthly) : null,
       asaasSubscriptionId: contract?.external_subscription_id ?? "",
       portfolioId: portfolio,
+      balanceUrl: orgAccounts.find((row) => row.selected)?.balance_url?.trim() || "",
       adAccountIds: manualAccounts.map((row) => row.external_account_id),
       metaAccounts: orgAccounts
         .filter((row) => !row.external_account_id.startsWith(manualPrefix))
@@ -202,10 +244,7 @@ export async function masterDashboard(userId: string): Promise<MasterDashboard> 
   return masterDashboardFrom(await listClients(userId));
 }
 
-async function saveContract(
-  organizationId: string,
-  parsed: ReturnType<typeof parseDraft>,
-) {
+async function saveContract(organizationId: string, parsed: ReturnType<typeof parseDraft>) {
   const { error } = await supabaseAdmin.from("contracts").upsert(
     {
       organization_id: organizationId,
@@ -215,7 +254,9 @@ async function saveContract(
       ends_on: parsed.endsOn,
       fine_percent: parsed.finePercent,
       interest_percent_monthly: parsed.interestPercent,
-      ...(parsed.asaasSubscriptionId ? { external_subscription_id: parsed.asaasSubscriptionId } : {}),
+      ...(parsed.asaasSubscriptionId
+        ? { external_subscription_id: parsed.asaasSubscriptionId }
+        : {}),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "organization_id" },
@@ -239,7 +280,12 @@ export async function createClient(userId: string, input: Draft) {
     })
     .select("id")
     .single();
-  if (orgError || !org) fail(orgError && duplicateDocument(orgError.message, orgError.code) ? "Já existe um cliente com este CPF ou CNPJ." : orgError?.message || "Não foi possível criar o cliente.");
+  if (orgError || !org)
+    fail(
+      orgError && duplicateDocument(orgError.message, orgError.code)
+        ? "Já existe um cliente com este CPF ou CNPJ."
+        : orgError?.message || "Não foi possível criar o cliente.",
+    );
   try {
     await saveContract(org.id, parsed);
     await audit(userId, org.id, "client.create");
@@ -253,7 +299,11 @@ export async function createClient(userId: string, input: Draft) {
 export async function updateClient(userId: string, id: string, input: Draft) {
   await requireMaster(userId);
   const parsed = parseDraft(input);
-  const { data: current, error: currentError } = await supabaseAdmin.from("organizations").select("id").eq("id", id).maybeSingle();
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
   if (currentError) fail(currentError.message);
   if (!current) fail("Cliente não encontrado.");
   const { error } = await supabaseAdmin
@@ -268,7 +318,12 @@ export async function updateClient(userId: string, id: string, input: Draft) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
-  if (error) fail(duplicateDocument(error.message, error.code) ? "Já existe um cliente com este CPF ou CNPJ." : error.message);
+  if (error)
+    fail(
+      duplicateDocument(error.message, error.code)
+        ? "Já existe um cliente com este CPF ou CNPJ."
+        : error.message,
+    );
   await saveContract(id, parsed);
   await audit(userId, id, "client.update");
   return { id };
@@ -276,18 +331,29 @@ export async function updateClient(userId: string, id: string, input: Draft) {
 
 export async function setClientStatus(userId: string, id: string, active: boolean) {
   await requireMaster(userId);
-  const { data: current, error: currentError } = await supabaseAdmin.from("organizations").select("id, status").eq("id", id).maybeSingle();
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from("organizations")
+    .select("id, status")
+    .eq("id", id)
+    .maybeSingle();
   if (currentError) fail(currentError.message);
   if (!current) fail("Cliente não encontrado.");
   const status: ClientStatus = active ? "active" : "disabled";
-  const { error } = await supabaseAdmin.from("organizations").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+  const { error } = await supabaseAdmin
+    .from("organizations")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) fail(error.message);
   await audit(userId, id, active ? "client.activate" : "client.deactivate");
 }
 
 export async function openClientSupport(userId: string, id: string) {
   await requireMaster(userId);
-  const { data, error } = await supabaseAdmin.from("organizations").select("id, legal_name").eq("id", id).maybeSingle();
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name")
+    .eq("id", id)
+    .maybeSingle();
   if (error) fail(error.message);
   if (!data) fail("Cliente não encontrado.");
   await audit(userId, id, "client.support");

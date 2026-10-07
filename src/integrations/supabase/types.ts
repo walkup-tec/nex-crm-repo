@@ -449,6 +449,7 @@ export type Database = {
       meta_accounts: {
         Row: {
           balance_cents: number
+          balance_url: string | null
           currency: string
           account_status: string | null
           connection_id: string | null
@@ -464,6 +465,7 @@ export type Database = {
         Insert: {
           account_status?: string | null
           balance_cents?: number
+          balance_url?: string | null
           connection_id?: string | null
           currency?: string
           external_account_id: string
@@ -478,6 +480,7 @@ export type Database = {
         Update: {
           account_status?: string | null
           balance_cents?: number
+          balance_url?: string | null
           connection_id?: string | null
           currency?: string
           external_account_id?: string

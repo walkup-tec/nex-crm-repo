@@ -14,6 +14,7 @@ export type MetaCreditView = {
   canAdd: boolean;
   syncedAt: string | null;
   prepay: boolean | null;
+  balanceUrl: string | null;
 };
 
 export type MetaCreditCharge = {

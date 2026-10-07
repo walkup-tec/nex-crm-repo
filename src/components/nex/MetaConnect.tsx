@@ -1,8 +1,16 @@
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { normalizeBalanceLink } from "@/lib/balance-link";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   getMetaConnectionFn,
   listBusinessAdAccountsFn,
@@ -20,6 +28,7 @@ const missing: MetaConnectionView = {
   selectedAccountId: null,
   selectedAccountName: null,
   selectedPortfolioId: null,
+  balanceUrl: null,
   accounts: [],
 };
 
@@ -38,6 +47,7 @@ export function MetaConnect({
   const [accounts, setAccounts] = useState<MetaAccountView[]>([]);
   const [businessId, setBusinessId] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [balanceUrl, setBalanceUrl] = useState("");
   const [loading, setLoading] = useState(Boolean(organizationId));
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
@@ -58,7 +68,9 @@ export function MetaConnect({
   const loadAccounts = async (org: string, portfolioId: string, preferredAccountId?: string) => {
     setPending("accounts");
     setError("");
-    const result = await listBusinessAdAccountsFn({ data: { organizationId: org, businessId: portfolioId } });
+    const result = await listBusinessAdAccountsFn({
+      data: { organizationId: org, businessId: portfolioId },
+    });
     setPending("");
     if (!result.ok) {
       setAccounts([]);
@@ -66,7 +78,10 @@ export function MetaConnect({
       return;
     }
     setAccounts(result.data);
-    if (preferredAccountId && result.data.some((account) => account.accountId === preferredAccountId)) {
+    if (
+      preferredAccountId &&
+      result.data.some((account) => account.accountId === preferredAccountId)
+    ) {
       setAccountId(preferredAccountId);
     }
   };
@@ -77,6 +92,7 @@ export function MetaConnect({
     setAccounts([]);
     setBusinessId("");
     setAccountId("");
+    setBalanceUrl("");
     const result = await getMetaConnectionFn({ data: { organizationId: org } });
     setLoading(false);
     if (!result.ok) {
@@ -94,7 +110,9 @@ export function MetaConnect({
     const portfolioId = result.data.selectedPortfolioId;
     if (portfolioId && listed.data.some((item) => item.id === portfolioId)) {
       setBusinessId(portfolioId);
-      if (result.data.selectedAccountId) await loadAccounts(org, portfolioId, result.data.selectedAccountId);
+      setBalanceUrl(result.data.balanceUrl ?? "");
+      if (result.data.selectedAccountId)
+        await loadAccounts(org, portfolioId, result.data.selectedAccountId);
       else await loadAccounts(org, portfolioId);
     }
   };
@@ -113,7 +131,12 @@ export function MetaConnect({
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
-      const data = event.data as { source?: string; ok?: boolean; organizationId?: string; message?: string };
+      const data = event.data as {
+        source?: string;
+        ok?: boolean;
+        organizationId?: string;
+        message?: string;
+      };
       if (data?.source !== "nex-meta") return;
       if (watchRef.current) window.clearInterval(watchRef.current);
       setPending("");
@@ -141,7 +164,9 @@ export function MetaConnect({
       `popup=yes,width=${width},height=${height},left=${left},top=${top}`,
     );
     if (!popup) {
-      setError("O navegador bloqueou a janela da Meta. Permita pop-ups neste site e tente de novo.");
+      setError(
+        "O navegador bloqueou a janela da Meta. Permita pop-ups neste site e tente de novo.",
+      );
       return;
     }
     setPending("connect");
@@ -170,7 +195,10 @@ export function MetaConnect({
         checking = true;
         void (async () => {
           const current = await getMetaConnectionFn({ data: { organizationId: target } });
-          const linked = current.ok && current.data.connectedAt && current.data.connectedAt !== previousConnectedAt;
+          const linked =
+            current.ok &&
+            current.data.connectedAt &&
+            current.data.connectedAt !== previousConnectedAt;
           if (linked) {
             if (watchRef.current) window.clearInterval(watchRef.current);
             setPending("");
@@ -189,33 +217,51 @@ export function MetaConnect({
   const chooseBusiness = (next: string) => {
     setBusinessId(next);
     setAccountId("");
+    setBalanceUrl("");
     setAccounts([]);
     if (!orgId) return;
     void loadAccounts(orgId, next);
   };
 
+  const chooseAccount = (next: string) => {
+    setAccountId(next);
+    setBalanceUrl(next === view.selectedAccountId ? (view.balanceUrl ?? "") : "");
+  };
+
   const save = async () => {
     if (!orgId || !businessId || !accountId) return;
+    if (!normalizeBalanceLink(balanceUrl)) {
+      setError(
+        "Informe o link de saldo da Meta para esta conta de anúncio. Use um endereço https da Meta.",
+      );
+      return;
+    }
     setPending("save");
     setError("");
-    const result = await selectMetaAdAccountFn({ data: { organizationId: orgId, accountId, businessId } });
+    const result = await selectMetaAdAccountFn({
+      data: { organizationId: orgId, accountId, businessId, balanceUrl },
+    });
     setPending("");
     if (!result.ok) {
       setError(result.message);
       return;
     }
     setView(result.data);
+    setBalanceUrl(result.data.balanceUrl ?? "");
     onChanged?.();
   };
 
   const connected = view.status === "connected" || view.status === "error";
   const connectionDone = view.status === "connected";
+  const informedLink = normalizeBalanceLink(balanceUrl);
   const accountSaved = Boolean(
     connectionDone &&
-      view.selectedAccountId &&
-      view.selectedPortfolioId &&
-      businessId === view.selectedPortfolioId &&
-      accountId === view.selectedAccountId,
+    view.selectedAccountId &&
+    view.selectedPortfolioId &&
+    businessId === view.selectedPortfolioId &&
+    accountId === view.selectedAccountId &&
+    informedLink &&
+    informedLink === view.balanceUrl,
   );
   const statusText =
     view.status === "error"
@@ -239,7 +285,8 @@ export function MetaConnect({
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
-          A conexão abre por cima desta tela. Depois escolha o portfólio e a conta de anúncio que este cliente verá ao entrar.
+          A conexão abre por cima desta tela. Depois escolha o portfólio e a conta de anúncio que
+          este cliente verá ao entrar.
         </p>
       )}
       {loading && <div className="h-16 animate-pulse rounded-md bg-muted" />}
@@ -247,9 +294,19 @@ export function MetaConnect({
         <>
           <div className="space-y-2">
             <Label>Portfólio (BM)</Label>
-            <Select {...(businessId ? { value: businessId } : {})} onValueChange={chooseBusiness} disabled={pending !== "" || businesses.length === 0}>
+            <Select
+              {...(businessId ? { value: businessId } : {})}
+              onValueChange={chooseBusiness}
+              disabled={pending !== "" || businesses.length === 0}
+            >
               <SelectTrigger>
-                <SelectValue placeholder={businesses.length === 0 ? "Nenhum portfólio disponível" : "Selecione o portfólio"} />
+                <SelectValue
+                  placeholder={
+                    businesses.length === 0
+                      ? "Nenhum portfólio disponível"
+                      : "Selecione o portfólio"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {businesses.map((business) => (
@@ -264,11 +321,15 @@ export function MetaConnect({
             <Label>Conta de anúncio</Label>
             <Select
               {...(accountId ? { value: accountId } : {})}
-              onValueChange={setAccountId}
+              onValueChange={chooseAccount}
               disabled={pending !== "" || !businessId || accounts.length === 0}
             >
               <SelectTrigger>
-                <SelectValue placeholder={businessId ? "Selecione a conta de anúncio" : "Escolha o portfólio primeiro"} />
+                <SelectValue
+                  placeholder={
+                    businessId ? "Selecione a conta de anúncio" : "Escolha o portfólio primeiro"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {accounts.map((account) => (
@@ -279,9 +340,28 @@ export function MetaConnect({
               </SelectContent>
             </Select>
             {businessId && pending !== "accounts" && accounts.length === 0 && (
-              <p className="text-xs text-muted-foreground">Nenhuma conta de anúncio disponível para este administrador neste portfólio.</p>
+              <p className="text-xs text-muted-foreground">
+                Nenhuma conta de anúncio disponível para este administrador neste portfólio.
+              </p>
             )}
           </div>
+          {accountId && (
+            <div className="space-y-2">
+              <Label htmlFor="balance-link">Link de saldo</Label>
+              <Input
+                id="balance-link"
+                type="url"
+                inputMode="url"
+                placeholder="https://business.facebook.com/..."
+                value={balanceUrl}
+                onChange={(event) => setBalanceUrl(event.target.value)}
+                disabled={pending !== ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Endereço da Meta em que o saldo desta conta de anúncio é adicionado.
+              </p>
+            </div>
+          )}
           {accountSaved && (
             <div className="flex items-center gap-2 text-sm font-medium text-success">
               <CheckCircle2 className="size-4" />
@@ -301,7 +381,12 @@ export function MetaConnect({
             </Button>
           )}
           {connected && orgId && !accountSaved && (
-            <Button type="button" variant="outline" onClick={() => void save()} disabled={pending !== "" || !businessId || !accountId}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void save()}
+              disabled={pending !== "" || !businessId || !accountId || !informedLink}
+            >
               {pending === "save" ? "Salvando..." : "Vincular conta"}
             </Button>
           )}

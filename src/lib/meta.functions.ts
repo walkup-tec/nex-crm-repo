@@ -1,14 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { MasterCampaignsView, MetaAccountView, MetaBusinessView, MetaConnectionView, MetaPerformanceView } from "@/lib/meta-access";
+import type {
+  MasterCampaignsView,
+  MetaAccountView,
+  MetaBusinessView,
+  MetaConnectionView,
+  MetaPerformanceView,
+} from "@/lib/meta-access";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
 function publicMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
-  console.error("meta_action", /access_token|client_secret|EAA[A-Za-z0-9]/.test(message) ? "redacted" : message);
-  if (/access_token|client_secret|EAA[A-Za-z0-9]/.test(message)) return "Não foi possível concluir a conexão com a Meta.";
-  if (message.includes("SUPABASE_SERVICE_ROLE_KEY")) return "O servidor ainda não tem a chave de administração do Supabase.";
+  console.error(
+    "meta_action",
+    /access_token|client_secret|EAA[A-Za-z0-9]/.test(message) ? "redacted" : message,
+  );
+  if (/access_token|client_secret|EAA[A-Za-z0-9]/.test(message))
+    return "Não foi possível concluir a conexão com a Meta.";
+  if (message.includes("SUPABASE_SERVICE_ROLE_KEY"))
+    return "O servidor ainda não tem a chave de administração do Supabase.";
   if (message.includes("migração da conexão Meta")) return message;
   if (!message || /postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(message)) {
     return "Não foi possível concluir a conexão com a Meta.";
@@ -34,7 +45,9 @@ export const startMetaConnectFn = createServerFn({ method: "POST" })
 
 export const completeMetaOAuthFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { code?: string; state?: string; error?: string; errorReason?: string }) => data)
+  .validator(
+    (data: { code?: string; state?: string; error?: string; errorReason?: string }) => data,
+  )
   .handler(async ({ context, data }) => {
     const { completeMetaOAuth } = await import("@/server/meta.server");
     return guard(() => completeMetaOAuth(context.userId, data));
@@ -69,20 +82,35 @@ export const listBusinessAdAccountsFn = createServerFn({ method: "POST" })
   .validator((data: { organizationId: string; businessId: string }) => data)
   .handler(async ({ context, data }): Promise<Result<MetaAccountView[]>> => {
     const { listBusinessAdAccounts } = await import("@/server/meta.server");
-    return guard(() => listBusinessAdAccounts(context.userId, data.organizationId, data.businessId));
+    return guard(() =>
+      listBusinessAdAccounts(context.userId, data.organizationId, data.businessId),
+    );
   });
 
 export const selectMetaAdAccountFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { organizationId: string; accountId: string; businessId: string }) => data)
+  .validator(
+    (data: { organizationId: string; accountId: string; businessId: string; balanceUrl: string }) =>
+      data,
+  )
   .handler(async ({ context, data }): Promise<Result<MetaConnectionView>> => {
     const { selectMetaAdAccount } = await import("@/server/meta.server");
-    return guard(() => selectMetaAdAccount(context.userId, data.organizationId, data.accountId, data.businessId));
+    return guard(() =>
+      selectMetaAdAccount(
+        context.userId,
+        data.organizationId,
+        data.accountId,
+        data.businessId,
+        data.balanceUrl,
+      ),
+    );
   });
 
 export const getMetaPerformanceFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { organizationId?: string; period?: string; since?: string; until?: string }) => data)
+  .validator(
+    (data: { organizationId?: string; period?: string; since?: string; until?: string }) => data,
+  )
   .handler(async ({ context, data }): Promise<Result<MetaPerformanceView>> => {
     const { getMetaPerformance } = await import("@/server/meta.server");
     const input: { organizationId?: string; period?: string; since?: string; until?: string } = {};

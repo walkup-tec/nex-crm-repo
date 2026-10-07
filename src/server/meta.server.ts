@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { normalizeBalanceLink } from "@/lib/balance-link";
 import type {
   MetaAccountView,
   MetaBusinessView,
@@ -84,7 +85,8 @@ function missingSchema(message: string) {
     text.includes("meta_connections") ||
     text.includes("account_status") ||
     text.includes("selected") ||
-    text.includes("connection_id")
+    text.includes("connection_id") ||
+    text.includes("balance_url")
   );
 }
 
@@ -242,7 +244,7 @@ async function connectionOf(organizationId: string) {
 async function selectedAccount(organizationId: string) {
   const { data, error } = await supabaseAdmin
     .from("meta_accounts")
-    .select("external_account_id, name, currency, portfolio_id")
+    .select("external_account_id, name, currency, portfolio_id, balance_url")
     .eq("organization_id", organizationId)
     .eq("selected", true)
     .limit(1);
@@ -411,6 +413,7 @@ export async function getMetaConnection(
     selectedAccountId: selected?.external_account_id ?? null,
     selectedAccountName: selected?.name ?? null,
     selectedPortfolioId: selected?.portfolio_id ?? null,
+    balanceUrl: normalizeBalanceLink(selected?.balance_url ?? ""),
     accounts: [],
   };
   return base;
@@ -534,10 +537,13 @@ export async function selectMetaAdAccount(
   organizationId: string,
   accountId: string,
   businessId: string,
+  balanceUrl: string,
 ) {
   await assertOrgAccess(userId, organizationId);
   const digits = accountDigits(accountId);
   const portfolioId = businessDigits(businessId);
+  const link = normalizeBalanceLink(balanceUrl);
+  if (!link) fail("Informe o link de saldo da Meta para esta conta de anúncio.");
   const { connection } = await loadToken(organizationId);
   const accounts = await listBusinessAdAccounts(userId, organizationId, portfolioId);
   const match = accounts.find((account) => account.accountId === digits);
@@ -557,6 +563,7 @@ export async function selectMetaAdAccount(
       account_status: match.statusLabel,
       connection_id: connection.id,
       portfolio_id: portfolioId,
+      balance_url: link,
       selected: true,
       sync_status: "synced",
       last_synced_at: now,

@@ -46,6 +46,7 @@ export type ListedClient = {
   interestPercent: number | null;
   asaasSubscriptionId: string;
   portfolioId: string;
+  balanceUrl: string;
   adAccountIds: string[];
   metaAccounts: { id: string; name: string }[];
   accessEmail: string;

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
   balanceFromAccount,
-  metaBillingUrl,
   pixFromMeta,
   type BalanceKind,
   type FundingSource,
@@ -67,7 +67,7 @@ async function actorOf(userId: string) {
 async function selectedAccount(organizationId: string) {
   const { data, error } = await supabaseAdmin
     .from("meta_accounts")
-    .select("id, external_account_id, name, currency, portfolio_id")
+    .select("id, external_account_id, name, currency, portfolio_id, balance_url")
     .eq("organization_id", organizationId)
     .eq("selected", true)
     .limit(1);
@@ -127,6 +127,7 @@ function emptyView(canAdd: boolean): MetaCreditView {
     canAdd,
     syncedAt: null,
     prepay: null,
+    balanceUrl: null,
   };
 }
 
@@ -148,6 +149,7 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     canAdd: actor.canAdd,
     syncedAt: new Date().toISOString(),
     prepay,
+    balanceUrl: normalizeBalanceLink(account.balance_url ?? ""),
   };
 }
 
@@ -157,18 +159,14 @@ export async function requestMetaCredit(userId: string, cents: number): Promise<
   if (!Number.isInteger(cents) || cents <= 0) fail("Informe um valor maior que zero.");
   const account = await selectedAccount(actor.organizationId);
   if (!account) fail("Nenhuma conta de anúncio está integrada a este acesso.");
-  const { reading, prepay, node } = await readBalance(
+  const { reading, node } = await readBalance(
     actor.organizationId,
     account.external_account_id,
     account.id,
   );
-  if (prepay === false) {
-    fail(
-      "Esta conta da Meta não está em saldo pré-pago. O Pix de recarga só é gerado para contas com saldo disponível.",
-    );
-  }
+  const billingUrl = normalizeBalanceLink(account.balance_url ?? "");
+  if (!billingUrl) fail("O link de saldo desta conta de anúncio ainda não foi informado.");
   const pix = pixFromMeta(node);
-  const billingUrl = metaBillingUrl(account.external_account_id, account.portfolio_id);
   return {
     currency: account.currency || "BRL",
     totalCents: cents,
@@ -179,6 +177,6 @@ export async function requestMetaCredit(userId: string, cents: number): Promise<
     billingUrl,
     notice: pix
       ? null
-      : "A Meta leu esta conta, mas não devolveu o QR Code do Pix. A recarga de saldo é gerada pela própria Meta nas configurações de pagamento.",
+      : "Abra o link de saldo desta conta de anúncio. O Pix é gerado pela Meta nessa página.",
   };
 }

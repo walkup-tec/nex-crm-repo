@@ -15,8 +15,6 @@ export type MetaCreditView = {
   syncedAt: string | null;
   prepay: boolean | null;
   balanceUrl: string | null;
-  facebookAppId: string | null;
-  facebookSdkVersion: string;
 };
 
 export type FundingSource = {

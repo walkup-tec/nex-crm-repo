@@ -6,7 +6,7 @@ import {
   type FundingSource,
   type MetaCreditView,
 } from "@/lib/meta-credit";
-import { readAdAccountNode } from "@/server/meta.server";
+import { readAdAccountNode, startSimpleFacebookLogin } from "@/server/meta.server";
 
 type Role = "master" | "client_admin" | "client_user";
 
@@ -115,15 +115,6 @@ async function readBalance(organizationId: string, accountId: string, accountRow
   return { reading, prepay };
 }
 
-function facebookLoginConfig() {
-  const raw = process.env["META_APP_ID"]?.trim() ?? "";
-  const facebookAppId = /^\d{5,32}$/.test(raw) ? raw : null;
-  const versionRaw = (process.env["META_GRAPH_VERSION"] || "v23.0").trim();
-  const version = versionRaw.startsWith("v") ? versionRaw : `v${versionRaw}`;
-  const facebookSdkVersion = /^v\d+\.\d+$/.test(version) ? version : "v23.0";
-  return { facebookAppId, facebookSdkVersion };
-}
-
 function emptyView(canAdd: boolean): MetaCreditView {
   return {
     accountName: null,
@@ -135,7 +126,6 @@ function emptyView(canAdd: boolean): MetaCreditView {
     syncedAt: null,
     prepay: null,
     balanceUrl: null,
-    ...facebookLoginConfig(),
   };
 }
 
@@ -158,6 +148,11 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     syncedAt: new Date().toISOString(),
     prepay,
     balanceUrl: normalizeBalanceLink(account.balance_url ?? ""),
-    ...facebookLoginConfig(),
   };
+}
+
+export async function startFacebookLogin(userId: string) {
+  const actor = await actorOf(userId);
+  if (!actor.canAdd) fail("Você não tem permissão para adicionar saldo.");
+  return startSimpleFacebookLogin(userId, actor.organizationId);
 }

@@ -301,6 +301,28 @@ export async function startMetaConnect(userId: string, organizationId: string) {
   return { url: url.toString() };
 }
 
+export async function startSimpleFacebookLogin(userId: string, organizationId: string) {
+  const config = metaConfig();
+  const state = `login.${randomBytes(32).toString("base64url")}`;
+  const now = new Date().toISOString();
+  await supabaseAdmin.from("meta_oauth_states").delete().lt("expires_at", now);
+  const { error } = await supabaseAdmin.from("meta_oauth_states").insert({
+    state,
+    user_id: userId,
+    organization_id: organizationId,
+    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  });
+  if (error) schemaFail(error.message);
+  const url = new URL(`https://www.facebook.com/${config.version}/dialog/oauth`);
+  url.searchParams.set("client_id", config.appId);
+  url.searchParams.set("redirect_uri", config.redirectUri);
+  url.searchParams.set("state", state);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "public_profile");
+  url.searchParams.set("display", "popup");
+  return { url: url.toString() };
+}
+
 async function exchangeCode(code: string) {
   const config = metaConfig();
   const url = new URL(`https://graph.facebook.com/${config.version}/oauth/access_token`);
@@ -365,6 +387,9 @@ export async function completeMetaOAuth(
   if (!consumed) fail("Esta conexão da Meta já foi utilizada.");
 
   const exchanged = await exchangeCode(input.code);
+  if (input.state.startsWith("login.")) {
+    return { organizationId: row.organization_id, purpose: "login" as const };
+  }
   const me = await graphGet(exchanged.version, "/me", exchanged.token, { fields: "id" });
   const now = new Date().toISOString();
   const expiresAt = exchanged.expiresIn
@@ -385,7 +410,7 @@ export async function completeMetaOAuth(
     .from("meta_connections")
     .upsert(payload, { onConflict: "organization_id" });
   if (saveError) schemaFail(saveError.message);
-  return { organizationId: row.organization_id };
+  return { organizationId: row.organization_id, purpose: "connect" as const };
 }
 
 export async function getMetaConnection(

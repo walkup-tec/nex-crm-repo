@@ -33,3 +33,10 @@ export const getMetaCreditFn = createServerFn({ method: "GET" })
     const { getMetaCredit } = await import("@/server/meta-credit.server");
     return guard(() => getMetaCredit(context.userId));
   });
+
+export const startFacebookLoginFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { startFacebookLogin } = await import("@/server/meta-credit.server");
+    return guard(() => startFacebookLogin(context.userId));
+  });

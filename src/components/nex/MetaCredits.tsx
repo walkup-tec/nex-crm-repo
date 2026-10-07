@@ -1,9 +1,8 @@
 import { ExternalLink, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { normalizeBalanceLink } from "@/lib/balance-link";
-import { loadFacebookSdk, type FacebookSdk } from "@/lib/facebook-login";
-import { getMetaCreditFn } from "@/lib/meta-credit.functions";
+import { getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
 import type { MetaCreditView } from "@/lib/meta-credit";
 
 function money(cents: number | null, currency: string) {
@@ -27,10 +26,10 @@ export function MetaCredits() {
   const [view, setView] = useState<MetaCreditView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [sdk, setSdk] = useState<FacebookSdk | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [entering, setEntering] = useState(false);
+  const watchRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,41 +48,69 @@ export function MetaCredits() {
   }, [load]);
 
   useEffect(() => {
-    const appId = view?.facebookAppId;
-    const version = view?.facebookSdkVersion;
-    if (!appId || !version) return;
-    let cancelled = false;
-    void loadFacebookSdk(appId, version)
-      .then((next) => {
-        if (cancelled) return;
-        setSdk(next);
-        next.getLoginStatus((response) => {
-          if (!cancelled) setLoggedIn(response.status === "connected");
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setLoginError("Não foi possível abrir o login do Facebook.");
-      });
-    return () => {
-      cancelled = true;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { source?: string; ok?: boolean; message?: string } | null;
+      if (!data || data.source !== "nex-facebook-login") return;
+      if (watchRef.current) window.clearInterval(watchRef.current);
+      watchRef.current = null;
+      setEntering(false);
+      if (data.ok) {
+        setLoggedIn(true);
+        setLoginError("");
+        return;
+      }
+      setLoginError(data.message || "O login no Facebook não foi concluído.");
     };
-  }, [view?.facebookAppId, view?.facebookSdkVersion]);
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      if (watchRef.current) window.clearInterval(watchRef.current);
+    };
+  }, []);
 
   const enter = () => {
-    if (!sdk) return;
     setEntering(true);
     setLoginError("");
-    sdk.login(
-      (response) => {
-        setEntering(false);
-        if (response.status === "connected") {
-          setLoggedIn(true);
+    const width = 520;
+    const height = 720;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    const popup = window.open(
+      "about:blank",
+      "nex-facebook-login",
+      `popup=yes,width=${width},height=${height},left=${left},top=${top}`,
+    );
+    if (!popup) {
+      setEntering(false);
+      setLoginError(
+        "O navegador bloqueou a janela do Facebook. Permita pop-ups neste site e tente de novo.",
+      );
+      return;
+    }
+    if (watchRef.current) window.clearInterval(watchRef.current);
+    watchRef.current = window.setInterval(() => {
+      if (!popup.closed) return;
+      if (watchRef.current) window.clearInterval(watchRef.current);
+      watchRef.current = null;
+      setEntering(false);
+    }, 500);
+    void (async () => {
+      try {
+        const result = await startFacebookLoginFn();
+        if (!result.ok) {
+          popup.close();
+          setEntering(false);
+          setLoginError(result.message);
           return;
         }
-        setLoginError("O login no Facebook não foi concluído.");
-      },
-      { scope: "public_profile" },
-    );
+        popup.location.href = result.data.url;
+      } catch {
+        popup.close();
+        setEntering(false);
+        setLoginError("Não foi possível abrir o login do Facebook.");
+      }
+    })();
   };
 
   const href = normalizeBalanceLink(view?.balanceUrl ?? "");
@@ -102,7 +129,7 @@ export function MetaCredits() {
             <Button
               type="button"
               onClick={enter}
-              disabled={!view?.canAdd || !view.accountId || !view.facebookAppId || !sdk || entering}
+              disabled={!view?.canAdd || !view.accountId || entering || loading}
             >
               {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
             </Button>
@@ -125,11 +152,6 @@ export function MetaCredits() {
         {!loading && view?.accountId && view.canAdd && !href && (
           <p className="mt-4 text-sm text-muted-foreground">
             O link de saldo desta conta de anúncio ainda não foi informado no cadastro.
-          </p>
-        )}
-        {!loading && view?.canAdd && view.accountId && !view.facebookAppId && (
-          <p className="mt-4 text-sm text-muted-foreground">
-            O login do Facebook ainda não está configurado no servidor.
           </p>
         )}
         {!loading && view && !view.accountId && (

@@ -1,9 +1,23 @@
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import tutorial from "@/assets/meta-adicionar-saldo.webp";
 import { Button } from "@/components/ui/button";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
 import type { MetaCreditView } from "@/lib/meta-credit";
+
+const guide = [
+  {
+    step: "1",
+    title: "Acesse a conta de anúncios",
+    text: "Na página da sua conta de anúncios, clique em “Adicionar fundos” para iniciar a recarga do saldo.",
+  },
+  {
+    step: "2",
+    title: "Escolha o valor e a forma de pagamento",
+    text: "Defina o valor que deseja adicionar, selecione a forma de pagamento e clique em “Avançar” para concluir.",
+  },
+] as const;
 
 function money(cents: number | null, currency: string) {
   if (cents == null || !Number.isFinite(cents)) return "—";
@@ -117,8 +131,8 @@ export function MetaCredits() {
   const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-      <section className="rounded-lg border bg-card p-5">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="order-1 rounded-lg border bg-card p-5 lg:col-start-1 lg:row-start-1">
         <h2 className="font-display text-lg font-semibold">Adicionar saldo</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Entre com o Facebook. Em seguida, abra a página da Meta em que o saldo desta conta de
@@ -166,7 +180,7 @@ export function MetaCredits() {
         )}
       </section>
 
-      <section className="rounded-lg border bg-card p-5">
+      <section className="order-3 rounded-lg border bg-card p-5 lg:order-none lg:col-start-2 lg:row-start-1">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-semibold">Saldo Meta</h2>
           <Button
@@ -193,6 +207,43 @@ export function MetaCredits() {
               : "Nenhuma conta de anúncio integrada"}
           </p>
         </div>
+      </section>
+
+      <section className="order-2 rounded-lg border bg-card p-5 lg:order-none lg:col-span-2 lg:row-start-2">
+        <p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">
+          Na página da Meta
+        </p>
+        <h2 className="mt-2 font-display text-lg font-semibold">O que fazer depois de entrar</h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Depois de entrar, clique em Adicionar saldo. Na conta de anúncios da Meta, siga estes dois
+          passos.
+        </p>
+        <ol className="mt-5 grid gap-3 md:grid-cols-2">
+          {guide.map((item) => (
+            <li key={item.step} className="flex gap-3 rounded-lg border bg-background p-4">
+              <span
+                className={
+                  item.step === "1"
+                    ? "grid size-8 shrink-0 place-items-center rounded-full bg-navy font-display text-sm font-bold text-cyan"
+                    : "grid size-8 shrink-0 place-items-center rounded-full bg-primary font-display text-sm font-bold text-primary-foreground"
+                }
+              >
+                {item.step}
+              </span>
+              <div>
+                <p className="font-display text-sm font-semibold">{item.title}</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <figure className="mt-5 overflow-hidden rounded-lg border bg-navy">
+          <img
+            src={tutorial}
+            alt="Na conta de anúncios, clique em Adicionar fundos. Depois escolha o valor, selecione a forma de pagamento e clique em Avançar."
+            className="h-auto w-full"
+          />
+        </figure>
       </section>
     </div>
   );

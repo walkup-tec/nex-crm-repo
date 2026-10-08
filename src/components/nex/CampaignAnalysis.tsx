@@ -19,6 +19,7 @@ import {
   formatInteger,
   formatMoney,
   formatPercent,
+  funnelStageWidths,
   type ChangeSense,
   type Grain,
 } from "@/lib/meta-analysis";
@@ -545,47 +546,57 @@ export function CampaignAnalysis({
         title="Jornada da campanha"
         description="Visão de desempenho. Alcance, cliques e resultados não formam uma taxa de conversão única."
       >
-        <ol className="mt-4 space-y-2">
-          {[
-            ["Impressões", formatInteger(model.current.impressions)],
-            ["Pessoas alcançadas", formatInteger(model.current.reach)],
-            ["Cliques", formatInteger(model.current.clicks)],
-            ["Resultados", model.comparable ? formatInteger(model.current.results) : "—"],
-          ].map(([label, value], index) => (
-            <li key={label}>
-              {index > 0 && <ArrowDownRight className="my-1 size-4 text-muted-foreground" />}
-              <div className="flex items-baseline justify-between gap-4 rounded-md border px-4 py-3">
-                <span className="text-sm text-muted-foreground">{label}</span>
-                <strong>{value}</strong>
-              </div>
-            </li>
-          ))}
-        </ol>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <SmallMetric
-            label="CTR"
-            value={formatPercent(model.rates.ctr)}
-            hint="Percentual de impressões que geraram cliques."
-            current={null}
-            previous={null}
-            sense="neutral"
+        <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(16.5rem,0.7fr)]">
+          <JourneyFunnel
+            stages={[
+              {
+                label: "Impressões",
+                value: formatInteger(model.current.impressions),
+                amount: model.current.impressions,
+              },
+              {
+                label: "Pessoas alcançadas",
+                value: formatInteger(model.current.reach),
+                amount: model.current.reach,
+              },
+              {
+                label: "Cliques",
+                value: formatInteger(model.current.clicks),
+                amount: model.current.clicks,
+              },
+              {
+                label: "Resultados",
+                value: model.comparable ? formatInteger(model.current.results) : "—",
+                amount: model.comparable ? model.current.results : null,
+              },
+            ]}
           />
-          <SmallMetric
-            label="CPC"
-            value={formatMoney(model.rates.cpc, currency)}
-            hint="Valor médio investido para gerar cada clique."
-            current={null}
-            previous={null}
-            sense="neutral"
-          />
-          <SmallMetric
-            label="Custo por resultado"
-            value={formatMoney(model.rates.costPerResult, currency)}
-            hint="Investimento médio para cada resultado."
-            current={null}
-            previous={null}
-            sense="neutral"
-          />
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <SmallMetric
+              label="CTR"
+              value={formatPercent(model.rates.ctr)}
+              hint="Percentual de impressões que geraram cliques."
+              current={null}
+              previous={null}
+              sense="neutral"
+            />
+            <SmallMetric
+              label="CPC"
+              value={formatMoney(model.rates.cpc, currency)}
+              hint="Valor médio investido para gerar cada clique."
+              current={null}
+              previous={null}
+              sense="neutral"
+            />
+            <SmallMetric
+              label="Custo por Aquisição"
+              value={formatMoney(model.rates.costPerResult, currency)}
+              hint="Investimento médio para cada aquisição."
+              current={null}
+              previous={null}
+              sense="neutral"
+            />
+          </div>
         </div>
       </Panel>
 
@@ -705,6 +716,59 @@ export function CampaignAnalysis({
           : `${view.period.since.split("-").reverse().join("/")} – ${view.period.until.split("-").reverse().join("/")}`}
       </p>
     </div>
+  );
+}
+
+const journeyFills = [
+  "var(--primary)",
+  "var(--info)",
+  "color-mix(in oklch, var(--info) 42%, var(--cyan))",
+  "var(--success)",
+];
+
+function JourneyFunnel({
+  stages,
+}: {
+  stages: { label: string; value: string; amount: number | null }[];
+}) {
+  const widths = funnelStageWidths(stages.map((stage) => stage.amount));
+  return (
+    <ol className="space-y-2" aria-label="Funil da jornada da campanha">
+      {stages.map((stage, index) => {
+        const top = widths[index] ?? 0.22;
+        const bottom = widths[index + 1] ?? top * 0.82;
+        const inset = top > 0 ? ((1 - Math.min(bottom, top) / top) / 2) * 100 : 0;
+        const fill = journeyFills[index] ?? "var(--primary)";
+        return (
+          <li
+            key={stage.label}
+            className="grid grid-cols-[minmax(0,1fr)_minmax(8.75rem,12rem)] items-center gap-2 sm:gap-3"
+          >
+            <div className="flex h-12 items-stretch justify-center sm:h-14" aria-hidden>
+              <div
+                className="h-full"
+                style={{
+                  width: `${top * 100}%`,
+                  background: fill,
+                  clipPath: `polygon(0% 0%, 100% 0%, ${100 - inset}% 100%, ${inset}% 100%)`,
+                }}
+              />
+            </div>
+            <div className="flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-2 sm:px-3">
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ background: fill }}
+                aria-hidden
+              />
+              <div className="min-w-0">
+                <p className="text-xs leading-tight text-muted-foreground">{stage.label}</p>
+                <p className="text-sm font-semibold tabular-nums">{stage.value}</p>
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

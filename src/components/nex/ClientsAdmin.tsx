@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoundCog } from "lucide-react";
 import { normalizeBalanceLink } from "@/lib/balance-link";
+import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
 import type { ClientDraft, ListedClient } from "@/lib/client-access";
 import {
@@ -213,7 +214,7 @@ export function ClientsAdmin() {
                     <p className="text-xs text-muted-foreground">Saldo Meta</p>
                     <p
                       className={
-                        client.balanceKnown && client.balanceCents <= 2000
+                        client.balanceKnown && isLowMetaBalance(client.balanceCents)
                           ? "font-bold text-destructive"
                           : "font-bold"
                       }

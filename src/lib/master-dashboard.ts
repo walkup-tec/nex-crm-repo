@@ -1,5 +1,6 @@
 import { isInactiveClient, type ListedClient } from "@/lib/client-access";
 import { daysPast, todayKey } from "@/lib/finance-access";
+import { isLowMetaBalance } from "@/lib/low-balance";
 
 export type DashboardAttention = {
   id: string;
@@ -27,8 +28,6 @@ export type MasterDashboard = {
   metaPending: number;
 };
 
-const criticalBalanceCents = 1000;
-
 function overdueCentsOf(client: ListedClient) {
   return client.invoices.filter((invoice) => invoice.status === "overdue").reduce((sum, invoice) => sum + invoice.totalCents, 0);
 }
@@ -42,8 +41,8 @@ function attentionOf(client: ListedClient): DashboardAttention | null {
   if (client.status === "blocked") {
     return { id: client.id, name: client.legalName, detail: "Bloqueado", amountCents: null };
   }
-  if (client.balanceKnown && client.balanceCents <= criticalBalanceCents) {
-    return { id: client.id, name: client.legalName, detail: "Saldo Meta crítico", amountCents: client.balanceCents };
+  if (client.balanceKnown && isLowMetaBalance(client.balanceCents)) {
+    return { id: client.id, name: client.legalName, detail: "Saldo Meta baixo", amountCents: client.balanceCents };
   }
   return null;
 }
@@ -75,7 +74,7 @@ export function masterDashboardFrom(clients: ListedClient[], today = todayKey())
     receivableCents: invoices.filter((invoice) => invoice.status === "pending" || invoice.status === "overdue").reduce((sum, invoice) => sum + invoice.totalCents, 0),
     attention,
     endingContracts,
-    criticalBalances: active.filter((client) => client.balanceKnown && client.balanceCents <= criticalBalanceCents).length,
+    criticalBalances: active.filter((client) => client.balanceKnown && isLowMetaBalance(client.balanceCents)).length,
     overdueCents: invoices.filter((invoice) => invoice.status === "overdue").reduce((sum, invoice) => sum + invoice.totalCents, 0),
     metaPending: clients.filter((client) => !client.balanceKnown).reduce((sum, client) => sum + client.metaAccounts.length, 0),
   };

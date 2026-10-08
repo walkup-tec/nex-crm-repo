@@ -4,6 +4,7 @@ import stepAccount from "@/assets/meta-saldo-etapa-1.webp";
 import stepPayment from "@/assets/meta-saldo-etapa-2.webp";
 import { Button } from "@/components/ui/button";
 import { normalizeBalanceLink } from "@/lib/balance-link";
+import { isLowMetaBalance } from "@/lib/low-balance";
 import { getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
 import type { MetaCreditView } from "@/lib/meta-credit";
 
@@ -140,6 +141,7 @@ export function MetaCredits() {
 
   const href = normalizeBalanceLink(view?.balanceUrl ?? "");
   const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn);
+  const lowBalance = isLowMetaBalance(view?.balanceCents);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -155,6 +157,7 @@ export function MetaCredits() {
               type="button"
               onClick={enter}
               disabled={!view?.canAdd || !view.accountId || entering || loading}
+              className={lowBalance ? "animate-balance-wave" : ""}
             >
               {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
             </Button>
@@ -205,7 +208,13 @@ export function MetaCredits() {
             <RefreshCw className={loading ? "animate-spin" : ""} />
           </Button>
         </div>
-        <div className="mt-4 rounded-lg bg-brand-gradient p-5 text-primary-foreground">
+        <div
+          className={
+            lowBalance
+              ? "mt-4 rounded-lg bg-destructive p-5 text-destructive-foreground"
+              : "mt-4 rounded-lg bg-brand-gradient p-5 text-primary-foreground"
+          }
+        >
           <p className="text-sm opacity-80">
             {view ? balanceHint(view.balanceKind) : "Conta integrada"}
           </p>

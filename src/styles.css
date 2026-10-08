@@ -19,6 +19,8 @@
 @utility text-nex-gradient{background:linear-gradient(90deg,#9d5cff,#00EAFD);background-clip:text;-webkit-background-clip:text;color:transparent}
 @utility border-gradient{border:1px solid transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,color-mix(in oklch,#6F02FD 70%,transparent),color-mix(in oklch,#00EAFD 50%,transparent)) border-box}
 @utility badge-shine{position:relative;overflow:hidden;&::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(115deg,transparent 42%,rgba(111,2,253,.14) 50%,rgba(0,234,253,.12) 56%,transparent 64%);transform:translateX(-130%);transition:transform .7s ease;pointer-events:none}&:hover::after{transform:translateX(130%)}}
+@keyframes balance-wave{0%{box-shadow:0 0 0 0 color-mix(in oklch,var(--destructive) 65%,transparent)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@utility animate-balance-wave{animation:balance-wave 1.6s ease-out infinite}
 @keyframes nex-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 @utility animate-float{animation:nex-float 7s ease-in-out infinite}
 @keyframes nex-ping{0%{transform:scale(1);opacity:.5}75%,100%{transform:scale(1.5);opacity:0}}

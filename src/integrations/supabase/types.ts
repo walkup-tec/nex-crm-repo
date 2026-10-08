@@ -512,6 +512,7 @@ export type Database = {
           finance_phone: string
           id: string
           legal_name: string
+          meta_low_balance_alerted_at: string | null
           responsible_email: string
           responsible_name: string
           responsible_phone: string
@@ -524,6 +525,7 @@ export type Database = {
           finance_phone: string
           id?: string
           legal_name: string
+          meta_low_balance_alerted_at?: string | null
           responsible_email: string
           responsible_name: string
           responsible_phone: string
@@ -536,6 +538,7 @@ export type Database = {
           finance_phone?: string
           id?: string
           legal_name?: string
+          meta_low_balance_alerted_at?: string | null
           responsible_email?: string
           responsible_name?: string
           responsible_phone?: string

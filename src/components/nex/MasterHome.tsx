@@ -55,7 +55,7 @@ export function MasterHome() {
                 ) : (
                   snapshot.attention.map((item) => (
                     <div key={item.id} className="flex items-center gap-3 rounded-lg border p-3">
-                      <span className={`size-2 rounded-full ${item.detail === "Mensalidade em atraso" || item.detail === "Bloqueado" ? "bg-destructive" : "bg-warning"}`} />
+                      <span className={`size-2 rounded-full ${item.detail === "Mensalidade em atraso" || item.detail === "Bloqueado" || item.detail === "Saldo Meta baixo" ? "bg-destructive" : "bg-warning"}`} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{item.name}</p>
                         <p className="text-xs text-muted-foreground">{item.detail}</p>
@@ -95,7 +95,7 @@ export function MasterHome() {
             </Card>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="Saldo crítico" value={snapshot.criticalBalances === 1 ? "1 cliente" : `${snapshot.criticalBalances} clientes`} tone={snapshot.criticalBalances === 0 ? "text-foreground" : "text-destructive"} />
+            <Summary label="Saldo baixo" value={snapshot.criticalBalances === 1 ? "1 cliente" : `${snapshot.criticalBalances} clientes`} tone={snapshot.criticalBalances === 0 ? "text-foreground" : "text-destructive"} />
             <Summary label="Mensalidades vencidas" value={moneyFromCents(snapshot.overdueCents)} tone={snapshot.overdueCents === 0 ? "text-foreground" : "text-warning"} />
             <Summary label="Sincronização Meta" value={snapshot.metaPending === 0 ? "Em dia" : snapshot.metaPending === 1 ? "1 conta sem atualização" : `${snapshot.metaPending} contas sem atualização`} tone={snapshot.metaPending === 0 ? "text-success" : "text-info"} />
           </div>

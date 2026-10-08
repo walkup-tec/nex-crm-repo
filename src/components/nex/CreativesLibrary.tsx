@@ -30,6 +30,7 @@ import {
   planRemoval,
   relocatedStoragePath,
   removalSummary,
+  rootFoldersForClient,
   type CreativeFile,
   type CreativeFolder,
   type CreativeGateway,
@@ -156,6 +157,7 @@ export function CreativesLibrary({
   const [dragOver, setDragOver] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
   const [clientId, setClientId] = useState("");
+  const [clientFilter, setClientFilter] = useState("todos");
   const [folderTitle, setFolderTitle] = useState("");
   const [accessFolder, setAccessFolder] = useState<CreativeFolder | null>(null);
   const [accessClientId, setAccessClientId] = useState("");
@@ -195,12 +197,15 @@ export function CreativesLibrary({
   }, [load]);
 
   const trail = breadcrumb(snapshot.folders, currentId);
-  const roots = foldersIn(snapshot.folders, null);
-  const foldersHere = currentId ? foldersIn(snapshot.folders, currentId) : roots;
+  const clientFilterId = clientFilter === "todos" ? null : clientFilter;
+  const foldersHere = currentId
+    ? foldersIn(snapshot.folders, currentId)
+    : rootFoldersForClient(snapshot.folders, clientFilterId);
   const filesHere = currentId ? filesIn(snapshot.files, currentId) : [];
   const clientOptions = [...snapshot.clients].sort((left, right) =>
     left.name.localeCompare(right.name, "pt-BR"),
   );
+  const filteredClient = clientOptions.find((client) => client.id === clientFilterId) ?? null;
   const accessRoot = trail[0] ?? null;
   const accessName =
     snapshot.clients.find((client) => client.id === accessRoot?.organizationId)?.name ?? "";
@@ -484,11 +489,16 @@ export function CreativesLibrary({
             title: "Nenhum cliente cadastrado",
             description: "Cadastre o cliente antes de criar uma pasta.",
           }
-        : {
-            title: "Nenhuma pasta",
-            description:
-              "Crie uma pasta, escolha qual cliente pode acessá-la e coloque os criativos dentro.",
-          }
+        : filteredClient
+          ? {
+              title: "Nenhuma pasta deste cliente",
+              description: `Crie uma pasta para ${filteredClient.name} e coloque os criativos dentro.`,
+            }
+          : {
+              title: "Nenhuma pasta",
+              description:
+                "Crie uma pasta, escolha qual cliente pode acessá-la e coloque os criativos dentro.",
+            }
     : {
         title: "Nenhum material disponível",
         description: "A NEX ainda não enviou pastas ou arquivos para esta conta.",
@@ -543,12 +553,33 @@ export function CreativesLibrary({
             </span>
           ))}
         </nav>
+        {master && !currentId && (
+          <Select
+            value={clientFilter}
+            onValueChange={(value) => {
+              setClientFilter(value);
+              setSelected([]);
+            }}
+          >
+            <SelectTrigger className="w-full bg-background sm:w-72" aria-label="Cliente">
+              <SelectValue placeholder="Todos os clientes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os clientes</SelectItem>
+              {clientOptions.map((client) => (
+                <SelectItem key={client.id} value={client.id}>
+                  {client.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="flex flex-wrap gap-2 lg:ml-auto">
           {master && !currentId && (
             <Button
               disabled={clientOptions.length === 0 || busy}
               onClick={() => {
-                setClientId("");
+                setClientId(clientFilter === "todos" ? "" : clientFilter);
                 setFolderTitle("");
                 setClientOpen(true);
               }}

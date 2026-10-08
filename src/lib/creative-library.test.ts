@@ -9,6 +9,7 @@ import {
   planRemoval,
   planRootFolder,
   removalSummary,
+  rootFoldersForClient,
   scopeToClient,
   storageObjectPath,
   type CreativeSnapshot,
@@ -188,6 +189,18 @@ assert.equal(
 assert.equal(
   removalSummary(libraryFolders, libraryFiles, { folders: [setembro.id], files: [loose.id] }).title,
   "Excluir 1 pasta e 1 arquivo?",
+);
+assert.deepEqual(
+  rootFoldersForClient(libraryFolders, null).map((folder) => folder.name),
+  ["Campanha Consignado", "Outra conta"],
+);
+assert.deepEqual(
+  rootFoldersForClient(libraryFolders, vertice).map((folder) => folder.id),
+  [verticeFolder.id],
+);
+assert.deepEqual(
+  rootFoldersForClient(libraryFolders, alvorada).map((folder) => folder.name),
+  ["Outra conta"],
 );
 
 console.log("creative-library ok");

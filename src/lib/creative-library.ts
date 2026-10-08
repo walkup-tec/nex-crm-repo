@@ -340,6 +340,12 @@ export function foldersIn(folders: CreativeFolder[], parentId: string | null) {
     .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
 }
 
+export function rootFoldersForClient(folders: CreativeFolder[], organizationId: string | null) {
+  const roots = foldersIn(folders, null);
+  if (!organizationId) return roots;
+  return roots.filter((folder) => folder.organizationId === organizationId);
+}
+
 export function filesIn(files: CreativeFile[], folderId: string) {
   return files
     .filter((file) => file.folderId === folderId)

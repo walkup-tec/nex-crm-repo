@@ -5,6 +5,7 @@ import {
   lowBalanceAlertStamp,
   lowBalanceAlreadyDelivered,
   lowBalanceSignal,
+  isGhostButtonResponse,
   lowBalanceWhatsappText,
   shouldSendLowBalanceWhatsapp,
   whatsappNumber,
@@ -47,6 +48,14 @@ assert.equal(evolutionInstanceName([], "5197979224"), "5197979224");
 assert.equal(
   evolutionInstanceName([{ name: "outra", connectionStatus: "open", number: "5511999999999" }], ""),
   null,
+);
+assert.equal(isGhostButtonResponse({ message: { viewOnceMessage: { message: {} } } }), true);
+assert.equal(
+  isGhostButtonResponse({
+    messageType: "interactiveMessage",
+    message: { nativeFlowMessage: { buttons: [{ name: "cta_url" }] } },
+  }),
+  false,
 );
 assert.match(lowBalanceWhatsappText("Walkup"), /^Olá Walkup /);
 assert.match(lowBalanceWhatsappText("  "), /^Olá cliente /);

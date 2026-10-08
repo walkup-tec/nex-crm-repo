@@ -88,3 +88,17 @@ export function lowBalanceWhatsappText(name: string) {
   const who = name.trim() || "cliente";
   return `Olá ${who} o saldo de anúncio da plataforma META (Facebook e Instagram) está baixo.\nPara adicionar saldo e manter seus anúncios em veiculação, adicione saldo através do link a baixo`;
 }
+
+export function isGhostButtonResponse(raw: unknown) {
+  try {
+    const serialized = JSON.stringify(raw ?? "");
+    if (!serialized.includes("viewOnceMessage")) return false;
+    return !(
+      serialized.includes("nativeFlowMessage") ||
+      serialized.includes("interactiveMessage") ||
+      serialized.includes("cta_url")
+    );
+  } catch {
+    return false;
+  }
+}

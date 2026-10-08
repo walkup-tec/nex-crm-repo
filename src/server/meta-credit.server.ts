@@ -1,7 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { normalizeBalanceLink } from "@/lib/balance-link";
-import { lowBalanceTestCents } from "@/lib/low-balance-test";
 import {
   lowBalanceAlertStamp,
   lowBalanceAlreadyDelivered,
@@ -301,13 +300,12 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     account.portfolio_id,
     account.prepaid_ledger,
   );
-  const testCents = lowBalanceTestCents(account.external_account_id);
   return {
     accountName: account.name,
     accountId: account.external_account_id,
     currency: account.currency || "BRL",
-    balanceCents: testCents ?? reading.cents,
-    balanceKind: testCents == null ? reading.kind : "available",
+    balanceCents: reading.cents,
+    balanceKind: reading.kind,
     canAdd: actor.canAdd,
     syncedAt: new Date().toISOString(),
     prepay,
@@ -340,9 +338,8 @@ export async function getClientBalanceAlert(userId: string) {
     .limit(1);
   if (accountError) return { low: false, cents: null };
   const account = accounts?.[0];
-  const forced = lowBalanceTestCents(account?.external_account_id);
   const stored = account?.last_synced_at ? Number(account.balance_cents) : null;
-  const cents = forced ?? (stored != null && Number.isFinite(stored) ? stored : null);
+  const cents = stored != null && Number.isFinite(stored) ? stored : null;
   const signal = lowBalanceSignal(cents);
   if (signal !== "unknown") await syncLowBalanceWhatsapp(profile.organization_id, signal === "low");
   return { low: signal === "low", cents };

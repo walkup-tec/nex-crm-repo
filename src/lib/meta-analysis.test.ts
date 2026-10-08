@@ -277,30 +277,18 @@ assert.equal(mixed.campaigns[0]?.resultLabel, "Conversas");
 assert.equal(mixed.campaigns[1]?.resultLabel, "Leads");
 
 const screenshotFunnel = funnelStageWidths([3819, 2320, 86, 37]);
-assert.equal(screenshotFunnel.length, 4);
-assert.equal(screenshotFunnel[0], 1);
-assert.ok((screenshotFunnel[1] ?? 0) > 0.7 && (screenshotFunnel[1] ?? 0) < 0.9);
-assert.ok((screenshotFunnel[2] ?? 0) >= 0.22);
-assert.ok((screenshotFunnel[3] ?? 0) >= 0.15);
-for (let index = 1; index < screenshotFunnel.length; index += 1) {
-  assert.ok((screenshotFunnel[index] ?? 0) < (screenshotFunnel[index - 1] ?? 0));
-}
+assert.deepEqual(screenshotFunnel, [1, 2320 / 3819, 86 / 3819, 37 / 3819]);
 
 const hiddenResults = funnelStageWidths([3819, 2320, 86, null]);
-assert.ok((hiddenResults[3] ?? 0) < (hiddenResults[2] ?? 0));
-assert.ok((hiddenResults[3] ?? 1) > 0.12);
+assert.deepEqual(hiddenResults, [1, 2320 / 3819, 86 / 3819, 0]);
 
 const flat = funnelStageWidths([100, 100, 100, 100]);
 assert.deepEqual(flat, [1, 1, 1, 1]);
 
 const flare = funnelStageWidths([100, 400, 50, 10]);
-assert.ok((flare[1] ?? 1) <= (flare[0] ?? 0));
-assert.ok((flare[2] ?? 1) < (flare[1] ?? 0));
-assert.ok((flare[3] ?? 1) < (flare[2] ?? 0));
+assert.deepEqual(flare, [100 / 400, 1, 50 / 400, 10 / 400]);
 
-const emptyJourney = funnelStageWidths([0, 0, 0, 0]);
-for (let index = 1; index < emptyJourney.length; index += 1) {
-  assert.ok((emptyJourney[index] ?? 0) < (emptyJourney[index - 1] ?? 0));
-}
+const emptyJourney = funnelStageWidths([0, 0, null, 0]);
+assert.deepEqual(emptyJourney, [0, 0, 0, 0]);
 
 console.log("meta-analysis tests ok");

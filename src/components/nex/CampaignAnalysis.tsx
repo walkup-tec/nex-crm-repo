@@ -762,44 +762,71 @@ function JourneyFunnel({
   stages: { label: string; value: string; amount: number | null }[];
 }) {
   const widths = funnelStageWidths(stages.map((stage) => stage.amount));
+  const count = stages.length;
+  const chartWidth = 100;
+  const chartHeight = 100;
+  const stageHeight = count > 0 ? chartHeight / count : chartHeight;
+  const center = chartWidth / 2;
+  const widest = 94;
+  const bands = stages.map((stage, index) => {
+    const topRatio = widths[index] ?? 0;
+    const bottomRatio = index < count - 1 ? (widths[index + 1] ?? 0) : topRatio;
+    const overlap = 0.8;
+    const y = index * stageHeight - (index > 0 ? overlap : 0);
+    const height = stageHeight + (index > 0 ? overlap : 0) + (index < count - 1 ? overlap : 0);
+    return {
+      ...stage,
+      fill: journeyFills[index] ?? "var(--primary)",
+      path: funnelBandPath(center, y, height, topRatio * widest, bottomRatio * widest),
+    };
+  });
+
   return (
-    <ol className="space-y-2" aria-label="Funil da jornada da campanha">
-      {stages.map((stage, index) => {
-        const top = widths[index] ?? 0.22;
-        const bottom = widths[index + 1] ?? top * 0.82;
-        const inset = top > 0 ? ((1 - Math.min(bottom, top) / top) / 2) * 100 : 0;
-        const fill = journeyFills[index] ?? "var(--primary)";
-        return (
-          <li
-            key={stage.label}
-            className="grid grid-cols-[minmax(0,1fr)_minmax(8.75rem,12rem)] items-center gap-2 sm:gap-3"
-          >
-            <div className="flex h-12 items-stretch justify-center sm:h-14" aria-hidden>
-              <div
-                className="h-full"
-                style={{
-                  width: `${top * 100}%`,
-                  background: fill,
-                  clipPath: `polygon(0% 0%, 100% 0%, ${100 - inset}% 100%, ${inset}% 100%)`,
-                }}
-              />
-            </div>
-            <div className="flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-2 sm:px-3">
-              <span
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ background: fill }}
-                aria-hidden
-              />
-              <div className="min-w-0">
-                <p className="text-xs leading-tight text-muted-foreground">{stage.label}</p>
-                <p className="text-sm font-semibold tabular-nums">{stage.value}</p>
-              </div>
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(8.75rem,12rem)] items-stretch gap-3 sm:gap-4">
+      <svg
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        preserveAspectRatio="none"
+        className="h-64 w-full sm:h-72"
+        role="img"
+        aria-label="Funil proporcional da jornada da campanha"
+      >
+        {bands.map((band) =>
+          band.path ? <path key={band.label} d={band.path} fill={band.fill} /> : null,
+        )}
+      </svg>
+      <ol
+        className="grid h-64 sm:h-72"
+        style={{ gridTemplateRows: `repeat(${Math.max(count, 1)}, minmax(0, 1fr))` }}
+        aria-label="Indicadores do funil"
+      >
+        {bands.map((band) => (
+          <li key={band.label} className="flex min-w-0 items-center gap-2.5">
+            <span
+              className="h-7 w-1 shrink-0 rounded-full"
+              style={{ background: band.fill }}
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <p className="text-xs leading-tight text-muted-foreground">{band.label}</p>
+              <p className="text-sm font-semibold tabular-nums">{band.value}</p>
             </div>
           </li>
-        );
-      })}
-    </ol>
+        ))}
+      </ol>
+    </div>
   );
+}
+
+function funnelBandPath(
+  center: number,
+  y: number,
+  height: number,
+  topWidth: number,
+  bottomWidth: number,
+) {
+  if (topWidth <= 0 && bottomWidth <= 0) return "";
+  const bottom = y + height;
+  return `M ${center - topWidth / 2} ${y} L ${center + topWidth / 2} ${y} L ${center + bottomWidth / 2} ${bottom} L ${center - bottomWidth / 2} ${bottom} Z`;
 }
 
 function SmallMetric({

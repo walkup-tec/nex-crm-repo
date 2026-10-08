@@ -94,39 +94,14 @@ export function ratesOf(metric: MetricSet): Rates {
   };
 }
 
-const funnelFloor = 0.22;
-const funnelStep = 0.82;
-
-/** Visual share of each journey stage. A power curve keeps clicks and results readable against impressions, and a smaller value never draws a wider band. */
+/** Share of the widest stage. Each level keeps the real ratio of its indicator. */
 export function funnelStageWidths(amounts: readonly (number | null)[]): number[] {
   const max = amounts.reduce<number>((peak, amount) => {
     if (amount != null && amount > peak) return amount;
     return peak;
   }, 0);
-  const widths: number[] = [];
-  for (let index = 0; index < amounts.length; index += 1) {
-    const amount = amounts[index] ?? null;
-    const previousWidth = widths[index - 1];
-    const previousAmount = index > 0 ? (amounts[index - 1] ?? null) : null;
-    let width =
-      amount != null && amount > 0 && max > 0
-        ? Math.max(funnelFloor, Math.pow(amount / max, 0.45))
-        : previousWidth != null
-          ? previousWidth * funnelStep
-          : funnelFloor;
-    if (previousWidth != null && width > previousWidth) width = previousWidth;
-    if (
-      previousWidth != null &&
-      amount != null &&
-      previousAmount != null &&
-      amount < previousAmount &&
-      width >= previousWidth - 1e-9
-    ) {
-      width = previousWidth * funnelStep;
-    }
-    widths.push(width);
-  }
-  return widths;
+  if (max <= 0) return amounts.map(() => 0);
+  return amounts.map((amount) => (amount != null && amount > 0 ? amount / max : 0));
 }
 
 export function changePercent(current: number | null, previous: number | null) {

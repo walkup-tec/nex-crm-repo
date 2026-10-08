@@ -157,7 +157,7 @@ export function MetaCredits() {
               type="button"
               onClick={enter}
               disabled={!view?.canAdd || !view.accountId || entering || loading}
-              className={lowBalance ? "animate-balance-wave" : ""}
+              className={lowBalance ? "animate-primary-wave" : ""}
             >
               {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
             </Button>

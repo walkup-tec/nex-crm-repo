@@ -144,7 +144,13 @@ export function UsersAdmin() {
   const canCreate = role === "master" || role === "client_admin";
 
   return (
-    <AppShell title="Usuários" subtitle={subtitleFor(role)} master={role === "master"}>
+    <AppShell
+      title="Usuários"
+      subtitle={subtitleFor(role)}
+      master={role === "master"}
+      live={role === "master"}
+      notes={role !== "master"}
+    >
       <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">

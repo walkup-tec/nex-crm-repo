@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { Check, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import stepAccount from "@/assets/meta-saldo-etapa-1.webp";
 import stepPayment from "@/assets/meta-saldo-etapa-2.webp";
@@ -42,10 +42,10 @@ function money(cents: number | null, currency: string) {
 
 const readSteps = ["NEX Ads", "Facebook", "Conta Meta"] as const;
 
-function MetaAccountReading() {
+function MetaAccountReading({ connected = false }: { connected?: boolean }) {
   return (
     <div
-      className="mt-4 rounded-lg border bg-background px-4 py-3"
+      className="mt-4 rounded-lg border bg-background px-3 py-3 sm:px-4"
       role="status"
       aria-live="polite"
     >
@@ -56,23 +56,34 @@ function MetaAccountReading() {
             className={index === 0 ? "flex items-center" : "flex min-w-0 flex-1 items-center"}
           >
             {index > 0 && (
-              <span className="relative mx-1.5 h-0.5 min-w-3 flex-1 overflow-hidden rounded-full bg-muted sm:mx-2">
+              <span className="relative mx-1 h-0.5 min-w-1 flex-1 overflow-hidden rounded-full bg-muted sm:mx-2 sm:min-w-3">
                 <span
-                  className="absolute inset-y-0 left-0 w-2/5 rounded-full bg-nex-gradient animate-meta-link"
-                  style={{ animationDelay: `${index * 0.55}s` }}
+                  className={
+                    connected
+                      ? "absolute inset-0 rounded-full bg-nex-gradient"
+                      : "absolute inset-y-0 left-0 w-2/5 rounded-full bg-nex-gradient animate-meta-link"
+                  }
+                  style={connected ? undefined : { animationDelay: `${index * 0.55}s` }}
                 />
               </span>
             )}
             <span
-              className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground animate-meta-node"
-              style={{ animationDelay: `${index * 0.55}s` }}
+              className={
+                connected
+                  ? "inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/60 bg-primary/15 px-1.5 py-1 text-[11px] font-medium text-foreground sm:px-2.5 sm:text-xs"
+                  : "shrink-0 rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground animate-meta-node sm:px-2.5 sm:text-xs"
+              }
+              style={connected ? undefined : { animationDelay: `${index * 0.55}s` }}
             >
+              {connected ? <Check className="size-3 text-primary sm:size-3.5" /> : null}
               {label}
             </span>
           </div>
         ))}
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">Lendo a conta integrada na Meta...</p>
+      <p className="mt-3 text-sm text-muted-foreground">
+        {connected ? "Conta conectada na Meta." : "Lendo a conta integrada na Meta..."}
+      </p>
     </div>
   );
 }
@@ -227,6 +238,7 @@ export function MetaCredits() {
         {loginError && <p className="mt-4 text-sm text-destructive">{loginError}</p>}
         {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
         {loading && <MetaAccountReading />}
+        {!loading && !error && view?.accountId && <MetaAccountReading connected />}
       </section>
 
       <section className="order-3 rounded-lg border bg-card p-5 lg:order-none lg:col-start-2 lg:row-start-1">

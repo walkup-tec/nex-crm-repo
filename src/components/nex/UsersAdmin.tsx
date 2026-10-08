@@ -1,3 +1,4 @@
+import { useRouteContext } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { AppShell } from "@/components/nex/AppShell";
@@ -134,7 +135,9 @@ export function UsersAdmin() {
     };
   }, []);
 
-  const role = snapshot?.actor.role ?? knownRole;
+  const session = useRouteContext({ strict: false });
+  const sessionMaster = session?.master === true;
+  const role = snapshot?.actor.role ?? (sessionMaster ? "master" : knownRole);
   if (!role) {
     return <main className="grid min-h-screen place-items-center text-sm text-muted-foreground">Carregando usuários...</main>;
   }

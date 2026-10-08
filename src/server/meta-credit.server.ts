@@ -2,7 +2,13 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { lowBalanceTestCents } from "@/lib/low-balance-test";
-import { lowBalanceSignal, shouldSendLowBalanceWhatsapp } from "@/lib/low-balance";
+import {
+  lowBalanceAlertStamp,
+  lowBalanceAlreadyDelivered,
+  lowBalanceSignal,
+  shouldSendLowBalanceWhatsapp,
+  whatsappNumber,
+} from "@/lib/low-balance";
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
 import {
   classifyGraphPayment,
@@ -345,7 +351,9 @@ export async function getClientBalanceAlert(userId: string) {
 async function syncLowBalanceWhatsapp(organizationId: string, low: boolean) {
   const org = await supabaseAdmin
     .from("organizations")
-    .select("responsible_name, responsible_phone, legal_name, meta_low_balance_alerted_at")
+    .select(
+      "responsible_name, responsible_phone, finance_phone, legal_name, meta_low_balance_alerted_at",
+    )
     .eq("id", organizationId)
     .maybeSingle();
   if (org.error) {
@@ -354,9 +362,9 @@ async function syncLowBalanceWhatsapp(organizationId: string, low: boolean) {
     }
     return;
   }
-  const alreadySent = Boolean(org.data?.meta_low_balance_alerted_at);
+  const alreadySent = lowBalanceAlreadyDelivered(org.data?.meta_low_balance_alerted_at);
   if (!low) {
-    if (!alreadySent) return;
+    if (!org.data?.meta_low_balance_alerted_at) return;
     const cleared = await supabaseAdmin
       .from("organizations")
       .update({ meta_low_balance_alerted_at: null })
@@ -365,18 +373,25 @@ async function syncLowBalanceWhatsapp(organizationId: string, low: boolean) {
     return;
   }
   if (!shouldSendLowBalanceWhatsapp(true, alreadySent)) return;
-  const claimed = await supabaseAdmin
+  const claim = supabaseAdmin
     .from("organizations")
-    .update({ meta_low_balance_alerted_at: new Date().toISOString() })
+    .update({ meta_low_balance_alerted_at: lowBalanceAlertStamp() })
     .eq("id", organizationId)
-    .is("meta_low_balance_alerted_at", null)
     .select("id");
+  const claimed = org.data?.meta_low_balance_alerted_at
+    ? await claim.eq("meta_low_balance_alerted_at", org.data.meta_low_balance_alerted_at)
+    : await claim.is("meta_low_balance_alerted_at", null);
   if (claimed.error || !claimed.data?.length) {
     if (claimed.error) console.error("meta_low_balance", claimed.error.code ?? "error");
     return;
   }
+  const phone = await alertPhone(
+    organizationId,
+    org.data?.responsible_phone,
+    org.data?.finance_phone,
+  );
   const sent = await sendLowBalanceWhatsapp(
-    org.data?.responsible_phone ?? "",
+    phone,
     org.data?.responsible_name?.trim() || org.data?.legal_name || "",
   );
   if (sent) return;
@@ -385,6 +400,23 @@ async function syncLowBalanceWhatsapp(organizationId: string, low: boolean) {
     .update({ meta_low_balance_alerted_at: null })
     .eq("id", organizationId);
   if (released.error) console.error("meta_low_balance", released.error.code ?? "error");
+}
+
+async function alertPhone(
+  organizationId: string,
+  responsible: string | null | undefined,
+  finance: string | null | undefined,
+) {
+  const direct = [responsible, finance].find((phone) => phone && whatsappNumber(phone));
+  if (direct) return direct;
+  const people = await supabaseAdmin
+    .from("profiles")
+    .select("whatsapp")
+    .eq("organization_id", organizationId);
+  if (people.error) return "";
+  return (
+    (people.data ?? []).find((row) => row.whatsapp && whatsappNumber(row.whatsapp))?.whatsapp ?? ""
+  );
 }
 
 export async function startFacebookLogin(userId: string) {

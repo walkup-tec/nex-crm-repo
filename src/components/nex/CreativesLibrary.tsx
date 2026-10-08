@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
   Upload,
+  Users,
   Video,
 } from "lucide-react";
 import { supabaseCreativeGateway } from "@/lib/creatives-store";
@@ -18,7 +19,6 @@ import {
   CREATIVE_ACCEPT,
   breadcrumb,
   childFolder,
-  clientsAwaitingFolder,
   creativeKind,
   descendantFolderIds,
   filesIn,
@@ -26,9 +26,10 @@ import {
   folderChoices,
   foldersIn,
   formatBytes,
-  openingFolder,
   placementFromRelativePath,
+  relocatedStoragePath,
   type CreativeFile,
+  type CreativeFolder,
   type CreativeGateway,
   type CreativeSnapshot,
 } from "@/lib/creative-library";
@@ -153,6 +154,9 @@ export function CreativesLibrary({
   const [dragOver, setDragOver] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
   const [clientId, setClientId] = useState("");
+  const [folderTitle, setFolderTitle] = useState("");
+  const [accessFolder, setAccessFolder] = useState<CreativeFolder | null>(null);
+  const [accessClientId, setAccessClientId] = useState("");
   const [subOpen, setSubOpen] = useState(false);
   const [subName, setSubName] = useState("");
   const [rename, setRename] = useState<{
@@ -170,7 +174,6 @@ export function CreativesLibrary({
   const [moveTarget, setMoveTarget] = useState("");
   const [preview, setPreview] = useState<CreativeFile | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const opened = useRef(false);
   const dragDepth = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -180,16 +183,12 @@ export function CreativesLibrary({
     try {
       const data = await api.load();
       setSnapshot(data);
-      if (!opened.current) {
-        setCurrentId(openingFolder(master, data.folders));
-        opened.current = true;
-      }
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
       setLoading(false);
     }
-  }, [api, master]);
+  }, [api]);
 
   useEffect(() => {
     void load();
@@ -199,8 +198,12 @@ export function CreativesLibrary({
   const roots = foldersIn(snapshot.folders, null);
   const foldersHere = currentId ? foldersIn(snapshot.folders, currentId) : roots;
   const filesHere = currentId ? filesIn(snapshot.files, currentId) : [];
-  const waiting = clientsAwaitingFolder(snapshot.clients, snapshot.folders);
-  const showLibraryRoot = master || roots.length !== 1;
+  const clientOptions = [...snapshot.clients].sort((left, right) =>
+    left.name.localeCompare(right.name, "pt-BR"),
+  );
+  const accessRoot = trail[0] ?? null;
+  const accessName =
+    snapshot.clients.find((client) => client.id === accessRoot?.organizationId)?.name ?? "";
 
   function toggle(id: string) {
     setSelected((current) =>
@@ -253,15 +256,46 @@ export function CreativesLibrary({
     }
   }
 
-  async function createClientFolder() {
+  async function createRootFolder() {
     setBusy(true);
     setError("");
     try {
-      const folder = await api.createClientFolder(clientId);
+      const folder = await api.createFolder(folderTitle, clientId);
       setSnapshot((current) => ({ ...current, folders: [...current.folders, folder] }));
       setClientOpen(false);
       setClientId("");
+      setFolderTitle("");
       openFolder(folder.id);
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmAccess() {
+    if (!accessFolder) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.setFolderAccess(accessFolder.id, accessClientId);
+      const ids = new Set(descendantFolderIds(snapshot.folders, accessFolder.id));
+      setSnapshot((current) => ({
+        ...current,
+        folders: current.folders.map((folder) =>
+          ids.has(folder.id) ? { ...folder, organizationId: accessClientId } : folder,
+        ),
+        files: current.files.map((file) =>
+          ids.has(file.folderId)
+            ? {
+                ...file,
+                organizationId: accessClientId,
+                storagePath: relocatedStoragePath(file.storagePath, accessClientId),
+              }
+            : file,
+        ),
+      }));
+      setAccessFolder(null);
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
@@ -288,7 +322,7 @@ export function CreativesLibrary({
   async function receive(items: { relativePath: string; file: File }[]) {
     if (!master) return;
     if (!currentId) {
-      setError("Abra a pasta do cliente para enviar os arquivos.");
+      setError("Abra uma pasta para colocar os criativos.");
       return;
     }
     const accepted = items.filter((item) => !item.file.name.startsWith("."));
@@ -433,16 +467,17 @@ export function CreativesLibrary({
       ? {
           title: "Pasta vazia",
           description:
-            "Solte os arquivos aqui. Se eles vierem dentro de uma pasta, a subpasta é criada junto.",
+            "Solte os criativos aqui. Se eles vierem dentro de uma pasta, a subpasta é criada junto.",
         }
       : snapshot.clients.length === 0
         ? {
             title: "Nenhum cliente cadastrado",
-            description: "Cadastre o cliente antes de criar a pasta dos criativos.",
+            description: "Cadastre o cliente antes de criar uma pasta.",
           }
         : {
-            title: "Nenhuma pasta de cliente",
-            description: "Selecione o nome do cliente e crie a pasta com o nome dele.",
+            title: "Nenhuma pasta",
+            description:
+              "Crie uma pasta, escolha qual cliente pode acessá-la e coloque os criativos dentro.",
           }
     : {
         title: "Nenhum material disponível",
@@ -462,18 +497,16 @@ export function CreativesLibrary({
           className="flex min-w-0 flex-wrap items-center gap-1 text-sm text-muted-foreground"
           aria-label="Caminho da pasta"
         >
-          {showLibraryRoot && (
-            <button
-              type="button"
-              className={cn("rounded px-1 py-0.5", !currentId && "font-semibold text-foreground")}
-              onClick={() => openFolder(null)}
-            >
-              Pastas
-            </button>
-          )}
+          <button
+            type="button"
+            className={cn("rounded px-1 py-0.5", !currentId && "font-semibold text-foreground")}
+            onClick={() => openFolder(null)}
+          >
+            Pastas
+          </button>
           {trail.map((folder, index) => (
             <span key={folder.id} className="flex min-w-0 items-center gap-1">
-              {(index > 0 || showLibraryRoot) && <ChevronRight className="size-4 shrink-0" />}
+              <ChevronRight className="size-4 shrink-0" />
               <button
                 type="button"
                 className={cn(
@@ -490,9 +523,10 @@ export function CreativesLibrary({
         <div className="flex flex-wrap gap-2 lg:ml-auto">
           {master && !currentId && (
             <Button
-              disabled={waiting.length === 0 || busy}
+              disabled={clientOptions.length === 0 || busy}
               onClick={() => {
                 setClientId("");
+                setFolderTitle("");
                 setClientOpen(true);
               }}
             >
@@ -515,7 +549,7 @@ export function CreativesLibrary({
               </Button>
               <Button disabled={busy} onClick={() => inputRef.current?.click()}>
                 <Upload />
-                Enviar arquivos
+                Adicionar criativos
               </Button>
             </>
           )}
@@ -597,7 +631,8 @@ export function CreativesLibrary({
         >
           {master && currentId && (
             <p className="mb-3 text-xs text-muted-foreground">
-              Solte arquivos ou uma pasta. JPG, PNG, WEBP, PDF, MP4 e MOV, até 200 MB.
+              Solte os criativos nesta pasta
+              {accessName ? ` de ${accessName}` : ""}. JPG, PNG, WEBP, PDF, MP4 e MOV, até 200 MB.
             </p>
           )}
           {foldersHere.length === 0 && filesHere.length === 0 ? (
@@ -614,22 +649,41 @@ export function CreativesLibrary({
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {foldersHere.map((folder) => (
-                <LibraryCard
-                  key={folder.id}
-                  name={folder.name}
-                  detail={`Pasta • ${filesUnder(snapshot.folders, snapshot.files, folder.id).length} arquivos`}
-                  selected={selected.includes(folder.id)}
-                  onToggle={() => toggle(folder.id)}
-                  onOpen={() => openFolder(folder.id)}
-                  master={master}
-                  onRename={() => {
-                    setRename({ kind: "folder", id: folder.id, name: folder.name });
-                    setRenameValue(folder.name);
-                  }}
-                  onRemove={() => setRemove({ kind: "folder", id: folder.id, name: folder.name })}
-                />
-              ))}
+              {foldersHere.map((folder) => {
+                const owner = snapshot.clients.find(
+                  (client) => client.id === folder.organizationId,
+                );
+                const count = filesUnder(snapshot.folders, snapshot.files, folder.id).length;
+                const filesLabel = count === 1 ? "1 arquivo" : `${count} arquivos`;
+                return (
+                  <LibraryCard
+                    key={folder.id}
+                    name={folder.name}
+                    detail={
+                      master && !currentId
+                        ? `${owner?.name ?? "Cliente"} • ${filesLabel}`
+                        : `Pasta • ${filesLabel}`
+                    }
+                    selected={selected.includes(folder.id)}
+                    onToggle={() => toggle(folder.id)}
+                    onOpen={() => openFolder(folder.id)}
+                    master={master}
+                    onRename={() => {
+                      setRename({ kind: "folder", id: folder.id, name: folder.name });
+                      setRenameValue(folder.name);
+                    }}
+                    onRemove={() => setRemove({ kind: "folder", id: folder.id, name: folder.name })}
+                    {...(master && !folder.parentId
+                      ? {
+                          onAccess: () => {
+                            setAccessFolder(folder);
+                            setAccessClientId(folder.organizationId);
+                          },
+                        }
+                      : {})}
+                  />
+                );
+              })}
               {filesHere.map((file) => (
                 <LibraryCard
                   key={file.id}
@@ -662,20 +716,72 @@ export function CreativesLibrary({
       <Dialog open={clientOpen} onOpenChange={setClientOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nova pasta do cliente</DialogTitle>
+            <DialogTitle>Nova pasta</DialogTitle>
             <DialogDescription>
-              Selecione o cliente. A pasta é criada com o nome dele e os arquivos ficam só nessa
-              conta.
+              Dê um nome à pasta e escolha qual cliente pode ver os criativos que ficarem dentro
+              dela.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="creative-folder-name">Nome da pasta</Label>
+              <Input
+                id="creative-folder-name"
+                value={folderTitle}
+                onChange={(event) => setFolderTitle(event.target.value)}
+                placeholder="Ex.: Campanha Consignado"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="creative-client">Cliente com acesso</Label>
+              <Select value={clientId} onValueChange={setClientId}>
+                <SelectTrigger id="creative-client">
+                  <SelectValue placeholder="Selecione o cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientOptions.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClientOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!clientId || !folderTitle.trim() || busy}
+              onClick={() => void createRootFolder()}
+            >
+              Criar pasta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(accessFolder)} onOpenChange={(open) => !open && setAccessFolder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Acesso da pasta</DialogTitle>
+            <DialogDescription>
+              {accessFolder?.name}. Só o cliente escolhido vê esta pasta e os criativos dentro dela.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="creative-client">Nome do cliente</Label>
-            <Select {...(clientId ? { value: clientId } : {})} onValueChange={setClientId}>
-              <SelectTrigger id="creative-client">
+            <Label htmlFor="creative-access">Cliente com acesso</Label>
+            <Select
+              {...(accessClientId ? { value: accessClientId } : {})}
+              onValueChange={setAccessClientId}
+            >
+              <SelectTrigger id="creative-access">
                 <SelectValue placeholder="Selecione o cliente" />
               </SelectTrigger>
               <SelectContent>
-                {waiting.map((client) => (
+                {clientOptions.map((client) => (
                   <SelectItem key={client.id} value={client.id}>
                     {client.name}
                   </SelectItem>
@@ -684,11 +790,11 @@ export function CreativesLibrary({
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setClientOpen(false)}>
+            <Button variant="outline" onClick={() => setAccessFolder(null)}>
               Cancelar
             </Button>
-            <Button disabled={!clientId || busy} onClick={() => void createClientFolder()}>
-              Criar pasta
+            <Button disabled={!accessClientId || busy} onClick={() => void confirmAccess()}>
+              Salvar acesso
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -853,6 +959,7 @@ function LibraryCard({
   onRename,
   onMove,
   onRemove,
+  onAccess,
 }: {
   name: string;
   detail: string;
@@ -865,6 +972,7 @@ function LibraryCard({
   onRename?: () => void;
   onMove?: () => void;
   onRemove?: () => void;
+  onAccess?: () => void;
 }) {
   return (
     <Card className={cn("overflow-hidden", selected && "border-primary ring-1 ring-primary")}>
@@ -899,6 +1007,12 @@ function LibraryCard({
                   <DropdownMenuItem onSelect={onDownload}>
                     <Download />
                     Baixar
+                  </DropdownMenuItem>
+                )}
+                {master && onAccess && (
+                  <DropdownMenuItem onSelect={onAccess}>
+                    <Users />
+                    Acesso do cliente
                   </DropdownMenuItem>
                 )}
                 {master && onRename && (

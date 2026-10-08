@@ -3,13 +3,16 @@ import { ensureCreativesBucketFn } from "@/lib/creatives.functions";
 import {
   creativeErrorMessage,
   inspectCreativeFile,
+  descendantFolderIds,
   filesUnder,
   pathBelongsToClient,
-  planClientFolder,
   planFileName,
+  planFolderAccess,
   planFolderRename,
   planMove,
+  planRootFolder,
   planSubfolder,
+  relocatedStoragePath,
   scopeToClient,
   storageObjectPath,
   type CreativeFile,
@@ -125,10 +128,10 @@ export function supabaseCreativeGateway(mode: "master" | "client"): CreativeGate
 
   return {
     load: () => fetchSnapshot(mode),
-    async createClientFolder(organizationId) {
+    async createFolder(name, organizationId) {
       master();
       const snapshot = await fetchSnapshot("master");
-      const plan = planClientFolder(snapshot.clients, snapshot.folders, organizationId);
+      const plan = planRootFolder(snapshot.clients, snapshot.folders, organizationId, name);
       if (!plan.ok) throw new Error(plan.message);
       const { data, error } = await supabase
         .from("creative_folders")
@@ -140,8 +143,40 @@ export function supabaseCreativeGateway(mode: "master" | "client"): CreativeGate
         })
         .select("id, organization_id, parent_id, name")
         .single();
-      if (error || !data) fail(error, "Não foi possível criar a pasta do cliente.");
+      if (error || !data) fail(error, "Não foi possível criar a pasta.");
       return mapFolder(data);
+    },
+    async setFolderAccess(folderId, organizationId) {
+      master();
+      const snapshot = await fetchSnapshot("master");
+      const plan = planFolderAccess(snapshot.clients, snapshot.folders, folderId, organizationId);
+      if (!plan.ok) throw new Error(plan.message);
+      if (plan.unchanged) return;
+      const folderIds = descendantFolderIds(snapshot.folders, folderId);
+      const files = filesUnder(snapshot.folders, snapshot.files, folderId);
+      for (const file of files) {
+        const nextPath = relocatedStoragePath(file.storagePath, organizationId);
+        if (nextPath === file.storagePath) continue;
+        const moved = await supabase.storage.from(BUCKET).move(file.storagePath, nextPath);
+        if (moved.error) fail(moved.error, "Não foi possível mudar o acesso da pasta.");
+      }
+      for (const id of folderIds) {
+        const { error } = await supabase
+          .from("creative_folders")
+          .update({ organization_id: organizationId })
+          .eq("id", id);
+        if (error) fail(error, "Não foi possível mudar o acesso da pasta.");
+      }
+      for (const file of files) {
+        const { error } = await supabase
+          .from("creative_files")
+          .update({
+            organization_id: organizationId,
+            storage_path: relocatedStoragePath(file.storagePath, organizationId),
+          })
+          .eq("id", file.id);
+        if (error) fail(error, "Não foi possível mudar o acesso da pasta.");
+      }
     },
     async createSubfolder(parentId, name) {
       master();

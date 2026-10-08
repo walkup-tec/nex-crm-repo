@@ -38,8 +38,9 @@ export type CreativeSnapshot = {
 
 export type CreativeGateway = {
   load: () => Promise<CreativeSnapshot>;
-  createClientFolder: (organizationId: string) => Promise<CreativeFolder>;
+  createFolder: (name: string, organizationId: string) => Promise<CreativeFolder>;
   createSubfolder: (parentId: string, name: string) => Promise<CreativeFolder>;
+  setFolderAccess: (folderId: string, organizationId: string) => Promise<void>;
   upload: (folderId: string, file: File) => Promise<CreativeFile>;
   renameFolder: (id: string, name: string) => Promise<void>;
   renameFile: (id: string, name: string) => Promise<void>;
@@ -106,32 +107,52 @@ export function pathBelongsToClient(path: string, organizationId: string) {
   return path.split("/")[0] === organizationId && organizationId.length > 0;
 }
 
-export function rootFolderOf(folders: CreativeFolder[], organizationId: string) {
-  return (
-    folders.find(
-      (folder) => folder.organizationId === organizationId && folder.parentId === null,
-    ) ?? null
-  );
+export function relocatedStoragePath(path: string, organizationId: string) {
+  const rest = path.split("/").slice(1).join("/");
+  return `${organizationId}/${rest}`;
 }
 
-export function clientsAwaitingFolder(clients: CreativeClient[], folders: CreativeFolder[]) {
-  return clients
-    .filter((client) => !rootFolderOf(folders, client.id))
-    .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
-}
-
-export function planClientFolder(
+export function planRootFolder(
   clients: CreativeClient[],
   folders: CreativeFolder[],
   organizationId: string,
-): NamedResult {
+  rawName: string,
+): { ok: true; name: string; organizationId: string } | { ok: false; message: string } {
   const client = clients.find((item) => item.id === organizationId);
-  if (!client) return { ok: false, message: "Selecione um cliente." };
-  const name = client.name.trim();
-  if (!name) return { ok: false, message: "Este cliente não tem nome." };
-  if (rootFolderOf(folders, organizationId))
-    return { ok: false, message: "Este cliente já tem uma pasta." };
-  return { ok: true, name };
+  if (!client) return { ok: false, message: "Selecione o cliente que pode acessar a pasta." };
+  const named = folderName(rawName);
+  if (!named.ok) return named;
+  const taken = folders.some(
+    (folder) =>
+      folder.parentId === null &&
+      folder.organizationId === organizationId &&
+      sameName(folder.name, named.name),
+  );
+  if (taken) return { ok: false, message: "Esse cliente já tem uma pasta com esse nome." };
+  return { ok: true, name: named.name, organizationId };
+}
+
+export function planFolderAccess(
+  clients: CreativeClient[],
+  folders: CreativeFolder[],
+  folderId: string,
+  organizationId: string,
+): { ok: true; unchanged: boolean } | { ok: false; message: string } {
+  const folder = folders.find((item) => item.id === folderId);
+  if (!folder || folder.parentId !== null)
+    return { ok: false, message: "O acesso é definido na pasta principal." };
+  if (!clients.some((client) => client.id === organizationId))
+    return { ok: false, message: "Selecione o cliente que pode acessar a pasta." };
+  if (folder.organizationId === organizationId) return { ok: true, unchanged: true };
+  const taken = folders.some(
+    (item) =>
+      item.id !== folder.id &&
+      item.parentId === null &&
+      item.organizationId === organizationId &&
+      sameName(item.name, folder.name),
+  );
+  if (taken) return { ok: false, message: "Esse cliente já tem uma pasta com esse nome." };
+  return { ok: true, unchanged: false };
 }
 
 function folderName(raw: string): NamedResult {
@@ -301,12 +322,6 @@ export function breadcrumb(folders: CreativeFolder[], folderId: string | null) {
   return trail;
 }
 
-export function openingFolder(master: boolean, folders: CreativeFolder[]) {
-  if (master) return null;
-  const roots = folders.filter((folder) => folder.parentId === null);
-  return roots.length === 1 ? (roots[0]?.id ?? null) : null;
-}
-
 export function scopeToClient(
   snapshot: CreativeSnapshot,
   organizationId: string | null,
@@ -356,6 +371,8 @@ export function creativeErrorMessage(
 ) {
   const message = error?.message ?? "";
   const code = error?.code ?? "";
+  if (/creative_folders_one_root_per_org/i.test(message))
+    return "Para criar outra pasta deste cliente, rode o SQL que libera várias pastas por cliente.";
   if (code === "23505" || /duplicate key|already exists/i.test(message))
     return "Já existe uma pasta ou arquivo com esse nome.";
   if (/Bucket not found|bucket/i.test(message) && /not found|não encontr/i.test(message))
@@ -397,9 +414,9 @@ export function createMemoryGateway(seed: CreativeSnapshot) {
     async load() {
       return visible();
     },
-    async createClientFolder(organizationId: string) {
+    async createFolder(name: string, organizationId: string) {
       requireMaster();
-      const plan = planClientFolder(state.clients, state.folders, organizationId);
+      const plan = planRootFolder(state.clients, state.folders, organizationId, name);
       if (!plan.ok) throw new Error(plan.message);
       const folder: CreativeFolder = {
         id: crypto.randomUUID(),
@@ -409,6 +426,28 @@ export function createMemoryGateway(seed: CreativeSnapshot) {
       };
       state = { ...state, folders: [...state.folders, folder] };
       return folder;
+    },
+    async setFolderAccess(folderId: string, organizationId: string) {
+      requireMaster();
+      const plan = planFolderAccess(state.clients, state.folders, folderId, organizationId);
+      if (!plan.ok) throw new Error(plan.message);
+      if (plan.unchanged) return;
+      const ids = new Set(descendantFolderIds(state.folders, folderId));
+      state = {
+        ...state,
+        folders: state.folders.map((folder) =>
+          ids.has(folder.id) ? { ...folder, organizationId } : folder,
+        ),
+        files: state.files.map((file) =>
+          ids.has(file.folderId)
+            ? {
+                ...file,
+                organizationId,
+                storagePath: relocatedStoragePath(file.storagePath, organizationId),
+              }
+            : file,
+        ),
+      };
     },
     async createSubfolder(parentId: string, name: string) {
       requireMaster();

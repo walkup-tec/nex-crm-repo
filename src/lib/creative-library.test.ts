@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import {
-  clientsAwaitingFolder,
   createMemoryGateway,
   filesUnder,
   inspectCreativeFile,
-  openingFolder,
   pathBelongsToClient,
   placementFromRelativePath,
-  planClientFolder,
   planMove,
+  planRootFolder,
   scopeToClient,
   storageObjectPath,
   type CreativeSnapshot,
@@ -30,12 +28,13 @@ const file = (name: string, contents = "imagem") =>
   new File([contents], name, { type: "image/png" });
 
 const gateway = createMemoryGateway(seed);
-const verticeFolder = await gateway.createClientFolder(vertice);
-assert.equal(verticeFolder.name, "Vértice Crédito");
+const verticeFolder = await gateway.createFolder("Campanha Consignado", vertice);
+assert.equal(verticeFolder.name, "Campanha Consignado");
 assert.equal(verticeFolder.organizationId, vertice);
 assert.equal(verticeFolder.parentId, null);
-
-await assert.rejects(() => gateway.createClientFolder(vertice), /já tem uma pasta/);
+const segunda = await gateway.createFolder("Setembro 2026", vertice);
+assert.equal(segunda.organizationId, vertice);
+await assert.rejects(() => gateway.createFolder("Campanha Consignado", vertice), /esse nome/);
 const setembro = await gateway.createSubfolder(verticeFolder.id, "Setembro");
 const feed = await gateway.upload(setembro.id, file("feed-oferta.png"));
 assert.equal(pathBelongsToClient(feed.storagePath, vertice), true);
@@ -55,26 +54,47 @@ await assert.rejects(() => gateway.upload(setembro.id, file("outro.png")), /Mast
 gateway.setViewer(vertice);
 const own = await gateway.load();
 assert.deepEqual(
-  own.folders.map((folder) => folder.name),
-  ["Vértice Crédito", "Setembro"],
+  own.folders
+    .map((folder) => folder.name)
+    .sort((left, right) => left.localeCompare(right, "pt-BR")),
+  ["Campanha Consignado", "Setembro", "Setembro 2026"],
 );
 assert.deepEqual(
   own.files.map((item) => item.name),
   ["feed-oferta.png"],
 );
-assert.equal(openingFolder(false, own.folders), verticeFolder.id);
-assert.equal(openingFolder(true, own.folders), null);
+assert.equal(
+  own.folders.every((folder) => folder.organizationId === vertice),
+  true,
+);
 
 gateway.setViewer(null);
-const waiting = clientsAwaitingFolder(
-  (await gateway.load()).clients,
-  (await gateway.load()).folders,
+await gateway.setFolderAccess(verticeFolder.id, alvorada);
+gateway.setViewer(vertice);
+const afterMove = await gateway.load();
+assert.equal(
+  afterMove.folders.some((folder) => folder.name === "Campanha Consignado"),
+  false,
 );
-assert.deepEqual(
-  waiting.map((client) => client.name),
-  ["Clínica Alvorada"],
+assert.equal(
+  afterMove.files.some((item) => item.name === "feed-oferta.png"),
+  false,
 );
-assert.equal(planClientFolder(seed.clients, [], "").ok, false);
+gateway.setViewer(alvorada);
+const received = await gateway.load();
+assert.equal(
+  received.folders.some((folder) => folder.name === "Campanha Consignado"),
+  true,
+);
+assert.equal(
+  received.files.every(
+    (item) => item.organizationId === alvorada && item.storagePath.startsWith(`${alvorada}/`),
+  ),
+  true,
+);
+gateway.setViewer(null);
+assert.equal(planRootFolder(seed.clients, [], "", "Pasta").ok, false);
+assert.equal(planRootFolder(seed.clients, [], vertice, "Institucional").ok, true);
 
 const moved = planMove([verticeFolder, setembro], [feed], feed.id, verticeFolder.id);
 assert.equal(moved.ok, true);

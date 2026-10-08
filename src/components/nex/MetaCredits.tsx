@@ -40,6 +40,43 @@ function money(cents: number | null, currency: string) {
   }
 }
 
+const readSteps = ["NEX Ads", "Facebook", "Conta Meta"] as const;
+
+function MetaAccountReading() {
+  return (
+    <div
+      className="mt-4 rounded-lg border bg-background px-4 py-3"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center" aria-hidden>
+        {readSteps.map((label, index) => (
+          <div
+            key={label}
+            className={index === 0 ? "flex items-center" : "flex min-w-0 flex-1 items-center"}
+          >
+            {index > 0 && (
+              <span className="relative mx-1.5 h-0.5 min-w-3 flex-1 overflow-hidden rounded-full bg-muted sm:mx-2">
+                <span
+                  className="absolute inset-y-0 left-0 w-2/5 rounded-full bg-nex-gradient animate-meta-link"
+                  style={{ animationDelay: `${index * 0.55}s` }}
+                />
+              </span>
+            )}
+            <span
+              className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground animate-meta-node"
+              style={{ animationDelay: `${index * 0.55}s` }}
+            >
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">Lendo a conta integrada na Meta...</p>
+    </div>
+  );
+}
+
 function balanceHint(kind: MetaCreditView["balanceKind"]) {
   if (kind === "available") return "Disponível para anúncios";
   if (kind === "prepaid")
@@ -189,9 +226,7 @@ export function MetaCredits() {
         )}
         {loginError && <p className="mt-4 text-sm text-destructive">{loginError}</p>}
         {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-        {loading && (
-          <p className="mt-4 text-sm text-muted-foreground">Lendo a conta integrada na Meta...</p>
-        )}
+        {loading && <MetaAccountReading />}
       </section>
 
       <section className="order-3 rounded-lg border bg-card p-5 lg:order-none lg:col-start-2 lg:row-start-1">

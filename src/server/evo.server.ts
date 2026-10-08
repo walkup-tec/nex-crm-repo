@@ -3,6 +3,7 @@ import {
   isGhostButtonResponse,
   lowBalanceCreditUrl,
   lowBalanceWhatsappText,
+  lowBalanceWhatsappTitle,
   whatsappNumber,
 } from "@/lib/low-balance";
 
@@ -33,7 +34,7 @@ export async function sendLowBalanceWhatsapp(phone: string, name: string) {
     headers,
     {
       number,
-      title: "\u00A0",
+      title: lowBalanceWhatsappTitle,
       description,
       footer: "",
       buttons: [{ type: "url", displayText: "Adicionar Saldo", url: lowBalanceCreditUrl }],
@@ -42,7 +43,7 @@ export async function sendLowBalanceWhatsapp(phone: string, name: string) {
   if (button.ok && !isGhostButtonResponse(button.body)) return true;
   const text = await evoPost(`${base}/message/sendText/${encodeURIComponent(instance)}`, headers, {
     number,
-    text: `${description}\n${lowBalanceCreditUrl}`,
+    text: `*${lowBalanceWhatsappTitle}*\n\n${description}\n${lowBalanceCreditUrl}`,
   });
   return text.ok;
 }

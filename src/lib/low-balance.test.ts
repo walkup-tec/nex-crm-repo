@@ -7,6 +7,7 @@ import {
   lowBalanceSignal,
   isGhostButtonResponse,
   lowBalanceWhatsappText,
+  lowBalanceWhatsappTitle,
   shouldSendLowBalanceWhatsapp,
   whatsappNumber,
 } from "./low-balance";
@@ -57,6 +58,8 @@ assert.equal(
   }),
   false,
 );
+assert.equal(lowBalanceWhatsappTitle, "Saldo META baixo");
+assert.equal(lowBalanceWhatsappTitle.includes("*"), false);
 assert.match(lowBalanceWhatsappText("Walkup"), /^Olá Walkup /);
 assert.match(lowBalanceWhatsappText("  "), /^Olá cliente /);
 

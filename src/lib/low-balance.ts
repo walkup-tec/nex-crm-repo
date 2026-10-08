@@ -84,6 +84,8 @@ function textField(record: Record<string, unknown>, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+export const lowBalanceWhatsappTitle = "Saldo META baixo";
+
 export function lowBalanceWhatsappText(name: string) {
   const who = name.trim() || "cliente";
   return `Olá ${who} o saldo de anúncio da plataforma META (Facebook e Instagram) está baixo.\nPara adicionar saldo e manter seus anúncios em veiculação, adicione saldo através do link a baixo`;

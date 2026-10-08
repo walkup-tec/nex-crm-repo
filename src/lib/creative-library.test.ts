@@ -6,7 +6,9 @@ import {
   pathBelongsToClient,
   placementFromRelativePath,
   planMove,
+  planRemoval,
   planRootFolder,
+  removalSummary,
   scopeToClient,
   storageObjectPath,
   type CreativeSnapshot,
@@ -142,6 +144,50 @@ assert.equal(
 assert.equal(
   scoped.folders.every((item) => item.organizationId === vertice),
   true,
+);
+
+const libraryFolders = [
+  verticeFolder,
+  setembro,
+  { id: "raiz-b", organizationId: alvorada, parentId: null, name: "Outra conta" },
+];
+const inside = { ...feed, id: "dentro", folderId: setembro.id, name: "dentro.png" };
+const loose = { ...feed, id: "solto", folderId: verticeFolder.id, name: "solto.png" };
+const other = {
+  ...feed,
+  id: "arquivo-b",
+  organizationId: alvorada,
+  folderId: "raiz-b",
+  name: "outro.png",
+};
+const libraryFiles = [feed, inside, loose, other];
+
+assert.deepEqual(planRemoval(libraryFolders, libraryFiles, [loose.id]), {
+  folders: [],
+  files: [loose.id],
+});
+assert.deepEqual(planRemoval(libraryFolders, libraryFiles, [setembro.id, inside.id, loose.id]), {
+  folders: [setembro.id],
+  files: [loose.id],
+});
+assert.deepEqual(
+  planRemoval(libraryFolders, libraryFiles, [verticeFolder.id, setembro.id, feed.id]),
+  {
+    folders: [verticeFolder.id],
+    files: [],
+  },
+);
+assert.deepEqual(planRemoval(libraryFolders, libraryFiles, [loose.id, other.id]).files, [
+  loose.id,
+  other.id,
+]);
+assert.equal(
+  removalSummary(libraryFolders, libraryFiles, { folders: [], files: [loose.id] }).title,
+  "Excluir solto.png?",
+);
+assert.equal(
+  removalSummary(libraryFolders, libraryFiles, { folders: [setembro.id], files: [loose.id] }).title,
+  "Excluir 1 pasta e 1 arquivo?",
 );
 
 console.log("creative-library ok");

@@ -27,7 +27,9 @@ import {
   foldersIn,
   formatBytes,
   placementFromRelativePath,
+  planRemoval,
   relocatedStoragePath,
+  removalSummary,
   type CreativeFile,
   type CreativeFolder,
   type CreativeGateway,
@@ -165,11 +167,9 @@ export function CreativesLibrary({
     name: string;
   } | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [remove, setRemove] = useState<{
-    kind: "folder" | "file";
-    id: string;
-    name: string;
-  } | null>(null);
+  const [remove, setRemove] = useState<
+    { kind: "folder" | "file"; id: string; name: string } | { kind: "selection" } | null
+  >(null);
   const [move, setMove] = useState<CreativeFile | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
   const [preview, setPreview] = useState<CreativeFile | null>(null);
@@ -401,32 +401,42 @@ export function CreativesLibrary({
   }
 
   async function confirmRemove() {
-    if (!remove) return;
+    if (!plan || (plan.folders.length === 0 && plan.files.length === 0)) {
+      setRemove(null);
+      return;
+    }
+    const gone = new Set<string>();
     setBusy(true);
     setError("");
     try {
-      if (remove.kind === "folder") {
-        await api.deleteFolder(remove.id);
-        const removedIds = new Set(descendantFolderIds(snapshot.folders, remove.id));
-        const parent = snapshot.folders.find((folder) => folder.id === remove.id)?.parentId ?? null;
+      for (const id of plan.folders) {
+        await api.deleteFolder(id);
+        const removedIds = new Set(descendantFolderIds(snapshot.folders, id));
+        const parent = snapshot.folders.find((folder) => folder.id === id)?.parentId ?? null;
         setSnapshot((current) => ({
           ...current,
           folders: current.folders.filter((folder) => !removedIds.has(folder.id)),
           files: current.files.filter((file) => !removedIds.has(file.folderId)),
         }));
         if (currentId && removedIds.has(currentId)) setCurrentId(parent);
-      } else {
-        await api.deleteFile(remove.id);
+        for (const folderId of removedIds) gone.add(folderId);
+        for (const file of snapshot.files) {
+          if (removedIds.has(file.folderId)) gone.add(file.id);
+        }
+      }
+      for (const id of plan.files) {
+        await api.deleteFile(id);
+        gone.add(id);
         setSnapshot((current) => ({
           ...current,
-          files: current.files.filter((file) => file.id !== remove.id),
+          files: current.files.filter((file) => file.id !== id),
         }));
       }
-      setSelected((current) => current.filter((id) => id !== remove.id));
       setRemove(null);
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
+      if (gone.size > 0) setSelected((current) => current.filter((id) => !gone.has(id)));
       setBusy(false);
     }
   }
@@ -483,6 +493,19 @@ export function CreativesLibrary({
         title: "Nenhum material disponível",
         description: "A NEX ainda não enviou pastas ou arquivos para esta conta.",
       };
+
+  const plan = remove
+    ? remove.kind === "selection"
+      ? planRemoval(snapshot.folders, snapshot.files, selected)
+      : remove.kind === "folder"
+        ? { folders: [remove.id], files: [] }
+        : { folders: [], files: [remove.id] }
+    : null;
+  const summary = removalSummary(
+    snapshot.folders,
+    snapshot.files,
+    plan ?? { folders: [], files: [] },
+  );
 
   const choices = move
     ? folderChoices(snapshot.folders, move.organizationId).filter(
@@ -562,6 +585,17 @@ export function CreativesLibrary({
             <Download />
             Baixar {selected.length > 0 ? `(${selected.length})` : "seleção"}
           </Button>
+          {master && (
+            <Button
+              variant="outline"
+              className="text-destructive"
+              disabled={busy || selected.length === 0}
+              onClick={() => setRemove({ kind: "selection" })}
+            >
+              <Trash2 />
+              Excluir {selected.length > 0 ? `(${selected.length})` : "seleção"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -888,12 +922,8 @@ export function CreativesLibrary({
       <AlertDialog open={Boolean(remove)} onOpenChange={(open) => !open && setRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir {remove?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {remove?.kind === "folder"
-                ? "A pasta e tudo o que estiver dentro dela serão excluídos desta conta."
-                : "O arquivo será excluído desta conta."}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{summary.title}</AlertDialogTitle>
+            <AlertDialogDescription>{summary.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>

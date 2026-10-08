@@ -280,6 +280,60 @@ export function planMove(
   return { ok: true };
 }
 
+export type RemovalPlan = { folders: string[]; files: string[] };
+
+export function planRemoval(
+  folders: CreativeFolder[],
+  files: CreativeFile[],
+  selected: string[],
+): RemovalPlan {
+  const selectedFolders = selected.filter((id) => folders.some((folder) => folder.id === id));
+  const selectedSet = new Set(selectedFolders);
+  const topFolders = selectedFolders.filter((id) => {
+    let parent = folders.find((folder) => folder.id === id)?.parentId ?? null;
+    while (parent) {
+      if (selectedSet.has(parent)) return false;
+      parent = folders.find((folder) => folder.id === parent)?.parentId ?? null;
+    }
+    return true;
+  });
+  const covered = new Set(topFolders.flatMap((id) => descendantFolderIds(folders, id)));
+  return {
+    folders: topFolders,
+    files: selected.filter((id) =>
+      files.some((file) => file.id === id && !covered.has(file.folderId)),
+    ),
+  };
+}
+
+export function removalSummary(
+  folders: CreativeFolder[],
+  files: CreativeFile[],
+  plan: RemovalPlan,
+): { title: string; description: string } {
+  const folderCount = plan.folders.length;
+  const fileCount = plan.files.length;
+  if (folderCount === 1 && fileCount === 0) {
+    const name = folders.find((folder) => folder.id === plan.folders[0])?.name ?? "esta pasta";
+    return {
+      title: `Excluir ${name}?`,
+      description: "A pasta e tudo o que estiver dentro dela serão excluídos desta conta.",
+    };
+  }
+  if (fileCount === 1 && folderCount === 0) {
+    const name = files.find((file) => file.id === plan.files[0])?.name ?? "este arquivo";
+    return { title: `Excluir ${name}?`, description: "O arquivo será excluído desta conta." };
+  }
+  const parts = [
+    folderCount ? `${folderCount} ${folderCount === 1 ? "pasta" : "pastas"}` : "",
+    fileCount ? `${fileCount} ${fileCount === 1 ? "arquivo" : "arquivos"}` : "",
+  ].filter(Boolean);
+  return {
+    title: parts.length ? `Excluir ${parts.join(" e ")}?` : "Nada para excluir",
+    description: "As pastas levam junto o que estiver dentro. Os itens saem da conta do cliente.",
+  };
+}
+
 export function foldersIn(folders: CreativeFolder[], parentId: string | null) {
   return folders
     .filter((folder) => folder.parentId === parentId)

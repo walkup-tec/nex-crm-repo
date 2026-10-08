@@ -1,1 +1,32 @@
-import { createFileRoute } from "@tanstack/react-router";import { AppShell } from "@/components/nex/AppShell";import { CreativesView } from "@/components/nex/DashboardViews";export const Route=createFileRoute("/_authenticated/master/criativos")({head:()=>({meta:[{title:"Biblioteca de criativos — NEX Ads"},{name:"description",content:"Organize e distribua materiais com isolamento por cliente."},{property:"og:title",content:"Biblioteca de criativos — NEX Ads"},{property:"og:description",content:"Organize e distribua materiais com isolamento por cliente."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary_large_image"}]}),component:()=> <AppShell live notes={false} title="Biblioteca de criativos" subtitle="Organize e distribua materiais com isolamento por cliente." master><CreativesView master/></AppShell>});
+import { createFileRoute } from "@tanstack/react-router";
+import { AppShell } from "@/components/nex/AppShell";
+import { CreativesLibrary } from "@/components/nex/CreativesLibrary";
+export const Route = createFileRoute("/_authenticated/master/criativos")({
+  head: () => ({
+    meta: [
+      { title: "Biblioteca de criativos — NEX Ads" },
+      {
+        name: "description",
+        content: "Organize e distribua materiais com isolamento por cliente.",
+      },
+      { property: "og:title", content: "Biblioteca de criativos — NEX Ads" },
+      {
+        property: "og:description",
+        content: "Organize e distribua materiais com isolamento por cliente.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: () => (
+    <AppShell
+      live
+      notes={false}
+      title="Biblioteca de criativos"
+      subtitle="Organize e distribua materiais com isolamento por cliente."
+      master
+    >
+      <CreativesLibrary master />
+    </AppShell>
+  ),
+});

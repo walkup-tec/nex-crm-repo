@@ -772,9 +772,11 @@ function JourneyFunnel({
         return (
           <li
             key={stage.label}
-            className="grid grid-cols-[minmax(0,1fr)_minmax(8.75rem,12rem)] items-center gap-2 sm:gap-3"
+            className="grid grid-cols-[minmax(0,1fr)_8.75rem] items-center gap-2 sm:gap-3"
           >
-            <FunnelSlice top={top} bottom={bottom} color={fill} close={next == null} />
+            <div className="min-w-0 w-full">
+              <FunnelSlice top={top} bottom={bottom} color={fill} close={next == null} />
+            </div>
             <div className="flex min-w-0 items-center gap-2.5">
               <span
                 className="h-7 w-1 shrink-0 rounded-full"
@@ -817,7 +819,12 @@ function FunnelSlice({
   const face = `jf-face-${uid}`;
   const body = frustumPath(cx, y0, rx0, ry0, y1, rx1, ry1);
   return (
-    <svg viewBox="0 0 200 64" className="block h-16 w-full" aria-hidden>
+    <svg
+      viewBox="0 0 200 64"
+      preserveAspectRatio="xMidYMid meet"
+      className="mx-auto block aspect-[25/8] h-auto w-full max-w-[18.75rem]"
+      aria-hidden
+    >
       <defs>
         <linearGradient id={side} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor={`color-mix(in oklch, black 22%, ${color})`} />

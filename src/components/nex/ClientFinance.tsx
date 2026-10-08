@@ -7,6 +7,40 @@ import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access"
 import { competenceLabel, type OwnFinance } from "@/lib/finance-access";
 import { listOwnFinanceFn } from "@/lib/finance.functions";
 
+const financeSteps = ["Contrato", "Cobranças", "Faturas"] as const;
+
+function FinanceLoading() {
+  return (
+    <div className="rounded-lg border bg-card px-3 py-5 sm:px-5" role="status" aria-live="polite">
+      <h2 className="font-display text-lg font-semibold">Histórico financeiro</h2>
+      <div className="mt-4 flex items-center" aria-hidden>
+        {financeSteps.map((label, index) => (
+          <div
+            key={label}
+            className={index === 0 ? "flex items-center" : "flex min-w-0 flex-1 items-center"}
+          >
+            {index > 0 && (
+              <span className="relative mx-1 h-0.5 min-w-1 flex-1 overflow-hidden rounded-full bg-muted sm:mx-2 sm:min-w-3">
+                <span
+                  className="absolute inset-y-0 left-0 w-2/5 rounded-full bg-nex-gradient animate-meta-link"
+                  style={{ animationDelay: `${index * 0.55}s` }}
+                />
+              </span>
+            )}
+            <span
+              className="shrink-0 rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground animate-meta-node sm:px-2.5 sm:text-xs"
+              style={{ animationDelay: `${index * 0.55}s` }}
+            >
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">Consultando as faturas...</p>
+    </div>
+  );
+}
+
 function FinancePayButton({ href, paid }: { href: string | null; paid: boolean }) {
   if (paid) {
     if (!href) {
@@ -69,7 +103,7 @@ export function ClientFinance() {
 
   return (
     <div className="space-y-5">
-      {loading && <p className="text-sm text-muted-foreground">Consultando o financeiro...</p>}
+      {loading && <FinanceLoading />}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {snapshot?.notice && <p className="text-sm text-muted-foreground">{snapshot.notice}</p>}
       {snapshot && (

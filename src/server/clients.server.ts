@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
+import { lowBalanceTestCents } from "@/lib/low-balance-test";
 import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
 
 type Draft = {
@@ -205,7 +206,9 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
     const access =
       (profiles ?? []).find((row) => row.organization_id === org.id && adminIds.has(row.id)) ??
       null;
-    const balanceKnown = orgAccounts.some((row) => row.last_synced_at);
+    const balanceKnown =
+      orgAccounts.some((row) => row.last_synced_at) ||
+      orgAccounts.some((row) => lowBalanceTestCents(row.external_account_id) != null);
     const status = org.status as ClientStatus;
     return {
       id: org.id,
@@ -217,7 +220,10 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       sameFinancePhone:
         org.finance_phone !== "não informado" && org.finance_phone === org.responsible_phone,
       status,
-      balanceCents: orgAccounts.reduce((sum, row) => sum + Number(row.balance_cents), 0),
+      balanceCents: orgAccounts.reduce((sum, row) => {
+        const forced = lowBalanceTestCents(row.external_account_id);
+        return sum + (forced ?? Number(row.balance_cents));
+      }, 0),
       balanceKnown,
       financeLabel: financeLabel(orgInvoices),
       monthlyFeeCents: contract ? Number(contract.monthly_fee_cents) : null,

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { normalizeBalanceLink } from "@/lib/balance-link";
+import { lowBalanceTestCents } from "@/lib/low-balance-test";
 import {
   classifyGraphPayment,
   hasCreditCard,
@@ -292,12 +293,13 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     account.portfolio_id,
     account.prepaid_ledger,
   );
+  const testCents = lowBalanceTestCents(account.external_account_id);
   return {
     accountName: account.name,
     accountId: account.external_account_id,
     currency: account.currency || "BRL",
-    balanceCents: reading.cents,
-    balanceKind: reading.kind,
+    balanceCents: testCents ?? reading.cents,
+    balanceKind: testCents == null ? reading.kind : "available",
     canAdd: actor.canAdd,
     syncedAt: new Date().toISOString(),
     prepay,

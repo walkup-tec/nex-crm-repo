@@ -542,63 +542,7 @@ export function CampaignAnalysis({
         )}
       </Panel>
 
-      <Panel
-        title="Jornada da campanha"
-        description="Visão de desempenho. Alcance, cliques e resultados não formam uma taxa de conversão única."
-      >
-        <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(16.5rem,0.7fr)]">
-          <JourneyFunnel
-            stages={[
-              {
-                label: "Impressões",
-                value: formatInteger(model.current.impressions),
-                amount: model.current.impressions,
-              },
-              {
-                label: "Pessoas alcançadas",
-                value: formatInteger(model.current.reach),
-                amount: model.current.reach,
-              },
-              {
-                label: "Cliques",
-                value: formatInteger(model.current.clicks),
-                amount: model.current.clicks,
-              },
-              {
-                label: "Resultados",
-                value: model.comparable ? formatInteger(model.current.results) : "—",
-                amount: model.comparable ? model.current.results : null,
-              },
-            ]}
-          />
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <SmallMetric
-              label="CTR"
-              value={formatPercent(model.rates.ctr)}
-              hint="Percentual de impressões que geraram cliques."
-              current={null}
-              previous={null}
-              sense="neutral"
-            />
-            <SmallMetric
-              label="CPC"
-              value={formatMoney(model.rates.cpc, currency)}
-              hint="Valor médio investido para gerar cada clique."
-              current={null}
-              previous={null}
-              sense="neutral"
-            />
-            <SmallMetric
-              label="Custo por Aquisição"
-              value={formatMoney(model.rates.costPerResult, currency)}
-              hint="Investimento médio para cada aquisição."
-              current={null}
-              previous={null}
-              sense="neutral"
-            />
-          </div>
-        </div>
-      </Panel>
+      <CampaignJourney view={view} campaignId={campaignId} />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel
@@ -716,6 +660,92 @@ export function CampaignAnalysis({
           : `${view.period.since.split("-").reverse().join("/")} – ${view.period.until.split("-").reverse().join("/")}`}
       </p>
     </div>
+  );
+}
+
+export function CampaignJourney({
+  view,
+  campaignId = null,
+}: {
+  view: MetaPerformanceView;
+  campaignId?: string | null;
+}) {
+  const model = useMemo(
+    () =>
+      view.kpis
+        ? buildAnalysis({
+            period: view.period,
+            campaigns: view.campaigns,
+            kpis: view.kpis,
+            previous: view.previous,
+            previousReady: view.previousReady,
+            previousCampaigns: view.previousCampaigns,
+            days: view.days,
+            campaignId,
+          })
+        : null,
+    [view, campaignId],
+  );
+  if (!view.kpis || !model) return null;
+  const currency = view.currency || "BRL";
+  return (
+    <Panel
+      title="Jornada da campanha"
+      description="Visão de desempenho. Alcance, cliques e resultados não formam uma taxa de conversão única."
+    >
+      <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(16.5rem,0.7fr)]">
+        <JourneyFunnel
+          stages={[
+            {
+              label: "Impressões",
+              value: formatInteger(model.current.impressions),
+              amount: model.current.impressions,
+            },
+            {
+              label: "Pessoas alcançadas",
+              value: formatInteger(model.current.reach),
+              amount: model.current.reach,
+            },
+            {
+              label: "Cliques",
+              value: formatInteger(model.current.clicks),
+              amount: model.current.clicks,
+            },
+            {
+              label: "Resultados",
+              value: model.comparable ? formatInteger(model.current.results) : "—",
+              amount: model.comparable ? model.current.results : null,
+            },
+          ]}
+        />
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <SmallMetric
+            label="CTR"
+            value={formatPercent(model.rates.ctr)}
+            hint="Percentual de impressões que geraram cliques."
+            current={null}
+            previous={null}
+            sense="neutral"
+          />
+          <SmallMetric
+            label="CPC"
+            value={formatMoney(model.rates.cpc, currency)}
+            hint="Valor médio investido para gerar cada clique."
+            current={null}
+            previous={null}
+            sense="neutral"
+          />
+          <SmallMetric
+            label="Custo por Aquisição"
+            value={formatMoney(model.rates.costPerResult, currency)}
+            hint="Investimento médio para cada aquisição."
+            current={null}
+            previous={null}
+            sense="neutral"
+          />
+        </div>
+      </div>
+    </Panel>
   );
 }
 

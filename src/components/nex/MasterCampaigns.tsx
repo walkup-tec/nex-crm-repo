@@ -1,5 +1,6 @@
 import { Eye } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CampaignJourney } from "@/components/nex/CampaignAnalysis";
 import { EvolutionChart } from "@/components/nex/MetaPerformance";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Badge } from "@/components/ui/badge";
@@ -403,7 +404,10 @@ export function MasterCampaigns() {
             <div className="h-80 animate-pulse rounded-lg bg-muted" />
           )}
           {selected && chartsMatch(chartView, selected, period) && !chartError && (
-            <CampaignCharts row={selected} view={chartView} period={period} />
+            <>
+              <CampaignJourney view={chartView} campaignId={selected.id} />
+              <CampaignCharts row={selected} view={chartView} period={period} />
+            </>
           )}
           <p className="text-sm text-muted-foreground">
             A campanha não pode ser alterada pelo NEX Ads.

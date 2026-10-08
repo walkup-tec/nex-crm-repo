@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +7,29 @@ import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access"
 import { competenceLabel, type OwnFinance } from "@/lib/finance-access";
 import { listOwnFinanceFn } from "@/lib/finance.functions";
 
-function FinancePayButton({ href }: { href: string | null }) {
+function FinancePayButton({ href, paid }: { href: string | null; paid: boolean }) {
+  if (paid) {
+    if (!href) {
+      return (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          disabled
+          aria-label="Documento indisponível"
+        >
+          <Download />
+        </Button>
+      );
+    }
+    return (
+      <Button variant="ghost" size="icon" className="shrink-0" asChild>
+        <a href={href} target="_blank" rel="noreferrer" aria-label="Baixar documento">
+          <Download />
+        </a>
+      </Button>
+    );
+  }
   if (!href) {
     return (
       <Button size="sm" className="w-fit shrink-0" disabled>
@@ -93,7 +116,7 @@ export function ClientFinance() {
                     </div>
                     <strong>{moneyFromCents(item.totalCents)}</strong>
                     <Badge variant="outline">{invoiceStatusLabel(item.status)}</Badge>
-                    <FinancePayButton href={item.invoiceUrl} />
+                    <FinancePayButton href={item.invoiceUrl} paid={item.status === "paid"} />
                   </div>
                 ))
               )}

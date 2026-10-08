@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Minus } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -762,71 +762,122 @@ function JourneyFunnel({
   stages: { label: string; value: string; amount: number | null }[];
 }) {
   const widths = funnelStageWidths(stages.map((stage) => stage.amount));
-  const count = stages.length;
-  const chartWidth = 100;
-  const chartHeight = 100;
-  const stageHeight = count > 0 ? chartHeight / count : chartHeight;
-  const center = chartWidth / 2;
-  const widest = 94;
-  const bands = stages.map((stage, index) => {
-    const topRatio = widths[index] ?? 0;
-    const bottomRatio = index < count - 1 ? (widths[index + 1] ?? 0) : topRatio;
-    const overlap = 0.8;
-    const y = index * stageHeight - (index > 0 ? overlap : 0);
-    const height = stageHeight + (index > 0 ? overlap : 0) + (index < count - 1 ? overlap : 0);
-    return {
-      ...stage,
-      fill: journeyFills[index] ?? "var(--primary)",
-      path: funnelBandPath(center, y, height, topRatio * widest, bottomRatio * widest),
-    };
-  });
-
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(8.75rem,12rem)] items-stretch gap-3 sm:gap-4">
-      <svg
-        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-        preserveAspectRatio="none"
-        className="h-64 w-full sm:h-72"
-        role="img"
-        aria-label="Funil proporcional da jornada da campanha"
-      >
-        {bands.map((band) =>
-          band.path ? <path key={band.label} d={band.path} fill={band.fill} /> : null,
-        )}
-      </svg>
-      <ol
-        className="grid h-64 sm:h-72"
-        style={{ gridTemplateRows: `repeat(${Math.max(count, 1)}, minmax(0, 1fr))` }}
-        aria-label="Indicadores do funil"
-      >
-        {bands.map((band) => (
-          <li key={band.label} className="flex min-w-0 items-center gap-2.5">
-            <span
-              className="h-7 w-1 shrink-0 rounded-full"
-              style={{ background: band.fill }}
-              aria-hidden
-            />
-            <div className="min-w-0">
-              <p className="text-xs leading-tight text-muted-foreground">{band.label}</p>
-              <p className="text-sm font-semibold tabular-nums">{band.value}</p>
+    <ol className="space-y-0" aria-label="Funil da jornada da campanha">
+      {stages.map((stage, index) => {
+        const top = widths[index] ?? 0;
+        const next = widths[index + 1];
+        const bottom = next == null ? top * 0.62 : next;
+        const fill = journeyFills[index] ?? "var(--primary)";
+        return (
+          <li
+            key={stage.label}
+            className="grid grid-cols-[minmax(0,1fr)_minmax(8.75rem,12rem)] items-center gap-2 sm:gap-3"
+          >
+            <FunnelSlice top={top} bottom={bottom} color={fill} close={next == null} />
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span
+                className="h-7 w-1 shrink-0 rounded-full"
+                style={{ background: fill }}
+                aria-hidden
+              />
+              <div className="min-w-0">
+                <p className="text-xs leading-tight text-muted-foreground">{stage.label}</p>
+                <p className="text-sm font-semibold tabular-nums">{stage.value}</p>
+              </div>
             </div>
           </li>
-        ))}
-      </ol>
-    </div>
+        );
+      })}
+    </ol>
   );
 }
 
-function funnelBandPath(
-  center: number,
-  y: number,
-  height: number,
-  topWidth: number,
-  bottomWidth: number,
+function FunnelSlice({
+  top,
+  bottom,
+  color,
+  close,
+}: {
+  top: number;
+  bottom: number;
+  color: string;
+  close: boolean;
+}) {
+  const uid = useId().replace(/:/g, "");
+  const cx = 100;
+  const maxRx = 92;
+  const rx0 = top * maxRx;
+  const rx1 = bottom * maxRx;
+  const ry0 = ellipseHeight(rx0);
+  const ry1 = ellipseHeight(rx1);
+  const y0 = Math.max(ry0, 1.5) + 1;
+  const y1 = 64 - Math.max(ry1, 1.5) - 1;
+  const side = `jf-side-${uid}`;
+  const face = `jf-face-${uid}`;
+  const body = frustumPath(cx, y0, rx0, ry0, y1, rx1, ry1);
+  return (
+    <svg viewBox="0 0 200 64" className="block h-16 w-full" aria-hidden>
+      <defs>
+        <linearGradient id={side} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={`color-mix(in oklch, black 22%, ${color})`} />
+          <stop offset="38%" stopColor={`color-mix(in oklch, white 20%, ${color})`} />
+          <stop offset="100%" stopColor={`color-mix(in oklch, black 34%, ${color})`} />
+        </linearGradient>
+        <linearGradient id={face} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={`color-mix(in oklch, white 32%, ${color})`} />
+          <stop offset="100%" stopColor={color} />
+        </linearGradient>
+      </defs>
+      {body ? <path d={body} fill={`url(#${side})`} /> : null}
+      {rx0 >= 0.4 ? <ellipse cx={cx} cy={y0} rx={rx0} ry={ry0} fill={`url(#${face})`} /> : null}
+      {close && rx1 >= 0.4 ? (
+        <ellipse
+          cx={cx}
+          cy={y1}
+          rx={rx1}
+          ry={ry1}
+          fill={`color-mix(in oklch, black 18%, ${color})`}
+        />
+      ) : null}
+    </svg>
+  );
+}
+
+function ellipseHeight(radius: number) {
+  if (radius <= 0) return 0;
+  return Math.min(13, Math.max(radius * 0.22, 0.7));
+}
+
+function frustumPath(
+  cx: number,
+  y0: number,
+  rx0: number,
+  ry0: number,
+  y1: number,
+  rx1: number,
+  ry1: number,
 ) {
-  if (topWidth <= 0 && bottomWidth <= 0) return "";
-  const bottom = y + height;
-  return `M ${center - topWidth / 2} ${y} L ${center + topWidth / 2} ${y} L ${center + bottomWidth / 2} ${bottom} L ${center - bottomWidth / 2} ${bottom} Z`;
+  if (rx0 < 0.4 && rx1 < 0.4) return "";
+  const arc = (
+    radius: number,
+    height: number,
+    fromX: number,
+    toX: number,
+    y: number,
+    sweep: 0 | 1,
+  ) =>
+    radius < 0.4
+      ? `L ${toX} ${y}`
+      : `A ${radius} ${Math.max(height, 0.4)} 0 0 ${sweep} ${toX} ${y}`;
+  return [
+    `M ${cx - rx0} ${y0}`,
+    `L ${cx - rx1} ${y1}`,
+    arc(rx1, ry1, cx - rx1, cx + rx1, y1, 0),
+    `L ${cx + rx0} ${y0}`,
+    arc(rx0, ry0, cx + rx0, cx - rx0, y0, 1),
+    "Z",
+  ].join(" ");
 }
 
 function SmallMetric({

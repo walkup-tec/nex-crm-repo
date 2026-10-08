@@ -320,6 +320,8 @@ export function CampaignAnalysis({
         ))}
       </div>
 
+      <CampaignJourney view={view} campaignId={campaignId} />
+
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel
           title="Evolução dos resultados"
@@ -541,8 +543,6 @@ export function CampaignAnalysis({
           </div>
         )}
       </Panel>
-
-      <CampaignJourney view={view} campaignId={campaignId} />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel

@@ -157,11 +157,13 @@ if text.strip():
 http_ep = "http"
 https_ep = "https"
 cert_resolver = "letsencrypt"
+parsed_routers = False
 if isinstance(data, dict):
     routers = ((data.get("http") or {}).get("routers") or {})
     for router in routers.values():
         if not isinstance(router, dict):
             continue
+        parsed_routers = True
         eps = router.get("entryPoints") or []
         tls = router.get("tls") or {}
         if isinstance(tls, dict) and tls.get("certResolver"):
@@ -172,6 +174,10 @@ if isinstance(data, dict):
                 https_ep = ep
             elif ep:
                 http_ep = ep
+
+if not parsed_routers:
+    print("main.yaml sem routers legiveis; nex-hostgw.yaml preservado")
+    sys.exit(0)
 
 app_rule = "Host(`app.nexmeta.com.br`) || Host(`nex-crm.achpyp.easypanel.host`)"
 site_rule = "Host(`nexmeta.com.br`) || Host(`nex-site.achpyp.easypanel.host`)"

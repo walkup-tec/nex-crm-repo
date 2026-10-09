@@ -1,10 +1,10 @@
 #!/bin/bash
 # Mantém o Nex acessível depois de cada deploy do EasyPanel.
 #
-# O painel regrava o Traefik para a rede interna (nex_crm / nex_site) e remove
-# a publicação no host. Neste VPS essa rede não responde, então o domínio cai
-# em 502. Este script republica 30320 (app) e 30321 (site) no modo host e
-# mantém um arquivo do Traefik apontando para http://172.17.0.1:<porta>/.
+# O painel regrava o Traefik para a rede interna (nex_crm / nex_site / nex_pv_corban)
+# e remove a publicação no host. Neste VPS essa rede não responde, então o domínio
+# cai em 502. Este script republica 30320 (app), 30321 (site) e 30322 (página CORBAN)
+# no modo host e mantém um arquivo do Traefik apontando para http://172.17.0.1:<porta>/.
 #
 # Portas de host proibidas: 3000, 30180, 30181, 30300, 30310.
 #
@@ -16,8 +16,10 @@ set -uo pipefail
 
 APP_SVC="${NEX_APP_SERVICE:-nex_crm}"
 SITE_SVC="${NEX_SITE_SERVICE:-nex_site}"
+CORBAN_SVC="${NEX_CORBAN_SERVICE:-nex_pv_corban}"
 APP_HOST_PORT="${NEX_APP_HOST_PORT:-30320}"
 SITE_HOST_PORT="${NEX_SITE_HOST_PORT:-30321}"
+CORBAN_HOST_PORT="${NEX_CORBAN_HOST_PORT:-30322}"
 GATEWAY="${NEX_GATEWAY:-172.17.0.1}"
 CONFIG_DIR="${TRAEFIK_CONFIG_DIR:-/etc/easypanel/traefik/config}"
 MAIN="${TRAEFIK_MAIN_YAML:-$CONFIG_DIR/main.yaml}"
@@ -131,11 +133,11 @@ ensure_host_publish() {
 }
 
 write_traefik() {
-  python3 - "$MAIN" "$PERSIST_FILE" "$GATEWAY" "$APP_HOST_PORT" "$SITE_HOST_PORT" << 'PY'
+  python3 - "$MAIN" "$PERSIST_FILE" "$GATEWAY" "$APP_HOST_PORT" "$SITE_HOST_PORT" "$CORBAN_HOST_PORT" "$CONFIG_DIR/nex-pv-corban.yaml" << 'PY'
 import json, sys
 from pathlib import Path
 
-main_path, persist_path, gateway, app_port, site_port = sys.argv[1:]
+main_path, persist_path, gateway, app_port, site_port, corban_port, corban_extra = sys.argv[1:]
 main_file = Path(main_path)
 text = main_file.read_text(encoding="utf-8") if main_file.exists() else ""
 data = None
@@ -173,6 +175,7 @@ if isinstance(data, dict):
 
 app_rule = "Host(`app.nexmeta.com.br`) || Host(`nex-crm.achpyp.easypanel.host`)"
 site_rule = "Host(`nexmeta.com.br`) || Host(`nex-site.achpyp.easypanel.host`)"
+corban_rule = "Host(`corban.nexmeta.com.br`) || Host(`nex-pv-corban.achpyp.easypanel.host`)"
 persist = f"""http:
   routers:
     nex-persist-app-http:
@@ -203,6 +206,20 @@ persist = f"""http:
       service: nex-persist-site
       tls:
         certResolver: {cert_resolver}
+    nex-persist-corban-http:
+      rule: "{corban_rule}"
+      entryPoints:
+        - {http_ep}
+      priority: 100000
+      service: nex-persist-corban
+    nex-persist-corban-https:
+      rule: "{corban_rule}"
+      entryPoints:
+        - {https_ep}
+      priority: 100000
+      service: nex-persist-corban
+      tls:
+        certResolver: {cert_resolver}
   services:
     nex-persist-app:
       loadBalancer:
@@ -212,7 +229,15 @@ persist = f"""http:
       loadBalancer:
         servers:
           - url: "http://{gateway}:{site_port}/"
+    nex-persist-corban:
+      loadBalancer:
+        servers:
+          - url: "http://{gateway}:{corban_port}/"
 """
+extra = Path(corban_extra)
+if extra.exists():
+    extra.unlink()
+    print(f"removido {extra.name}")
 dest = Path(persist_path)
 dest.parent.mkdir(parents=True, exist_ok=True)
 if not dest.exists() or dest.read_text(encoding="utf-8") != persist:
@@ -225,12 +250,13 @@ new = text
 import re
 new, app_n = re.subn(r"http://nex_crm:\d+/?", f"http://{gateway}:{app_port}/", new)
 new, site_n = re.subn(r"http://nex_site:\d+/?", f"http://{gateway}:{site_port}/", new)
+new, corban_n = re.subn(r"http://nex_pv_corban:\d+/?", f"http://{gateway}:{corban_port}/", new)
 if new != text:
     backup = Path(str(main_file) + ".bak-nex-persist")
     if not backup.exists():
         backup.write_text(text, encoding="utf-8")
     main_file.write_text(new, encoding="utf-8")
-    print(f"main.yaml app={app_n} site={site_n}")
+    print(f"main.yaml app={app_n} site={site_n} corban={corban_n}")
 PY
 }
 
@@ -255,8 +281,10 @@ reconcile() {
     flock -w 30 9 || exit 0
     app_target="$(service_port "$APP_SVC" "$APP_HOST_PORT")"
     site_target="$(service_port "$SITE_SVC" "$SITE_HOST_PORT")"
+    corban_target="$(service_port "$CORBAN_SVC" "$CORBAN_HOST_PORT")"
     ensure_host_publish "$APP_SVC" "$APP_HOST_PORT" "$app_target" || true
     ensure_host_publish "$SITE_SVC" "$SITE_HOST_PORT" "$site_target" || true
+    ensure_host_publish "$CORBAN_SVC" "$CORBAN_HOST_PORT" "$corban_target" || true
     write_traefik || log "falha ao gravar o Traefik"
   ) 9>"$LOCK_FILE"
 }
@@ -290,7 +318,7 @@ EOF
 }
 
 watch() {
-  log "observando deploys de ${APP_SVC} e ${SITE_SVC}"
+  log "observando deploys de ${APP_SVC}, ${SITE_SVC} e ${CORBAN_SVC}"
   reconcile
   while true; do
     sleep 15
@@ -300,7 +328,7 @@ watch() {
   trap 'kill "$loop_pid" 2>/dev/null || true' EXIT
   docker events --filter type=service --filter event=update --format '{{.Actor.Attributes.name}}' | while read -r name; do
     case "$name" in
-      nex_crm|nex_site)
+      nex_crm|nex_site|nex_pv_corban)
         sleep 5
         reconcile
         ;;
@@ -315,6 +343,7 @@ case "${1:-}" in
     reconcile
     probe app "https://app.nexmeta.com.br/auth"
     probe site "https://nexmeta.com.br/"
+    probe corban "https://corban.nexmeta.com.br/"
     ;;
   --watch)
     watch
@@ -324,6 +353,7 @@ case "${1:-}" in
     probe app "https://app.nexmeta.com.br/auth"
     probe painel "https://nex-crm.achpyp.easypanel.host/auth"
     probe site "https://nexmeta.com.br/"
+    probe corban "https://corban.nexmeta.com.br/"
     ;;
   *)
     echo "Uso: $0 [--once|--watch|--install]"

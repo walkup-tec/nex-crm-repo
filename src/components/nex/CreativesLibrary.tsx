@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   ChevronRight,
   Download,
@@ -27,6 +27,8 @@ import {
   foldersIn,
   formatBytes,
   placementFromRelativePath,
+  planFolderMove,
+  planMove,
   planRemoval,
   relocatedStoragePath,
   removalSummary,
@@ -156,6 +158,37 @@ function creativeCountLabel(count: number) {
   return count === 1 ? "1 criativo" : `${count} criativos`;
 }
 
+const LIBRARY_DRAG = "application/x-nex-creative";
+const FOLDER_DRAG = "application/x-nex-folder";
+const FILE_DRAG = "application/x-nex-file";
+
+type LibraryDrag = { kind: "folder" | "file"; id: string };
+
+function dragKind(data: DataTransfer): "folder" | "file" | "files" | null {
+  const types = new Set(data.types);
+  if (types.has(FOLDER_DRAG)) return "folder";
+  if (types.has(FILE_DRAG)) return "file";
+  if (types.has("Files")) return "files";
+  return null;
+}
+
+function readDrag(data: DataTransfer): LibraryDrag | null {
+  const raw = data.getData(LIBRARY_DRAG);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { kind?: string; id?: string };
+    if ((parsed.kind === "folder" || parsed.kind === "file") && typeof parsed.id === "string")
+      return { kind: parsed.kind, id: parsed.id };
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function alreadyThere(message: string) {
+  return /já está/.test(message);
+}
+
 export function CreativesLibrary({
   master = false,
   gateway,
@@ -196,7 +229,8 @@ export function CreativesLibrary({
   const [moveTarget, setMoveTarget] = useState("");
   const [preview, setPreview] = useState<CreativeFile | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState<LibraryDrag | null>(null);
+  const [dropHint, setDropHint] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -216,12 +250,50 @@ export function CreativesLibrary({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const clear = () => {
+      setDragging(null);
+      setDropHint(null);
+    };
+    window.addEventListener("dragend", clear);
+    return () => window.removeEventListener("dragend", clear);
+  }, []);
+
   const trail = breadcrumb(snapshot.folders, currentId);
   const clientFilterId = clientFilter === "todos" ? null : clientFilter;
   const foldersHere = currentId
     ? foldersIn(snapshot.folders, currentId)
     : rootFoldersForClient(snapshot.folders, clientFilterId);
   const filesHere = currentId ? filesIn(snapshot.files, currentId) : [];
+  const visibleFolderIds = new Set(foldersHere.map((folder) => folder.id));
+  const dragSource = dragging
+    ? dragging.kind === "folder"
+      ? snapshot.folders.find((folder) => folder.id === dragging.id)
+      : snapshot.files.find((file) => file.id === dragging.id)
+    : null;
+  const dragOrganizationId = dragSource?.organizationId;
+  const blockedDropIds = new Set<string>();
+  if (dragging?.kind === "folder" && dragSource && "parentId" in dragSource) {
+    for (const id of descendantFolderIds(snapshot.folders, dragSource.id)) blockedDropIds.add(id);
+  }
+  if (dragging?.kind === "file" && dragSource && "folderId" in dragSource)
+    blockedDropIds.add(dragSource.folderId);
+  const extraTargets =
+    master && dragging && dragOrganizationId
+      ? snapshot.folders
+          .filter(
+            (folder) =>
+              folder.organizationId === dragOrganizationId &&
+              !blockedDropIds.has(folder.id) &&
+              !visibleFolderIds.has(folder.id),
+          )
+          .map((folder) => ({
+            id: folder.id,
+            label: breadcrumb(snapshot.folders, folder.id)
+              .map((item) => item.name)
+              .join(" / "),
+          }))
+      : [];
   const clientOptions = [...snapshot.clients].sort((left, right) =>
     left.name.localeCompare(right.name, "pt-BR"),
   );
@@ -344,10 +416,82 @@ export function CreativesLibrary({
     }
   }
 
-  async function receive(items: { relativePath: string; file: File }[]) {
+  function startDrag(event: DragEvent, item: LibraryDrag) {
+    event.dataTransfer.setData(LIBRARY_DRAG, JSON.stringify(item));
+    event.dataTransfer.setData(item.kind === "folder" ? FOLDER_DRAG : FILE_DRAG, item.id);
+    event.dataTransfer.effectAllowed = "move";
+    setDragging(item);
+  }
+
+  function overFolder(event: DragEvent, folderId: string) {
+    if (!master || !dragKind(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = dragKind(event.dataTransfer) === "files" ? "copy" : "move";
+    if (dropHint !== folderId) setDropHint(folderId);
+  }
+
+  async function dropLibraryItem(item: LibraryDrag, parentId: string | null) {
+    setError("");
+    try {
+      if (item.kind === "file") {
+        if (!parentId) {
+          setError("Solte o arquivo dentro de uma pasta.");
+          return;
+        }
+        const plan = planMove(snapshot.folders, snapshot.files, item.id, parentId);
+        if (!plan.ok) {
+          if (!alreadyThere(plan.message)) setError(plan.message);
+          return;
+        }
+        await api.moveFile(item.id, parentId);
+        setSnapshot((current) => ({
+          ...current,
+          files: current.files.map((file) =>
+            file.id === item.id ? { ...file, folderId: parentId } : file,
+          ),
+        }));
+      } else {
+        const plan = planFolderMove(snapshot.folders, snapshot.files, item.id, parentId);
+        if (!plan.ok) {
+          if (!alreadyThere(plan.message)) setError(plan.message);
+          return;
+        }
+        await api.moveFolder(item.id, parentId);
+        setSnapshot((current) => ({
+          ...current,
+          folders: current.folders.map((folder) =>
+            folder.id === item.id ? { ...folder, parentId } : folder,
+          ),
+        }));
+      }
+      setSelected((current) => current.filter((id) => id !== item.id));
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  }
+
+  function onFolderDrop(event: DragEvent, folderId: string | null) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDropHint(null);
+    setDragging(null);
+    const item = readDrag(event.dataTransfer);
+    if (item) {
+      void dropLibraryItem(item, folderId);
+      return;
+    }
+    if (dragKind(event.dataTransfer) === "files") {
+      void filesFromDrop(event.dataTransfer)
+        .then((items) => receive(items, folderId))
+        .catch((caught) => setError(messageOf(caught)));
+    }
+  }
+
+  async function receive(items: { relativePath: string; file: File }[], folderId: string | null) {
     if (!master) return;
-    if (!currentId) {
-      setError("Abra uma pasta para colocar os criativos.");
+    if (!folderId) {
+      setError("Solte o arquivo sobre a pasta do cliente.");
       return;
     }
     const accepted = items.filter((item) => !item.file.name.startsWith("."));
@@ -369,7 +513,7 @@ export function CreativesLibrary({
       try {
         const placement = placementFromRelativePath(item.relativePath);
         if ("message" in placement) throw new Error(placement.message);
-        let parentId = currentId;
+        let parentId = folderId;
         for (const segment of placement.folders) {
           const existing = childFolder(working.folders, parentId, segment);
           if (existing) {
@@ -552,12 +696,26 @@ export function CreativesLibrary({
         >
           <button
             type="button"
-            className={cn("rounded px-1 py-0.5", !currentId && "font-semibold text-foreground")}
+            className={cn(
+              "rounded px-1 py-0.5",
+              !currentId && "font-semibold text-foreground",
+              dropHint === "root" && "bg-primary/15 text-foreground",
+            )}
             onClick={() => openFolder(null)}
+            onDragOver={(event) => {
+              if (!master || dragKind(event.dataTransfer) !== "folder") return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              if (dropHint !== "root") setDropHint("root");
+            }}
+            onDrop={(event) => {
+              if (dragKind(event.dataTransfer) !== "folder") return;
+              onFolderDrop(event, null);
+            }}
           >
             Pastas
           </button>
-          {trail.map((folder, index) => (
+          {trail.map((folder) => (
             <span key={folder.id} className="flex min-w-0 items-center gap-1">
               <ChevronRight className="size-4 shrink-0" />
               <button
@@ -565,8 +723,11 @@ export function CreativesLibrary({
                 className={cn(
                   "truncate rounded px-1 py-0.5",
                   folder.id === currentId && "font-semibold text-foreground",
+                  dropHint === folder.id && "bg-primary/15 text-foreground",
                 )}
                 onClick={() => openFolder(folder.id)}
+                onDragOver={(event) => overFolder(event, folder.id)}
+                onDrop={(event) => onFolderDrop(event, folder.id)}
               >
                 {folder.name}
               </button>
@@ -674,7 +835,7 @@ export function CreativesLibrary({
             file,
           }));
           event.target.value = "";
-          void receive(list);
+          void receive(list, currentId);
         }}
       />
 
@@ -687,38 +848,64 @@ export function CreativesLibrary({
           className={cn(
             "rounded-lg",
             master && currentId && "border border-dashed p-3",
-            dragOver && "border-primary bg-primary/5",
+            (dragOver || dropHint === currentId) && "border-primary bg-primary/5",
           )}
-          onDragEnter={(event) => {
-            if (!master || !currentId) return;
-            event.preventDefault();
-            dragDepth.current += 1;
-            setDragOver(true);
-          }}
           onDragOver={(event) => {
-            if (!master || !currentId) return;
+            if (!master) return;
+            const kind = dragKind(event.dataTransfer);
+            if (!kind) return;
+            if (!currentId && kind === "files") {
+              event.preventDefault();
+              return;
+            }
+            if (!currentId) return;
             event.preventDefault();
+            event.dataTransfer.dropEffect = kind === "files" ? "copy" : "move";
+            if (kind === "files") setDragOver(true);
+            else if (dropHint !== currentId) setDropHint(currentId);
           }}
           onDragLeave={(event) => {
-            event.preventDefault();
-            dragDepth.current = Math.max(0, dragDepth.current - 1);
-            if (dragDepth.current === 0) setDragOver(false);
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+            setDragOver(false);
+            setDropHint(null);
           }}
           onDrop={(event) => {
-            event.preventDefault();
-            dragDepth.current = 0;
             setDragOver(false);
             if (!master) return;
-            void filesFromDrop(event.dataTransfer)
-              .then((items) => receive(items))
-              .catch((caught) => setError(messageOf(caught)));
+            if (currentId) {
+              onFolderDrop(event, currentId);
+              return;
+            }
+            if (dragKind(event.dataTransfer) === "files") {
+              event.preventDefault();
+              setError("Solte o arquivo sobre a pasta do cliente.");
+            }
           }}
         >
-          {master && currentId && (
+          {master && (
             <p className="mb-3 text-xs text-muted-foreground">
-              Solte os criativos nesta pasta
-              {accessName ? ` de ${accessName}` : ""}. JPG, PNG, WEBP, PDF, MP4 e MOV, até 200 MB.
+              {currentId
+                ? `Solte arquivos do computador nesta pasta${accessName ? ` de ${accessName}` : ""}, ou arraste um item para outra pasta. JPG, PNG, WEBP, PDF, MP4 e MOV, até 200 MB.`
+                : "Arraste uma pasta para dentro de outra, ou solte arquivos do computador sobre a pasta."}
             </p>
+          )}
+          {master && dragging && extraTargets.length > 0 && (
+            <div className="mb-3 flex items-center gap-2 overflow-x-auto text-xs text-muted-foreground">
+              <span className="shrink-0">Soltar em</span>
+              {extraTargets.map((target) => (
+                <div
+                  key={target.id}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-1",
+                    dropHint === target.id && "border-primary bg-primary/10 text-foreground",
+                  )}
+                  onDragOver={(event) => overFolder(event, target.id)}
+                  onDrop={(event) => onFolderDrop(event, target.id)}
+                >
+                  {target.label}
+                </div>
+              ))}
+            </div>
           )}
           {foldersHere.length === 0 && filesHere.length === 0 ? (
             <div className="grid min-h-48 place-items-center rounded-lg border border-dashed p-8 text-center">
@@ -759,6 +946,17 @@ export function CreativesLibrary({
                     onToggle={() => toggle(folder.id)}
                     onOpen={() => openFolder(folder.id)}
                     master={master}
+                    dropActive={dropHint === folder.id}
+                    {...(master
+                      ? {
+                          onDragItemStart: (event: DragEvent<HTMLButtonElement>) =>
+                            startDrag(event, { kind: "folder", id: folder.id }),
+                          onDragItemOver: (event: DragEvent<HTMLDivElement>) =>
+                            overFolder(event, folder.id),
+                          onDropItem: (event: DragEvent<HTMLDivElement>) =>
+                            onFolderDrop(event, folder.id),
+                        }
+                      : {})}
                     onRename={() => {
                       setRename({ kind: "folder", id: folder.id, name: folder.name });
                       setRenameValue(folder.name);
@@ -785,6 +983,12 @@ export function CreativesLibrary({
                   onToggle={() => toggle(file.id)}
                   onOpen={() => void openPreview(file)}
                   master={master}
+                  {...(master
+                    ? {
+                        onDragItemStart: (event: DragEvent<HTMLButtonElement>) =>
+                          startDrag(event, { kind: "file", id: file.id }),
+                      }
+                    : {})}
                   onDownload={() =>
                     void downloadFile(file).catch((caught) => setError(messageOf(caught)))
                   }
@@ -1043,6 +1247,10 @@ function LibraryCard({
   master,
   onToggle,
   onOpen,
+  onDragItemStart,
+  onDragItemOver,
+  onDropItem,
+  dropActive = false,
   onDownload,
   onRename,
   onMove,
@@ -1057,6 +1265,10 @@ function LibraryCard({
   master: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  onDragItemStart?: (event: DragEvent<HTMLButtonElement>) => void;
+  onDragItemOver?: (event: DragEvent<HTMLDivElement>) => void;
+  onDropItem?: (event: DragEvent<HTMLDivElement>) => void;
+  dropActive?: boolean;
   onDownload?: () => void;
   onRename?: () => void;
   onMove?: () => void;
@@ -1065,10 +1277,24 @@ function LibraryCard({
 }) {
   const filledFolder = !file && creativeCount > 0;
   return (
-    <Card className={cn("overflow-hidden", selected && "border-primary ring-1 ring-primary")}>
+    <Card
+      className={cn(
+        "overflow-hidden",
+        selected && "border-primary ring-1 ring-primary",
+        dropActive && "border-primary bg-primary/5 ring-2 ring-primary",
+      )}
+      onDragEnter={onDragItemOver}
+      onDragOver={onDragItemOver}
+      onDrop={onDropItem}
+    >
       <button
         type="button"
-        className="relative grid aspect-video w-full place-items-center bg-secondary/70"
+        draggable={Boolean(onDragItemStart)}
+        onDragStart={onDragItemStart}
+        className={cn(
+          "relative grid aspect-video w-full place-items-center bg-secondary/70",
+          onDragItemStart && "cursor-grab active:cursor-grabbing",
+        )}
         onClick={onOpen}
       >
         {file ? <ItemIcon file={file} /> : filledFolder ? <StackedFoldersIcon /> : <ItemIcon />}
@@ -1081,7 +1307,16 @@ function LibraryCard({
             aria-label={`Selecionar ${name}`}
             className="mt-1"
           />
-          <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
+          <button
+            type="button"
+            draggable={Boolean(onDragItemStart)}
+            onDragStart={onDragItemStart}
+            className={cn(
+              "min-w-0 flex-1 text-left",
+              onDragItemStart && "cursor-grab active:cursor-grabbing",
+            )}
+            onClick={onOpen}
+          >
             <p className="truncate font-medium">{name}</p>
             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{detail}</p>
             {filledFolder && (

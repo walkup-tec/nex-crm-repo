@@ -9,6 +9,7 @@ import {
   planFileName,
   planFolderAccess,
   planFolderRename,
+  planFolderMove,
   planMove,
   planRootFolder,
   planSubfolder,
@@ -299,6 +300,20 @@ export function supabaseCreativeGateway(mode: "master" | "client"): CreativeGate
         .eq("id", id)
         .eq("organization_id", current.organizationId);
       if (error) fail(error, "Não foi possível mover o arquivo.");
+    },
+    async moveFolder(id, parentId) {
+      master();
+      const snapshot = await fetchSnapshot("master");
+      const plan = planFolderMove(snapshot.folders, snapshot.files, id, parentId);
+      if (!plan.ok) throw new Error(plan.message);
+      const current = snapshot.folders.find((folder) => folder.id === id);
+      if (!current) throw new Error("Pasta não encontrada.");
+      const { error } = await supabase
+        .from("creative_folders")
+        .update({ parent_id: parentId })
+        .eq("id", id)
+        .eq("organization_id", current.organizationId);
+      if (error) fail(error, "Não foi possível mover a pasta.");
     },
     downloadUrl: (file) => signedUrl(file, true),
     async previewUrl(file) {

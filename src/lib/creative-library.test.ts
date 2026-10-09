@@ -5,6 +5,7 @@ import {
   inspectCreativeFile,
   pathBelongsToClient,
   placementFromRelativePath,
+  planFolderMove,
   planMove,
   planRemoval,
   planRootFolder,
@@ -111,6 +112,48 @@ const blocked = planMove(
   "outra",
 );
 assert.equal(blocked.ok, false);
+
+const nestedMove = planFolderMove(
+  [verticeFolder, setembro, segunda],
+  [feed],
+  setembro.id,
+  segunda.id,
+);
+assert.equal(nestedMove.ok, true);
+assert.equal(
+  planFolderMove([verticeFolder, setembro], [feed], setembro.id, verticeFolder.id).ok,
+  false,
+);
+assert.equal(
+  planFolderMove([verticeFolder, setembro], [feed], verticeFolder.id, setembro.id).ok,
+  false,
+);
+assert.equal(
+  planFolderMove(
+    [verticeFolder, { id: "outra", organizationId: alvorada, parentId: null, name: "Outra" }],
+    [],
+    verticeFolder.id,
+    "outra",
+  ).ok,
+  false,
+);
+const moveGateway = createMemoryGateway({ clients: seed.clients, folders: [], files: [] });
+const origem = await moveGateway.createFolder("Origem", vertice);
+const destino = await moveGateway.createFolder("Destino", vertice);
+const filha = await moveGateway.createSubfolder(origem.id, "Filha");
+const peca = await moveGateway.upload(filha.id, file("peca.png"));
+await moveGateway.moveFolder(filha.id, destino.id);
+assert.equal(
+  (await moveGateway.load()).folders.find((folder) => folder.id === filha.id)?.parentId,
+  destino.id,
+);
+await moveGateway.moveFile(peca.id, origem.id);
+assert.equal(
+  (await moveGateway.load()).files.find((item) => item.id === peca.id)?.folderId,
+  origem.id,
+);
+moveGateway.setViewer(vertice);
+await assert.rejects(() => moveGateway.moveFolder(filha.id, origem.id), /Master/);
 
 assert.equal(inspectCreativeFile({ name: "virus.exe", size: 10 }).ok, false);
 assert.equal(inspectCreativeFile({ name: "filme.mp4", size: 201 * 1024 * 1024 }).ok, false);

@@ -47,6 +47,7 @@ export type CreativeGateway = {
   deleteFolder: (id: string) => Promise<void>;
   deleteFile: (id: string) => Promise<void>;
   moveFile: (id: string, folderId: string) => Promise<void>;
+  moveFolder: (id: string, parentId: string | null) => Promise<void>;
   downloadUrl: (file: CreativeFile) => Promise<string>;
   previewUrl: (file: CreativeFile) => Promise<string | null>;
 };
@@ -277,6 +278,38 @@ export function planMove(
   if (nameUsed(folders, files, target.id, file.name, { kind: "file", id: file.id })) {
     return { ok: false, message: "Já existe um item com esse nome na pasta de destino." };
   }
+  return { ok: true };
+}
+
+export function planFolderMove(
+  folders: CreativeFolder[],
+  files: CreativeFile[],
+  folderId: string,
+  targetParentId: string | null,
+): { ok: true } | { ok: false; message: string } {
+  const folder = folders.find((item) => item.id === folderId);
+  if (!folder) return { ok: false, message: "Pasta não encontrada." };
+  if ((folder.parentId ?? null) === targetParentId)
+    return { ok: false, message: "A pasta já está aqui." };
+  if (targetParentId === null) {
+    const clash = folders.some(
+      (item) =>
+        item.id !== folder.id &&
+        item.parentId === null &&
+        item.organizationId === folder.organizationId &&
+        sameName(item.name, folder.name),
+    );
+    if (clash) return { ok: false, message: "Já existe uma pasta com esse nome neste cliente." };
+    return { ok: true };
+  }
+  const target = folders.find((item) => item.id === targetParentId);
+  if (!target) return { ok: false, message: "Escolha a pasta de destino." };
+  if (target.organizationId !== folder.organizationId)
+    return { ok: false, message: "A pasta fica na conta deste cliente." };
+  if (new Set(descendantFolderIds(folders, folder.id)).has(target.id))
+    return { ok: false, message: "Não é possível mover uma pasta para dentro dela mesma." };
+  if (nameUsed(folders, files, target.id, folder.name, { kind: "folder", id: folder.id }))
+    return { ok: false, message: "Já existe um item com esse nome na pasta de destino." };
   return { ok: true };
 }
 
@@ -594,6 +627,17 @@ export function createMemoryGateway(seed: CreativeSnapshot) {
       state = {
         ...state,
         files: state.files.map((file) => (file.id === id ? { ...file, folderId } : file)),
+      };
+    },
+    async moveFolder(id: string, parentId: string | null) {
+      requireMaster();
+      const plan = planFolderMove(state.folders, state.files, id, parentId);
+      if (!plan.ok) throw new Error(plan.message);
+      state = {
+        ...state,
+        folders: state.folders.map((folder) =>
+          folder.id === id ? { ...folder, parentId } : folder,
+        ),
       };
     },
     async downloadUrl(file: CreativeFile) {

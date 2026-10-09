@@ -136,8 +136,13 @@ function Nav({
       {clientSections.map((section) => {
         const SectionIcon = section.icon;
         return (
-          <div key={section.label} className="pt-3">
-            <p className="mb-1 flex items-center gap-2 px-3 text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground/80">
+          <div
+            key={section.label}
+            role="group"
+            aria-label={section.label}
+            className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
+          >
+            <p className="mb-1 flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground">
               <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
               {section.label}
             </p>

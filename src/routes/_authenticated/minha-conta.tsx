@@ -1,1 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";import { AppShell } from "@/components/nex/AppShell";import { AccountView } from "@/components/nex/DashboardViews";export const Route=createFileRoute("/_authenticated/minha-conta")({head:()=>({meta:[{title:"Minha conta — NEX Ads"},{name:"description",content:"Preferências e dados do seu perfil."},{property:"og:title",content:"Minha conta — NEX Ads"},{property:"og:description",content:"Preferências e dados do seu perfil."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary_large_image"}]}),component:()=> <AppShell title="Minha conta" subtitle="Preferências e dados do seu perfil."><AccountView/></AppShell>});
+import { createFileRoute } from "@tanstack/react-router";
+import { AccountSettings } from "@/components/nex/AccountSettings";
+import { AppShell } from "@/components/nex/AppShell";
+
+export const Route = createFileRoute("/_authenticated/minha-conta")({
+  head: () => ({
+    meta: [
+      { title: "Minha conta — NEX Ads" },
+      { name: "description", content: "Dados da conta que está logada." },
+      { property: "og:title", content: "Minha conta — NEX Ads" },
+      { property: "og:description", content: "Dados da conta que está logada." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: () => (
+    <AppShell live notes={false} title="Minha conta" subtitle="Dados da conta que está logada.">
+      <AccountSettings />
+    </AppShell>
+  ),
+});

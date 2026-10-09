@@ -124,6 +124,7 @@ assert.equal(
   planFolderMove([verticeFolder, setembro], [feed], setembro.id, verticeFolder.id).ok,
   false,
 );
+assert.equal(planFolderMove([verticeFolder, setembro], [feed], setembro.id, null).ok, true);
 assert.equal(
   planFolderMove([verticeFolder, setembro], [feed], verticeFolder.id, setembro.id).ok,
   false,

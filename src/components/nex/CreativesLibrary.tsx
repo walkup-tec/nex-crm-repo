@@ -278,6 +278,14 @@ export function CreativesLibrary({
   }
   if (dragging?.kind === "file" && dragSource && "folderId" in dragSource)
     blockedDropIds.add(dragSource.folderId);
+  const liftedFolder =
+    dragging?.kind === "folder" && dragSource && "parentId" in dragSource ? dragSource : null;
+  if (liftedFolder?.parentId) blockedDropIds.add(liftedFolder.parentId);
+  const canLift = Boolean(liftedFolder?.parentId);
+  const liftParentId = liftedFolder?.parentId
+    ? (snapshot.folders.find((folder) => folder.id === liftedFolder.parentId)?.parentId ?? null)
+    : null;
+  const liftHint = liftParentId ?? "root";
   const extraTargets =
     master && dragging && dragOrganizationId
       ? snapshot.folders
@@ -699,12 +707,18 @@ export function CreativesLibrary({
             className={cn(
               "rounded px-1 py-0.5",
               !currentId && "font-semibold text-foreground",
-              dropHint === "root" && "bg-primary/15 text-foreground",
+              canLift && "border border-dashed px-2 py-1",
+              dropHint === "root" && "border-primary bg-primary/15 text-foreground",
             )}
             onClick={() => openFolder(null)}
+            onDragEnter={(event) => {
+              if (!master || dragKind(event.dataTransfer) !== "folder") return;
+              event.preventDefault();
+            }}
             onDragOver={(event) => {
               if (!master || dragKind(event.dataTransfer) !== "folder") return;
               event.preventDefault();
+              event.stopPropagation();
               event.dataTransfer.dropEffect = "move";
               if (dropHint !== "root") setDropHint("root");
             }}
@@ -861,8 +875,11 @@ export function CreativesLibrary({
             if (!currentId) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = kind === "files" ? "copy" : "move";
+            const sameParent =
+              dragging?.kind === "folder" &&
+              snapshot.folders.find((folder) => folder.id === dragging.id)?.parentId === currentId;
             if (kind === "files") setDragOver(true);
-            else if (dropHint !== currentId) setDropHint(currentId);
+            else if (!sameParent && dropHint !== currentId) setDropHint(currentId);
           }}
           onDragLeave={(event) => {
             if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -885,13 +902,35 @@ export function CreativesLibrary({
           {master && (
             <p className="mb-3 text-xs text-muted-foreground">
               {currentId
-                ? `Solte arquivos do computador nesta pasta${accessName ? ` de ${accessName}` : ""}, ou arraste um item para outra pasta. JPG, PNG, WEBP, PDF, MP4 e MOV, até 200 MB.`
+                ? `Para tirar uma pasta daqui, arraste-a até Pastas. Também pode soltar arquivos do computador nesta pasta${accessName ? ` de ${accessName}` : ""}.`
                 : "Arraste uma pasta para dentro de outra, ou solte arquivos do computador sobre a pasta."}
             </p>
           )}
-          {master && dragging && extraTargets.length > 0 && (
+          {master && dragging && (canLift || extraTargets.length > 0) && (
             <div className="mb-3 flex items-center gap-2 overflow-x-auto text-xs text-muted-foreground">
               <span className="shrink-0">Soltar em</span>
+              {canLift && (
+                <div
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-1",
+                    dropHint === liftHint && "border-primary bg-primary/10 text-foreground",
+                  )}
+                  onDragEnter={(event) => {
+                    if (dragKind(event.dataTransfer) !== "folder") return;
+                    event.preventDefault();
+                  }}
+                  onDragOver={(event) => {
+                    if (dragKind(event.dataTransfer) !== "folder") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.dataTransfer.dropEffect = "move";
+                    if (dropHint !== liftHint) setDropHint(liftHint);
+                  }}
+                  onDrop={(event) => onFolderDrop(event, liftParentId)}
+                >
+                  Tirar para fora
+                </div>
+              )}
               {extraTargets.map((target) => (
                 <div
                   key={target.id}

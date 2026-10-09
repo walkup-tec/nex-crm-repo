@@ -138,7 +138,7 @@ function Nav({
         return (
           <div key={section.label} className="pt-3">
             <p className="mb-1 flex items-center gap-2 px-3 text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground/80">
-              <SectionIcon className="size-4" />
+              <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
               {section.label}
             </p>
             {section.paths.map((to) => {

@@ -45,6 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -134,6 +135,25 @@ function ItemIcon({ file }: { file?: CreativeFile }) {
   if (kind === "Vídeo") return <Video className="size-10 text-primary" />;
   if (kind === "PDF") return <FileText className="size-10 text-primary" />;
   return <FileImage className="size-10 text-primary" />;
+}
+
+function StackedFoldersIcon() {
+  return (
+    <svg viewBox="0 0 48 48" className="size-10" aria-hidden="true">
+      <path
+        className="fill-primary/55"
+        d="M18 6.5h9.4a2.4 2.4 0 0 1 1.9.95l1.2 1.6a2.4 2.4 0 0 0 1.9.95H42a2.5 2.5 0 0 1 2.5 2.5V26a2.5 2.5 0 0 1-2.5 2.5H18a2.5 2.5 0 0 1-2.5-2.5V9a2.5 2.5 0 0 1 2.5-2.5z"
+      />
+      <path
+        className="fill-primary"
+        d="M7 16h12.2a2.2 2.2 0 0 1 1.74.85l1.45 1.9a2.2 2.2 0 0 0 1.74.85H36a2.8 2.8 0 0 1 2.8 2.8v14.8A2.8 2.8 0 0 1 36 41H7a2.8 2.8 0 0 1-2.8-2.8V18.8A2.8 2.8 0 0 1 7 16z"
+      />
+    </svg>
+  );
+}
+
+function creativeCountLabel(count: number) {
+  return count === 1 ? "1 criativo" : `${count} criativos`;
 }
 
 export function CreativesLibrary({
@@ -720,15 +740,21 @@ export function CreativesLibrary({
                 );
                 const count = filesUnder(snapshot.folders, snapshot.files, folder.id).length;
                 const filesLabel = count === 1 ? "1 arquivo" : `${count} arquivos`;
+                const ownerName = owner?.name ?? "Cliente";
                 return (
                   <LibraryCard
                     key={folder.id}
                     name={folder.name}
                     detail={
-                      master && !currentId
-                        ? `${owner?.name ?? "Cliente"} • ${filesLabel}`
-                        : `Pasta • ${filesLabel}`
+                      count > 0
+                        ? master && !currentId
+                          ? ownerName
+                          : "Pasta"
+                        : master && !currentId
+                          ? `${ownerName} • ${filesLabel}`
+                          : `Pasta • ${filesLabel}`
                     }
+                    creativeCount={count}
                     selected={selected.includes(folder.id)}
                     onToggle={() => toggle(folder.id)}
                     onOpen={() => openFolder(folder.id)}
@@ -1012,6 +1038,7 @@ function LibraryCard({
   name,
   detail,
   file,
+  creativeCount = 0,
   selected,
   master,
   onToggle,
@@ -1025,6 +1052,7 @@ function LibraryCard({
   name: string;
   detail: string;
   file?: CreativeFile;
+  creativeCount?: number;
   selected: boolean;
   master: boolean;
   onToggle: () => void;
@@ -1035,6 +1063,7 @@ function LibraryCard({
   onRemove?: () => void;
   onAccess?: () => void;
 }) {
+  const filledFolder = !file && creativeCount > 0;
   return (
     <Card className={cn("overflow-hidden", selected && "border-primary ring-1 ring-primary")}>
       <button
@@ -1042,7 +1071,7 @@ function LibraryCard({
         className="relative grid aspect-video w-full place-items-center bg-secondary/70"
         onClick={onOpen}
       >
-        {file ? <ItemIcon file={file} /> : <ItemIcon />}
+        {file ? <ItemIcon file={file} /> : filledFolder ? <StackedFoldersIcon /> : <ItemIcon />}
       </button>
       <CardContent className="p-4">
         <div className="flex items-start gap-2">
@@ -1054,7 +1083,15 @@ function LibraryCard({
           />
           <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
             <p className="truncate font-medium">{name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{detail}</p>
+            {filledFolder && (
+              <Badge
+                variant="secondary"
+                className="mt-2 h-5 rounded-full border-primary/25 bg-primary/15 px-2 text-[11px] font-medium text-primary shadow-none hover:bg-primary/15"
+              >
+                {creativeCountLabel(creativeCount)}
+              </Badge>
+            )}
           </button>
           {(master || onDownload) && (
             <DropdownMenu>

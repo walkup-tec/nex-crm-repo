@@ -1,3 +1,5 @@
+import googleAdsMark from "@/assets/google-ads-mark.png";
+
 export type AdsPlatform = "meta" | "google";
 
 function MetaMark({ className }: { className?: string }) {
@@ -12,34 +14,12 @@ function MetaMark({ className }: { className?: string }) {
 }
 
 function GoogleAdsMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
-      <line
-        x1="16"
-        y1="46"
-        x2="31"
-        y2="16"
-        stroke="#FBBC04"
-        strokeWidth="13"
-        strokeLinecap="round"
-      />
-      <line
-        x1="47"
-        y1="50"
-        x2="35"
-        y2="8"
-        stroke="#4285F4"
-        strokeWidth="13"
-        strokeLinecap="round"
-      />
-      <circle cx="16" cy="48" r="11" fill="#34A853" />
-    </svg>
-  );
+  return <img src={googleAdsMark} alt="" className={`object-contain ${className ?? ""}`} />;
 }
 
 const options = [
   { id: "meta", label: "Meta Ads", icon: MetaMark, iconClass: "size-10" },
-  { id: "google", label: "Google Ads", icon: GoogleAdsMark, iconClass: "size-8" },
+  { id: "google", label: "Google Ads", icon: GoogleAdsMark, iconClass: "size-10" },
 ] as const;
 
 export function AdsPlatformSwitch({
@@ -50,25 +30,21 @@ export function AdsPlatformSwitch({
   onChange: (value: AdsPlatform) => void;
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Rede de anúncios"
-      className="flex w-full items-center rounded-lg border bg-card p-1 sm:w-fit"
-    >
+    <div role="tablist" aria-label="Rede de anúncios" className="flex items-end">
       {options.map((option, index) => {
         const Icon = option.icon;
         const selected = value === option.id;
         return (
-          <div key={option.id} className="flex min-w-0 flex-1 items-center sm:flex-none">
+          <div key={option.id} className="flex items-end">
             {index > 0 ? (
-              <span className="mx-1 h-8 w-px shrink-0 bg-border" aria-hidden="true" />
+              <span className="mx-4 mb-3 h-6 w-px bg-border" aria-hidden="true" />
             ) : null}
             <button
               type="button"
               role="tab"
               aria-selected={selected}
               onClick={() => onChange(option.id)}
-              className={`flex h-14 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition sm:w-auto ${selected ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              className={`flex items-center gap-2.5 border-b-2 px-1 pb-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             >
               <Icon className={`${option.iconClass} shrink-0`} />
               {option.label}

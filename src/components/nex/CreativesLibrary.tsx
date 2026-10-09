@@ -286,6 +286,7 @@ export function CreativesLibrary({
     ? (snapshot.folders.find((folder) => folder.id === liftedFolder.parentId)?.parentId ?? null)
     : null;
   const liftHint = liftParentId ?? "root";
+  // NEX-FORA-9F85
   const extraTargets =
     master && dragging && dragOrganizationId
       ? snapshot.folders

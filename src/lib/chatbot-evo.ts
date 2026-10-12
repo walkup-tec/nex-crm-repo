@@ -41,12 +41,11 @@ export function chatbotInstanceName(organizationId: string) {
 
 export function whatsappMask(value: string) {
   const raw = value.replace(/\D/g, "");
-  const hasCountry = value.includes("+") || raw.length > 11;
-  const digits = (hasCountry && raw.startsWith("55") ? raw.slice(2) : raw).slice(0, 11);
+  const digits = (raw.startsWith("55") && raw.length > 11 ? raw.slice(2) : raw).slice(0, 11);
   if (!digits) return "";
-  if (digits.length <= 2) return `+55 (${digits}`;
-  if (digits.length <= 7) return `+55 (${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  return `+55 (${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
 export function attendancePhone(value: string) {

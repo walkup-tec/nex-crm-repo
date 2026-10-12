@@ -27,15 +27,7 @@ type Connection = {
 };
 
 function formatPhone(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("55") && digits.length >= 12) {
-    const ddd = digits.slice(2, 4);
-    const number = digits.slice(4);
-    const left = number.length > 8 ? number.slice(0, number.length - 4) : number;
-    const right = number.length > 8 ? number.slice(-4) : "";
-    return right ? `+55 (${ddd}) ${left}-${right}` : `+55 (${ddd}) ${number}`;
-  }
-  return digits ? `+${digits}` : "Aguardando leitura";
+  return whatsappMask(value) || "Aguardando leitura";
 }
 
 export function Connections() {
@@ -121,12 +113,19 @@ export function Connections() {
         </label>
         <label>
           Número
-          <input
-            value={phone}
-            onChange={(event) => setPhone(whatsappMask(event.target.value))}
-            inputMode="tel"
-            placeholder="+55 (11) 99999-9999"
-          />
+          <span className="flex w-full items-center gap-2">
+            <span role="img" aria-label="Brasil" className="text-lg leading-none">
+              🇧🇷
+            </span>
+            <input
+              value={phone}
+              onChange={(event) => setPhone(whatsappMask(event.target.value))}
+              inputMode="tel"
+              className="min-w-0 flex-1"
+              placeholder="(11) 99999-9999"
+              aria-label="Número com DDD"
+            />
+          </span>
         </label>
         <Button disabled={pending || name.trim().length < 2 || !attendancePhone(phone)}>
           <Smartphone />

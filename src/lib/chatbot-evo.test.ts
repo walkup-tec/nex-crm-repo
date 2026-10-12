@@ -9,13 +9,12 @@ import {
   whatsappMask,
 } from "./chatbot-evo";
 
-assert.equal(whatsappMask("1"), "+55 (1");
-assert.equal(whatsappMask("+55 (1"), "+55 (1");
-assert.equal(whatsappMask("+55 (11"), "+55 (11");
-assert.equal(whatsappMask("+55 (119"), "+55 (11) 9");
-assert.equal(whatsappMask("11999999999"), "+55 (11) 99999-9999");
-assert.equal(whatsappMask("+55 (11) 99999-9999"), "+55 (11) 99999-9999");
-assert.equal(whatsappMask("55999999999"), "+55 (55) 99999-9999");
+assert.equal(whatsappMask("1"), "(1");
+assert.equal(whatsappMask("11"), "(11");
+assert.equal(whatsappMask("119"), "(11) 9");
+assert.equal(whatsappMask("11999999999"), "(11) 99999-9999");
+assert.equal(whatsappMask("5511999999999"), "(11) 99999-9999");
+assert.equal(whatsappMask("55999999999"), "(55) 99999-9999");
 assert.equal(attendancePhone("+55 (11) 99999-9999"), "5511999999999");
 assert.equal(attendancePhone("+55 (11) 99999-9"), "");
 assert.equal(attendancePhone("11999999999"), "5511999999999");

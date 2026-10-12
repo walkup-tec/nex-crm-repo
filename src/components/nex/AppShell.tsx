@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { BarChart3, BriefcaseBusiness, ChevronDown, CircleAlert, CircleDollarSign, CreditCard, FileImage, Gauge, LogOut, Menu, RefreshCw, Settings, ShieldCheck, Users, WalletCards } from "lucide-react";
+import { BarChart3, Bot, BriefcaseBusiness, ChevronDown, CircleAlert, CircleDollarSign, CreditCard, FileImage, Gauge, LogOut, Menu, RefreshCw, Settings, ShieldCheck, Users, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -37,6 +37,11 @@ const clientSections = [
     label: "META Ads",
     icon: MetaMark,
     paths: ["/campanhas", "/creditos-meta", "/criativos"],
+  },
+  {
+    label: "Chatbot",
+    icon: Bot,
+    paths: [],
   },
   {
     label: "Configurações",

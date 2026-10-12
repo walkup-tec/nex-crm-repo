@@ -66,6 +66,14 @@ export const disconnectChatbotConnectionFn = createServerFn({ method: "POST" })
     return guard(() => disconnectChatbotConnection(context.userId, data.connectionId));
   });
 
+export const resendAttendantInviteFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { email: string; name: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { resendAttendantInvite } = await import("@/server/chatbot.server");
+    return guard(() => resendAttendantInvite(context.userId, data.email, data.name));
+  });
+
 export const sendChatbotMessageFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string; text: string }) => data)

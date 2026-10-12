@@ -1,4 +1,5 @@
 import { evolutionRuntime } from "@/server/evo.server";
+import { sendAttendantInviteEmail } from "@/server/mail.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   attendancePhone,
@@ -516,6 +517,22 @@ function readState(payload: unknown) {
   const status = record["status"];
   if (typeof status === "string") return status;
   return "";
+}
+
+export async function resendAttendantInvite(userId: string, email: string, name: string) {
+  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] = await Promise.all([
+    supabaseAdmin.from("profiles").select("is_blocked").eq("id", userId).maybeSingle(),
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+  ]);
+  if (profileError || roleError) fail("Não foi possível confirmar o acesso.");
+  if (!profile || profile.is_blocked) fail("Este acesso está bloqueado.");
+  const allowed = (roles ?? []).some((role) => role.role === "master" || role.role === "client_admin");
+  if (!allowed) fail("Você não pode reenviar convites de atendente.");
+  const to = email.trim().toLowerCase();
+  const display = name.trim();
+  if (display.length < 2) fail("Informe o nome do atendente.");
+  if (!to.includes("@")) fail("Informe um e-mail válido.");
+  await sendAttendantInviteEmail(to, display);
 }
 
 function readMessageId(payload: unknown) {

@@ -269,7 +269,7 @@ export function Connections() {
             />
           </span>
         </label>
-        <Button disabled={pending || name.trim().length < 2 || !attendancePhone(phone)}>
+        <Button className="connect-action" disabled={pending || name.trim().length < 2 || !attendancePhone(phone)}>
           <Smartphone />
           {pending ? "Gerando QR Code" : "Conectar"}
         </Button>

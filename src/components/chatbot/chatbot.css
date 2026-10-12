@@ -17,6 +17,10 @@
 .chatbot-app .brand-row img{background:var(--brand-surface);border-radius:4px}
 .chatbot-app .dark .brand-row img{padding:6px}
 .chatbot-app .react-flow{--xy-background-color-default:var(--card);--xy-background-pattern-dots-color-default:var(--flow-dot);--xy-controls-button-background-color-default:var(--card);--xy-controls-button-background-color-hover-default:var(--accent);--xy-controls-button-color-default:var(--foreground);--xy-controls-button-border-color-default:var(--border);--xy-minimap-background-color-default:var(--card);--xy-minimap-mask-background-color-default:var(--muted)}
-.chatbot-app .status-pill.connected{background:rgb(34 197 94 / 18%);color:#4ade80}
-.chatbot-app .status-pill.disconnected{background:rgb(239 68 68 / 18%);color:#f87171}
+.chatbot-app .status-pill.connected{background:rgb(22 163 74 / 16%);color:#166534;font-weight:650}
+.chatbot-app .status-pill.disconnected{background:rgb(220 38 38 / 14%);color:#991b1b;font-weight:650}
+.dark .chatbot-app .status-pill.connected{background:rgb(34 197 94 / 22%);color:#4ade80}
+.dark .chatbot-app .status-pill.disconnected{background:rgb(239 68 68 / 22%);color:#f87171}
+.chatbot-app .connect-action{background:#6F02FD;color:#fff}
+.chatbot-app .connect-action:hover{background:#5802ca;color:#fff}
 

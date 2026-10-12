@@ -40,7 +40,7 @@ const clientNav = [
   ["/chatbot/agendamentos", "Agendamentos", CalendarDays],
   ["/chatbot/automacoes", "Automações", Workflow],
   ["/chatbot/equipes", "Time", UsersRound],
-  ["/chatbot/whatsapps", "WhatsApps Conectados", Smartphone],
+  ["/chatbot/whatsapps", "Conexão", Smartphone],
   ["/chatbot/relatorios", "Relatórios", BarChart3],
   ["/chatbot/configuracoes", "Configurações", Settings],
 ] as const;

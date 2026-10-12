@@ -3,9 +3,9 @@ import { Management } from "@/components/chatbot/Management";
 import { ChatbotFrame } from "@/components/chatbot/frame";
 
 export const Route = createFileRoute("/_authenticated/chatbot/whatsapps")({
-  head: () => ({ meta: [{ title: "WhatsApps Conectados — Chatbot" }] }),
+  head: () => ({ meta: [{ title: "Conexão — Chatbot" }] }),
   component: () => (
-    <ChatbotFrame title="WhatsApps Conectados" subtitle="Números preparados para o atendimento.">
+    <ChatbotFrame title="Conexão" subtitle="Números preparados para o atendimento.">
       <Management section="whatsapps" />
     </ChatbotFrame>
   ),

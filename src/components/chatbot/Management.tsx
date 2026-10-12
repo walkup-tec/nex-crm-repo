@@ -12,7 +12,7 @@ const sections = {
  produtos:{title:'Produtos',description:'Seu catálogo, conectado às oportunidades comerciais.',action:'Novo produto',icon:Package,columns:['Produto / serviço','Categoria','Valor','Status','Ações']},
  agendamentos:{title:'Agendamentos',description:'Organize seus próximos contatos e mensagens.',action:'Novo agendamento',icon:CalendarDays,columns:['Cliente','Data e hora','Recorrência','Status','Ações']},
  equipes:{title:'Time',description:'As pessoas certas para cada atendimento.',action:'Convidar atendente',icon:UsersRound,columns:['Atendente','E-mail','Equipe','Presença','Ações']},
- whatsapps:{title:'WhatsApps Conectados',description:'Gerencie os números e canais da sua operação.',action:'Adicionar WhatsApp',icon:Smartphone,columns:['Conexão','Número','Status','Integração','Ações']},
+ whatsapps:{title:'Conexão',description:'Gerencie os números e canais da sua operação.',action:'Adicionar WhatsApp',icon:Smartphone,columns:['Conexão','Número','Status','Integração','Ações']},
  fila:{title:'Fila',description:'Nenhum cliente sem acompanhamento.',action:'Abrir caixa de entrada',icon:ListOrdered,columns:['Cliente','Chegada','Número','Status','Ações']},
 };
 export function Management({ section }: { section: ManagementSection }) {

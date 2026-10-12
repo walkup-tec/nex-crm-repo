@@ -156,7 +156,7 @@ export function Connections() {
                   <strong className="block truncate text-sm">{row.name}</strong>
                   <p className="text-xs text-muted-foreground">{formatPhone(row.phone)}</p>
                 </div>
-                <span className={`status-pill shrink-0${row.status === "connected" ? " good" : ""}`}>{labels[row.status]}</span>
+                <span className={`status-pill shrink-0${row.status === "connected" ? " connected" : row.status === "disconnected" ? " disconnected" : ""}`}>{labels[row.status]}</span>
               </div>
               {row.error ? <p className="mt-2 text-xs text-muted-foreground">{row.error}</p> : null}
               <div className="mt-3 flex gap-2">

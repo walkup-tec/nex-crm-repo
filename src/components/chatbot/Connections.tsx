@@ -40,7 +40,7 @@ function formatPhone(value: string) {
   return whatsappMask(value) || "Aguardando leitura";
 }
 
-const connectionSteps = ["API", "Evolution", "Números"] as const;
+const connectionSteps = ["API", "API WhatsApp", "Números"] as const;
 
 function ConnectionsLoading() {
   return (
@@ -65,7 +65,7 @@ function ConnectionsLoading() {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">Consultando as conexões na Evolution...</p>
+      <p className="mt-3 text-sm text-muted-foreground">Consultando as conexões na API WhatsApp...</p>
     </div>
   );
 }

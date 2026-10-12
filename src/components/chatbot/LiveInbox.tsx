@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { MessageSquare, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { chatbotSnapshotFn, sendChatbotMessageFn } from "@/lib/chatbot.functions";
-import type { ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { attendanceLabel, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 export function LiveInbox() {
   const [data, setData] = useState<ChatbotSnapshot | null>(null);
@@ -33,6 +33,18 @@ export function LiveInbox() {
   const conversation = data?.conversations.find((item) => item.id === selected);
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
   const messages = data?.messages.filter((item) => item.conversationId === selected) ?? [];
+
+  function labelFor(conversationId: string) {
+    const current = data?.conversations.find((item) => item.id === conversationId);
+    if (!current || !data) return "Em fila";
+    const botSpoke = data.messages.some((item) => item.conversationId === conversationId && item.direction === "out");
+    return attendanceLabel({
+      assigneeName: current.assigneeName,
+      botPaused: current.botPaused,
+      botSpoke,
+      closed: current.status === "closed",
+    });
+  }
 
   async function send() {
     if (!selected) return;
@@ -76,8 +88,8 @@ export function LiveInbox() {
                   <span className="avatar">{person?.name.slice(0, 2).toUpperCase()}</span>
                   <div>
                     <strong>{person?.name}</strong>
-                    <p>{person?.phone}</p>
-                    <span className="status-pill">{item.status === "queue" ? "Em fila" : item.status === "closed" ? "Encerrado" : "Em atendimento"}</span>
+                    <p>{whatsappMask(person?.phone ?? "") || person?.phone}</p>
+                    <span className="status-pill">{labelFor(item.id)}</span>
                   </div>
                 </Button>
               );
@@ -98,13 +110,14 @@ export function LiveInbox() {
             <span>
               <MessageSquare size={15} />
               {contact?.name || "Nenhuma conversa selecionada"}
+              {conversation ? <span className="status-pill">{labelFor(conversation.id)}</span> : null}
             </span>
           </div>
           {conversation ? (
             <>
               <div className="message-history">
                 {messages.map((item) => (
-                  <div className="message-bubble" key={item.id} style={item.direction === "in" ? { alignSelf: "flex-start", background: "var(--card)", color: "var(--foreground)" } : undefined}>
+                  <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
                     {item.text}
                   </div>
                 ))}
@@ -116,8 +129,12 @@ export function LiveInbox() {
                   void send();
                 }}
               >
-                <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Digite sua mensagem..." aria-label="Mensagem" />
+                <label>
+                  Responder
+                  <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Digite sua mensagem..." aria-label="Mensagem" />
+                </label>
                 <footer>
+                  <span className="text-xs text-muted-foreground">A resposta sai pelo WhatsApp desta conversa.</span>
                   <Button disabled={pending || !draft.trim()} type="submit">
                     <Send />
                     {pending ? "Enviando" : "Enviar"}

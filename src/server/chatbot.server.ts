@@ -1,5 +1,4 @@
 import { evolutionRuntime } from "@/server/evo.server";
-import { sendAttendantInviteEmail } from "@/server/mail.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   attendancePhone,
@@ -147,6 +146,12 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
     rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }).limit(400)),
   ]);
+  const assigneeIds = [...new Set(conversationRows.map((row) => cell(row, "assignee_id")).filter(Boolean))];
+  const assigneeNames = new Map<string, string>();
+  if (assigneeIds.length) {
+    const people = await supabaseAdmin.from("profiles").select("id, full_name").in("id", assigneeIds);
+    for (const person of people.data ?? []) assigneeNames.set(person.id, person.full_name.trim());
+  }
   return {
     configured: true,
     organizationId,
@@ -167,6 +172,8 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       contactId: cell(row, "contact_id"),
       connectionId: cell(row, "connection_id"),
       status: cell(row, "status") as "queue" | "active" | "closed",
+      assigneeName: assigneeNames.get(cell(row, "assignee_id")) ?? "",
+      botPaused: row["bot_paused"] === true,
     })),
     messages: messageRows.map((row) => ({
       id: cell(row, "id"),
@@ -517,22 +524,6 @@ function readState(payload: unknown) {
   const status = record["status"];
   if (typeof status === "string") return status;
   return "";
-}
-
-export async function resendAttendantInvite(userId: string, email: string, name: string) {
-  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] = await Promise.all([
-    supabaseAdmin.from("profiles").select("is_blocked").eq("id", userId).maybeSingle(),
-    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
-  ]);
-  if (profileError || roleError) fail("Não foi possível confirmar o acesso.");
-  if (!profile || profile.is_blocked) fail("Este acesso está bloqueado.");
-  const allowed = (roles ?? []).some((role) => role.role === "master" || role.role === "client_admin");
-  if (!allowed) fail("Você não pode reenviar convites de atendente.");
-  const to = email.trim().toLowerCase();
-  const display = name.trim();
-  if (display.length < 2) fail("Informe o nome do atendente.");
-  if (!to.includes("@")) fail("Informe um e-mail válido.");
-  await sendAttendantInviteEmail(to, display);
 }
 
 function readMessageId(payload: unknown) {

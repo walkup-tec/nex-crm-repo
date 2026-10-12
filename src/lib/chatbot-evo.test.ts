@@ -7,6 +7,7 @@ import {
   evolutionSameOwnerInstance,
   evolutionQrImage,
   tintQrPixel,
+  attendanceLabel,
   attendancePhone,
   preferredWhatsappPhone,
   whatsappJidPhone,
@@ -23,6 +24,10 @@ assert.equal(whatsappMask("555198335401"), "(51) 99833-5401");
 assert.equal(whatsappMask("5551998335401"), "(51) 99833-5401");
 assert.equal(whatsappMask("5199833540"), "(51) 99833-540");
 assert.equal(preferredWhatsappPhone("5551998335401", "555198335401"), "5551998335401");
+assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "Em fila");
+assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
+assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");
+assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: true }), "Encerrado");
 assert.equal(attendancePhone("+55 (11) 99999-9999"), "5511999999999");
 assert.equal(attendancePhone("+55 (11) 99999-9"), "");
 assert.equal(attendancePhone("11999999999"), "5511999999999");

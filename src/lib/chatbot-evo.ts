@@ -22,6 +22,8 @@ export type ChatbotSnapshot = {
     contactId: string;
     connectionId: string;
     status: "queue" | "active" | "closed";
+    assigneeName: string;
+    botPaused: boolean;
   }[];
   messages: {
     id: string;
@@ -32,6 +34,14 @@ export type ChatbotSnapshot = {
     createdAt: string;
   }[];
 };
+
+export function attendanceLabel(input: { assigneeName: string; botPaused: boolean; botSpoke: boolean; closed: boolean }) {
+  if (input.closed) return "Encerrado";
+  const name = input.assigneeName.trim();
+  if (name) return name;
+  if (!input.botPaused && input.botSpoke) return "Bot atendendo";
+  return "Em fila";
+}
 
 export function chatbotInstanceName(organizationId: string) {
   const org = organizationId.replace(/[^a-z0-9]/gi, "").slice(0, 12).toLowerCase();

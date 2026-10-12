@@ -9,11 +9,11 @@ import * as XLSX from 'xlsx';
 export type ManagementSection = 'clientes'|'produtos'|'agendamentos'|'equipes'|'whatsapps'|'fila';
 const sections = {
  clientes:{title:'Clientes',description:'Relacionamentos que fazem o seu negócio crescer.',action:'Novo cliente',icon:Users,columns:['Cliente','WhatsApp','E-mail','Etiquetas','Ações']},
- produtos:{title:'Produtos e Serviços',description:'Seu catálogo, conectado às oportunidades comerciais.',action:'Novo produto',icon:Package,columns:['Produto / serviço','Categoria','Valor','Status','Ações']},
+ produtos:{title:'Produtos',description:'Seu catálogo, conectado às oportunidades comerciais.',action:'Novo produto',icon:Package,columns:['Produto / serviço','Categoria','Valor','Status','Ações']},
  agendamentos:{title:'Agendamentos',description:'Organize seus próximos contatos e mensagens.',action:'Novo agendamento',icon:CalendarDays,columns:['Cliente','Data e hora','Recorrência','Status','Ações']},
- equipes:{title:'Equipes e Atendentes',description:'As pessoas certas para cada atendimento.',action:'Convidar atendente',icon:UsersRound,columns:['Atendente','E-mail','Equipe','Presença','Ações']},
+ equipes:{title:'Time',description:'As pessoas certas para cada atendimento.',action:'Convidar atendente',icon:UsersRound,columns:['Atendente','E-mail','Equipe','Presença','Ações']},
  whatsapps:{title:'WhatsApps Conectados',description:'Gerencie os números e canais da sua operação.',action:'Adicionar WhatsApp',icon:Smartphone,columns:['Conexão','Número','Status','Integração','Ações']},
- fila:{title:'Fila de Atendimento',description:'Nenhum cliente sem acompanhamento.',action:'Abrir caixa de entrada',icon:ListOrdered,columns:['Cliente','Chegada','Número','Status','Ações']},
+ fila:{title:'Fila',description:'Nenhum cliente sem acompanhamento.',action:'Abrir caixa de entrada',icon:ListOrdered,columns:['Cliente','Chegada','Número','Status','Ações']},
 };
 export function Management({ section }: { section: ManagementSection }) {
  const {data,update}=useWorkspace();const config=sections[section];const [search,setSearch]=useState('');const [modal,setModal]=useState('');const [editing,setEditing]=useState('');const [error,setError]=useState('');const [team,setTeam]=useState('Atendimento');const [rows,setRows]=useState<Record<string,string>[]>([]);const [sheets,setSheets]=useState<string[]>([]);const [workbook,setWorkbook]=useState<XLSX.WorkBook>();const [mapping,setMapping]=useState({name:'',phone:'',email:''});const [importStep,setImportStep]=useState(0);const [importResult,setImportResult]=useState('');

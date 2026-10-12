@@ -71,6 +71,20 @@ export function evolutionConnectionStatus(state: string): ChatbotConnectionStatu
   return "waiting";
 }
 
+const nexQrPurple = { r: 0x6f, g: 0x02, b: 0xfd };
+
+export function tintQrPixel(r: number, g: number, b: number, a: number) {
+  const distance = Math.hypot(255 - r, 255 - g, 255 - b) / 441.67295593;
+  if (distance < 0.12) return [r, g, b, a] as const;
+  const ink = Math.min(1, distance / 0.45);
+  return [
+    Math.round(255 + (nexQrPurple.r - 255) * ink),
+    Math.round(255 + (nexQrPurple.g - 255) * ink),
+    Math.round(255 + (nexQrPurple.b - 255) * ink),
+    a,
+  ] as const;
+}
+
 export function evolutionQrImage(payload: unknown): string {
   const found = findString(payload, ["base64", "qrcode"]);
   if (!found) return "";

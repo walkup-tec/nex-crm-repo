@@ -41,10 +41,21 @@ export const createChatbotConnectionFn = createServerFn({ method: "POST" })
 
 export const refreshChatbotConnectionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { connectionId: string }) => data)
+  .validator((data: { connectionId: string; withQr?: boolean }) => ({
+    connectionId: data.connectionId,
+    withQr: data.withQr === true,
+  }))
   .handler(async ({ context, data }) => {
     const { refreshChatbotConnection } = await import("@/server/chatbot.server");
-    return guard(() => refreshChatbotConnection(context.userId, data.connectionId));
+    return guard(() => refreshChatbotConnection(context.userId, data.connectionId, data.withQr));
+  });
+
+export const deleteChatbotConnectionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { connectionId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { deleteChatbotConnection } = await import("@/server/chatbot.server");
+    return guard(() => deleteChatbotConnection(context.userId, data.connectionId));
   });
 
 export const disconnectChatbotConnectionFn = createServerFn({ method: "POST" })

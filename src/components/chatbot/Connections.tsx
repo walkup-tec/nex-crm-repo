@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   chatbotSnapshotFn,
   createChatbotConnectionFn,
+  deleteChatbotConnectionFn,
   disconnectChatbotConnectionFn,
   refreshChatbotConnectionFn,
 } from "@/lib/chatbot.functions";
-import { attendancePhone, whatsappMask, type ChatbotConnectionStatus } from "@/lib/chatbot-evo";
+import { attendancePhone, tintQrPixel, whatsappMask, type ChatbotConnectionStatus } from "@/lib/chatbot-evo";
 
 const labels: Record<ChatbotConnectionStatus, string> = {
   waiting: "Aguardando conexão",
@@ -30,6 +31,36 @@ function formatPhone(value: string) {
   return whatsappMask(value) || "Aguardando leitura";
 }
 
+function tintQrImage(src: string) {
+  return new Promise<string>((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        resolve(src);
+        return;
+      }
+      context.drawImage(image, 0, 0);
+      const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = frame.data;
+      for (let index = 0; index < pixels.length; index += 4) {
+        const tinted = tintQrPixel(pixels[index] ?? 0, pixels[index + 1] ?? 0, pixels[index + 2] ?? 0, pixels[index + 3] ?? 255);
+        pixels[index] = tinted[0];
+        pixels[index + 1] = tinted[1];
+        pixels[index + 2] = tinted[2];
+        pixels[index + 3] = tinted[3];
+      }
+      context.putImageData(frame, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => resolve(src);
+    image.src = src;
+  });
+}
+
 export function Connections() {
   const [rows, setRows] = useState<Connection[]>([]);
   const [name, setName] = useState("");
@@ -38,54 +69,77 @@ export function Connections() {
   const [active, setActive] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const qrIssuedAt = useRef(0);
 
-  async function load() {
+  function applyStatus(connectionId: string, status: ChatbotConnectionStatus, error = "") {
+    setRows((current) => current.map((row) => (row.id === connectionId ? { ...row, status, error } : row)));
+  }
+
+  function closeQr() {
+    qrIssuedAt.current = 0;
+    setQr("");
+    setActive("");
+  }
+
+  async function presentQr(value: string) {
+    if (!value) {
+      setQr("");
+      return;
+    }
+    qrIssuedAt.current = Date.now();
+    setQr(await tintQrImage(value));
+  }
+
+  async function reload() {
     const result = await chatbotSnapshotFn();
     if (!result.ok) {
       setMessage(result.message);
       return;
     }
     setRows(result.data.connections);
-    if (!result.data.connections.length) return;
-    const pending = result.data.connections.filter((row) => row.status !== "connected");
-    const refreshed = await Promise.all(
-      result.data.connections.map(async (row) => ({
-        id: row.id,
-        result: await refreshChatbotConnectionFn({ data: { connectionId: row.id } }),
-      })),
-    );
-    const again = await chatbotSnapshotFn();
-    if (!again.ok) return;
-    setRows(again.data.connections);
-    const visible = refreshed.find((item) => item.result.ok && item.result.data.qrCode);
-    if (visible?.result.ok && visible.result.data.qrCode) {
-      setActive(visible.id);
-      setQr(visible.result.data.qrCode);
-    }
-    if (again.data.connections.some((row) => row.status === "connected" && pending.some((item) => item.id === row.id))) {
-      setMessage("Conexão finalizada");
-    }
   }
 
   useEffect(() => {
-    void load();
+    void (async () => {
+      const result = await chatbotSnapshotFn();
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+      const next = await Promise.all(
+        result.data.connections.map(async (row) => {
+          const current = await refreshChatbotConnectionFn({ data: { connectionId: row.id, withQr: false } });
+          if (!current.ok) return row;
+          return { ...row, status: current.data.status, error: current.data.error };
+        }),
+      );
+      setRows(next);
+    })();
   }, []);
 
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => {
-      void refreshChatbotConnectionFn({ data: { connectionId: active } }).then((result) => {
+      void refreshChatbotConnectionFn({ data: { connectionId: active, withQr: false } }).then(async (result) => {
         if (!result.ok) return;
+        applyStatus(active, result.data.status, result.data.error);
         if (result.data.status === "connected") {
-          setQr("");
-          setActive("");
+          closeQr();
           setMessage("Conexão finalizada");
-        } else if (result.data.qrCode) {
-          setQr(result.data.qrCode);
+          return;
         }
-        void load();
+        if (result.data.status === "connecting" || Date.now() - qrIssuedAt.current < 45000) return;
+        const again = await refreshChatbotConnectionFn({ data: { connectionId: active, withQr: true } });
+        if (!again.ok) return;
+        applyStatus(active, again.data.status, again.data.error);
+        if (again.data.status === "connected") {
+          closeQr();
+          setMessage("Conexão finalizada");
+          return;
+        }
+        if (again.data.qrCode) await presentQr(again.data.qrCode);
       });
-    }, 4000);
+    }, 3000);
     return () => window.clearInterval(timer);
   }, [active]);
 
@@ -100,9 +154,28 @@ export function Connections() {
     }
     setName("");
     setPhone("");
-    setQr(result.data.qrCode);
+    qrIssuedAt.current = Date.now();
     setActive(result.data.id);
-    await load();
+    await presentQr(result.data.qrCode);
+    await reload();
+  }
+
+  async function showQr(connectionId: string) {
+    setMessage("");
+    qrIssuedAt.current = Date.now();
+    setActive(connectionId);
+    const result = await refreshChatbotConnectionFn({ data: { connectionId, withQr: true } });
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    applyStatus(connectionId, result.data.status, result.data.error);
+    if (result.data.status === "connected") {
+      closeQr();
+      setMessage("Conexão finalizada");
+      return;
+    }
+    await presentQr(result.data.qrCode);
   }
 
   return (
@@ -151,9 +224,9 @@ export function Connections() {
           {pending ? "Gerando QR Code" : "Conectar"}
         </Button>
       </form>
-      {qr ? (
+      {qr && active ? (
         <div className="mb-5 max-w-xs rounded-md border bg-card p-4 text-center">
-          <img src={qr} alt="QR Code do WhatsApp" className="mx-auto h-56 w-56" />
+          <img src={qr} alt="QR Code do WhatsApp" className="mx-auto h-56 w-56 bg-white p-2" />
           <p className="mt-3 text-xs text-muted-foreground">Abra o WhatsApp, toque em Aparelhos conectados e leia este código.</p>
         </div>
       ) : null}
@@ -171,17 +244,7 @@ export function Connections() {
               {row.error ? <p className="mt-2 text-xs text-muted-foreground">{row.error}</p> : null}
               <div className="mt-3 flex gap-2">
                 {row.status !== "connected" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setActive(row.id);
-                      void refreshChatbotConnectionFn({ data: { connectionId: row.id } }).then((result) => {
-                        if (result.ok) setQr(result.data.qrCode);
-                        else setMessage(result.message);
-                      });
-                    }}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => void showQr(row.id)}>
                     Ver QR
                   </Button>
                 ) : null}
@@ -191,11 +254,30 @@ export function Connections() {
                   onClick={() => {
                     void disconnectChatbotConnectionFn({ data: { connectionId: row.id } }).then((result) => {
                       if (!result.ok) setMessage(result.message);
-                      void load();
+                      if (active === row.id) closeQr();
+                      void reload();
                     });
                   }}
                 >
                   Desconectar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (!window.confirm(`Excluir ${row.name} e apagar essa instância na Evolution?`)) return;
+                    void deleteChatbotConnectionFn({ data: { connectionId: row.id } }).then((result) => {
+                      if (!result.ok) {
+                        setMessage(result.message);
+                        return;
+                      }
+                      if (active === row.id) closeQr();
+                      setMessage("");
+                      void reload();
+                    });
+                  }}
+                >
+                  Excluir
                 </Button>
               </div>
             </article>

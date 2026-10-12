@@ -6,6 +6,7 @@ import {
   evolutionMessageText,
   evolutionSameOwnerInstance,
   evolutionQrImage,
+  tintQrPixel,
   attendancePhone,
   whatsappJidPhone,
   whatsappMask,
@@ -48,3 +49,5 @@ assert.equal(
   "anterior",
 );
 assert.equal(evolutionSameOwnerInstance([{ name: "atual", ownerJid: "5551@s.whatsapp.net", _count: { Message: 2 } }], "atual"), "");
+assert.deepEqual(tintQrPixel(37, 211, 102, 255), [111, 2, 253, 255]);
+assert.deepEqual(tintQrPixel(255, 255, 255, 255), [255, 255, 255, 255]);

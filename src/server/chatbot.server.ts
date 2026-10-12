@@ -18,6 +18,7 @@ type Query = {
   select: (columns?: string) => Query;
   insert: (value: Record<string, unknown> | Record<string, unknown>[]) => Query;
   update: (value: Record<string, unknown>) => Query;
+  delete: () => Query;
   eq: (column: string, value: string) => Query;
   order: (column: string, options: { ascending: boolean }) => Query;
   limit: (count: number) => Query;
@@ -80,22 +81,9 @@ async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: un
   }
   if (!response.ok) {
     console.error("chatbot_evo", response.status);
-    if (/connection closed/i.test(evolutionErrorMessage(body))) fail("Connection Closed");
     fail("A Evolution API não concluiu a operação.");
   }
   return body;
-}
-
-function evolutionErrorMessage(body: unknown) {
-  if (!body || typeof body !== "object") return "";
-  const record = body as Record<string, unknown>;
-  const response = record["response"];
-  if (response && typeof response === "object") {
-    const message = (response as Record<string, unknown>)["message"];
-    if (typeof message === "string") return message;
-  }
-  const message = record["message"];
-  return typeof message === "string" ? message : "";
 }
 
 async function applyWhatsappName(instanceName: string, name: string) {
@@ -223,43 +211,59 @@ export async function createChatbotConnection(userId: string, name: string, phon
   return { id: cell(inserted.data, "id"), qrCode: qr };
 }
 
-export async function refreshChatbotConnection(userId: string, connectionId: string) {
+export async function refreshChatbotConnection(userId: string, connectionId: string, withQr = false) {
   const { organizationId } = await membership(userId);
   const current = await ownedConnection(organizationId, connectionId);
-  const stateBody = await evo(
-    `/instance/connectionState/${encodeURIComponent(cell(current, "instance_name"))}`,
-    "GET",
-  );
-  await ensureWebhook(cell(current, "instance_name"));
-  const state = readState(stateBody);
-  let status = evolutionConnectionStatus(state);
   const instanceName = cell(current, "instance_name");
-  let sessionDropped = false;
-  if (status === "connected" && (await connectionClosed(instanceName))) {
-    sessionDropped = true;
-    await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE").catch(() => null);
-    status = "disconnected";
-  }
-  let qrCode = "";
-  if (status !== "connected") {
-    qrCode = evolutionQrImage(
-      await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET"),
-    );
-  }
+  const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
+  await ensureWebhook(instanceName);
+  const status = evolutionConnectionStatus(readState(stateBody));
+  const qrCode = withQr && status !== "connected" ? evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET")) : "";
   const next = status === "connected" ? "connected" : qrCode ? "qr" : status;
   if (next === "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
-    .update({
-      status: next,
-      last_error: sessionDropped ? "A sessão do WhatsApp caiu. Leia o QR Code de novo para receber mensagens." : "",
-      updated_at: new Date().toISOString(),
-    })
+    .update({ status: next, last_error: "", updated_at: new Date().toISOString() })
     .eq("id", connectionId)
     .eq("organization_id", organizationId)
     .select("*")
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
-  return { status: next, qrCode };
+  return { status: next, qrCode, error: "" };
+}
+
+export async function deleteChatbotConnection(userId: string, connectionId: string) {
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
+  const current = await ownedConnection(organizationId, connectionId);
+  await removeEvolutionInstance(cell(current, "instance_name"));
+  const conversations = await rows(
+    table("chatbot_conversations").select("contact_id").eq("connection_id", connectionId).eq("organization_id", organizationId),
+  );
+  const contactIds = [...new Set(conversations.map((row) => cell(row, "contact_id")).filter(Boolean))];
+  await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
+  for (const contactId of contactIds) {
+    const still = await table("chatbot_conversations")
+      .select("id")
+      .eq("contact_id", contactId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (still.error) fail(schemaMessage(still.error.message));
+    if (!still.data) await done(table("chatbot_contacts").delete().eq("id", contactId).eq("organization_id", organizationId));
+  }
+}
+
+async function removeEvolutionInstance(instanceName: string) {
+  if (!instanceName) return;
+  await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE").catch(() => null);
+  try {
+    await evo(`/instance/delete/${encodeURIComponent(instanceName)}`, "DELETE");
+  } catch {
+    const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
+    const remains =
+      Array.isArray(listed) &&
+      listed.some((item) => item && typeof item === "object" && (item as Record<string, unknown>)["name"] === instanceName);
+    if (remains) fail("Não foi possível excluir o número na Evolution.");
+  }
 }
 
 export async function disconnectChatbotConnection(userId: string, connectionId: string) {
@@ -373,27 +377,6 @@ async function listMessages(instanceName: string) {
     page: 1,
     offset: 40,
   }).catch(() => null);
-}
-
-async function connectionClosed(instanceName: string) {
-  const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
-  const owner = ownerNumber(listed, instanceName);
-  if (!owner) return false;
-  try {
-    await evo(`/chat/fetchProfile/${encodeURIComponent(instanceName)}`, "POST", { number: owner });
-    return false;
-  } catch (error) {
-    return error instanceof Error && error.message === "Connection Closed";
-  }
-}
-
-function ownerNumber(instances: unknown, instanceName: string) {
-  if (!Array.isArray(instances)) return "";
-  const current = instances.find((item) => item && typeof item === "object" && (item as Record<string, unknown>)["name"] === instanceName);
-  if (!current || typeof current !== "object") return "";
-  const owner = (current as Record<string, unknown>)["ownerJid"];
-  if (typeof owner !== "string") return "";
-  return owner.split("@")[0]?.replace(/\D/g, "") ?? "";
 }
 
 async function importEvolutionMessages(connection: Record<string, unknown>) {
@@ -510,6 +493,11 @@ async function rows(query: Query) {
   const result = await (query as unknown as Promise<{ data: Record<string, unknown>[] | null; error: DbError | null }>);
   if (result.error) fail(schemaMessage(result.error.message));
   return result.data ?? [];
+}
+
+async function done(query: Query) {
+  const result = await (query as unknown as Promise<{ error: DbError | null }>);
+  if (result.error) fail(schemaMessage(result.error.message));
 }
 
 function readState(payload: unknown) {

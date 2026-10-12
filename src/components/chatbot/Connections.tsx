@@ -7,7 +7,7 @@ import {
   disconnectChatbotConnectionFn,
   refreshChatbotConnectionFn,
 } from "@/lib/chatbot.functions";
-import type { ChatbotConnectionStatus } from "@/lib/chatbot-evo";
+import { attendancePhone, whatsappMask, type ChatbotConnectionStatus } from "@/lib/chatbot-evo";
 
 const labels: Record<ChatbotConnectionStatus, string> = {
   waiting: "Aguardando conexão",
@@ -123,12 +123,12 @@ export function Connections() {
           Número
           <input
             value={phone}
-            onChange={(event) => setPhone(event.target.value)}
+            onChange={(event) => setPhone(whatsappMask(event.target.value))}
             inputMode="tel"
             placeholder="+55 (11) 99999-9999"
           />
         </label>
-        <Button disabled={pending || name.trim().length < 2 || phone.replace(/\D/g, "").length < 10}>
+        <Button disabled={pending || name.trim().length < 2 || !attendancePhone(phone)}>
           <Smartphone />
           {pending ? "Gerando QR Code" : "Conectar"}
         </Button>

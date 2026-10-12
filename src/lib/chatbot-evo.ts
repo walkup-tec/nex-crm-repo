@@ -39,11 +39,22 @@ export function chatbotInstanceName(organizationId: string) {
   return `nex${org}${stamp}`.slice(0, 40);
 }
 
+export function whatsappMask(value: string) {
+  const raw = value.replace(/\D/g, "");
+  const hasCountry = value.includes("+") || raw.length > 11;
+  const digits = (hasCountry && raw.startsWith("55") ? raw.slice(2) : raw).slice(0, 11);
+  if (!digits) return "";
+  if (digits.length <= 2) return `+55 (${digits}`;
+  if (digits.length <= 7) return `+55 (${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `+55 (${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
 export function attendancePhone(value: string) {
-  const digits = value.replace(/\D/g, "");
-  const withCountry = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
-  if (withCountry.length < 12 || withCountry.length > 15) return "";
-  return withCountry;
+  const raw = value.replace(/\D/g, "");
+  const hasCountry = value.includes("+") || raw.length > 11;
+  const digits = hasCountry && raw.startsWith("55") ? raw.slice(2) : raw;
+  if (digits.length !== 10 && digits.length !== 11) return "";
+  return `55${digits}`;
 }
 
 export function whatsappJidPhone(jid: string) {

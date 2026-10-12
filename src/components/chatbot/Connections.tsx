@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Smartphone } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   chatbotSnapshotFn,
@@ -69,6 +78,8 @@ export function Connections() {
   const [active, setActive] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [removing, setRemoving] = useState<Connection | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const qrIssuedAt = useRef(0);
 
   function applyStatus(connectionId: string, status: ChatbotConnectionStatus, error = "") {
@@ -261,22 +272,7 @@ export function Connections() {
                 >
                   Desconectar
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if (!window.confirm(`Excluir ${row.name} e apagar essa instância na Evolution?`)) return;
-                    void deleteChatbotConnectionFn({ data: { connectionId: row.id } }).then((result) => {
-                      if (!result.ok) {
-                        setMessage(result.message);
-                        return;
-                      }
-                      if (active === row.id) closeQr();
-                      setMessage("");
-                      void reload();
-                    });
-                  }}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setRemoving(row)}>
                   Excluir
                 </Button>
               </div>
@@ -286,6 +282,42 @@ export function Connections() {
           <p className="text-sm text-muted-foreground">Nenhum número conectado nesta empresa.</p>
         )}
       </div>
+      <AlertDialog open={removing !== null} onOpenChange={(open) => !open && !deleting && setRemoving(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir número</AlertDialogTitle>
+            <AlertDialogDescription>
+              Excluir {removing?.name} e apagar essa instância na Evolution? As conversas desse número também serão removidas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => {
+                if (!removing) return;
+                const connectionId = removing.id;
+                setDeleting(true);
+                void deleteChatbotConnectionFn({ data: { connectionId } }).then((result) => {
+                  setDeleting(false);
+                  if (!result.ok) {
+                    setMessage(result.message);
+                    setRemoving(null);
+                    return;
+                  }
+                  if (active === connectionId) closeQr();
+                  setMessage("");
+                  setRemoving(null);
+                  void reload();
+                });
+              }}
+            >
+              {deleting ? "Excluindo" : "Excluir"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import {
+  evolutionConnectionStatus,
+  evolutionIncomingMessages,
+  evolutionMessageText,
+  evolutionQrImage,
+  whatsappJidPhone,
+} from "./chatbot-evo";
+
+assert.equal(whatsappJidPhone("5511999999999@s.whatsapp.net"), "5511999999999");
+assert.equal(whatsappJidPhone("120363@g.us"), "");
+assert.equal(evolutionConnectionStatus("open"), "connected");
+assert.equal(evolutionConnectionStatus("close"), "disconnected");
+assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");
+assert.equal(evolutionMessageText({ imageMessage: { url: "x" } }), "[imagem]");
+assert.equal(
+  evolutionQrImage({ qrcode: { base64: "data:image/png;base64,abc" } }),
+  "data:image/png;base64,abc",
+);
+assert.equal(evolutionIncomingMessages({ key: { id: "1" }, message: { conversation: "Oi" } }).length, 1);
+assert.equal(evolutionIncomingMessages([{ key: { id: "1" } }, { key: { id: "2" } }]).length, 2);
+assert.equal(evolutionIncomingMessages({ messages: [{ key: { id: "1" } }] }).length, 1);

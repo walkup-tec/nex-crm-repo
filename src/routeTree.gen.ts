@@ -17,6 +17,7 @@ import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
+import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
 import { Route as AuthenticatedCreditosMetaRouteImport } from './routes/_authenticated/creditos-meta'
 import { Route as AuthenticatedCriativosRouteImport } from './routes/_authenticated/criativos'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -25,12 +26,25 @@ import { Route as AuthenticatedMasterRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedMinhaContaRouteImport } from './routes/_authenticated/minha-conta'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
+import { Route as AuthenticatedChatbotIndexRouteImport } from './routes/_authenticated/chatbot.index'
+import { Route as AuthenticatedChatbotAgendamentosRouteImport } from './routes/_authenticated/chatbot.agendamentos'
+import { Route as AuthenticatedChatbotAutomacoesRouteImport } from './routes/_authenticated/chatbot.automacoes'
+import { Route as AuthenticatedChatbotClientesRouteImport } from './routes/_authenticated/chatbot.clientes'
+import { Route as AuthenticatedChatbotConfiguracoesRouteImport } from './routes/_authenticated/chatbot.configuracoes'
+import { Route as AuthenticatedChatbotEquipesRouteImport } from './routes/_authenticated/chatbot.equipes'
+import { Route as AuthenticatedChatbotFilaRouteImport } from './routes/_authenticated/chatbot.fila'
+import { Route as AuthenticatedChatbotKanbanRouteImport } from './routes/_authenticated/chatbot.kanban'
+import { Route as AuthenticatedChatbotProdutosRouteImport } from './routes/_authenticated/chatbot.produtos'
+import { Route as AuthenticatedChatbotRelatoriosRouteImport } from './routes/_authenticated/chatbot.relatorios'
+import { Route as AuthenticatedChatbotVisaoGeralRouteImport } from './routes/_authenticated/chatbot.visao-geral'
+import { Route as AuthenticatedChatbotWhatsappsRouteImport } from './routes/_authenticated/chatbot.whatsapps'
 import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenticated/master.index'
 import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
 import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
+import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
@@ -74,6 +88,11 @@ const AuthenticatedCampanhasRoute = AuthenticatedCampanhasRouteImport.update({
   path: '/campanhas',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedChatbotRoute = AuthenticatedChatbotRouteImport.update({
+  id: '/chatbot',
+  path: '/chatbot',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedCreditosMetaRoute =
   AuthenticatedCreditosMetaRouteImport.update({
     id: '/creditos-meta',
@@ -115,6 +134,78 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthenticatedChatbotIndexRoute =
+  AuthenticatedChatbotIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotAgendamentosRoute =
+  AuthenticatedChatbotAgendamentosRouteImport.update({
+    id: '/agendamentos',
+    path: '/agendamentos',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotAutomacoesRoute =
+  AuthenticatedChatbotAutomacoesRouteImport.update({
+    id: '/automacoes',
+    path: '/automacoes',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotClientesRoute =
+  AuthenticatedChatbotClientesRouteImport.update({
+    id: '/clientes',
+    path: '/clientes',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotConfiguracoesRoute =
+  AuthenticatedChatbotConfiguracoesRouteImport.update({
+    id: '/configuracoes',
+    path: '/configuracoes',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotEquipesRoute =
+  AuthenticatedChatbotEquipesRouteImport.update({
+    id: '/equipes',
+    path: '/equipes',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotFilaRoute =
+  AuthenticatedChatbotFilaRouteImport.update({
+    id: '/fila',
+    path: '/fila',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotKanbanRoute =
+  AuthenticatedChatbotKanbanRouteImport.update({
+    id: '/kanban',
+    path: '/kanban',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotProdutosRoute =
+  AuthenticatedChatbotProdutosRouteImport.update({
+    id: '/produtos',
+    path: '/produtos',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotRelatoriosRoute =
+  AuthenticatedChatbotRelatoriosRouteImport.update({
+    id: '/relatorios',
+    path: '/relatorios',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotVisaoGeralRoute =
+  AuthenticatedChatbotVisaoGeralRouteImport.update({
+    id: '/visao-geral',
+    path: '/visao-geral',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotWhatsappsRoute =
+  AuthenticatedChatbotWhatsappsRouteImport.update({
+    id: '/whatsapps',
+    path: '/whatsapps',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
 const AuthenticatedMasterIndexRoute =
   AuthenticatedMasterIndexRouteImport.update({
     id: '/',
@@ -151,6 +242,11 @@ const AuthenticatedMasterFinanceiroRoute =
     path: '/financeiro',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
+const ApiChatbotEvoRoute = ApiChatbotEvoRouteImport.update({
+  id: '/api/chatbot/evo',
+  path: '/api/chatbot/evo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/meta/callback',
   path: '/meta/callback',
@@ -177,6 +273,7 @@ export interface FileRoutesByFullPath {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
+  '/chatbot': typeof AuthenticatedChatbotRouteWithChildren
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
   '/criativos': typeof AuthenticatedCriativosRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -185,12 +282,25 @@ export interface FileRoutesByFullPath {
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/auth/': typeof AuthIndexRoute
+  '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
+  '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
+  '/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
+  '/chatbot/configuracoes': typeof AuthenticatedChatbotConfiguracoesRoute
+  '/chatbot/equipes': typeof AuthenticatedChatbotEquipesRoute
+  '/chatbot/fila': typeof AuthenticatedChatbotFilaRoute
+  '/chatbot/kanban': typeof AuthenticatedChatbotKanbanRoute
+  '/chatbot/produtos': typeof AuthenticatedChatbotProdutosRoute
+  '/chatbot/relatorios': typeof AuthenticatedChatbotRelatoriosRoute
+  '/chatbot/visao-geral': typeof AuthenticatedChatbotVisaoGeralRoute
+  '/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
+  '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
   '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
@@ -209,12 +319,25 @@ export interface FileRoutesByTo {
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/auth': typeof AuthIndexRoute
+  '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
+  '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
+  '/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
+  '/chatbot/configuracoes': typeof AuthenticatedChatbotConfiguracoesRoute
+  '/chatbot/equipes': typeof AuthenticatedChatbotEquipesRoute
+  '/chatbot/fila': typeof AuthenticatedChatbotFilaRoute
+  '/chatbot/kanban': typeof AuthenticatedChatbotKanbanRoute
+  '/chatbot/produtos': typeof AuthenticatedChatbotProdutosRoute
+  '/chatbot/relatorios': typeof AuthenticatedChatbotRelatoriosRoute
+  '/chatbot/visao-geral': typeof AuthenticatedChatbotVisaoGeralRoute
+  '/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
+  '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/chatbot': typeof AuthenticatedChatbotIndexRoute
   '/master': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
   '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
@@ -229,6 +352,7 @@ export interface FileRoutesById {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
+  '/_authenticated/chatbot': typeof AuthenticatedChatbotRouteWithChildren
   '/_authenticated/creditos-meta': typeof AuthenticatedCreditosMetaRoute
   '/_authenticated/criativos': typeof AuthenticatedCriativosRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -237,12 +361,25 @@ export interface FileRoutesById {
   '/_authenticated/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/auth/': typeof AuthIndexRoute
+  '/_authenticated/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
+  '/_authenticated/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
+  '/_authenticated/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
+  '/_authenticated/chatbot/configuracoes': typeof AuthenticatedChatbotConfiguracoesRoute
+  '/_authenticated/chatbot/equipes': typeof AuthenticatedChatbotEquipesRoute
+  '/_authenticated/chatbot/fila': typeof AuthenticatedChatbotFilaRoute
+  '/_authenticated/chatbot/kanban': typeof AuthenticatedChatbotKanbanRoute
+  '/_authenticated/chatbot/produtos': typeof AuthenticatedChatbotProdutosRoute
+  '/_authenticated/chatbot/relatorios': typeof AuthenticatedChatbotRelatoriosRoute
+  '/_authenticated/chatbot/visao-geral': typeof AuthenticatedChatbotVisaoGeralRoute
+  '/_authenticated/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
   '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
+  '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
   '/_authenticated/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
   '/_authenticated/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
@@ -257,6 +394,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/reset-password'
     | '/campanhas'
+    | '/chatbot'
     | '/creditos-meta'
     | '/criativos'
     | '/dashboard'
@@ -265,12 +403,25 @@ export interface FileRouteTypes {
     | '/minha-conta'
     | '/usuarios'
     | '/auth/'
+    | '/chatbot/agendamentos'
+    | '/chatbot/automacoes'
+    | '/chatbot/clientes'
+    | '/chatbot/configuracoes'
+    | '/chatbot/equipes'
+    | '/chatbot/fila'
+    | '/chatbot/kanban'
+    | '/chatbot/produtos'
+    | '/chatbot/relatorios'
+    | '/chatbot/visao-geral'
+    | '/chatbot/whatsapps'
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
     | '/master/criativos'
     | '/master/financeiro'
+    | '/api/chatbot/evo'
     | '/auth/meta/callback'
+    | '/chatbot/'
     | '/master/'
     | '/master/financeiro/$orgId'
     | '/master/suporte/$orgId'
@@ -289,12 +440,25 @@ export interface FileRouteTypes {
     | '/minha-conta'
     | '/usuarios'
     | '/auth'
+    | '/chatbot/agendamentos'
+    | '/chatbot/automacoes'
+    | '/chatbot/clientes'
+    | '/chatbot/configuracoes'
+    | '/chatbot/equipes'
+    | '/chatbot/fila'
+    | '/chatbot/kanban'
+    | '/chatbot/produtos'
+    | '/chatbot/relatorios'
+    | '/chatbot/visao-geral'
+    | '/chatbot/whatsapps'
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
     | '/master/criativos'
     | '/master/financeiro'
+    | '/api/chatbot/evo'
     | '/auth/meta/callback'
+    | '/chatbot'
     | '/master'
     | '/master/financeiro/$orgId'
     | '/master/suporte/$orgId'
@@ -308,6 +472,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/reset-password'
     | '/_authenticated/campanhas'
+    | '/_authenticated/chatbot'
     | '/_authenticated/creditos-meta'
     | '/_authenticated/criativos'
     | '/_authenticated/dashboard'
@@ -316,12 +481,25 @@ export interface FileRouteTypes {
     | '/_authenticated/minha-conta'
     | '/_authenticated/usuarios'
     | '/auth/'
+    | '/_authenticated/chatbot/agendamentos'
+    | '/_authenticated/chatbot/automacoes'
+    | '/_authenticated/chatbot/clientes'
+    | '/_authenticated/chatbot/configuracoes'
+    | '/_authenticated/chatbot/equipes'
+    | '/_authenticated/chatbot/fila'
+    | '/_authenticated/chatbot/kanban'
+    | '/_authenticated/chatbot/produtos'
+    | '/_authenticated/chatbot/relatorios'
+    | '/_authenticated/chatbot/visao-geral'
+    | '/_authenticated/chatbot/whatsapps'
     | '/_authenticated/master/campanhas'
     | '/_authenticated/master/clientes'
     | '/_authenticated/master/configuracoes'
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
+    | '/api/chatbot/evo'
     | '/auth/meta/callback'
+    | '/_authenticated/chatbot/'
     | '/_authenticated/master/'
     | '/_authenticated/master/financeiro/$orgId'
     | '/_authenticated/master/suporte/$orgId'
@@ -335,6 +513,7 @@ export interface RootRouteChildren {
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -395,6 +574,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCampanhasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/chatbot': {
+      id: '/_authenticated/chatbot'
+      path: '/chatbot'
+      fullPath: '/chatbot'
+      preLoaderRoute: typeof AuthenticatedChatbotRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/creditos-meta': {
       id: '/_authenticated/creditos-meta'
       path: '/creditos-meta'
@@ -451,6 +637,90 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_authenticated/chatbot/': {
+      id: '/_authenticated/chatbot/'
+      path: '/'
+      fullPath: '/chatbot/'
+      preLoaderRoute: typeof AuthenticatedChatbotIndexRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/agendamentos': {
+      id: '/_authenticated/chatbot/agendamentos'
+      path: '/agendamentos'
+      fullPath: '/chatbot/agendamentos'
+      preLoaderRoute: typeof AuthenticatedChatbotAgendamentosRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/automacoes': {
+      id: '/_authenticated/chatbot/automacoes'
+      path: '/automacoes'
+      fullPath: '/chatbot/automacoes'
+      preLoaderRoute: typeof AuthenticatedChatbotAutomacoesRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/clientes': {
+      id: '/_authenticated/chatbot/clientes'
+      path: '/clientes'
+      fullPath: '/chatbot/clientes'
+      preLoaderRoute: typeof AuthenticatedChatbotClientesRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/configuracoes': {
+      id: '/_authenticated/chatbot/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/chatbot/configuracoes'
+      preLoaderRoute: typeof AuthenticatedChatbotConfiguracoesRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/equipes': {
+      id: '/_authenticated/chatbot/equipes'
+      path: '/equipes'
+      fullPath: '/chatbot/equipes'
+      preLoaderRoute: typeof AuthenticatedChatbotEquipesRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/fila': {
+      id: '/_authenticated/chatbot/fila'
+      path: '/fila'
+      fullPath: '/chatbot/fila'
+      preLoaderRoute: typeof AuthenticatedChatbotFilaRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/kanban': {
+      id: '/_authenticated/chatbot/kanban'
+      path: '/kanban'
+      fullPath: '/chatbot/kanban'
+      preLoaderRoute: typeof AuthenticatedChatbotKanbanRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/produtos': {
+      id: '/_authenticated/chatbot/produtos'
+      path: '/produtos'
+      fullPath: '/chatbot/produtos'
+      preLoaderRoute: typeof AuthenticatedChatbotProdutosRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/relatorios': {
+      id: '/_authenticated/chatbot/relatorios'
+      path: '/relatorios'
+      fullPath: '/chatbot/relatorios'
+      preLoaderRoute: typeof AuthenticatedChatbotRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/visao-geral': {
+      id: '/_authenticated/chatbot/visao-geral'
+      path: '/visao-geral'
+      fullPath: '/chatbot/visao-geral'
+      preLoaderRoute: typeof AuthenticatedChatbotVisaoGeralRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/whatsapps': {
+      id: '/_authenticated/chatbot/whatsapps'
+      path: '/whatsapps'
+      fullPath: '/chatbot/whatsapps'
+      preLoaderRoute: typeof AuthenticatedChatbotWhatsappsRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
     '/_authenticated/master/': {
       id: '/_authenticated/master/'
       path: '/'
@@ -493,6 +763,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterFinanceiroRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
+    '/api/chatbot/evo': {
+      id: '/api/chatbot/evo'
+      path: '/api/chatbot/evo'
+      fullPath: '/api/chatbot/evo'
+      preLoaderRoute: typeof ApiChatbotEvoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
       path: '/meta/callback'
@@ -516,6 +793,40 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AuthenticatedChatbotRouteChildren {
+  AuthenticatedChatbotAgendamentosRoute: typeof AuthenticatedChatbotAgendamentosRoute
+  AuthenticatedChatbotAutomacoesRoute: typeof AuthenticatedChatbotAutomacoesRoute
+  AuthenticatedChatbotClientesRoute: typeof AuthenticatedChatbotClientesRoute
+  AuthenticatedChatbotConfiguracoesRoute: typeof AuthenticatedChatbotConfiguracoesRoute
+  AuthenticatedChatbotEquipesRoute: typeof AuthenticatedChatbotEquipesRoute
+  AuthenticatedChatbotFilaRoute: typeof AuthenticatedChatbotFilaRoute
+  AuthenticatedChatbotKanbanRoute: typeof AuthenticatedChatbotKanbanRoute
+  AuthenticatedChatbotProdutosRoute: typeof AuthenticatedChatbotProdutosRoute
+  AuthenticatedChatbotRelatoriosRoute: typeof AuthenticatedChatbotRelatoriosRoute
+  AuthenticatedChatbotVisaoGeralRoute: typeof AuthenticatedChatbotVisaoGeralRoute
+  AuthenticatedChatbotWhatsappsRoute: typeof AuthenticatedChatbotWhatsappsRoute
+  AuthenticatedChatbotIndexRoute: typeof AuthenticatedChatbotIndexRoute
+}
+
+const AuthenticatedChatbotRouteChildren: AuthenticatedChatbotRouteChildren = {
+  AuthenticatedChatbotAgendamentosRoute: AuthenticatedChatbotAgendamentosRoute,
+  AuthenticatedChatbotAutomacoesRoute: AuthenticatedChatbotAutomacoesRoute,
+  AuthenticatedChatbotClientesRoute: AuthenticatedChatbotClientesRoute,
+  AuthenticatedChatbotConfiguracoesRoute:
+    AuthenticatedChatbotConfiguracoesRoute,
+  AuthenticatedChatbotEquipesRoute: AuthenticatedChatbotEquipesRoute,
+  AuthenticatedChatbotFilaRoute: AuthenticatedChatbotFilaRoute,
+  AuthenticatedChatbotKanbanRoute: AuthenticatedChatbotKanbanRoute,
+  AuthenticatedChatbotProdutosRoute: AuthenticatedChatbotProdutosRoute,
+  AuthenticatedChatbotRelatoriosRoute: AuthenticatedChatbotRelatoriosRoute,
+  AuthenticatedChatbotVisaoGeralRoute: AuthenticatedChatbotVisaoGeralRoute,
+  AuthenticatedChatbotWhatsappsRoute: AuthenticatedChatbotWhatsappsRoute,
+  AuthenticatedChatbotIndexRoute: AuthenticatedChatbotIndexRoute,
+}
+
+const AuthenticatedChatbotRouteWithChildren =
+  AuthenticatedChatbotRoute._addFileChildren(AuthenticatedChatbotRouteChildren)
 
 interface AuthenticatedMasterFinanceiroRouteChildren {
   AuthenticatedMasterFinanceiroOrgIdRoute: typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -558,6 +869,7 @@ const AuthenticatedMasterRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCampanhasRoute: typeof AuthenticatedCampanhasRoute
+  AuthenticatedChatbotRoute: typeof AuthenticatedChatbotRouteWithChildren
   AuthenticatedCreditosMetaRoute: typeof AuthenticatedCreditosMetaRoute
   AuthenticatedCriativosRoute: typeof AuthenticatedCriativosRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -569,6 +881,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCampanhasRoute: AuthenticatedCampanhasRoute,
+  AuthenticatedChatbotRoute: AuthenticatedChatbotRouteWithChildren,
   AuthenticatedCreditosMetaRoute: AuthenticatedCreditosMetaRoute,
   AuthenticatedCriativosRoute: AuthenticatedCriativosRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
@@ -601,6 +914,7 @@ const rootRouteChildren: RootRouteChildren = {
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ApiChatbotEvoRoute: ApiChatbotEvoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

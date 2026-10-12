@@ -11,13 +11,18 @@ const senderInstance = "walkup-v2";
 const hostEvolutionUrl = "http://172.17.0.1:30181";
 const draxEvolutionKey = "429683C4C977415CAAFCCE10F7D57E11";
 
-export async function sendLowBalanceWhatsapp(phone: string, name: string) {
+export function evolutionRuntime() {
   const base = (envValue("EVO_API_URL", "EVOLUTION_API_URL") || hostEvolutionUrl).replace(
     /\/$/,
     "",
   );
   const key =
     envValue("EVO_API_KEY", "EVOLUTION_API_KEY", "AUTHENTICATION_API_KEY") || draxEvolutionKey;
+  return { base, key };
+}
+
+export async function sendLowBalanceWhatsapp(phone: string, name: string) {
+  const { base, key } = evolutionRuntime();
   const number = whatsappNumber(phone);
   if (!number) {
     console.error("evo_low_balance", "invalid_phone");

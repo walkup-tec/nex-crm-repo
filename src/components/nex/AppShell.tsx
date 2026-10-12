@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react
 import { BarChart3, Bot, BriefcaseBusiness, ChevronDown, CircleAlert, CircleDollarSign, CreditCard, FileImage, Gauge, LogOut, Menu, RefreshCw, Settings, ShieldCheck, Users, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
@@ -141,21 +142,25 @@ function Nav({
       {clientSections.map((section) => {
         const SectionIcon = section.icon;
         return (
-          <div
-            key={section.label}
-            role="group"
-            aria-label={section.label}
-            className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
-          >
-            <p className="mb-1 flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground">
-              <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
-              {section.label}
-            </p>
-            {section.paths.map((to) => {
-              const item = clientNav.find((entry) => entry[0] === to);
-              return item ? link(item[0], item[1], item[2], true) : null;
-            })}
-          </div>
+          <Collapsible key={section.label} defaultOpen>
+            <div
+              role="group"
+              aria-label={section.label}
+              className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
+            >
+              <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground hover:bg-sidebar-accent/60 data-[state=open]:mb-1">
+                <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
+                <span className="flex-1">{section.label}</span>
+                <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {section.paths.map((to) => {
+                  const item = clientNav.find((entry) => entry[0] === to);
+                  return item ? link(item[0], item[1], item[2], true) : null;
+                })}
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
         );
       })}
     </nav>

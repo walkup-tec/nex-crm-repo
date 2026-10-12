@@ -46,6 +46,15 @@ export function Connections() {
       return;
     }
     setRows(result.data.connections);
+    const pending = result.data.connections.filter((row) => row.status !== "connected");
+    if (!pending.length) return;
+    await Promise.all(pending.map((row) => refreshChatbotConnectionFn({ data: { connectionId: row.id } })));
+    const again = await chatbotSnapshotFn();
+    if (!again.ok) return;
+    setRows(again.data.connections);
+    if (again.data.connections.some((row) => row.status === "connected" && pending.some((item) => item.id === row.id))) {
+      setMessage("Conexão finalizada");
+    }
   }
 
   useEffect(() => {

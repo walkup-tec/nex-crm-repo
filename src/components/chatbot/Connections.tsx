@@ -40,7 +40,7 @@ function formatPhone(value: string) {
   return whatsappMask(value) || "Aguardando leitura";
 }
 
-const connectionSteps = ["NEX", "API WhatsApp", "Números"] as const;
+const connectionSteps = ["NEX Chatbot", "API WhatsApp", "Números"] as const;
 
 function ConnectionsLoading() {
   return (

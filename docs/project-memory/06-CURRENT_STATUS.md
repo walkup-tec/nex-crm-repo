@@ -15,6 +15,7 @@
 
 ## Chatbot — Fase 1
 
+- A tela Conexão pede nome de atendimento e número, pede o QR Code à Evolution e mostra um card por número. Quando o QR é lido, o card recebe a tag Conexão finalizada e o nome é enviado ao perfil do WhatsApp.
 - Conexão e Caixa de Entrada leem e gravam `chatbot_connections`, `chatbot_contacts`, `chatbot_conversations` e `chatbot_messages`.
 - A Evolution API é chamada só no servidor. O webhook público é `POST /api/chatbot/evo`.
 - A migração `drizzle/migrations/0010_chatbot_attendance.sql` precisa ser aplicada no Supabase. O deploy do EasyPanel não executa SQL.

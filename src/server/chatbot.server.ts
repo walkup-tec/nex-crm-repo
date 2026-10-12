@@ -1,6 +1,7 @@
 import { evolutionRuntime } from "@/server/evo.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
+  attendancePhone,
   chatbotInstanceName,
   evolutionConnectionStatus,
   evolutionIncomingMessages,
@@ -82,6 +83,12 @@ async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: un
   return body;
 }
 
+async function applyWhatsappName(instanceName: string, name: string) {
+  const clean = name.trim();
+  if (clean.length < 2) return;
+  await evo(`/chat/updateProfileName/${encodeURIComponent(instanceName)}`, "POST", { name: clean }).catch(() => null);
+}
+
 function webhookUrl() {
   const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
   return `${base}/api/chatbot/evo`;
@@ -159,9 +166,12 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   };
 }
 
-export async function createChatbotConnection(userId: string, name: string) {
+export async function createChatbotConnection(userId: string, name: string, phone: string) {
   const clean = name.trim();
-  if (clean.length < 2) fail("Informe um nome para a conexão.");
+  if (clean.length < 2) fail("Informe o nome de atendimento.");
+  if (clean.length > 25) fail("O nome de atendimento pode ter no máximo 25 caracteres.");
+  const number = attendancePhone(phone);
+  if (!number) fail("Informe o número com DDD.");
   const { organizationId, admin } = await membership(userId);
   if (!admin) fail("Somente o administrador da empresa pode conectar um WhatsApp.");
   const instanceName = chatbotInstanceName(organizationId);
@@ -169,6 +179,7 @@ export async function createChatbotConnection(userId: string, name: string) {
     instanceName,
     qrcode: true,
     integration: "WHATSAPP-BAILEYS",
+    number,
   });
   const webhookReady = await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody())
     .then(() => true)
@@ -179,6 +190,7 @@ export async function createChatbotConnection(userId: string, name: string) {
       organization_id: organizationId,
       instance_name: instanceName,
       display_name: clean,
+      phone: number,
       status: qr ? "qr" : "waiting",
       last_error: webhookReady ? "" : "O número foi criado, mas o recebimento de mensagens ainda não foi confirmado.",
     })
@@ -204,6 +216,7 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
     );
   }
   const next = status === "connected" ? "connected" : qrCode ? "qr" : status;
+  if (next === "connected") await applyWhatsappName(cell(current, "instance_name"), cell(current, "display_name"));
   const updated = await table("chatbot_connections")
     .update({ status: next, last_error: "", updated_at: new Date().toISOString() })
     .eq("id", connectionId)
@@ -300,7 +313,9 @@ export async function ingestEvolutionWebhook(request: Request) {
   if (event.includes("connection")) {
     const status = evolutionConnectionStatus(readState(payload["data"] ?? payload));
     const sender = payload["sender"];
-    const phone = whatsappJidPhone(typeof sender === "string" ? sender : "");
+    const senderPhone = whatsappJidPhone(typeof sender === "string" ? sender : "");
+    const phone = senderPhone || cell(found.data, "phone");
+    if (status === "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
     await table("chatbot_connections")
       .update({
         status,

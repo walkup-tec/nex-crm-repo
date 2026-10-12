@@ -4,9 +4,13 @@ import {
   evolutionIncomingMessages,
   evolutionMessageText,
   evolutionQrImage,
+  attendancePhone,
   whatsappJidPhone,
 } from "./chatbot-evo";
 
+assert.equal(attendancePhone("+55 (11) 99999-9999"), "5511999999999");
+assert.equal(attendancePhone("11999999999"), "5511999999999");
+assert.equal(attendancePhone("123"), "");
 assert.equal(whatsappJidPhone("5511999999999@s.whatsapp.net"), "5511999999999");
 assert.equal(whatsappJidPhone("120363@g.us"), "");
 assert.equal(evolutionConnectionStatus("open"), "connected");

@@ -39,6 +39,13 @@ export function chatbotInstanceName(organizationId: string) {
   return `nex${org}${stamp}`.slice(0, 40);
 }
 
+export function attendancePhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const withCountry = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+  if (withCountry.length < 12 || withCountry.length > 15) return "";
+  return withCountry;
+}
+
 export function whatsappJidPhone(jid: string) {
   const head = jid.split("@")[0] ?? "";
   const digits = head.replace(/\D/g, "");

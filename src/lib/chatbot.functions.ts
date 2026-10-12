@@ -33,10 +33,10 @@ export const chatbotSnapshotFn = createServerFn({ method: "POST" })
 
 export const createChatbotConnectionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { name: string }) => data)
+  .validator((data: { name: string; phone: string }) => data)
   .handler(async ({ context, data }) => {
     const { createChatbotConnection } = await import("@/server/chatbot.server");
-    return guard(() => createChatbotConnection(context.userId, data.name));
+    return guard(() => createChatbotConnection(context.userId, data.name, data.phone));
   });
 
 export const refreshChatbotConnectionFn = createServerFn({ method: "POST" })

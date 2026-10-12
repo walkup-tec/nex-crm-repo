@@ -79,11 +79,26 @@ export function evolutionQrImage(payload: unknown): string {
   return "";
 }
 
+export function evolutionContactPhone(key: Record<string, unknown>) {
+  const candidates = [key["remoteJidAlt"], key["senderPn"], key["participant"], key["remoteJid"]];
+  let fallback = "";
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const phone = whatsappJidPhone(candidate);
+    if (!phone) continue;
+    if (!candidate.endsWith("@lid")) return phone;
+    fallback = phone;
+  }
+  return fallback;
+}
+
 export function evolutionIncomingMessages(data: unknown): Record<string, unknown>[] {
   if (Array.isArray(data)) return data.filter(isRecord);
   if (!isRecord(data)) return [];
   const messages = data["messages"];
   if (Array.isArray(messages)) return messages.filter(isRecord);
+  if (isRecord(messages) && Array.isArray(messages["records"])) return messages["records"].filter(isRecord);
+  if (Array.isArray(data["records"])) return data["records"].filter(isRecord);
   if (data["key"] || data["message"]) return [data];
   return [];
 }
@@ -97,8 +112,16 @@ export function evolutionMessageText(message: unknown): string {
   const record = message as Record<string, unknown>;
   if (typeof record["conversation"] === "string") return record["conversation"];
   const extended = record["extendedTextMessage"];
-  if (extended && typeof extended === "object" && typeof (extended as { text?: unknown }).text === "string") {
-    return (extended as { text: string }).text;
+  if (extended && typeof extended === "object" && typeof (extended as Record<string, unknown>)["text"] === "string") {
+    return (extended as Record<string, unknown>)["text"] as string;
+  }
+  for (const wrapper of ["ephemeralMessage", "viewOnceMessage", "documentWithCaptionMessage"]) {
+    const nested = record[wrapper];
+    if (nested && typeof nested === "object") {
+      const inner = (nested as Record<string, unknown>)["message"];
+      const text = evolutionMessageText(inner);
+      if (text) return text;
+    }
   }
   if (record["imageMessage"]) return "[imagem]";
   if (record["audioMessage"]) return "[áudio]";

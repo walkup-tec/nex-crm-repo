@@ -4,6 +4,7 @@ import {
   attendancePhone,
   chatbotInstanceName,
   evolutionConnectionStatus,
+  evolutionContactPhone,
   evolutionIncomingMessages,
   evolutionMessageText,
   evolutionQrImage,
@@ -91,7 +92,8 @@ async function applyWhatsappName(instanceName: string, name: string) {
 
 function webhookUrl() {
   const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
-  return `${base}/api/chatbot/evo`;
+  const { key } = evolutionRuntime();
+  return `${base}/api/chatbot/evo?token=${encodeURIComponent(key)}`;
 }
 
 function webhookBody() {
@@ -102,10 +104,14 @@ function webhookBody() {
       url: webhookUrl(),
       byEvents: false,
       base64: false,
-      headers: { apikey: key },
+      headers: { apikey: key, authorization: `Bearer ${key}` },
       events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
     },
   };
+}
+
+async function ensureWebhook(instanceName: string) {
+  await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody()).catch(() => null);
 }
 
 function sameSecret(left: string, right: string) {
@@ -128,8 +134,11 @@ function duplicate(error: DbError | null) {
 
 export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> {
   const { organizationId } = await membership(userId);
-  const [connectionRows, contactRows, conversationRows, messageRows] = await Promise.all([
-    rows(table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true })),
+  const connectionRows = await rows(
+    table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }),
+  );
+  await Promise.all(connectionRows.map((row) => importEvolutionMessages(row)));
+  const [contactRows, conversationRows, messageRows] = await Promise.all([
     rows(table("chatbot_contacts").select("*").eq("organization_id", organizationId).order("name", { ascending: true })),
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
     rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }).limit(400)),
@@ -207,6 +216,7 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
     `/instance/connectionState/${encodeURIComponent(cell(current, "instance_name"))}`,
     "GET",
   );
+  await ensureWebhook(cell(current, "instance_name"));
   const state = readState(stateBody);
   const status = evolutionConnectionStatus(state);
   let qrCode = "";
@@ -300,11 +310,13 @@ export async function ingestEvolutionWebhook(request: Request) {
   const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!payload) return new Response("invalid", { status: 400 });
   const header = request.headers.get("apikey") || request.headers.get("x-api-key") || "";
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  const queryToken = new URL(request.url).searchParams.get("token") ?? "";
   const providedKey = payload["apikey"];
   const bodyKey = typeof providedKey === "string" ? providedKey : "";
-  if (!key || (!sameSecret(header, key) && !sameSecret(bodyKey, key))) {
-    return new Response("unauthorized", { status: 401 });
-  }
+  const authorized = [header, bearer, queryToken, bodyKey].some((value) => sameSecret(value, key));
+  if (!key || !authorized) return new Response("unauthorized", { status: 401 });
   const instance = cell(payload, "instance");
   if (!instance) return new Response("ok");
   const found = await table("chatbot_connections").select("*").eq("instance_name", instance).maybeSingle();
@@ -331,12 +343,24 @@ export async function ingestEvolutionWebhook(request: Request) {
   return new Response("ok");
 }
 
+async function importEvolutionMessages(connection: Record<string, unknown>) {
+  const instanceName = cell(connection, "instance_name");
+  if (!instanceName) return;
+  await ensureWebhook(instanceName);
+  const listed = await evo(`/chat/findMessages/${encodeURIComponent(instanceName)}`, "POST", {
+    where: {},
+    page: 1,
+    offset: 30,
+  }).catch(() => null);
+  for (const item of evolutionIncomingMessages(listed)) await storeIncoming(connection, item);
+}
+
 async function storeIncoming(connection: Record<string, unknown>, data: unknown) {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
   const key = (rawKey && typeof rawKey === "object" ? rawKey : {}) as Record<string, unknown>;
   if (key["fromMe"] === true) return;
-  const phone = whatsappJidPhone(cell(key, "remoteJid"));
+  const phone = evolutionContactPhone(key);
   const externalId = cell(key, "id");
   const text = evolutionMessageText(record["message"]);
   if (!phone || !text || !externalId) return;

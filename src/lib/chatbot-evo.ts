@@ -92,6 +92,31 @@ export function evolutionContactPhone(key: Record<string, unknown>) {
   return fallback;
 }
 
+export function evolutionSameOwnerInstance(instances: unknown, currentName: string) {
+  if (!Array.isArray(instances) || !currentName) return "";
+  const rows = instances.filter(isRecord);
+  const current = rows.find((row) => row["name"] === currentName);
+  const owner = current?.["ownerJid"];
+  if (typeof owner !== "string" || !owner) return "";
+  let best = "";
+  let bestCount = 0;
+  for (const row of rows) {
+    if (row["name"] === currentName || row["ownerJid"] !== owner) continue;
+    const count = messageCount(row["_count"]);
+    const name = row["name"];
+    if (typeof name !== "string" || count <= bestCount) continue;
+    best = name;
+    bestCount = count;
+  }
+  return best;
+}
+
+function messageCount(value: unknown) {
+  if (!isRecord(value)) return 0;
+  const count = value["Message"];
+  return typeof count === "number" ? count : 0;
+}
+
 export function evolutionIncomingMessages(data: unknown): Record<string, unknown>[] {
   if (Array.isArray(data)) return data.filter(isRecord);
   if (!isRecord(data)) return [];

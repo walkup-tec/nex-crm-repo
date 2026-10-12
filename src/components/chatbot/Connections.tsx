@@ -46,12 +46,22 @@ export function Connections() {
       return;
     }
     setRows(result.data.connections);
+    if (!result.data.connections.length) return;
     const pending = result.data.connections.filter((row) => row.status !== "connected");
-    if (!pending.length) return;
-    await Promise.all(pending.map((row) => refreshChatbotConnectionFn({ data: { connectionId: row.id } })));
+    const refreshed = await Promise.all(
+      result.data.connections.map(async (row) => ({
+        id: row.id,
+        result: await refreshChatbotConnectionFn({ data: { connectionId: row.id } }),
+      })),
+    );
     const again = await chatbotSnapshotFn();
     if (!again.ok) return;
     setRows(again.data.connections);
+    const visible = refreshed.find((item) => item.result.ok && item.result.data.qrCode);
+    if (visible?.result.ok && visible.result.data.qrCode) {
+      setActive(visible.id);
+      setQr(visible.result.data.qrCode);
+    }
     if (again.data.connections.some((row) => row.status === "connected" && pending.some((item) => item.id === row.id))) {
       setMessage("Conexão finalizada");
     }
@@ -70,7 +80,7 @@ export function Connections() {
           setQr("");
           setActive("");
           setMessage("Conexão finalizada");
-        } else {
+        } else if (result.data.qrCode) {
           setQr(result.data.qrCode);
         }
         void load();

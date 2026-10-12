@@ -4,6 +4,7 @@ import {
   evolutionContactPhone,
   evolutionIncomingMessages,
   evolutionMessageText,
+  evolutionSameOwnerInstance,
   evolutionQrImage,
   attendancePhone,
   whatsappJidPhone,
@@ -35,3 +36,15 @@ assert.equal(evolutionIncomingMessages({ messages: { records: [{ key: { id: "1" 
 assert.equal(evolutionIncomingMessages({ key: { id: "1" }, message: { conversation: "Oi" } }).length, 1);
 assert.equal(evolutionIncomingMessages([{ key: { id: "1" } }, { key: { id: "2" } }]).length, 2);
 assert.equal(evolutionIncomingMessages({ messages: [{ key: { id: "1" } }] }).length, 1);
+assert.equal(
+  evolutionSameOwnerInstance(
+    [
+      { name: "atual", ownerJid: "5551@s.whatsapp.net", _count: { Message: 0 } },
+      { name: "anterior", ownerJid: "5551@s.whatsapp.net", _count: { Message: 4 } },
+      { name: "outro", ownerJid: "5599@s.whatsapp.net", _count: { Message: 9 } },
+    ],
+    "atual",
+  ),
+  "anterior",
+);
+assert.equal(evolutionSameOwnerInstance([{ name: "atual", ownerJid: "5551@s.whatsapp.net", _count: { Message: 2 } }], "atual"), "");

@@ -8,6 +8,7 @@ import {
   evolutionIncomingMessages,
   evolutionMessageText,
   evolutionQrImage,
+  evolutionSameOwnerInstance,
   whatsappJidPhone,
   type ChatbotConnectionStatus,
   type ChatbotSnapshot,
@@ -79,9 +80,22 @@ async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: un
   }
   if (!response.ok) {
     console.error("chatbot_evo", response.status);
+    if (/connection closed/i.test(evolutionErrorMessage(body))) fail("Connection Closed");
     fail("A Evolution API não concluiu a operação.");
   }
   return body;
+}
+
+function evolutionErrorMessage(body: unknown) {
+  if (!body || typeof body !== "object") return "";
+  const record = body as Record<string, unknown>;
+  const response = record["response"];
+  if (response && typeof response === "object") {
+    const message = (response as Record<string, unknown>)["message"];
+    if (typeof message === "string") return message;
+  }
+  const message = record["message"];
+  return typeof message === "string" ? message : "";
 }
 
 async function applyWhatsappName(instanceName: string, name: string) {
@@ -218,17 +232,28 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
   );
   await ensureWebhook(cell(current, "instance_name"));
   const state = readState(stateBody);
-  const status = evolutionConnectionStatus(state);
+  let status = evolutionConnectionStatus(state);
+  const instanceName = cell(current, "instance_name");
+  let sessionDropped = false;
+  if (status === "connected" && (await connectionClosed(instanceName))) {
+    sessionDropped = true;
+    await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE").catch(() => null);
+    status = "disconnected";
+  }
   let qrCode = "";
   if (status !== "connected") {
     qrCode = evolutionQrImage(
-      await evo(`/instance/connect/${encodeURIComponent(cell(current, "instance_name"))}`, "GET"),
+      await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET"),
     );
   }
   const next = status === "connected" ? "connected" : qrCode ? "qr" : status;
-  if (next === "connected") await applyWhatsappName(cell(current, "instance_name"), cell(current, "display_name"));
+  if (next === "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
-    .update({ status: next, last_error: "", updated_at: new Date().toISOString() })
+    .update({
+      status: next,
+      last_error: sessionDropped ? "A sessão do WhatsApp caiu. Leia o QR Code de novo para receber mensagens." : "",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", connectionId)
     .eq("organization_id", organizationId)
     .select("*")
@@ -343,16 +368,49 @@ export async function ingestEvolutionWebhook(request: Request) {
   return new Response("ok");
 }
 
+async function listMessages(instanceName: string) {
+  return evo(`/chat/findMessages/${encodeURIComponent(instanceName)}`, "POST", {
+    page: 1,
+    offset: 40,
+  }).catch(() => null);
+}
+
+async function connectionClosed(instanceName: string) {
+  const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
+  const owner = ownerNumber(listed, instanceName);
+  if (!owner) return false;
+  try {
+    await evo(`/chat/fetchProfile/${encodeURIComponent(instanceName)}`, "POST", { number: owner });
+    return false;
+  } catch (error) {
+    return error instanceof Error && error.message === "Connection Closed";
+  }
+}
+
+function ownerNumber(instances: unknown, instanceName: string) {
+  if (!Array.isArray(instances)) return "";
+  const current = instances.find((item) => item && typeof item === "object" && (item as Record<string, unknown>)["name"] === instanceName);
+  if (!current || typeof current !== "object") return "";
+  const owner = (current as Record<string, unknown>)["ownerJid"];
+  if (typeof owner !== "string") return "";
+  return owner.split("@")[0]?.replace(/\D/g, "") ?? "";
+}
+
 async function importEvolutionMessages(connection: Record<string, unknown>) {
   const instanceName = cell(connection, "instance_name");
   if (!instanceName) return;
   await ensureWebhook(instanceName);
-  const listed = await evo(`/chat/findMessages/${encodeURIComponent(instanceName)}`, "POST", {
-    where: {},
-    page: 1,
-    offset: 30,
-  }).catch(() => null);
-  for (const item of evolutionIncomingMessages(listed)) await storeIncoming(connection, item);
+  let listed = await listMessages(instanceName);
+  let items = evolutionIncomingMessages(listed);
+  if (!items.length) {
+    const instances = await evo("/instance/fetchInstances", "GET").catch(() => null);
+    const sibling = evolutionSameOwnerInstance(instances, instanceName);
+    if (sibling) {
+      listed = await listMessages(sibling);
+      items = evolutionIncomingMessages(listed);
+    }
+  }
+  for (const item of items) await storeIncoming(connection, item);
 }
 
 async function storeIncoming(connection: Record<string, unknown>, data: unknown) {

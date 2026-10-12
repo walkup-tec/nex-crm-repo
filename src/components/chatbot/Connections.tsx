@@ -40,6 +40,36 @@ function formatPhone(value: string) {
   return whatsappMask(value) || "Aguardando leitura";
 }
 
+const connectionSteps = ["API", "Evolution", "Números"] as const;
+
+function ConnectionsLoading() {
+  return (
+    <div className="rounded-md border bg-card px-3 py-5 sm:col-span-2 sm:px-5 xl:col-span-3" role="status" aria-live="polite">
+      <div className="flex items-center" aria-hidden>
+        {connectionSteps.map((label, index) => (
+          <div key={label} className={index === 0 ? "flex items-center" : "flex min-w-0 flex-1 items-center"}>
+            {index > 0 && (
+              <span className="relative mx-1 h-0.5 min-w-1 flex-1 overflow-hidden rounded-full bg-muted sm:mx-2 sm:min-w-3">
+                <span
+                  className="animate-meta-link absolute inset-y-0 left-0 w-2/5 rounded-full bg-nex-gradient"
+                  style={{ animationDelay: `${index * 0.55}s` }}
+                />
+              </span>
+            )}
+            <span
+              className="animate-meta-node shrink-0 rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground sm:px-2.5 sm:text-xs"
+              style={{ animationDelay: `${index * 0.55}s` }}
+            >
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">Consultando as conexões na Evolution...</p>
+    </div>
+  );
+}
+
 function tintQrImage(src: string) {
   return new Promise<string>((resolve) => {
     const image = new Image();
@@ -78,6 +108,7 @@ export function Connections() {
   const [active, setActive] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<Connection | null>(null);
   const [deleting, setDeleting] = useState(false);
   const qrIssuedAt = useRef(0);
@@ -115,9 +146,11 @@ export function Connections() {
       const result = await chatbotSnapshotFn();
       if (!result.ok) {
         setMessage(result.message);
+        setLoading(false);
         return;
       }
       setRows(result.data.connections);
+      setLoading(false);
       const refreshed = await Promise.all(
         result.data.connections.map(async (row) => {
           const current = await refreshChatbotConnectionFn({ data: { connectionId: row.id, withQr: false } });
@@ -248,7 +281,9 @@ export function Connections() {
         </div>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.length ? (
+        {loading ? (
+          <ConnectionsLoading />
+        ) : rows.length ? (
           rows.map((row) => (
             <article key={row.id} className="rounded-md border bg-card px-3 py-3">
               <div className="flex items-start justify-between gap-3">

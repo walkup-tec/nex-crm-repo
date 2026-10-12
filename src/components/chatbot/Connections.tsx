@@ -117,14 +117,20 @@ export function Connections() {
         setMessage(result.message);
         return;
       }
-      const next = await Promise.all(
+      setRows(result.data.connections);
+      const refreshed = await Promise.all(
         result.data.connections.map(async (row) => {
           const current = await refreshChatbotConnectionFn({ data: { connectionId: row.id, withQr: false } });
-          if (!current.ok) return row;
-          return { ...row, status: current.data.status, error: current.data.error };
+          return current.ok ? { id: row.id, status: current.data.status, error: current.data.error } : null;
         }),
       );
-      setRows(next);
+      setRows((current) =>
+        current.map((row) => {
+          const next = refreshed.find((item) => item?.id === row.id);
+          if (!next || (row.status === "connected" && next.status !== "connected")) return row;
+          return { ...row, status: next.status, error: next.error };
+        }),
+      );
     })();
   }, []);
 

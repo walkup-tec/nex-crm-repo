@@ -41,11 +41,21 @@ export function chatbotInstanceName(organizationId: string) {
 
 export function whatsappMask(value: string) {
   const raw = value.replace(/\D/g, "");
-  const digits = (raw.startsWith("55") && raw.length > 11 ? raw.slice(2) : raw).slice(0, 11);
+  let digits = raw.startsWith("55") && raw.length > 11 ? raw.slice(2) : raw;
+  const mobileWithoutNine = raw.startsWith("55") && raw.length === 12 && digits.length === 10 && /[6-9]/.test(digits[2] ?? "");
+  if (mobileWithoutNine) digits = `${digits.slice(0, 2)}9${digits.slice(2)}`;
+  digits = digits.slice(0, 11);
   if (!digits) return "";
   if (digits.length <= 2) return `(${digits}`;
   if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+export function preferredWhatsappPhone(stored: string, incoming: string) {
+  if (!incoming) return stored;
+  if (!stored) return incoming;
+  if (whatsappMask(stored) !== whatsappMask(incoming)) return incoming;
+  return stored.replace(/\D/g, "").length >= incoming.replace(/\D/g, "").length ? stored : incoming;
 }
 
 export function attendancePhone(value: string) {

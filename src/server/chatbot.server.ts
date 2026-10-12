@@ -9,6 +9,7 @@ import {
   evolutionMessageText,
   evolutionQrImage,
   evolutionSameOwnerInstance,
+  preferredWhatsappPhone,
   whatsappJidPhone,
   type ChatbotConnectionStatus,
   type ChatbotSnapshot,
@@ -139,7 +140,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   const connectionRows = await rows(
     table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }),
   );
-  await Promise.all(connectionRows.map((row) => importEvolutionMessages(row)));
+  await Promise.all(connectionRows.map((row) => importEvolutionMessages(row).catch(() => null)));
   const [contactRows, conversationRows, messageRows] = await Promise.all([
     rows(table("chatbot_contacts").select("*").eq("organization_id", organizationId).order("name", { ascending: true })),
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
@@ -218,8 +219,10 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
   const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
   await ensureWebhook(instanceName);
   const status = evolutionConnectionStatus(readState(stateBody));
+  const previous = cell(current, "status");
   const qrCode = withQr && status !== "connected" ? evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET")) : "";
-  const next = status === "connected" ? "connected" : qrCode ? "qr" : status;
+  const live = status === "connected" ? "connected" : qrCode ? "qr" : status;
+  const next = previous === "connected" && live !== "connected" && !withQr ? "connected" : live;
   if (next === "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
     .update({ status: next, last_error: "", updated_at: new Date().toISOString() })
@@ -355,7 +358,7 @@ export async function ingestEvolutionWebhook(request: Request) {
     const status = evolutionConnectionStatus(readState(payload["data"] ?? payload));
     const sender = payload["sender"];
     const senderPhone = whatsappJidPhone(typeof sender === "string" ? sender : "");
-    const phone = senderPhone || cell(found.data, "phone");
+    const phone = preferredWhatsappPhone(cell(found.data, "phone"), senderPhone);
     if (status === "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
     await table("chatbot_connections")
       .update({

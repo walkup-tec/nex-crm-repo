@@ -8,6 +8,7 @@ import {
   evolutionQrImage,
   tintQrPixel,
   attendancePhone,
+  preferredWhatsappPhone,
   whatsappJidPhone,
   whatsappMask,
 } from "./chatbot-evo";
@@ -18,6 +19,10 @@ assert.equal(whatsappMask("119"), "(11) 9");
 assert.equal(whatsappMask("11999999999"), "(11) 99999-9999");
 assert.equal(whatsappMask("5511999999999"), "(11) 99999-9999");
 assert.equal(whatsappMask("55999999999"), "(55) 99999-9999");
+assert.equal(whatsappMask("555198335401"), "(51) 99833-5401");
+assert.equal(whatsappMask("5551998335401"), "(51) 99833-5401");
+assert.equal(whatsappMask("5199833540"), "(51) 99833-540");
+assert.equal(preferredWhatsappPhone("5551998335401", "555198335401"), "5551998335401");
 assert.equal(attendancePhone("+55 (11) 99999-9999"), "5511999999999");
 assert.equal(attendancePhone("+55 (11) 99999-9"), "");
 assert.equal(attendancePhone("11999999999"), "5511999999999");

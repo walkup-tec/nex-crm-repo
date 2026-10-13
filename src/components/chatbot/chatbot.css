@@ -41,4 +41,16 @@
 .chatbot-app .chat-top > span{display:flex;align-items:center;gap:8px;min-width:0}
 .chatbot-app input[type="checkbox"]{width:auto;padding:0}
 .chatbot-app .team-choice{display:flex;align-items:center;gap:8px;font-weight:500}
+.chatbot-app .team-board{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch}
+.chatbot-app .team-panel{display:flex;flex-direction:column;gap:18px;min-width:0;border:1px solid var(--border);border-radius:8px;background:var(--card);padding:16px}
+.chatbot-app .team-panel h2{margin:0;font-size:14px;font-weight:700}
+.chatbot-app .team-panel-list{display:grid;gap:10px;align-content:start;border-top:1px solid var(--border);padding-top:16px}
+.chatbot-app .team-row{display:grid;gap:10px;border:1px solid var(--border);border-radius:6px;padding:12px}
+.chatbot-app .team-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.chatbot-app .team-row>button{justify-self:start;width:auto}
+.chatbot-app .team-row-main strong{display:block;font-size:13px}
+.chatbot-app .team-row-main p,.chatbot-app .team-empty,.chatbot-app .team-choice span{margin:0;font-size:12px;color:var(--muted-foreground);font-weight:500}
+.chatbot-app .team-choices{display:grid;gap:8px}
+.chatbot-app .team-choices>span{font-size:12px;font-weight:600}
+@media(max-width:900px){.chatbot-app .team-board{grid-template-columns:1fr}}
 

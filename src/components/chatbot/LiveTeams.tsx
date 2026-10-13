@@ -106,128 +106,132 @@ export function LiveTeams() {
         </div>
       </div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
-      <section className="mb-8 grid gap-4 lg:grid-cols-[320px_1fr]">
-        <form
-          className="modal-form rounded-md border bg-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void createTeam();
-          }}
-        >
-          <h2 className="text-sm font-bold">Nova equipe</h2>
-          <label>
-            Nome da equipe
-            <input value={teamName} maxLength={40} onChange={(event) => setTeamName(event.target.value)} placeholder="Ex.: Comercial" />
-          </label>
-          <label>
-            Canal
-            <select value={channelId} onChange={(event) => setChannelId(event.target.value)} aria-label="Canal">
-              <option value="">Selecione o WhatsApp</option>
-              {channels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name} {whatsappMask(channel.phone)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button disabled={pending === "team" || teamName.trim().length < 2 || !channelId} type="submit">
-            {pending === "team" ? "Salvando" : "Criar equipe"}
-          </Button>
-        </form>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {teams.length ? (
-            teams.map((team) => (
-              <article key={team.id} className="rounded-md border bg-card px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <strong className="block text-sm">{team.name}</strong>
-                    <p className="text-xs text-muted-foreground">{team.channelName}</p>
-                    <p className="text-xs text-muted-foreground">{whatsappMask(team.channelPhone) || "Canal sem número"}</p>
-                  </div>
-                  <span className="status-pill shrink-0">Canal</span>
-                </div>
-                <Button className="mt-3" variant="ghost" size="sm" onClick={() => setRemoving(team)}>
-                  Excluir
-                </Button>
-              </article>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhuma equipe criada nesta empresa.</p>
-          )}
-        </div>
-      </section>
-      <section className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <form
-          className="modal-form rounded-md border bg-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void invite();
-          }}
-        >
-          <h2 className="text-sm font-bold">Novo atendente</h2>
-          <label>
-            Nome
-            <input value={attendantName} onChange={(event) => setAttendantName(event.target.value)} placeholder="Nome do atendente" />
-          </label>
-          <label>
-            E-mail
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="atendente@empresa.com" />
-          </label>
-          <div className="grid gap-2">
-            <span className="text-xs font-semibold">Equipes</span>
+      <section className="team-board">
+        <article className="team-panel">
+          <form
+            className="modal-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createTeam();
+            }}
+          >
+            <h2>Nova equipe</h2>
+            <label>
+              Nome da equipe
+              <input value={teamName} maxLength={40} onChange={(event) => setTeamName(event.target.value)} placeholder="Ex.: Comercial" />
+            </label>
+            <label>
+              Canal
+              <select value={channelId} onChange={(event) => setChannelId(event.target.value)} aria-label="Canal">
+                <option value="">Selecione o WhatsApp</option>
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name} {whatsappMask(channel.phone)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button disabled={pending === "team" || teamName.trim().length < 2 || !channelId} type="submit">
+              {pending === "team" ? "Salvando" : "Criar equipe"}
+            </Button>
+          </form>
+          <div className="team-panel-list">
             {teams.length ? (
               teams.map((team) => (
-                <label className="team-choice" key={team.id}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTeams.includes(team.id)}
-                    onChange={() => setSelectedTeams((current) => toggle(current, team.id))}
-                  />
-                  {team.name}
-                </label>
+                <article key={team.id} className="team-row">
+                  <div className="team-row-head">
+                    <div className="team-row-main">
+                      <strong>{team.name}</strong>
+                      <p>{team.channelName}</p>
+                      <p>{whatsappMask(team.channelPhone) || "Canal sem número"}</p>
+                    </div>
+                    <span className="status-pill">Canal</span>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setRemoving(team)}>
+                    Excluir
+                  </Button>
+                </article>
               ))
             ) : (
-              <p className="text-xs text-muted-foreground">Crie uma equipe antes de convidar o atendente.</p>
+              <p className="team-empty">Nenhuma equipe criada nesta empresa.</p>
             )}
           </div>
-          <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length} type="submit">
-            <UsersRound />
-            {pending === "invite" ? "Convidando" : "Convidar atendente"}
-          </Button>
-        </form>
-        <div className="grid gap-3">
-          {data?.attendants.length ? (
-            data.attendants.map((attendant) => (
-              <article key={attendant.id} className="rounded-md border bg-card px-3 py-3">
-                <strong className="block text-sm">{attendant.name}</strong>
-                <p className="text-xs text-muted-foreground">{attendant.email}</p>
-                <div className="mt-3 grid gap-2">
-                  {teams.map((team) => (
-                    <label className="team-choice" key={team.id}>
-                      <input
-                        type="checkbox"
-                        checked={(choices[attendant.id] ?? []).includes(team.id)}
-                        onChange={() =>
-                          setChoices((current) => ({
-                            ...current,
-                            [attendant.id]: toggle(current[attendant.id] ?? [], team.id),
-                          }))
-                        }
-                      />
-                      {team.name}
-                      <span className="text-xs text-muted-foreground">{team.channelName}</span>
-                    </label>
-                  ))}
-                </div>
-                <Button className="mt-3" size="sm" disabled={pending === attendant.id || !(choices[attendant.id] ?? []).length} onClick={() => void saveTeams(attendant.id)}>
-                  {pending === attendant.id ? "Salvando" : "Salvar equipes"}
-                </Button>
-              </article>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhum atendente nesta empresa.</p>
-          )}
-        </div>
+        </article>
+        <article className="team-panel">
+          <form
+            className="modal-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void invite();
+            }}
+          >
+            <h2>Novo atendente</h2>
+            <label>
+              Nome
+              <input value={attendantName} onChange={(event) => setAttendantName(event.target.value)} placeholder="Nome do atendente" />
+            </label>
+            <label>
+              E-mail
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="atendente@empresa.com" />
+            </label>
+            <div className="team-choices">
+              <span>Equipes</span>
+              {teams.length ? (
+                teams.map((team) => (
+                  <label className="team-choice" key={team.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTeams.includes(team.id)}
+                      onChange={() => setSelectedTeams((current) => toggle(current, team.id))}
+                    />
+                    {team.name}
+                  </label>
+                ))
+              ) : (
+                <p className="team-empty">Crie uma equipe antes de convidar o atendente.</p>
+              )}
+            </div>
+            <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length} type="submit">
+              <UsersRound />
+              {pending === "invite" ? "Convidando" : "Convidar atendente"}
+            </Button>
+          </form>
+          <div className="team-panel-list">
+            {data?.attendants.length ? (
+              data.attendants.map((attendant) => (
+                <article key={attendant.id} className="team-row">
+                  <div className="team-row-main">
+                    <strong>{attendant.name}</strong>
+                    <p>{attendant.email}</p>
+                  </div>
+                  <div className="team-choices">
+                    {teams.map((team) => (
+                      <label className="team-choice" key={team.id}>
+                        <input
+                          type="checkbox"
+                          checked={(choices[attendant.id] ?? []).includes(team.id)}
+                          onChange={() =>
+                            setChoices((current) => ({
+                              ...current,
+                              [attendant.id]: toggle(current[attendant.id] ?? [], team.id),
+                            }))
+                          }
+                        />
+                        {team.name}
+                        <span>{team.channelName}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <Button size="sm" disabled={pending === attendant.id || !(choices[attendant.id] ?? []).length} onClick={() => void saveTeams(attendant.id)}>
+                    {pending === attendant.id ? "Salvando" : "Salvar equipes"}
+                  </Button>
+                </article>
+              ))
+            ) : (
+              <p className="team-empty">Nenhum atendente nesta empresa.</p>
+            )}
+          </div>
+        </article>
       </section>
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>

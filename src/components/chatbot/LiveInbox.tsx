@@ -1,8 +1,128 @@
-import { useEffect, useState } from "react";
 import { MessageSquare, Send } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { chatbotSnapshotFn, sendChatbotMessageFn } from "@/lib/chatbot.functions";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { chatbotMessageMediaFn, chatbotSnapshotFn, saveChatbotContactMediaFn, sendChatbotMessageFn } from "@/lib/chatbot.functions";
 import { attendanceLabel, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+
+type InboxMessage = ChatbotSnapshot["messages"][number];
+type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" };
+const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
+
+function mediaCaption(text: string) {
+  if (text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]") return "";
+  return text;
+}
+
+function expectsMedia(item: InboxMessage) {
+  return item.mediaKind === "image" || item.mediaKind === "video" || item.text === "[mensagem]" || item.text === "[imagem]" || item.text === "[vídeo]";
+}
+
+function downloadMedia(file: LoadedMedia) {
+  const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: file.mime }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.kind === "video" ? "video.mp4" : "imagem.jpg";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function ChatMedia({ item }: { item: InboxMessage }) {
+  const cached = loadedMedia.get(item.id);
+  const [file, setFile] = useState<LoadedMedia | null>(cached && !("none" in cached) ? cached : null);
+  const [missing, setMissing] = useState(Boolean(cached && "none" in cached));
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(item.saved);
+
+  useEffect(() => setSaved(item.saved), [item.saved]);
+
+  useEffect(() => {
+    const current = loadedMedia.get(item.id);
+    if (current) {
+      if ("none" in current) setMissing(true);
+      else setFile(current);
+      return;
+    }
+    let active = true;
+    void chatbotMessageMediaFn({ data: { messageId: item.id } }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      if (!result.data.kind) {
+        loadedMedia.set(item.id, { none: true });
+        setMissing(true);
+        return;
+      }
+      const next = {
+        url: `data:${result.data.mime};base64,${result.data.base64}`,
+        mime: result.data.mime,
+        base64: result.data.base64,
+        kind: result.data.kind,
+      };
+      loadedMedia.set(item.id, next);
+      setFile(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [item.id]);
+
+  if (missing) {
+    return <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`}>{item.text}</div>;
+  }
+  if (!file) {
+    return <div className="message-bubble media">{error || "Carregando mídia"}</div>;
+  }
+  const caption = mediaCaption(item.text);
+  return (
+    <div className={`message-bubble media ${item.direction}`}>
+      {file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
+      {caption ? <p>{caption}</p> : null}
+      <div className="media-actions">
+        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+          Abrir
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={saving || saved}
+          onClick={() => {
+            setSaving(true);
+            void saveChatbotContactMediaFn({ data: { messageId: item.id } }).then((result) => {
+              setSaving(false);
+              if (!result.ok) {
+                setError(result.message);
+                return;
+              }
+              setSaved(true);
+              setError("");
+            });
+          }}
+        >
+          {saved ? "Salvo no contato" : saving ? "Salvando" : "Salvar"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => downloadMedia(file)}>
+          Baixar
+        </Button>
+      </div>
+      {error ? <p>{error}</p> : null}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{file.kind === "video" ? "Vídeo" : "Imagem"}</DialogTitle>
+          </DialogHeader>
+          {file.kind === "video" ? <video className="media-frame" src={file.url} controls autoPlay /> : <img className="media-frame" src={file.url} alt="" />}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 function ContactAvatar({ name, avatarUrl }: { name: string; avatarUrl: string }) {
   const [hidden, setHidden] = useState(false);
@@ -134,11 +254,15 @@ export function LiveInbox() {
           {conversation ? (
             <>
               <div className="message-history">
-                {messages.map((item) => (
-                  <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
-                    {item.text}
-                  </div>
-                ))}
+                {messages.map((item) =>
+                  expectsMedia(item) ? (
+                    <ChatMedia item={item} key={item.id} />
+                  ) : (
+                    <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
+                      {item.text}
+                    </div>
+                  ),
+                )}
               </div>
               <form
                 className="composer"

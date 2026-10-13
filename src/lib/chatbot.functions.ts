@@ -74,6 +74,22 @@ export const resendAttendantInviteFn = createServerFn({ method: "POST" })
     return guard(() => resendAttendantInvite(context.userId, data.email, data.name));
   });
 
+export const saveChatbotContactMediaFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { messageId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { saveChatbotContactMedia } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotContactMedia(context.userId, data.messageId));
+  });
+
+export const chatbotMessageMediaFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { messageId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { chatbotMessageMedia } = await import("@/server/chatbot.server");
+    return guard(() => chatbotMessageMedia(context.userId, data.messageId));
+  });
+
 export const sendChatbotMessageFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string; text: string }) => data)

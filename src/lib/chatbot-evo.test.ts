@@ -5,6 +5,8 @@ import {
   evolutionContactPhone,
   evolutionIncomingMessages,
   evolutionMessageText,
+  evolutionMessageContent,
+  evolutionMediaFile,
   evolutionSameOwnerInstance,
   evolutionProfilePictureUrl,
   evolutionQrImage,
@@ -47,6 +49,12 @@ assert.equal(evolutionConnectionStatus("open"), "connected");
 assert.equal(evolutionConnectionStatus("close"), "disconnected");
 assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");
 assert.equal(evolutionMessageText({ imageMessage: { url: "x" } }), "[imagem]");
+assert.equal(evolutionMessageContent({ messageType: "imageMessage", message: { mimetype: "image/jpeg", url: "https://mmg.whatsapp.net/a", caption: "foto" } }).mediaKind, "image");
+assert.equal(evolutionMessageContent({ messageType: "imageMessage", message: { mimetype: "image/jpeg", url: "https://mmg.whatsapp.net/a", caption: "foto" } }).text, "foto");
+assert.equal(evolutionMessageContent({ message: { viewOnceMessageV2: { message: { videoMessage: { mimetype: "video/mp4" } } } } }).mediaKind, "video");
+assert.equal(evolutionMessageContent({ message: { conversation: "Olá" } }).text, "Olá");
+assert.deepEqual(evolutionMediaFile({ mimetype: "image/jpeg", base64: "data:image/jpeg;base64,abc" }), { mime: "image/jpeg", base64: "abc", kind: "image" });
+assert.equal(evolutionMediaFile({ base64: "abc" }, "video").kind, "video");
 assert.equal(
   evolutionQrImage({ qrcode: { base64: "data:image/png;base64,abc" } }),
   "data:image/png;base64,abc",

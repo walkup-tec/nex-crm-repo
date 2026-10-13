@@ -7,6 +7,8 @@ import {
   evolutionConnectionStatus,
   evolutionContactPhone,
   evolutionIncomingMessages,
+  evolutionMediaFile,
+  evolutionMessageContent,
   evolutionMessageText,
   evolutionProfilePictureUrl,
   evolutionQrImage,
@@ -43,6 +45,9 @@ function fail(message: string): never {
 }
 
 function schemaMessage(message: string) {
+  if (/chatbot_contact_files|media_kind|media_mime/i.test(message)) {
+    return "A migração das mídias ainda não foi aplicada no Supabase.";
+  }
   if (/chatbot_teams|chatbot_team_members/i.test(message)) {
     return "A migração das equipes ainda não foi aplicada no Supabase.";
   }
@@ -70,13 +75,13 @@ async function membership(userId: string) {
   return { organizationId: profile.organization_id, admin };
 }
 
-async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: unknown) {
+async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: unknown, timeoutMs = 20000) {
   const { base, key } = evolutionRuntime();
   if (!base || !key) fail("A Evolution API ainda não está configurada no servidor.");
   const init: RequestInit = {
     method,
     headers: { "content-type": "application/json", apikey: key },
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(timeoutMs),
   };
   if (payload !== undefined) init.body = JSON.stringify(payload);
   const response = await fetch(`${base}${path}`, init);
@@ -196,6 +201,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     for (const person of people.data ?? []) assigneeNames.set(person.id, person.full_name.trim());
   }
   const freshAvatars = await refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations);
+  const savedMedia = await savedMessageIds(organizationId);
   return {
     configured: true,
     organizationId,
@@ -229,6 +235,9 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       direction: cell(row, "direction") as "in" | "out",
       status: cell(row, "status") as "pending" | "sent" | "failed",
       createdAt: cell(row, "created_at"),
+      mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : "" as const,
+      mediaMime: cell(row, "media_mime"),
+      saved: savedMedia.has(cell(row, "id")),
     })),
   };
 }
@@ -590,8 +599,9 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown)
   if (key["fromMe"] === true) return;
   const phone = evolutionContactPhone(key);
   const externalId = cell(key, "id");
-  const text = evolutionMessageText(record["message"]);
-  if (!phone || !text || !externalId) return;
+  const content = evolutionMessageContent(record);
+  const text = content.mediaKind ? content.text : evolutionMessageText(record["message"]);
+  if (!phone || !externalId || (!text && !content.mediaKind)) return;
   const organizationId = cell(connection, "organization_id");
   const name = cell(record, "pushName") || phone;
   const existingContact = await table("chatbot_contacts")
@@ -648,18 +658,31 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown)
       conversationId = cell(created.data, "id");
     }
   }
+  const messageRow = {
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    text,
+    direction: "in",
+    status: "sent",
+    external_id: externalId,
+  };
   const saved = await table("chatbot_messages")
-    .insert({
-      organization_id: organizationId,
-      conversation_id: conversationId,
-      text,
-      direction: "in",
-      status: "sent",
-      external_id: externalId,
-    })
+    .insert(content.mediaKind ? { ...messageRow, media_kind: content.mediaKind, media_mime: content.mediaMime } : messageRow)
     .select("id")
     .maybeSingle();
-  if (saved.error && !duplicate(saved.error)) return;
+  if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
+    await table("chatbot_messages")
+      .insert({ ...messageRow, text: text || (content.mediaKind === "video" ? "[vídeo]" : "[imagem]") })
+      .select("id")
+      .maybeSingle();
+  } else if (saved.error && duplicate(saved.error) && content.mediaKind) {
+    await table("chatbot_messages")
+      .update({ media_kind: content.mediaKind, media_mime: content.mediaMime, text })
+      .eq("conversation_id", conversationId)
+      .eq("external_id", externalId);
+  } else if (saved.error && !duplicate(saved.error)) {
+    return;
+  }
   await table("chatbot_conversations")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", conversationId);
@@ -685,6 +708,141 @@ async function rows(query: Query) {
 async function done(query: Query) {
   const result = await (query as unknown as Promise<{ error: DbError | null }>);
   if (result.error) fail(schemaMessage(result.error.message));
+}
+
+async function savedMessageIds(organizationId: string) {
+  const result = await (table("chatbot_contact_files").select("message_id").eq("organization_id", organizationId) as unknown as Promise<{
+    data: Record<string, unknown>[] | null;
+    error: DbError | null;
+  }>);
+  if (result.error) {
+    if (/chatbot_contact_files|schema cache|does not exist|PGRST/i.test(result.error.message)) return new Set<string>();
+    fail(schemaMessage(result.error.message));
+  }
+  return new Set((result.data ?? []).map((row) => cell(row, "message_id")).filter(Boolean));
+}
+
+const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" }>();
+
+async function ownedChatMessage(userId: string, messageId: string) {
+  const { organizationId, admin } = await membership(userId);
+  const message = await table("chatbot_messages").select("*").eq("id", messageId).eq("organization_id", organizationId).maybeSingle();
+  if (message.error) fail(schemaMessage(message.error.message));
+  if (!message.data) fail("Essa mensagem não pertence à sua empresa.");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", cell(message.data, "conversation_id"))
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  return { organizationId, message: message.data, conversation: conversation.data, connection };
+}
+
+async function fetchEvolutionMedia(instanceName: string, externalId: string, video: boolean) {
+  if (!instanceName || !externalId) return null;
+  const cacheKey = `${instanceName}:${externalId}:${video ? "video" : "file"}`;
+  const cached = mediaFileCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached;
+  const payload = await evo(
+    `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+    "POST",
+    { message: { key: { id: externalId } }, convertToMp4: video },
+    60000,
+  );
+  let file = evolutionMediaFile(payload, video ? "video" : "");
+  if (!video && file.kind === "video" && file.mime !== "video/mp4" && file.mime !== "video/webm") {
+    const converted = await evo(
+      `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+      "POST",
+      { message: { key: { id: externalId } }, convertToMp4: true },
+      60000,
+    );
+    const next = evolutionMediaFile(converted, "video");
+    if (next.kind) file = next;
+  }
+  if (!file.kind) return null;
+  const stored = { at: Date.now(), mime: file.mime, base64: file.base64, kind: file.kind };
+  mediaFileCache.set(cacheKey, stored);
+  return stored;
+}
+
+function mediaPlaceholder(text: string) {
+  return text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]";
+}
+
+export async function chatbotMessageMedia(userId: string, messageId: string) {
+  const owned = await ownedChatMessage(userId, messageId);
+  const text = cell(owned.message, "text");
+  const hinted = cell(owned.message, "media_kind") === "video" ? "video" : cell(owned.message, "media_kind") === "image" ? "image" : "";
+  if (!hinted && !mediaPlaceholder(text)) fail("Essa mensagem não tem mídia.");
+  let file: { mime: string; base64: string; kind: "image" | "video" } | null = null;
+  try {
+    file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), hinted === "video" || text === "[vídeo]");
+  } catch {
+    file = null;
+  }
+  if (!file) {
+    if (!hinted && mediaPlaceholder(text)) return { kind: "" as const, mime: "", base64: "" };
+    fail("Não foi possível abrir essa mídia.");
+  }
+  return { kind: file.kind, mime: file.mime, base64: file.base64 };
+}
+
+const mediaBucket = "nex-chatbot-media";
+
+async function ensureMediaBucket() {
+  const existing = await supabaseAdmin.storage.getBucket(mediaBucket);
+  if (!existing.error && existing.data) return;
+  const created = await supabaseAdmin.storage.createBucket(mediaBucket, {
+    public: false,
+    fileSizeLimit: 40 * 1024 * 1024,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm", "video/quicktime", "video/3gpp"],
+  });
+  if (created.error && !/already exists|duplicate/i.test(created.error.message)) fail("Não foi possível guardar a mídia.");
+}
+
+export async function saveChatbotContactMedia(userId: string, messageId: string) {
+  const owned = await ownedChatMessage(userId, messageId);
+  const contactId = cell(owned.conversation, "contact_id");
+  const existing = await table("chatbot_contact_files").select("id").eq("organization_id", owned.organizationId).eq("message_id", messageId).maybeSingle();
+  if (existing.error) fail(schemaMessage(existing.error.message));
+  if (existing.data) return { saved: true as const };
+  const text = cell(owned.message, "text");
+  const video = cell(owned.message, "media_kind") === "video" || text === "[vídeo]";
+  const file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), video);
+  if (!file) fail("Não foi possível salvar essa mídia.");
+  await ensureMediaBucket();
+  const id = crypto.randomUUID();
+  const extension = file.mime.includes("png") ? "png" : file.mime.includes("webp") ? "webp" : file.mime.includes("gif") ? "gif" : file.kind === "video" ? "mp4" : "jpg";
+  const storagePath = `${owned.organizationId}/${contactId}/${id}.${extension}`;
+  const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(storagePath, Buffer.from(file.base64, "base64"), {
+    contentType: file.mime,
+    upsert: false,
+  });
+  if (uploaded.error) fail("Não foi possível salvar a mídia no contato.");
+  const inserted = await table("chatbot_contact_files")
+    .insert({
+      id,
+      organization_id: owned.organizationId,
+      contact_id: contactId,
+      message_id: messageId,
+      name: file.kind === "video" ? `video.${extension}` : `imagem.${extension}`,
+      mime_type: file.mime,
+      storage_path: storagePath,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error) {
+    await supabaseAdmin.storage.from(mediaBucket).remove([storagePath]);
+    fail(schemaMessage(inserted.error.message));
+  }
+  return { saved: true as const };
 }
 
 function readState(payload: unknown) {

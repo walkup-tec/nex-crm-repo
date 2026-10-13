@@ -4,6 +4,18 @@ import { Button } from "@/components/ui/button";
 import { chatbotSnapshotFn, sendChatbotMessageFn } from "@/lib/chatbot.functions";
 import { attendanceLabel, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
+function ContactAvatar({ name, avatarUrl }: { name: string; avatarUrl: string }) {
+  const [hidden, setHidden] = useState(false);
+  const initials = (name || "?").slice(0, 2).toUpperCase();
+  useEffect(() => setHidden(false), [avatarUrl]);
+  if (!avatarUrl || hidden) return <span className="avatar">{initials}</span>;
+  return (
+    <span className="avatar">
+      <img src={avatarUrl} alt="" onError={() => setHidden(true)} />
+    </span>
+  );
+}
+
 export function LiveInbox() {
   const [data, setData] = useState<ChatbotSnapshot | null>(null);
   const [selected, setSelected] = useState("");
@@ -32,6 +44,7 @@ export function LiveInbox() {
 
   const conversation = data?.conversations.find((item) => item.id === selected);
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
+  const channel = data?.connections.find((item) => item.id === conversation?.connectionId)?.name ?? "";
   const messages = data?.messages.filter((item) => item.conversationId === selected) ?? [];
 
   function labelFor(conversationId: string) {
@@ -78,6 +91,7 @@ export function LiveInbox() {
           {data?.conversations.length ? (
             data.conversations.map((item) => {
               const person = data.contacts.find((contact) => contact.id === item.contactId);
+              const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
               return (
                 <Button
                   key={item.id}
@@ -85,11 +99,14 @@ export function LiveInbox() {
                   className={`conversation-row ${item.id === selected ? "selected" : ""}`}
                   onClick={() => setSelected(item.id)}
                 >
-                  <span className="avatar">{person?.name.slice(0, 2).toUpperCase()}</span>
+                  <ContactAvatar name={person?.name ?? ""} avatarUrl={person?.avatarUrl ?? ""} />
                   <div>
                     <strong>{person?.name}</strong>
                     <p>{whatsappMask(person?.phone ?? "") || person?.phone}</p>
-                    <span className="status-pill">{labelFor(item.id)}</span>
+                    <div className="conversation-tags">
+                      {channel ? <span className="status-pill">{channel}</span> : null}
+                      <span className="status-pill">{labelFor(item.id)}</span>
+                    </div>
                   </div>
                 </Button>
               );
@@ -110,6 +127,7 @@ export function LiveInbox() {
             <span>
               <MessageSquare size={15} />
               {contact?.name || "Nenhuma conversa selecionada"}
+              {channel ? <span className="status-pill">{channel}</span> : null}
               {conversation ? <span className="status-pill">{labelFor(conversation.id)}</span> : null}
             </span>
           </div>

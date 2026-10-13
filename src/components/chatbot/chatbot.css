@@ -34,4 +34,9 @@
 .dark .chatbot-app .status-pill.disconnected{background:#7f1d1d;color:#fee2e2;border-color:#f87171}
 .chatbot-app .conversation-row .status-pill{margin-top:8px}
 .chatbot-app .composer footer.composer-actions{justify-content:flex-end}
+.chatbot-app .avatar{overflow:hidden}
+.chatbot-app .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.chatbot-app .conversation-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chatbot-app .conversation-tags .status-pill{margin-top:0}
+.chatbot-app .chat-top > span{display:flex;align-items:center;gap:8px;min-width:0}
 

@@ -7,8 +7,10 @@ import {
   evolutionContactPhone,
   evolutionIncomingMessages,
   evolutionMessageText,
+  evolutionProfilePictureUrl,
   evolutionQrImage,
   evolutionSameOwnerInstance,
+  evolutionContactAvatar,
   preferredWhatsappPhone,
   sameWhatsappAccount,
   whatsappDeviceRemoved,
@@ -111,7 +113,7 @@ function webhookBody() {
       byEvents: false,
       base64: false,
       headers: { apikey: key, authorization: `Bearer ${key}` },
-      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "CONTACTS_UPDATE"],
     },
   };
 }
@@ -181,6 +183,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     const people = await supabaseAdmin.from("profiles").select("id, full_name").in("id", assigneeIds);
     for (const person of people.data ?? []) assigneeNames.set(person.id, person.full_name.trim());
   }
+  const freshAvatars = await refreshStaleAvatars(organizationId, connectionRows, contactRows, conversationRows);
   return {
     configured: true,
     organizationId,
@@ -195,6 +198,9 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       id: cell(row, "id"),
       name: cell(row, "name"),
       phone: cell(row, "phone"),
+      avatarUrl: freshAvatars.has(cell(row, "id"))
+        ? freshAvatars.get(cell(row, "id")) ?? ""
+        : avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
     })),
     conversations: conversationRows.map((row) => ({
       id: cell(row, "id"),
@@ -417,9 +423,114 @@ export async function ingestEvolutionWebhook(request: Request) {
       .eq("id", cell(found.data, "id"));
   }
   if (event.includes("messages")) {
-    for (const item of evolutionIncomingMessages(payload["data"])) await storeIncoming(found.data, item);
+    for (const item of evolutionIncomingMessages(payload["data"])) {
+      await storeIncoming(found.data, item);
+      await refreshMessageAvatar(found.data, item);
+    }
+  }
+  if (event.includes("contacts")) {
+    const data = payload["data"];
+    const items = Array.isArray(data) ? data : data ? [data] : [];
+    for (const item of items) await refreshWebhookAvatar(found.data, item);
   }
   return new Response("ok");
+}
+
+const avatarAttempt = new Map<string, number>();
+const avatarCache = new Map<string, string>();
+const avatarFreshMs = 10 * 60 * 1000;
+
+function avatarStale(contactId: string, checkedAt: string) {
+  const stored = Date.parse(checkedAt);
+  const last = Math.max(avatarAttempt.get(contactId) ?? 0, Number.isFinite(stored) ? stored : 0);
+  return Date.now() - last > avatarFreshMs;
+}
+
+async function saveContactAvatar(organizationId: string, contactId: string, url: string) {
+  avatarCache.set(contactId, url);
+  avatarAttempt.set(contactId, Date.now());
+  await table("chatbot_contacts")
+    .update({ avatar_url: url, avatar_checked_at: new Date().toISOString() })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId);
+}
+
+async function refreshContactAvatar(instanceName: string, organizationId: string, contactId: string, phone: string, force = false) {
+  if (!instanceName || !phone || !contactId) return null;
+  if (!force && !avatarStale(contactId, "")) return null;
+  avatarAttempt.set(contactId, Date.now());
+  const body = await evo(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: phone }).catch(() => null);
+  if (!body) return null;
+  const url = evolutionProfilePictureUrl(body);
+  await saveContactAvatar(organizationId, contactId, url).catch(() => null);
+  return url;
+}
+
+async function findContactByPhone(organizationId: string, phone: string) {
+  try {
+    const listed = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
+    return listed.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshMessageAvatar(connection: Record<string, unknown>, data: unknown) {
+  const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const rawKey = record["key"];
+  const key = rawKey && typeof rawKey === "object" ? (rawKey as Record<string, unknown>) : {};
+  if (key["fromMe"] === true) return;
+  const phone = evolutionContactPhone(key);
+  if (!phone) return;
+  const organizationId = cell(connection, "organization_id");
+  const contact = await findContactByPhone(organizationId, phone);
+  if (!contact) return;
+  await refreshContactAvatar(cell(connection, "instance_name"), organizationId, cell(contact, "id"), cell(contact, "phone"), true);
+}
+
+async function refreshWebhookAvatar(connection: Record<string, unknown>, data: unknown) {
+  const update = evolutionContactAvatar(data);
+  if (!update) return;
+  const organizationId = cell(connection, "organization_id");
+  const contact = await findContactByPhone(organizationId, update.phone);
+  if (!contact) return;
+  if (update.url) {
+    await saveContactAvatar(organizationId, cell(contact, "id"), update.url).catch(() => null);
+    return;
+  }
+  if (update.changed) {
+    await refreshContactAvatar(cell(connection, "instance_name"), organizationId, cell(contact, "id"), cell(contact, "phone"), true);
+  }
+}
+
+async function refreshStaleAvatars(
+  organizationId: string,
+  connectionRows: Record<string, unknown>[],
+  contactRows: Record<string, unknown>[],
+  conversationRows: Record<string, unknown>[],
+) {
+  const fresh = new Map<string, string>();
+  const instanceByConnection = new Map(connectionRows.map((row) => [cell(row, "id"), cell(row, "instance_name")]));
+  const seen = new Set<string>();
+  const jobs: { contactId: string; phone: string; instanceName: string }[] = [];
+  for (const conversation of conversationRows) {
+    const contactId = cell(conversation, "contact_id");
+    if (!contactId || seen.has(contactId)) continue;
+    seen.add(contactId);
+    const contact = contactRows.find((row) => cell(row, "id") === contactId);
+    if (!contact || !avatarStale(contactId, cell(contact, "avatar_checked_at"))) continue;
+    const instanceName = instanceByConnection.get(cell(conversation, "connection_id")) ?? "";
+    if (!instanceName || !cell(contact, "phone")) continue;
+    jobs.push({ contactId, phone: cell(contact, "phone"), instanceName });
+    if (jobs.length >= 4) break;
+  }
+  await Promise.all(
+    jobs.map(async (job) => {
+      const url = await refreshContactAvatar(job.instanceName, organizationId, job.contactId, job.phone, true);
+      if (url !== null) fresh.set(job.contactId, url);
+    }),
+  );
+  return fresh;
 }
 
 async function listMessages(instanceName: string) {

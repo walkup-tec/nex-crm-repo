@@ -16,7 +16,7 @@ export type ChatbotSnapshot = {
     status: ChatbotConnectionStatus;
     error: string;
   }[];
-  contacts: { id: string; name: string; phone: string }[];
+  contacts: { id: string; name: string; phone: string; avatarUrl: string }[];
   conversations: {
     id: string;
     contactId: string;
@@ -122,6 +122,23 @@ export function tintQrPixel(r: number, g: number, b: number, a: number) {
     Math.round(255 + (nexQrPurple.b - 255) * ink),
     a,
   ] as const;
+}
+
+export function evolutionProfilePictureUrl(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "";
+  const url = (payload as Record<string, unknown>)["profilePictureUrl"];
+  return typeof url === "string" && url.startsWith("https://") ? url : "";
+}
+
+export function evolutionContactAvatar(data: unknown) {
+  const record = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  if (!record) return null;
+  const jid = [record["remoteJid"], record["id"], record["jid"]].find((value) => typeof value === "string");
+  const phone = typeof jid === "string" ? whatsappJidPhone(jid) : "";
+  if (!phone) return null;
+  const raw = [record["profilePicUrl"], record["profilePictureUrl"], record["imgUrl"]].find((value) => typeof value === "string");
+  const url = typeof raw === "string" && raw.startsWith("https://") ? raw : "";
+  return { phone, url, changed: raw === "changed" };
 }
 
 export function evolutionQrImage(payload: unknown): string {

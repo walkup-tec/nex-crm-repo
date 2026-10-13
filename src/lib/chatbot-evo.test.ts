@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import {
   evolutionConnectionStatus,
+  evolutionContactAvatar,
   evolutionContactPhone,
   evolutionIncomingMessages,
   evolutionMessageText,
   evolutionSameOwnerInstance,
+  evolutionProfilePictureUrl,
   evolutionQrImage,
   tintQrPixel,
   attendanceLabel,
@@ -66,5 +68,12 @@ assert.equal(
   "anterior",
 );
 assert.equal(evolutionSameOwnerInstance([{ name: "atual", ownerJid: "5551@s.whatsapp.net", _count: { Message: 2 } }], "atual"), "");
-assert.deepEqual(tintQrPixel(37, 211, 102, 255), [111, 2, 253, 255]);
+assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: "https://pps.whatsapp.net/foto.jpg" }), "https://pps.whatsapp.net/foto.jpg");
+assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: "" }), "");
+assert.deepEqual(evolutionContactAvatar({ remoteJid: "5511999999999@s.whatsapp.net", profilePicUrl: "https://pps.whatsapp.net/foto.jpg" }), {
+  phone: "5511999999999",
+  url: "https://pps.whatsapp.net/foto.jpg",
+  changed: false,
+});
+assert.equal(evolutionContactAvatar({ id: "5511999999999@s.whatsapp.net", imgUrl: "changed" })?.changed, true);
 assert.deepEqual(tintQrPixel(255, 255, 255, 255), [255, 255, 255, 255]);

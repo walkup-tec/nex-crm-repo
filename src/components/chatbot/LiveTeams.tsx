@@ -98,11 +98,15 @@ export function LiveTeams() {
       setMessage(result.message);
       return;
     }
-    const notice = result.data.created
-      ? result.data.emailSent
+    const notice = !result.data.created
+      ? result.data.mailError
+        ? `Esse e-mail já é um atendente. As equipes foram atualizadas. ${result.data.mailError}`
+        : result.data.emailSent
+          ? "Esse e-mail já é um atendente. As equipes foram atualizadas e o e-mail para criar a senha foi enviado."
+          : "Esse e-mail já é um atendente desta empresa. As equipes foram atualizadas."
+      : result.data.emailSent
         ? "Convite enviado."
-        : "Atendente criado. O e-mail de convite não foi enviado."
-      : "Atendente incluído nas equipes selecionadas.";
+        : result.data.mailError || "Atendente criado. O e-mail de convite não foi enviado.";
     setAttendantName("");
     setEmail("");
     setSelectedTeams([]);

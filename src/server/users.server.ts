@@ -409,7 +409,24 @@ export async function createOrganizationAttendant(userId: string, fullName: stri
   if (!address.includes("@")) fail("Informe um e-mail válido.");
   const existing = await supabaseAdmin.from("profiles").select("id, organization_id").eq("email", address).maybeSingle();
   if (existing.error) fail(existing.error.message);
-  if (existing.data?.organization_id === actor.organizationId) return { id: existing.data.id, created: false, emailSent: false };
+  if (existing.data?.organization_id === actor.organizationId) {
+    const roles = await supabaseAdmin.from("user_roles").select("role").eq("user_id", existing.data.id);
+    if (roles.error) fail(roles.error.message);
+    const list = roles.data ?? [];
+    const isAttendant = list.some((row) => row.role === "client_user") && !list.some((row) => row.role === "master" || row.role === "client_admin");
+    if (!isAttendant) fail("Esse e-mail já pertence a um administrador. Use outro e-mail para o atendente.");
+    const authUser = await supabaseAdmin.auth.admin.getUserById(existing.data.id);
+    if (!authUser.data.user?.last_sign_in_at) {
+      try {
+        await sendInviteEmail(address, name);
+        return { id: existing.data.id, created: false, emailSent: true, mailError: "" };
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "InviteMailError") throw error;
+        return { id: existing.data.id, created: false, emailSent: false, mailError: error.message };
+      }
+    }
+    return { id: existing.data.id, created: false, emailSent: false, mailError: "" };
+  }
   if (existing.data) fail("Já existe um acesso com este e-mail.");
 
   const { data: link, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
@@ -439,13 +456,15 @@ export async function createOrganizationAttendant(userId: string, fullName: stri
     });
     if (permissionError) fail(permissionError.message);
     let emailSent = false;
+    let mailError = "";
     try {
       await sendInviteEmail(address, name);
       emailSent = true;
     } catch (error) {
       if (!(error instanceof Error) || error.name !== "InviteMailError") throw error;
+      mailError = error.message;
     }
-    return { id: createdId, created: true, emailSent };
+    return { id: createdId, created: true, emailSent, mailError };
   } catch (error) {
     await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);

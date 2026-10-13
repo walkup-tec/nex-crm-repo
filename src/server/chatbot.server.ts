@@ -886,14 +886,17 @@ async function ownedTeams(organizationId: string, teamIds: string[]) {
 export async function chatbotTeamSnapshot(userId: string) {
   const { organizationId, admin } = await membership(userId);
   if (!admin) fail("Somente o administrador da empresa pode ver as equipes.");
-  const [teams, members, channels, profiles, roles] = await Promise.all([
+  const [teams, members, channels, profiles] = await Promise.all([
     rows(table("chatbot_teams").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true })),
     rows(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
     rows(table("chatbot_connections").select("id, display_name, phone").eq("organization_id", organizationId).order("created_at", { ascending: true })),
-    supabaseAdmin.from("profiles").select("id, full_name, email").eq("organization_id", organizationId),
-    supabaseAdmin.from("user_roles").select("user_id, role"),
+    supabaseAdmin.from("profiles").select("id, full_name, email").eq("organization_id", organizationId).order("full_name", { ascending: true }),
   ]);
   if (profiles.error) fail(schemaMessage(profiles.error.message));
+  const profileIds = (profiles.data ?? []).map((row) => row.id);
+  const roles = profileIds.length
+    ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", profileIds)
+    : { data: [], error: null };
   if (roles.error) fail(schemaMessage(roles.error.message));
   const attendants = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
   const channelName = new Map(channels.map((row) => [cell(row, "id"), { name: cell(row, "display_name"), phone: cell(row, "phone") }]));
@@ -987,7 +990,7 @@ export async function inviteChatbotAttendant(userId: string, name: string, email
   await ownedTeams(organizationId, uniqueTeams);
   const attendant = await createOrganizationAttendant(userId, name, email);
   await setMemberTeams(organizationId, attendant.id, uniqueTeams, false);
-  return { created: attendant.created, emailSent: attendant.emailSent };
+  return { created: attendant.created, emailSent: attendant.emailSent, mailError: attendant.mailError };
 }
 
 export async function setChatbotAttendantTeams(userId: string, attendantId: string, teamIds: string[]) {

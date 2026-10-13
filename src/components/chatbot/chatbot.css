@@ -48,6 +48,9 @@
 .chatbot-app .team-row{display:grid;gap:10px;border:1px solid var(--border);border-radius:6px;padding:12px}
 .chatbot-app .team-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .chatbot-app .team-row>button{justify-self:start;width:auto}
+.chatbot-app .team-row-actions{display:flex;flex-wrap:wrap;gap:4px}
+.chatbot-app .team-form-actions{display:flex;gap:8px;align-items:center}
+.chatbot-app .team-form-actions button[type="submit"]{flex:1}
 .chatbot-app .team-row-main strong{display:block;font-size:13px}
 .chatbot-app .team-row-main p,.chatbot-app .team-empty,.chatbot-app .team-choice span{margin:0;font-size:12px;color:var(--muted-foreground);font-weight:500}
 .chatbot-app .team-choices{display:grid;gap:8px}

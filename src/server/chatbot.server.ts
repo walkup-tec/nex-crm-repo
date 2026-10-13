@@ -788,6 +788,28 @@ export async function deleteChatbotTeam(userId: string, teamId: string) {
   await done(table("chatbot_teams").delete().eq("id", teamId).eq("organization_id", organizationId));
 }
 
+export async function updateChatbotTeam(userId: string, teamId: string, name: string, connectionId: string) {
+  const clean = name.trim();
+  if (clean.length < 2) fail("Informe o nome da equipe.");
+  if (clean.length > 40) fail("O nome da equipe pode ter no máximo 40 caracteres.");
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode editar uma equipe.");
+  await ownedConnection(organizationId, connectionId);
+  const current = await table("chatbot_teams").select("id").eq("id", teamId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) fail(schemaMessage(current.error.message));
+  if (!current.data) fail("Essa equipe não pertence à sua empresa.");
+  const updated = await table("chatbot_teams")
+    .update({ name: clean, connection_id: connectionId })
+    .eq("id", teamId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) {
+    if (duplicate(updated.error)) fail("Já existe uma equipe com esse nome.");
+    fail(schemaMessage(updated.error.message));
+  }
+}
+
 export async function resendAttendantInvite(userId: string, email: string, name: string) {
   const { organizationId, admin } = await membership(userId);
   if (!admin) fail("Somente o administrador da empresa pode reenviar o convite.");
@@ -795,6 +817,7 @@ export async function resendAttendantInvite(userId: string, email: string, name:
   const profile = await supabaseAdmin.from("profiles").select("id, email, full_name").eq("email", address).eq("organization_id", organizationId).maybeSingle();
   if (profile.error) fail(schemaMessage(profile.error.message));
   if (!profile.data) fail("Esse atendente não pertence à sua empresa.");
+  await ownedAttendant(organizationId, profile.data.id);
   const { sendInviteEmail } = await import("@/server/mail.server");
   await sendInviteEmail(profile.data.email, name.trim() || profile.data.full_name);
 }
@@ -814,10 +837,58 @@ export async function setChatbotAttendantTeams(userId: string, attendantId: stri
   const { organizationId, admin } = await membership(userId);
   if (!admin) fail("Somente o administrador da empresa pode alterar as equipes.");
   await ownedTeams(organizationId, uniqueTeams);
-  const profile = await supabaseAdmin.from("profiles").select("id").eq("id", attendantId).eq("organization_id", organizationId).maybeSingle();
-  if (profile.error) fail(schemaMessage(profile.error.message));
-  if (!profile.data) fail("Esse atendente não pertence à sua empresa.");
+  await ownedAttendant(organizationId, attendantId);
   await setMemberTeams(organizationId, attendantId, uniqueTeams, true);
+}
+
+export async function updateChatbotAttendant(userId: string, attendantId: string, name: string, email: string, teamIds: string[]) {
+  const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
+  const clean = name.trim();
+  const address = email.trim().toLowerCase();
+  if (clean.length < 2) fail("Informe o nome.");
+  if (!address.includes("@")) fail("Informe um e-mail válido.");
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode editar um atendente.");
+  await ownedTeams(organizationId, uniqueTeams);
+  const attendant = await ownedAttendant(organizationId, attendantId);
+  const taken = await supabaseAdmin.from("profiles").select("id").eq("email", address).maybeSingle();
+  if (taken.error) fail(schemaMessage(taken.error.message));
+  if (taken.data && taken.data.id !== attendantId) fail("Já existe um acesso com este e-mail.");
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(attendantId, { email: address, email_confirm: true });
+  if (authError) fail(/already|registered|exists/i.test(authError.message) ? "Já existe um acesso com este e-mail." : "Não foi possível atualizar o acesso.");
+  const { error } = await supabaseAdmin.from("profiles").update({ full_name: clean, email: address }).eq("id", attendantId).eq("organization_id", organizationId);
+  if (error) fail(schemaMessage(error.message));
+  await setMemberTeams(organizationId, attendant.id, uniqueTeams, true);
+}
+
+export async function deleteChatbotAttendant(userId: string, attendantId: string) {
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode excluir um atendente.");
+  if (attendantId === userId) fail("Você não pode excluir o próprio acesso.");
+  await ownedAttendant(organizationId, attendantId);
+  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(attendantId);
+  if (authError) fail("Não foi possível excluir o acesso.");
+  await done(table("chatbot_conversations").update({ assignee_id: null }).eq("assignee_id", attendantId).eq("organization_id", organizationId));
+  await done(table("chatbot_team_members").delete().eq("user_id", attendantId).eq("organization_id", organizationId));
+  await supabaseAdmin.from("user_permissions").delete().eq("user_id", attendantId);
+  await supabaseAdmin.from("user_roles").delete().eq("user_id", attendantId);
+  const { error: profileError } = await supabaseAdmin.from("profiles").delete().eq("id", attendantId).eq("organization_id", organizationId);
+  if (profileError) fail(schemaMessage(profileError.message));
+}
+
+async function ownedAttendant(organizationId: string, attendantId: string) {
+  const [profile, roles] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id").eq("id", attendantId).eq("organization_id", organizationId).maybeSingle(),
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", attendantId),
+  ]);
+  if (profile.error) fail(schemaMessage(profile.error.message));
+  if (roles.error) fail(schemaMessage(roles.error.message));
+  if (!profile.data) fail("Esse atendente não pertence à sua empresa.");
+  const list = roles.data ?? [];
+  if (list.some((row) => row.role === "master" || row.role === "client_admin") || !list.some((row) => row.role === "client_user")) {
+    fail("Esse acesso não é de um atendente.");
+  }
+  return profile.data;
 }
 
 async function setMemberTeams(organizationId: string, attendantId: string, teamIds: string[], replace: boolean) {

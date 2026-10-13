@@ -105,6 +105,14 @@ export const deleteChatbotTeamFn = createServerFn({ method: "POST" })
     return guard(() => deleteChatbotTeam(context.userId, data.teamId));
   });
 
+export const updateChatbotTeamFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { teamId: string; name: string; connectionId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { updateChatbotTeam } = await import("@/server/chatbot.server");
+    return guard(() => updateChatbotTeam(context.userId, data.teamId, data.name, data.connectionId));
+  });
+
 export const inviteChatbotAttendantFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { name: string; email: string; teamIds: string[] }) => ({
@@ -115,6 +123,27 @@ export const inviteChatbotAttendantFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { inviteChatbotAttendant } = await import("@/server/chatbot.server");
     return guard(() => inviteChatbotAttendant(context.userId, data.name, data.email, data.teamIds));
+  });
+
+export const updateChatbotAttendantFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { attendantId: string; name: string; email: string; teamIds: string[] }) => ({
+    attendantId: data.attendantId,
+    name: data.name,
+    email: data.email,
+    teamIds: Array.isArray(data.teamIds) ? data.teamIds.filter((id) => typeof id === "string") : [],
+  }))
+  .handler(async ({ context, data }) => {
+    const { updateChatbotAttendant } = await import("@/server/chatbot.server");
+    return guard(() => updateChatbotAttendant(context.userId, data.attendantId, data.name, data.email, data.teamIds));
+  });
+
+export const deleteChatbotAttendantFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { attendantId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { deleteChatbotAttendant } = await import("@/server/chatbot.server");
+    return guard(() => deleteChatbotAttendant(context.userId, data.attendantId));
   });
 
 export const setChatbotAttendantTeamsFn = createServerFn({ method: "POST" })

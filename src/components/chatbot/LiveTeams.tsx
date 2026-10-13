@@ -13,9 +13,12 @@ import { Button } from "@/components/ui/button";
 import {
   chatbotTeamSnapshotFn,
   createChatbotTeamFn,
+  deleteChatbotAttendantFn,
   deleteChatbotTeamFn,
   inviteChatbotAttendantFn,
-  setChatbotAttendantTeamsFn,
+  resendAttendantInviteFn,
+  updateChatbotAttendantFn,
+  updateChatbotTeamFn,
 } from "@/lib/chatbot.functions";
 import { whatsappMask } from "@/lib/chatbot-evo";
 
@@ -32,9 +35,10 @@ export function LiveTeams() {
   const [attendantName, setAttendantName] = useState("");
   const [email, setEmail] = useState("");
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [choices, setChoices] = useState<Record<string, string[]>>({});
   const [pending, setPending] = useState("");
-  const [removing, setRemoving] = useState<TeamRecord | null>(null);
+  const [editingTeamId, setEditingTeamId] = useState("");
+  const [editingAttendantId, setEditingAttendantId] = useState("");
+  const [removing, setRemoving] = useState<{ kind: "team" | "attendant"; id: string; name: string; channelName: string } | null>(null);
 
   async function load() {
     const result = await chatbotTeamSnapshotFn();
@@ -43,7 +47,6 @@ export function LiveTeams() {
       return;
     }
     setData(result.data);
-    setChoices(Object.fromEntries(result.data.attendants.map((item) => [item.id, item.teamIds])));
     setMessage("");
   }
 
@@ -55,9 +58,11 @@ export function LiveTeams() {
     return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
   }
 
-  async function createTeam() {
+  async function saveTeam() {
     setPending("team");
-    const result = await createChatbotTeamFn({ data: { name: teamName, connectionId: channelId } });
+    const result = editingTeamId
+      ? await updateChatbotTeamFn({ data: { teamId: editingTeamId, name: teamName, connectionId: channelId } })
+      : await createChatbotTeamFn({ data: { name: teamName, connectionId: channelId } });
     setPending("");
     if (!result.ok) {
       setMessage(result.message);
@@ -65,33 +70,70 @@ export function LiveTeams() {
     }
     setTeamName("");
     setChannelId("");
+    setEditingTeamId("");
     await load();
+    if (editingTeamId) setMessage("Equipe atualizada.");
   }
 
-  async function invite() {
+  async function saveAttendant() {
     setPending("invite");
+    if (editingAttendantId) {
+      const result = await updateChatbotAttendantFn({ data: { attendantId: editingAttendantId, name: attendantName, email, teamIds: selectedTeams } });
+      setPending("");
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+      setAttendantName("");
+      setEmail("");
+      setSelectedTeams([]);
+      setEditingAttendantId("");
+      await load();
+      setMessage("Atendente atualizado.");
+      return;
+    }
     const result = await inviteChatbotAttendantFn({ data: { name: attendantName, email, teamIds: selectedTeams } });
     setPending("");
     if (!result.ok) {
       setMessage(result.message);
       return;
     }
+    const notice = result.data.created
+      ? result.data.emailSent
+        ? "Convite enviado."
+        : "Atendente criado. O e-mail de convite não foi enviado."
+      : "Atendente incluído nas equipes selecionadas.";
     setAttendantName("");
     setEmail("");
     setSelectedTeams([]);
     await load();
-    setMessage(result.data.created ? (result.data.emailSent ? "Convite enviado." : "Atendente criado. O e-mail de convite não foi enviado.") : "Atendente incluído nas equipes selecionadas.");
+    setMessage(notice);
   }
 
-  async function saveTeams(attendantId: string) {
-    setPending(attendantId);
-    const result = await setChatbotAttendantTeamsFn({ data: { attendantId, teamIds: choices[attendantId] ?? [] } });
+  async function resend(attendant: AttendantRecord) {
+    setPending(`resend:${attendant.id}`);
+    const result = await resendAttendantInviteFn({ data: { email: attendant.email, name: attendant.name } });
     setPending("");
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
-    }
-    await load();
+    setMessage(result.ok ? "Convite reenviado." : result.message);
+  }
+
+  function editTeam(team: TeamRecord) {
+    setEditingTeamId(team.id);
+    setTeamName(team.name);
+    setChannelId(team.connectionId);
+    setMessage("");
+  }
+
+  function editAttendant(attendant: AttendantRecord) {
+    setEditingAttendantId(attendant.id);
+    setAttendantName(attendant.name);
+    setEmail(attendant.email);
+    setSelectedTeams(attendant.teamIds);
+    setMessage("");
+  }
+
+  function teamNames(ids: string[]) {
+    return ids.map((id) => teams.find((team) => team.id === id)?.name).filter(Boolean).join(", ");
   }
 
   const teams = data?.teams ?? [];
@@ -112,10 +154,10 @@ export function LiveTeams() {
             className="modal-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void createTeam();
+              void saveTeam();
             }}
           >
-            <h2>Nova equipe</h2>
+            <h2>{editingTeamId ? "Editar equipe" : "Nova equipe"}</h2>
             <label>
               Nome da equipe
               <input value={teamName} maxLength={40} onChange={(event) => setTeamName(event.target.value)} placeholder="Ex.: Comercial" />
@@ -131,9 +173,24 @@ export function LiveTeams() {
                 ))}
               </select>
             </label>
-            <Button disabled={pending === "team" || teamName.trim().length < 2 || !channelId} type="submit">
-              {pending === "team" ? "Salvando" : "Criar equipe"}
-            </Button>
+            <div className="team-form-actions">
+              <Button disabled={pending === "team" || teamName.trim().length < 2 || !channelId} type="submit">
+                {pending === "team" ? "Salvando" : editingTeamId ? "Salvar equipe" : "Criar equipe"}
+              </Button>
+              {editingTeamId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingTeamId("");
+                    setTeamName("");
+                    setChannelId("");
+                  }}
+                >
+                  Cancelar
+                </Button>
+              ) : null}
+            </div>
           </form>
           <div className="team-panel-list">
             {teams.length ? (
@@ -147,9 +204,14 @@ export function LiveTeams() {
                     </div>
                     <span className="status-pill">Canal</span>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => setRemoving(team)}>
-                    Excluir
-                  </Button>
+                  <div className="team-row-actions">
+                    <Button variant="ghost" size="sm" onClick={() => editTeam(team)}>
+                      Editar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setRemoving({ kind: "team", id: team.id, name: team.name, channelName: team.channelName })}>
+                      Excluir
+                    </Button>
+                  </div>
                 </article>
               ))
             ) : (
@@ -162,10 +224,10 @@ export function LiveTeams() {
             className="modal-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void invite();
+              void saveAttendant();
             }}
           >
-            <h2>Novo atendente</h2>
+            <h2>{editingAttendantId ? "Editar atendente" : "Novo atendente"}</h2>
             <label>
               Nome
               <input value={attendantName} onChange={(event) => setAttendantName(event.target.value)} placeholder="Nome do atendente" />
@@ -191,10 +253,26 @@ export function LiveTeams() {
                 <p className="team-empty">Crie uma equipe antes de convidar o atendente.</p>
               )}
             </div>
-            <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length} type="submit">
-              <UsersRound />
-              {pending === "invite" ? "Convidando" : "Convidar atendente"}
-            </Button>
+            <div className="team-form-actions">
+              <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length} type="submit">
+                <UsersRound />
+                {pending === "invite" ? "Salvando" : editingAttendantId ? "Salvar atendente" : "Convidar atendente"}
+              </Button>
+              {editingAttendantId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingAttendantId("");
+                    setAttendantName("");
+                    setEmail("");
+                    setSelectedTeams([]);
+                  }}
+                >
+                  Cancelar
+                </Button>
+              ) : null}
+            </div>
           </form>
           <div className="team-panel-list">
             {data?.attendants.length ? (
@@ -203,28 +281,19 @@ export function LiveTeams() {
                   <div className="team-row-main">
                     <strong>{attendant.name}</strong>
                     <p>{attendant.email}</p>
+                    <p>{teamNames(attendant.teamIds) || "Sem equipe"}</p>
                   </div>
-                  <div className="team-choices">
-                    {teams.map((team) => (
-                      <label className="team-choice" key={team.id}>
-                        <input
-                          type="checkbox"
-                          checked={(choices[attendant.id] ?? []).includes(team.id)}
-                          onChange={() =>
-                            setChoices((current) => ({
-                              ...current,
-                              [attendant.id]: toggle(current[attendant.id] ?? [], team.id),
-                            }))
-                          }
-                        />
-                        {team.name}
-                        <span>{team.channelName}</span>
-                      </label>
-                    ))}
+                  <div className="team-row-actions">
+                    <Button variant="ghost" size="sm" onClick={() => editAttendant(attendant)}>
+                      Editar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setRemoving({ kind: "attendant", id: attendant.id, name: attendant.name, channelName: "" })}>
+                      Excluir
+                    </Button>
+                    <Button variant="ghost" size="sm" disabled={pending === `resend:${attendant.id}`} onClick={() => void resend(attendant)}>
+                      {pending === `resend:${attendant.id}` ? "Enviando" : "Reenviar convite"}
+                    </Button>
                   </div>
-                  <Button size="sm" disabled={pending === attendant.id || !(choices[attendant.id] ?? []).length} onClick={() => void saveTeams(attendant.id)}>
-                    {pending === attendant.id ? "Salvando" : "Salvar equipes"}
-                  </Button>
                 </article>
               ))
             ) : (
@@ -236,25 +305,42 @@ export function LiveTeams() {
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir equipe</AlertDialogTitle>
+            <AlertDialogTitle>{removing?.kind === "attendant" ? "Excluir atendente" : "Excluir equipe"}</AlertDialogTitle>
             <AlertDialogDescription>
-              Excluir {removing?.name}? Os atendentes deixam de receber as mensagens do canal {removing?.channelName}.
+              {removing?.kind === "attendant"
+                ? `Excluir ${removing.name}? O acesso é removido e as conversas dessa pessoa voltam para a fila.`
+                : `Excluir ${removing?.name}? Os atendentes deixam de receber as mensagens do canal ${removing?.channelName}.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button
               variant="destructive"
+              disabled={pending === "delete"}
               onClick={() => {
                 if (!removing) return;
-                const teamId = removing.id;
+                const current = removing;
                 setPending("delete");
-                void deleteChatbotTeamFn({ data: { teamId } }).then(async (result) => {
+                const request = current.kind === "attendant"
+                  ? deleteChatbotAttendantFn({ data: { attendantId: current.id } })
+                  : deleteChatbotTeamFn({ data: { teamId: current.id } });
+                void request.then(async (result) => {
                   setPending("");
                   if (!result.ok) {
                     setMessage(result.message);
                     setRemoving(null);
                     return;
+                  }
+                  if (current.kind === "team" && editingTeamId === current.id) {
+                    setEditingTeamId("");
+                    setTeamName("");
+                    setChannelId("");
+                  }
+                  if (current.kind === "attendant" && editingAttendantId === current.id) {
+                    setEditingAttendantId("");
+                    setAttendantName("");
+                    setEmail("");
+                    setSelectedTeams([]);
                   }
                   setRemoving(null);
                   await load();

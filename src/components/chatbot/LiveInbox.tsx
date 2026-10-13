@@ -129,12 +129,15 @@ export function LiveInbox() {
                   void send();
                 }}
               >
-                <label>
-                  Responder
-                  <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Digite sua mensagem..." aria-label="Mensagem" />
-                </label>
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder="Escreva a resposta para este contato..."
+                  aria-label="Resposta"
+                  rows={3}
+                />
                 <footer>
-                  <span className="text-xs text-muted-foreground">A resposta sai pelo WhatsApp desta conversa.</span>
+                  <span>A resposta é enviada no WhatsApp deste contato.</span>
                   <Button disabled={pending || !draft.trim()} type="submit">
                     <Send />
                     {pending ? "Enviando" : "Enviar"}

@@ -14,9 +14,13 @@
 
 .chatbot-app :root{color-scheme:light;--brand-surface:oklch(1 0 0);--flow-dot:var(--border)}
 .chatbot-app .dark,.dark .chatbot-app{color-scheme:dark;--chat-background:oklch(.12 .04 274);--soft-primary:oklch(.23 .065 289);--shadow-panel:0 4px 24px oklch(.04 .015 276 / .3);--flow-dot:var(--border)}
-.chatbot-app .chat-area{min-height:0;height:100%;overflow:hidden}
-.chatbot-app .message-history{min-height:0}
-.chatbot-app .composer{flex:none}
+.chatbot-app .inbox-layout{height:calc(100dvh - 19rem);max-height:calc(100dvh - 19rem);min-height:0;grid-template-rows:minmax(0,1fr)}
+.chatbot-app .conversation-list,.chatbot-app .chat-area{min-height:0;max-height:100%}
+.chatbot-app .conversation-list{overflow:auto}
+.chatbot-app .chat-area{overflow:hidden}
+.chatbot-app .message-history{flex:1 1 auto;min-height:0;overflow:auto}
+.chatbot-app .composer{flex:0 0 auto;position:relative;z-index:2;border-top:1px solid var(--border);background:var(--card)}
+@media (min-width:601px){.chatbot-app .chat-area{display:grid;grid-template-rows:auto minmax(0,1fr) auto}}
 .chatbot-app .message-bubble.in{align-self:flex-start;background:var(--muted);color:var(--foreground)}
 .chatbot-app .message-bubble.out{align-self:flex-end}
 .chatbot-app .brand-row img{background:var(--brand-surface);border-radius:4px}

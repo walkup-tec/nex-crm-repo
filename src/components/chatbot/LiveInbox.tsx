@@ -124,23 +124,25 @@ export function LiveInbox() {
               </div>
               <form
                 className="composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void send();
-                }}
+                onSubmit={(event) => event.preventDefault()}
               >
                 <textarea
                   value={draft}
+                  disabled={pending}
                   onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.shiftKey || pending || !draft.trim()) return;
+                    event.preventDefault();
+                    void send();
+                  }}
                   placeholder="Escreva a resposta para este contato..."
                   aria-label="Resposta"
                   rows={3}
                 />
-                <footer>
-                  <span>A resposta é enviada no WhatsApp deste contato.</span>
-                  <Button disabled={pending || !draft.trim()} type="submit">
+                <footer className="composer-actions">
+                  <Button type="button">
                     <Send />
-                    {pending ? "Enviando" : "Enviar"}
+                    Enviar
                   </Button>
                 </footer>
               </form>

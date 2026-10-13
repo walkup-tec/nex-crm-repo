@@ -33,4 +33,5 @@
 .chatbot-app .status-pill.disconnected{background:#fee2e2;color:#7f1d1d;border-color:#f87171}
 .dark .chatbot-app .status-pill.disconnected{background:#7f1d1d;color:#fee2e2;border-color:#f87171}
 .chatbot-app .conversation-row .status-pill{margin-top:8px}
+.chatbot-app .composer footer.composer-actions{justify-content:flex-end}
 

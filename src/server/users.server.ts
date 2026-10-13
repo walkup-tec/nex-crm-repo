@@ -90,6 +90,64 @@ async function roleMap() {
   return map;
 }
 
+function legacyAttendantPermissions(row: {
+  can_view_campaigns: boolean;
+  can_view_meta_balance: boolean;
+  can_add_meta_credit: boolean;
+  can_manage_users: boolean;
+  can_use_chatbot?: boolean;
+}) {
+  return row.can_use_chatbot === false
+    && row.can_view_campaigns === true
+    && row.can_view_meta_balance === false
+    && row.can_add_meta_credit === false
+    && row.can_manage_users === false;
+}
+
+async function repairLegacyAttendantPermissions() {
+  const members = await supabaseAdmin.from("chatbot_team_members").select("user_id");
+  if (members.error) return;
+  const ids = [...new Set((members.data ?? []).map((row) => row.user_id).filter(Boolean))];
+  if (!ids.length) return;
+  const full = await supabaseAdmin
+    .from("user_permissions")
+    .select("user_id, can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users, can_use_chatbot, chatbot_default_applied")
+    .in("user_id", ids);
+  const hasFlag = !full.error;
+  const result = full.error
+    ? await supabaseAdmin
+      .from("user_permissions")
+      .select("user_id, can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users, can_use_chatbot")
+      .in("user_id", ids)
+    : full;
+  if (result.error) return;
+  const pending = (result.data ?? []).filter((row) => !hasFlag || !("chatbot_default_applied" in row) || row.chatbot_default_applied !== true);
+  const legacyIds = pending.filter((row) => legacyAttendantPermissions(row)).map((row) => row.user_id);
+  const keptIds = pending.filter((row) => !legacyAttendantPermissions(row)).map((row) => row.user_id);
+  if (legacyIds.length) {
+    const corrected = await supabaseAdmin.from("user_permissions").update({
+      can_view_campaigns: false,
+      can_view_meta_balance: false,
+      can_add_meta_credit: false,
+      can_manage_users: false,
+      can_use_chatbot: true,
+      ...(hasFlag ? { chatbot_default_applied: true } : {}),
+    }).in("user_id", legacyIds);
+    if (corrected.error && hasFlag) {
+      await supabaseAdmin.from("user_permissions").update({
+        can_view_campaigns: false,
+        can_view_meta_balance: false,
+        can_add_meta_credit: false,
+        can_manage_users: false,
+        can_use_chatbot: true,
+      }).in("user_id", legacyIds);
+    }
+  }
+  if (hasFlag && keptIds.length) {
+    await supabaseAdmin.from("user_permissions").update({ chatbot_default_applied: true }).in("user_id", keptIds);
+  }
+}
+
 async function permissionMap() {
   const full = await supabaseAdmin
     .from("user_permissions")
@@ -153,6 +211,7 @@ async function organizationsWithPortfolio() {
 
 export async function listUsers(userId: string) {
   const actor = await actorOf(userId);
+  await repairLegacyAttendantPermissions();
   const [rows, roles, permissions, linked] = await Promise.all([
     profiles(),
     roleMap(),
@@ -465,6 +524,7 @@ export async function createOrganizationAttendant(userId: string, fullName: stri
       if (/can_use_chatbot/i.test(permissionError.message)) fail("Falta aplicar a permissão de Chatbot no Supabase.");
       fail(permissionError.message);
     }
+    await supabaseAdmin.from("user_permissions").update({ chatbot_default_applied: true }).eq("user_id", createdId);
     let emailSent = false;
     let mailError = "";
     try {

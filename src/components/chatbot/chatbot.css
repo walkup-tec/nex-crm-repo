@@ -39,4 +39,6 @@
 .chatbot-app .conversation-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chatbot-app .conversation-tags .status-pill{margin-top:0}
 .chatbot-app .chat-top > span{display:flex;align-items:center;gap:8px;min-width:0}
+.chatbot-app input[type="checkbox"]{width:auto;padding:0}
+.chatbot-app .team-choice{display:flex;align-items:center;gap:8px;font-weight:500}
 

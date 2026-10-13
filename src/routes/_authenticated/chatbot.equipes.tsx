@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Management } from "@/components/chatbot/Management";
+import { LiveTeams } from "@/components/chatbot/LiveTeams";
 import { ChatbotFrame } from "@/components/chatbot/frame";
 
 export const Route = createFileRoute("/_authenticated/chatbot/equipes")({
-  head: () => ({ meta: [{ title: "Time — Chatbot" }] }),
+  head: () => ({ meta: [{ title: "Time — NEX" }] }),
   component: () => (
-    <ChatbotFrame title="Time" subtitle="Quem atende as conversas.">
-      <Management section="equipes" />
+    <ChatbotFrame title="Time" subtitle="Equipes e os canais que cada uma atende.">
+      <LiveTeams />
     </ChatbotFrame>
   ),
 });

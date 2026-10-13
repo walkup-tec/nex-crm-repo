@@ -1,4 +1,5 @@
 import { evolutionRuntime } from "@/server/evo.server";
+import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   attendancePhone,
@@ -42,6 +43,9 @@ function fail(message: string): never {
 }
 
 function schemaMessage(message: string) {
+  if (/chatbot_teams|chatbot_team_members/i.test(message)) {
+    return "A migração das equipes ainda não foi aplicada no Supabase.";
+  }
   if (/chatbot_|schema cache|does not exist|PGRST205/i.test(message)) {
     return "A migração do atendimento ainda não foi aplicada no Supabase.";
   }
@@ -167,7 +171,7 @@ function duplicate(error: DbError | null) {
 }
 
 export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> {
-  const { organizationId } = await membership(userId);
+  const { organizationId, admin } = await membership(userId);
   const connectionRows = await rows(
     table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }),
   );
@@ -177,13 +181,21 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
     rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }).limit(400)),
   ]);
-  const assigneeIds = [...new Set(conversationRows.map((row) => cell(row, "assignee_id")).filter(Boolean))];
+  const allowedConnections = admin ? null : await teamConnectionIds(userId, organizationId);
+  const scopedConversations = allowedConnections
+    ? conversationRows.filter((row) => allowedConnections.has(cell(row, "connection_id")))
+    : conversationRows;
+  const visibleConversationIds = new Set(scopedConversations.map((row) => cell(row, "id")));
+  const scopedMessages = allowedConnections
+    ? messageRows.filter((row) => visibleConversationIds.has(cell(row, "conversation_id")))
+    : messageRows;
+  const assigneeIds = [...new Set(scopedConversations.map((row) => cell(row, "assignee_id")).filter(Boolean))];
   const assigneeNames = new Map<string, string>();
   if (assigneeIds.length) {
     const people = await supabaseAdmin.from("profiles").select("id, full_name").in("id", assigneeIds);
     for (const person of people.data ?? []) assigneeNames.set(person.id, person.full_name.trim());
   }
-  const freshAvatars = await refreshStaleAvatars(organizationId, connectionRows, contactRows, conversationRows);
+  const freshAvatars = await refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations);
   return {
     configured: true,
     organizationId,
@@ -202,7 +214,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
         ? freshAvatars.get(cell(row, "id")) ?? ""
         : avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
     })),
-    conversations: conversationRows.map((row) => ({
+    conversations: scopedConversations.map((row) => ({
       id: cell(row, "id"),
       contactId: cell(row, "contact_id"),
       connectionId: cell(row, "connection_id"),
@@ -210,7 +222,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       assigneeName: assigneeNames.get(cell(row, "assignee_id")) ?? "",
       botPaused: row["bot_paused"] === true,
     })),
-    messages: messageRows.map((row) => ({
+    messages: scopedMessages.map((row) => ({
       id: cell(row, "id"),
       conversationId: cell(row, "conversation_id"),
       text: cell(row, "text"),
@@ -288,6 +300,16 @@ export async function deleteChatbotConnection(userId: string, connectionId: stri
   const { organizationId, admin } = await membership(userId);
   if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
   const current = await ownedConnection(organizationId, connectionId);
+  const linkedTeam = await table("chatbot_teams")
+    .select("id")
+    .eq("connection_id", connectionId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (linkedTeam.error) {
+    if (!/chatbot_teams|schema cache|does not exist|PGRST205/i.test(linkedTeam.error.message)) fail(schemaMessage(linkedTeam.error.message));
+  } else if (linkedTeam.data) {
+    fail("Esta conexão está ligada a uma equipe. Altere o canal da equipe antes de excluir o número.");
+  }
   await removeEvolutionInstance(cell(current, "instance_name"));
   const conversations = await rows(
     table("chatbot_conversations").select("contact_id").eq("connection_id", connectionId).eq("organization_id", organizationId),
@@ -338,7 +360,7 @@ export async function disconnectChatbotConnection(userId: string, connectionId: 
 export async function sendChatbotMessage(userId: string, conversationId: string, text: string) {
   const clean = text.trim();
   if (!clean) fail("Escreva a mensagem.");
-  const { organizationId } = await membership(userId);
+  const { organizationId, admin } = await membership(userId);
   const conversation = await table("chatbot_conversations")
     .select("*")
     .eq("id", conversationId)
@@ -355,6 +377,10 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
   const phone = cell(contact.data, "phone");
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", {
     number: phone,
@@ -682,4 +708,125 @@ function readMessageId(payload: unknown) {
   if (!key || typeof key !== "object") return "";
   const id = (key as Record<string, unknown>)["id"];
   return typeof id === "string" ? id : "";
+}
+
+async function teamConnectionIds(userId: string, organizationId: string) {
+  const [members, teams] = await Promise.all([
+    rows(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
+    rows(table("chatbot_teams").select("id, connection_id").eq("organization_id", organizationId)),
+  ]);
+  const mine = new Set(members.filter((row) => cell(row, "user_id") === userId).map((row) => cell(row, "team_id")));
+  return new Set(teams.filter((row) => mine.has(cell(row, "id"))).map((row) => cell(row, "connection_id")).filter(Boolean));
+}
+
+async function ownedTeams(organizationId: string, teamIds: string[]) {
+  const teams = await rows(table("chatbot_teams").select("id").eq("organization_id", organizationId));
+  const known = new Set(teams.map((row) => cell(row, "id")));
+  if (!teamIds.length || teamIds.some((id) => !known.has(id))) fail("Selecione uma equipe desta empresa.");
+}
+
+export async function chatbotTeamSnapshot(userId: string) {
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode ver as equipes.");
+  const [teams, members, channels, profiles, roles] = await Promise.all([
+    rows(table("chatbot_teams").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true })),
+    rows(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
+    rows(table("chatbot_connections").select("id, display_name, phone").eq("organization_id", organizationId).order("created_at", { ascending: true })),
+    supabaseAdmin.from("profiles").select("id, full_name, email").eq("organization_id", organizationId),
+    supabaseAdmin.from("user_roles").select("user_id, role"),
+  ]);
+  if (profiles.error) fail(schemaMessage(profiles.error.message));
+  if (roles.error) fail(schemaMessage(roles.error.message));
+  const attendants = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
+  const channelName = new Map(channels.map((row) => [cell(row, "id"), { name: cell(row, "display_name"), phone: cell(row, "phone") }]));
+  return {
+    channels: channels.map((row) => ({ id: cell(row, "id"), name: cell(row, "display_name"), phone: cell(row, "phone") })),
+    teams: teams.map((row) => {
+      const channel = channelName.get(cell(row, "connection_id"));
+      return {
+        id: cell(row, "id"),
+        name: cell(row, "name"),
+        connectionId: cell(row, "connection_id"),
+        channelName: channel?.name ?? "",
+        channelPhone: channel?.phone ?? "",
+      };
+    }),
+    attendants: (profiles.data ?? [])
+      .filter((row) => attendants.has(row.id))
+      .map((row) => ({
+        id: row.id,
+        name: row.full_name,
+        email: row.email,
+        teamIds: members.filter((member) => cell(member, "user_id") === row.id).map((member) => cell(member, "team_id")),
+      })),
+  };
+}
+
+export async function createChatbotTeam(userId: string, name: string, connectionId: string) {
+  const clean = name.trim();
+  if (clean.length < 2) fail("Informe o nome da equipe.");
+  if (clean.length > 40) fail("O nome da equipe pode ter no máximo 40 caracteres.");
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode criar uma equipe.");
+  await ownedConnection(organizationId, connectionId);
+  const inserted = await table("chatbot_teams")
+    .insert({ organization_id: organizationId, name: clean, connection_id: connectionId })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error) {
+    if (duplicate(inserted.error)) fail("Já existe uma equipe com esse nome.");
+    fail(schemaMessage(inserted.error.message));
+  }
+}
+
+export async function deleteChatbotTeam(userId: string, teamId: string) {
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode excluir uma equipe.");
+  const current = await table("chatbot_teams").select("id").eq("id", teamId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) fail(schemaMessage(current.error.message));
+  if (!current.data) fail("Essa equipe não pertence à sua empresa.");
+  await done(table("chatbot_teams").delete().eq("id", teamId).eq("organization_id", organizationId));
+}
+
+export async function resendAttendantInvite(userId: string, email: string, name: string) {
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode reenviar o convite.");
+  const address = email.trim().toLowerCase();
+  const profile = await supabaseAdmin.from("profiles").select("id, email, full_name").eq("email", address).eq("organization_id", organizationId).maybeSingle();
+  if (profile.error) fail(schemaMessage(profile.error.message));
+  if (!profile.data) fail("Esse atendente não pertence à sua empresa.");
+  const { sendInviteEmail } = await import("@/server/mail.server");
+  await sendInviteEmail(profile.data.email, name.trim() || profile.data.full_name);
+}
+
+export async function inviteChatbotAttendant(userId: string, name: string, email: string, teamIds: string[]) {
+  const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode convidar um atendente.");
+  await ownedTeams(organizationId, uniqueTeams);
+  const attendant = await createOrganizationAttendant(userId, name, email);
+  await setMemberTeams(organizationId, attendant.id, uniqueTeams, false);
+  return { created: attendant.created, emailSent: attendant.emailSent };
+}
+
+export async function setChatbotAttendantTeams(userId: string, attendantId: string, teamIds: string[]) {
+  const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
+  const { organizationId, admin } = await membership(userId);
+  if (!admin) fail("Somente o administrador da empresa pode alterar as equipes.");
+  await ownedTeams(organizationId, uniqueTeams);
+  const profile = await supabaseAdmin.from("profiles").select("id").eq("id", attendantId).eq("organization_id", organizationId).maybeSingle();
+  if (profile.error) fail(schemaMessage(profile.error.message));
+  if (!profile.data) fail("Esse atendente não pertence à sua empresa.");
+  await setMemberTeams(organizationId, attendantId, uniqueTeams, true);
+}
+
+async function setMemberTeams(organizationId: string, attendantId: string, teamIds: string[], replace: boolean) {
+  if (replace) await done(table("chatbot_team_members").delete().eq("user_id", attendantId).eq("organization_id", organizationId));
+  for (const teamId of teamIds) {
+    const inserted = await table("chatbot_team_members")
+      .insert({ team_id: teamId, user_id: attendantId, organization_id: organizationId })
+      .select("team_id")
+      .maybeSingle();
+    if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
+  }
 }

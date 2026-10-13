@@ -398,3 +398,59 @@ function emailTaken(message: string | undefined) {
   const text = (message ?? "").toLowerCase();
   return text.includes("already") || text.includes("registered") || text.includes("exists");
 }
+
+export async function createOrganizationAttendant(userId: string, fullName: string, email: string) {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master" && actor.role !== "client_admin") fail("Você não pode criar atendentes.");
+  if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
+  const name = fullName.trim();
+  const address = email.trim().toLowerCase();
+  if (name.length < 2) fail("Informe o nome.");
+  if (!address.includes("@")) fail("Informe um e-mail válido.");
+  const existing = await supabaseAdmin.from("profiles").select("id, organization_id").eq("email", address).maybeSingle();
+  if (existing.error) fail(existing.error.message);
+  if (existing.data?.organization_id === actor.organizationId) return { id: existing.data.id, created: false, emailSent: false };
+  if (existing.data) fail("Já existe um acesso com este e-mail.");
+
+  const { data: link, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+    type: "invite",
+    email: address,
+    options: { redirectTo: `${appUrl()}/reset-password`, data: { full_name: name } },
+  });
+  if (linkError || !link.user) fail(emailTaken(linkError?.message) ? "Já existe um acesso com este e-mail." : "Não foi possível criar o acesso.");
+  const createdId = link.user.id;
+  try {
+    const { error: profileError } = await supabaseAdmin.from("profiles").insert({
+      id: createdId,
+      full_name: name,
+      email: address,
+      organization_id: actor.organizationId,
+      owner_id: actor.id,
+    });
+    if (profileError) fail(profileError.message);
+    const { error: roleError } = await supabaseAdmin.from("user_roles").insert({ user_id: createdId, role: "client_user" });
+    if (roleError) fail(roleError.message);
+    const { error: permissionError } = await supabaseAdmin.from("user_permissions").insert({
+      user_id: createdId,
+      can_view_campaigns: true,
+      can_view_meta_balance: false,
+      can_add_meta_credit: false,
+      can_manage_users: false,
+    });
+    if (permissionError) fail(permissionError.message);
+    let emailSent = false;
+    try {
+      await sendInviteEmail(address, name);
+      emailSent = true;
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "InviteMailError") throw error;
+    }
+    return { id: createdId, created: true, emailSent };
+  } catch (error) {
+    await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);
+    await supabaseAdmin.from("profiles").delete().eq("id", createdId);
+    await supabaseAdmin.auth.admin.deleteUser(createdId);
+    throw error;
+  }
+}

@@ -607,6 +607,7 @@ export type Database = {
         Row: {
           can_add_meta_credit: boolean
           can_manage_users: boolean
+          can_use_chatbot: boolean
           can_view_campaigns: boolean
           can_view_meta_balance: boolean
           updated_at: string
@@ -615,6 +616,7 @@ export type Database = {
         Insert: {
           can_add_meta_credit?: boolean
           can_manage_users?: boolean
+          can_use_chatbot?: boolean
           can_view_campaigns?: boolean
           can_view_meta_balance?: boolean
           updated_at?: string
@@ -623,6 +625,7 @@ export type Database = {
         Update: {
           can_add_meta_credit?: boolean
           can_manage_users?: boolean
+          can_use_chatbot?: boolean
           can_view_campaigns?: boolean
           can_view_meta_balance?: boolean
           updated_at?: string

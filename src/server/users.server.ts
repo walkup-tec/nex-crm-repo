@@ -50,7 +50,7 @@ async function actorOf(userId: string): Promise<Actor> {
   };
 }
 
-const defaultPermissions: UserPermissions = { campaigns: true, balance: false, credit: false, manage: false };
+const defaultPermissions: UserPermissions = { campaigns: true, balance: false, credit: false, manage: false, chatbot: false };
 
 function canManage(actor: Actor, target: { id: string; role: Role; ownerId: string | null }) {
   if (actor.id === target.id) return false;
@@ -91,17 +91,21 @@ async function roleMap() {
 }
 
 async function permissionMap() {
-  const { data, error } = await supabaseAdmin
+  const full = await supabaseAdmin
     .from("user_permissions")
-    .select("user_id, can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users");
-  if (error) fail(error.message);
+    .select("user_id, can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users, can_use_chatbot");
+  const result = full.error && /can_use_chatbot/i.test(full.error.message)
+    ? await supabaseAdmin.from("user_permissions").select("user_id, can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users")
+    : full;
+  if (result.error) fail(result.error.message);
   const map = new Map<string, UserPermissions>();
-  for (const row of data ?? []) {
+  for (const row of result.data ?? []) {
     map.set(row.user_id, {
       campaigns: row.can_view_campaigns,
       balance: row.can_view_meta_balance,
       credit: row.can_add_meta_credit,
       manage: row.can_manage_users,
+      chatbot: "can_use_chatbot" in row ? row.can_use_chatbot : false,
     });
   }
   return map;
@@ -208,7 +212,7 @@ export async function createUser(
     if (input.kind !== "master" && input.kind !== "client") fail("Escolha o tipo Master ou Cliente.");
     role = input.kind === "master" ? "master" : "client_admin";
     if (role === "client_admin") {
-      permissions = { campaigns: true, balance: true, credit: true, manage: true };
+      permissions = { campaigns: true, balance: true, credit: true, manage: true, chatbot: true };
     }
   } else if (actor.role === "client_admin") {
     if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
@@ -273,6 +277,7 @@ export async function createUser(
       can_view_meta_balance: permissions.balance,
       can_add_meta_credit: permissions.credit,
       can_manage_users: permissions.manage,
+      can_use_chatbot: permissions.chatbot,
     });
     if (permissionError) fail(permissionError.message);
 
@@ -352,6 +357,7 @@ export async function updateUser(
       can_view_meta_balance: input.permissions.balance,
       can_add_meta_credit: input.permissions.credit,
       can_manage_users: input.permissions.manage,
+      can_use_chatbot: input.permissions.chatbot,
     });
     if (permissionError) fail(permissionError.message);
   }
@@ -449,12 +455,16 @@ export async function createOrganizationAttendant(userId: string, fullName: stri
     if (roleError) fail(roleError.message);
     const { error: permissionError } = await supabaseAdmin.from("user_permissions").insert({
       user_id: createdId,
-      can_view_campaigns: true,
+      can_view_campaigns: false,
       can_view_meta_balance: false,
       can_add_meta_credit: false,
       can_manage_users: false,
+      can_use_chatbot: true,
     });
-    if (permissionError) fail(permissionError.message);
+    if (permissionError) {
+      if (/can_use_chatbot/i.test(permissionError.message)) fail("Falta aplicar a permissão de Chatbot no Supabase.");
+      fail(permissionError.message);
+    }
     let emailSent = false;
     let mailError = "";
     try {

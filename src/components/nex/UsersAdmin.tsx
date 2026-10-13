@@ -41,13 +41,14 @@ const roleLabel: Record<UserRole, string> = {
 };
 
 const permissionFields: { key: keyof UserPermissions; label: string }[] = [
+  { key: "chatbot", label: "Chatbot" },
   { key: "campaigns", label: "Campanhas" },
   { key: "balance", label: "Saldo Meta" },
   { key: "credit", label: "Créditos Meta" },
   { key: "manage", label: "Usuários" },
 ];
 
-const emptyPermissions: UserPermissions = { campaigns: true, balance: false, credit: false, manage: false };
+const emptyPermissions: UserPermissions = { campaigns: true, balance: false, credit: false, manage: false, chatbot: false };
 
 function permissionSummary(user: ListedUser) {
   if (user.role !== "client_user") return null;

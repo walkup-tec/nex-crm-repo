@@ -5,6 +5,7 @@ export type UserPermissions = {
   balance: boolean;
   credit: boolean;
   manage: boolean;
+  chatbot: boolean;
 };
 
 export type ListedUser = {

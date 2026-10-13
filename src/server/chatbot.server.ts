@@ -333,11 +333,12 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
   const listed = await findEvolutionInstance(instanceName);
   await ensureWebhook(instanceName);
   const listedState = cell(listed, "connectionStatus");
-  const status = evolutionConnectionStatus(listedState || readState(stateBody));
-  const removed = listedState === "close" && whatsappDeviceRemoved(listed?.["disconnectionReasonCode"]);
+  const liveState = readState(stateBody);
+  const observed = evolutionConnectionStatus(liveState || listedState);
+  const removed = (liveState === "close" || listedState === "close") && whatsappDeviceRemoved(listed?.["disconnectionReasonCode"]);
   const previous = cell(current, "status");
-  const qrCode = withQr && status !== "connected" ? evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET")) : "";
-  const live = status === "connected" ? "connected" : qrCode ? "qr" : status;
+  const qrCode = withQr && observed !== "connected" ? evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET")) : "";
+  const live = removed ? "disconnected" : observed === "connected" ? "connected" : qrCode ? "qr" : observed;
   const next = !removed && previous === "connected" && live !== "connected" && !withQr ? "connected" : live;
   const lastError = next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : cell(current, "last_error");
   if (next === "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
@@ -348,7 +349,8 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
     .select("*")
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
-  return { status: next, qrCode, error: "" };
+  await importEvolutionMessages(updated.data ?? current).catch(() => null);
+  return { status: next, qrCode, error: lastError };
 }
 
 export async function deleteChatbotConnection(userId: string, connectionId: string) {
@@ -741,6 +743,21 @@ async function importEvolutionMessages(connection: Record<string, unknown>) {
   for (const item of items) await storeIncoming(connection, item);
 }
 
+async function contactIdForMessage(organizationId: string, phone: string, name: string) {
+  const known = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
+  const found = known.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone));
+  if (found) return cell(found, "id");
+  const created = await table("chatbot_contacts")
+    .insert({ organization_id: organizationId, name, phone })
+    .select("id")
+    .maybeSingle();
+  if (created.data) return cell(created.data, "id");
+  if (!duplicate(created.error)) return "";
+  const again = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
+  const retry = again.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone));
+  return cell(retry, "id");
+}
+
 async function storeIncoming(connection: Record<string, unknown>, data: unknown) {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
@@ -753,30 +770,8 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown)
   if (!phone || !externalId || (!text && !content.mediaKind)) return;
   const organizationId = cell(connection, "organization_id");
   const name = cell(record, "pushName") || phone;
-  const existingContact = await table("chatbot_contacts")
-    .select("id")
-    .eq("organization_id", organizationId)
-    .eq("phone", phone)
-    .maybeSingle();
-  let contactId = cell(existingContact.data, "id");
-  if (!contactId) {
-    const created = await table("chatbot_contacts")
-      .insert({ organization_id: organizationId, name, phone })
-      .select("id")
-      .maybeSingle();
-    if (created.error || !created.data) {
-      if (!duplicate(created.error)) return;
-      const again = await table("chatbot_contacts")
-        .select("id")
-        .eq("organization_id", organizationId)
-        .eq("phone", phone)
-        .maybeSingle();
-      contactId = cell(again.data, "id");
-      if (!contactId) return;
-    } else {
-      contactId = cell(created.data, "id");
-    }
-  }
+  const contactId = await contactIdForMessage(organizationId, phone, name);
+  if (!contactId) return;
   const existingConversation = await table("chatbot_conversations")
     .select("id")
     .eq("connection_id", cell(connection, "id"))

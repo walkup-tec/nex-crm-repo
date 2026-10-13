@@ -160,7 +160,7 @@ export function Connections() {
       setRows((current) =>
         current.map((row) => {
           const next = refreshed.find((item) => item?.id === row.id);
-          if (!next || (row.status === "connected" && next.status !== "connected")) return row;
+          if (!next) return row;
           return { ...row, status: next.status, error: next.error };
         }),
       );

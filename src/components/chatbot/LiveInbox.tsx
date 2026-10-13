@@ -1,8 +1,18 @@
-import { MessageSquare, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { MessageSquare, Pin, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { chatbotMessageMediaFn, chatbotSnapshotFn, saveChatbotContactMediaFn, sendChatbotMessageFn } from "@/lib/chatbot.functions";
+import {
+  assumeChatbotConversationFn,
+  chatbotMessageMediaFn,
+  chatbotSnapshotFn,
+  chatbotTransferTargetsFn,
+  markChatbotConversationReadFn,
+  saveChatbotContactMediaFn,
+  sendChatbotMessageFn,
+  setChatbotConversationPinFn,
+  transferChatbotConversationFn,
+} from "@/lib/chatbot.functions";
 import { attendanceLabel, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
@@ -142,6 +152,10 @@ export function LiveInbox() {
   const [draft, setDraft] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
+  const [targetId, setTargetId] = useState("");
+  const selectedRef = useRef("");
+  selectedRef.current = selected;
 
   async function load() {
     const result = await chatbotSnapshotFn();
@@ -149,11 +163,16 @@ export function LiveInbox() {
       setMessage(result.message);
       return;
     }
-    setData(result.data);
+    const openId = selectedRef.current;
+    let conversations = result.data.conversations;
+    if (openId && conversations.some((item) => item.id === openId)) {
+      const marked = await markChatbotConversationReadFn({ data: { conversationId: openId } });
+      if (marked.ok) conversations = conversations.map((item) => (item.id === openId ? { ...item, unreadCount: 0 } : item));
+    }
+    const next = { ...result.data, conversations };
+    setData(next);
     setMessage("");
-    setSelected((current) =>
-      result.data.conversations.some((item) => item.id === current) ? current : "",
-    );
+    setSelected((current) => (next.conversations.some((item) => item.id === current) ? current : ""));
   }
 
   useEffect(() => {
@@ -161,6 +180,11 @@ export function LiveInbox() {
     const timer = window.setInterval(() => void load(), 5000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setTargets([]);
+    setTargetId("");
+  }, [selected]);
 
   const conversation = data?.conversations.find((item) => item.id === selected);
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
@@ -177,6 +201,52 @@ export function LiveInbox() {
       botSpoke,
       closed: current.status === "closed",
     });
+  }
+
+  function openConversation(id: string) {
+    selectedRef.current = id;
+    setSelected(id);
+    void load();
+  }
+
+  async function togglePin(id: string, pinned: boolean) {
+    const result = await setChatbotConversationPinFn({ data: { conversationId: id, pinned: !pinned } });
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    await load();
+  }
+
+  async function assume(id: string) {
+    const result = await assumeChatbotConversationFn({ data: { conversationId: id } });
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    await load();
+  }
+
+  async function showTransfer(id: string) {
+    const result = await chatbotTransferTargetsFn({ data: { conversationId: id } });
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    setTargets(result.data);
+    setTargetId(result.data[0]?.id ?? "");
+    setMessage(result.data.length ? "" : "Não há outro atendente neste canal.");
+  }
+
+  async function transfer(id: string) {
+    if (!targetId) return;
+    const result = await transferChatbotConversationFn({ data: { conversationId: id, attendantId: targetId } });
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    setTargets([]);
+    await load();
   }
 
   async function send() {
@@ -212,15 +282,23 @@ export function LiveInbox() {
             data.conversations.map((item) => {
               const person = data.contacts.find((contact) => contact.id === item.contactId);
               const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
+              const unread = item.unreadCount > 99 ? "99+" : String(item.unreadCount);
               return (
-                <Button
+                <div
                   key={item.id}
-                  variant="ghost"
-                  className={`conversation-row ${item.id === selected ? "selected" : ""}`}
-                  onClick={() => setSelected(item.id)}
+                  role="button"
+                  tabIndex={0}
+                  className={`conversation-row ${item.id === selected ? "selected" : ""} ${item.unreadCount ? "unread" : ""}`}
+                  onClick={() => openConversation(item.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openConversation(item.id);
+                    }
+                  }}
                 >
                   <ContactAvatar name={person?.name ?? ""} avatarUrl={person?.avatarUrl ?? ""} />
-                  <div>
+                  <div className="conversation-main">
                     <strong>{person?.name}</strong>
                     <p>{whatsappMask(person?.phone ?? "") || person?.phone}</p>
                     <div className="conversation-tags">
@@ -228,7 +306,21 @@ export function LiveInbox() {
                       <span className="status-pill">{labelFor(item.id)}</span>
                     </div>
                   </div>
-                </Button>
+                  <div className="conversation-side">
+                    {item.unreadCount > 0 ? <span className="unread-count">{unread}</span> : null}
+                    <button
+                      type="button"
+                      className={`pin-toggle${item.pinned ? " pinned" : ""}`}
+                      aria-label={item.pinned ? "Desafixar conversa" : "Fixar conversa"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void togglePin(item.id, item.pinned);
+                      }}
+                    >
+                      <Pin size={14} />
+                    </button>
+                  </div>
+                </div>
               );
             })
           ) : (
@@ -250,6 +342,44 @@ export function LiveInbox() {
               {channel ? <span className="status-pill">{channel}</span> : null}
               {conversation ? <span className="status-pill">{labelFor(conversation.id)}</span> : null}
             </span>
+            {conversation ? (
+              <div className="chat-actions">
+                <Button type="button" variant="outline" size="sm" onClick={() => void togglePin(conversation.id, conversation.pinned)}>
+                  {conversation.pinned ? "Desafixar" : "Fixar"}
+                </Button>
+                {conversation.open ? (
+                  <Button type="button" size="sm" onClick={() => void assume(conversation.id)}>
+                    Assumir
+                  </Button>
+                ) : null}
+                {conversation.mine ? (
+                  targets.length ? (
+                    <form
+                      className="transfer-box"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void transfer(conversation.id);
+                      }}
+                    >
+                      <select aria-label="Atendente" value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+                        {targets.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Button type="submit" size="sm">
+                        Transferir
+                      </Button>
+                    </form>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void showTransfer(conversation.id)}>
+                      Transferir
+                    </Button>
+                  )
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {conversation ? (
             <>
@@ -264,6 +394,7 @@ export function LiveInbox() {
                   ),
                 )}
               </div>
+              {conversation.open || conversation.mine ? (
               <form
                 className="composer"
                 onSubmit={(event) => event.preventDefault()}
@@ -288,6 +419,9 @@ export function LiveInbox() {
                   </Button>
                 </footer>
               </form>
+              ) : (
+                <p className="composer-locked">Esta conversa está com {conversation.assigneeName || "outro atendente"}.</p>
+              )}
             </>
           ) : (
             <div className="chat-empty">

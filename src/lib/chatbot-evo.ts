@@ -24,6 +24,11 @@ export type ChatbotSnapshot = {
     status: "queue" | "active" | "closed";
     assigneeName: string;
     botPaused: boolean;
+    updatedAt: string;
+    unreadCount: number;
+    pinned: boolean;
+    mine: boolean;
+    open: boolean;
   }[];
   messages: {
     id: string;
@@ -44,6 +49,23 @@ export function attendanceLabel(input: { assigneeName: string; botPaused: boolea
   if (name) return name;
   if (!input.botPaused && input.botSpoke) return "Bot atendendo";
   return "Em fila";
+}
+
+export function inboxVisible(input: { assigneeId: string; userId: string; admin: boolean }) {
+  if (!input.assigneeId) return true;
+  return input.assigneeId === input.userId || input.admin;
+}
+
+export function inboxUnread(createdAt: string[], lastReadAt: string) {
+  if (!lastReadAt) return createdAt.length;
+  return createdAt.filter((at) => at > lastReadAt).length;
+}
+
+export function inboxOrder<T extends { pinned: boolean; updatedAt: string }>(items: T[]) {
+  return [...items].sort((left, right) => {
+    if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
 }
 
 export function chatbotInstanceName(organizationId: string) {

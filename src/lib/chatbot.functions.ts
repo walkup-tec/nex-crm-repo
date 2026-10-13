@@ -98,6 +98,49 @@ export const sendChatbotMessageFn = createServerFn({ method: "POST" })
     return guard(() => sendChatbotMessage(context.userId, data.conversationId, data.text));
   });
 
+export const markChatbotConversationReadFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { markChatbotConversationRead } = await import("@/server/chatbot.server");
+    return guard(() => markChatbotConversationRead(context.userId, data.conversationId));
+  });
+
+export const setChatbotConversationPinFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string; pinned: boolean }) => ({
+    conversationId: data.conversationId,
+    pinned: data.pinned === true,
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotConversationPin } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotConversationPin(context.userId, data.conversationId, data.pinned));
+  });
+
+export const assumeChatbotConversationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { assumeChatbotConversation } = await import("@/server/chatbot.server");
+    return guard(() => assumeChatbotConversation(context.userId, data.conversationId));
+  });
+
+export const chatbotTransferTargetsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { chatbotTransferTargets } = await import("@/server/chatbot.server");
+    return guard(() => chatbotTransferTargets(context.userId, data.conversationId));
+  });
+
+export const transferChatbotConversationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string; attendantId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { transferChatbotConversation } = await import("@/server/chatbot.server");
+    return guard(() => transferChatbotConversation(context.userId, data.conversationId, data.attendantId));
+  });
+
 export const chatbotTeamSnapshotFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

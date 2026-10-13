@@ -12,6 +12,9 @@ import {
   evolutionQrImage,
   tintQrPixel,
   attendanceLabel,
+  inboxOrder,
+  inboxUnread,
+  inboxVisible,
   attendancePhone,
   preferredWhatsappPhone,
   sameWhatsappAccount,
@@ -39,6 +42,20 @@ assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: fal
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: true }), "Encerrado");
+assert.equal(inboxVisible({ assigneeId: "", userId: "a", admin: false }), true);
+assert.equal(inboxVisible({ assigneeId: "a", userId: "a", admin: false }), true);
+assert.equal(inboxVisible({ assigneeId: "b", userId: "a", admin: false }), false);
+assert.equal(inboxVisible({ assigneeId: "b", userId: "a", admin: true }), true);
+assert.equal(inboxUnread(["2026-10-13T12:00:00.000Z", "2026-10-13T12:05:00.000Z"], ""), 2);
+assert.equal(inboxUnread(["2026-10-13T12:00:00.000Z", "2026-10-13T12:05:00.000Z"], "2026-10-13T12:01:00.000Z"), 1);
+assert.deepEqual(
+  inboxOrder([
+    { id: "antiga", pinned: false, updatedAt: "2026-10-13T10:00:00.000Z" },
+    { id: "fixa", pinned: true, updatedAt: "2026-10-13T09:00:00.000Z" },
+    { id: "nova", pinned: false, updatedAt: "2026-10-13T12:00:00.000Z" },
+  ]).map((item) => item.id),
+  ["fixa", "nova", "antiga"],
+);
 assert.equal(attendancePhone("+55 (11) 99999-9999"), "5511999999999");
 assert.equal(attendancePhone("+55 (11) 99999-9"), "");
 assert.equal(attendancePhone("11999999999"), "5511999999999");

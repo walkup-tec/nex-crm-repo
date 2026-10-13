@@ -63,3 +63,16 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .team-choices>span{font-size:12px;font-weight:600}
 @media(max-width:900px){.chatbot-app .team-board{grid-template-columns:1fr}}
 
+.chatbot-app .conversation-row{display:flex;align-items:flex-start;gap:10px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;text-align:left}
+.chatbot-app .conversation-row .conversation-main{flex:1;min-width:0;text-align:left}
+.chatbot-app .conversation-row.unread .conversation-main strong{font-weight:800}
+.chatbot-app .conversation-row > .conversation-side{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px;margin-left:auto}
+.chatbot-app .unread-count{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#6F02FD;color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;line-height:1}
+.chatbot-app .pin-toggle{display:grid;place-items:center;width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:var(--muted-foreground);cursor:pointer}
+.chatbot-app .pin-toggle.pinned{color:#6F02FD}
+.chatbot-app .chat-top{height:auto;min-height:65px;flex-wrap:wrap;gap:8px;padding:12px 20px}
+.chatbot-app .chat-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
+.chatbot-app .transfer-box{display:flex;align-items:center;gap:8px}
+.chatbot-app .transfer-box select{width:auto;min-width:160px;height:32px;padding:4px 8px}
+.chatbot-app .composer-locked{margin:0;padding:16px 20px;border-top:1px solid var(--border);background:var(--card);color:var(--muted-foreground);font-size:12px}
+

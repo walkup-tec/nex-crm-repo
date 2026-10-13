@@ -4,6 +4,9 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   attendancePhone,
   chatbotInstanceName,
+  inboxOrder,
+  inboxUnread,
+  inboxVisible,
   evolutionConnectionStatus,
   evolutionContactPhone,
   evolutionIncomingMessages,
@@ -45,6 +48,9 @@ function fail(message: string): never {
 }
 
 function schemaMessage(message: string) {
+  if (/chatbot_conversation_pins|chatbot_conversation_reads/i.test(message)) {
+    return "A migração da caixa de entrada ainda não foi aplicada no Supabase.";
+  }
   if (/chatbot_contact_files|media_kind|media_mime/i.test(message)) {
     return "A migração das mídias ainda não foi aplicada no Supabase.";
   }
@@ -187,21 +193,49 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }).limit(400)),
   ]);
   const allowedConnections = admin ? null : await teamConnectionIds(userId, organizationId);
-  const scopedConversations = allowedConnections
-    ? conversationRows.filter((row) => allowedConnections.has(cell(row, "connection_id")))
-    : conversationRows;
+  const scopedConversations = conversationRows.filter((row) => {
+    if (allowedConnections && !allowedConnections.has(cell(row, "connection_id"))) return false;
+    return inboxVisible({ assigneeId: cell(row, "assignee_id"), userId, admin });
+  });
   const visibleConversationIds = new Set(scopedConversations.map((row) => cell(row, "id")));
-  const scopedMessages = allowedConnections
-    ? messageRows.filter((row) => visibleConversationIds.has(cell(row, "conversation_id")))
-    : messageRows;
+  const scopedMessages = messageRows.filter((row) => visibleConversationIds.has(cell(row, "conversation_id")));
   const assigneeIds = [...new Set(scopedConversations.map((row) => cell(row, "assignee_id")).filter(Boolean))];
   const assigneeNames = new Map<string, string>();
   if (assigneeIds.length) {
     const people = await supabaseAdmin.from("profiles").select("id, full_name").in("id", assigneeIds);
     for (const person of people.data ?? []) assigneeNames.set(person.id, person.full_name.trim());
   }
+  const [pinState, readState, inbound] = await Promise.all([
+    rowsOrMissing(table("chatbot_conversation_pins").select("conversation_id").eq("user_id", userId).eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_conversation_reads").select("conversation_id, last_read_at").eq("user_id", userId).eq("organization_id", organizationId)),
+    rows(
+      table("chatbot_messages")
+        .select("conversation_id, created_at")
+        .eq("organization_id", organizationId)
+        .eq("direction", "in")
+        .order("created_at", { ascending: false })
+        .limit(2000),
+    ),
+  ]);
+  const pinnedIds = new Set(pinState.rows.map((row) => cell(row, "conversation_id")));
+  const readAt = new Map(readState.rows.map((row) => [cell(row, "conversation_id"), cell(row, "last_read_at")]));
+  const inboundAt = new Map<string, string[]>();
+  for (const message of inbound) {
+    if (!visibleConversationIds.has(cell(message, "conversation_id"))) continue;
+    const id = cell(message, "conversation_id");
+    const times = inboundAt.get(id) ?? [];
+    times.push(cell(message, "created_at"));
+    inboundAt.set(id, times);
+  }
   const freshAvatars = await refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations);
   const savedMedia = await savedMessageIds(organizationId);
+  const ordered = inboxOrder(
+    scopedConversations.map((row) => ({
+      row,
+      pinned: pinnedIds.has(cell(row, "id")),
+      updatedAt: cell(row, "updated_at"),
+    })),
+  );
   return {
     configured: true,
     organizationId,
@@ -220,14 +254,22 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
         ? freshAvatars.get(cell(row, "id")) ?? ""
         : avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
     })),
-    conversations: scopedConversations.map((row) => ({
-      id: cell(row, "id"),
-      contactId: cell(row, "contact_id"),
-      connectionId: cell(row, "connection_id"),
-      status: cell(row, "status") as "queue" | "active" | "closed",
-      assigneeName: assigneeNames.get(cell(row, "assignee_id")) ?? "",
-      botPaused: row["bot_paused"] === true,
-    })),
+    conversations: ordered.map(({ row, pinned, updatedAt }) => {
+      const assigneeId = cell(row, "assignee_id");
+      return {
+        id: cell(row, "id"),
+        contactId: cell(row, "contact_id"),
+        connectionId: cell(row, "connection_id"),
+        status: cell(row, "status") as "queue" | "active" | "closed",
+        assigneeName: assigneeNames.get(assigneeId) ?? "",
+        botPaused: row["bot_paused"] === true,
+        updatedAt,
+        unreadCount: readState.missing ? 0 : inboxUnread(inboundAt.get(cell(row, "id")) ?? [], readAt.get(cell(row, "id")) ?? ""),
+        pinned,
+        mine: assigneeId === userId,
+        open: !assigneeId,
+      };
+    }),
     messages: scopedMessages.map((row) => ({
       id: cell(row, "id"),
       conversationId: cell(row, "conversation_id"),
@@ -377,6 +419,8 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     .maybeSingle();
   if (conversation.error) fail(schemaMessage(conversation.error.message));
   if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
   const contact = await table("chatbot_contacts")
     .select("phone")
     .eq("id", cell(conversation.data, "contact_id"))
@@ -420,6 +464,107 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     .select("id")
     .maybeSingle();
   if (assigned.error) fail(schemaMessage(assigned.error.message));
+}
+
+async function requireVisibleConversation(userId: string, conversationId: string) {
+  const { organizationId, admin } = await membership(userId);
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (!inboxVisible({ assigneeId: assignee, userId, admin })) fail("Essa conversa está com outro atendente.");
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(conversation.data, "connection_id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  return { organizationId, admin, conversation: conversation.data };
+}
+
+export async function markChatbotConversationRead(userId: string, conversationId: string) {
+  const { organizationId } = await requireVisibleConversation(userId, conversationId);
+  const now = new Date().toISOString();
+  const inserted = await table("chatbot_conversation_reads")
+    .insert({ user_id: userId, conversation_id: conversationId, organization_id: organizationId, last_read_at: now })
+    .select("conversation_id")
+    .maybeSingle();
+  if (!inserted.error) return;
+  if (duplicate(inserted.error)) {
+    await done(table("chatbot_conversation_reads").update({ last_read_at: now }).eq("user_id", userId).eq("conversation_id", conversationId));
+    return;
+  }
+  fail(schemaMessage(inserted.error.message));
+}
+
+export async function setChatbotConversationPin(userId: string, conversationId: string, pinned: boolean) {
+  const { organizationId } = await requireVisibleConversation(userId, conversationId);
+  if (!pinned) {
+    await done(table("chatbot_conversation_pins").delete().eq("user_id", userId).eq("conversation_id", conversationId));
+    return;
+  }
+  const inserted = await table("chatbot_conversation_pins")
+    .insert({ user_id: userId, conversation_id: conversationId, organization_id: organizationId })
+    .select("conversation_id")
+    .maybeSingle();
+  if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
+}
+
+export async function assumeChatbotConversation(userId: string, conversationId: string) {
+  const { organizationId, conversation } = await requireVisibleConversation(userId, conversationId);
+  const assignee = cell(conversation, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa já está com outro atendente.");
+  if (assignee === userId) return;
+  const updated = await table("chatbot_conversations")
+    .update({ status: "active", assignee_id: userId, bot_paused: true })
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+}
+
+export async function chatbotTransferTargets(userId: string, conversationId: string) {
+  const { organizationId, conversation } = await requireVisibleConversation(userId, conversationId);
+  if (cell(conversation, "assignee_id") !== userId) fail("Só quem assumiu a conversa pode transferir.");
+  const connectionId = cell(conversation, "connection_id");
+  const [members, teams, profiles] = await Promise.all([
+    rows(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
+    rows(table("chatbot_teams").select("id, connection_id").eq("organization_id", organizationId)),
+    supabaseAdmin.from("profiles").select("id, full_name").eq("organization_id", organizationId).order("full_name", { ascending: true }),
+  ]);
+  if (profiles.error) fail(schemaMessage(profiles.error.message));
+  const teamIds = new Set(teams.filter((row) => cell(row, "connection_id") === connectionId).map((row) => cell(row, "id")));
+  const candidateIds = [
+    ...new Set(
+      members
+        .filter((row) => teamIds.has(cell(row, "team_id")) && cell(row, "user_id") !== userId)
+        .map((row) => cell(row, "user_id")),
+    ),
+  ];
+  const roles = candidateIds.length
+    ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", candidateIds)
+    : { data: [], error: null };
+  if (roles.error) fail(schemaMessage(roles.error.message));
+  const attendants = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
+  return (profiles.data ?? []).filter((row) => attendants.has(row.id)).map((row) => ({ id: row.id, name: row.full_name.trim() }));
+}
+
+export async function transferChatbotConversation(userId: string, conversationId: string, attendantId: string) {
+  const targets = await chatbotTransferTargets(userId, conversationId);
+  if (!targets.some((item) => item.id === attendantId)) fail("Esse atendente não atende este canal.");
+  const { organizationId } = await requireVisibleConversation(userId, conversationId);
+  const updated = await table("chatbot_conversations")
+    .update({ status: "active", assignee_id: attendantId, bot_paused: true })
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .eq("assignee_id", userId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Só quem assumiu a conversa pode transferir.");
 }
 
 export async function ingestEvolutionWebhook(request: Request) {
@@ -705,6 +850,15 @@ async function rows(query: Query) {
   return result.data ?? [];
 }
 
+async function rowsOrMissing(query: Query) {
+  const result = await (query as unknown as Promise<{ data: Record<string, unknown>[] | null; error: DbError | null }>);
+  if (result.error) {
+    if (/schema cache|does not exist|PGRST205/i.test(result.error.message)) return { rows: [] as Record<string, unknown>[], missing: true };
+    fail(schemaMessage(result.error.message));
+  }
+  return { rows: result.data ?? [], missing: false };
+}
+
 async function done(query: Query) {
   const result = await (query as unknown as Promise<{ error: DbError | null }>);
   if (result.error) fail(schemaMessage(result.error.message));
@@ -740,6 +894,8 @@ async function ownedChatMessage(userId: string, messageId: string) {
   if (!admin) {
     const allowed = await teamConnectionIds(userId, organizationId);
     if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+    const assignee = cell(conversation.data, "assignee_id");
+    if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
   }
   return { organizationId, message: message.data, conversation: conversation.data, connection };
 }

@@ -61,10 +61,12 @@ export function inboxUnread(createdAt: string[], lastReadAt: string) {
   return createdAt.filter((at) => at > lastReadAt).length;
 }
 
-export function inboxOrder<T extends { pinned: boolean; updatedAt: string }>(items: T[]) {
+export function inboxOrder<T extends { id: string; pinned: boolean; updatedAt: string }>(items: T[]) {
   return [...items].sort((left, right) => {
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
-    return right.updatedAt.localeCompare(left.updatedAt);
+    const byTime = right.updatedAt.localeCompare(left.updatedAt);
+    if (byTime !== 0) return byTime;
+    return left.id.localeCompare(right.id);
   });
 }
 

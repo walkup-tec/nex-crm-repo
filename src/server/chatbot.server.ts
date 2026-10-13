@@ -190,7 +190,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   const [contactRows, conversationRows, messageRows] = await Promise.all([
     rows(table("chatbot_contacts").select("*").eq("organization_id", organizationId).order("name", { ascending: true })),
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
-    rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }).limit(400)),
+    rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(800)),
   ]);
   const allowedConnections = admin ? null : await teamConnectionIds(userId, organizationId);
   const scopedConversations = conversationRows.filter((row) => {
@@ -198,31 +198,34 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     return inboxVisible({ assigneeId: cell(row, "assignee_id"), userId, admin });
   });
   const visibleConversationIds = new Set(scopedConversations.map((row) => cell(row, "id")));
-  const scopedMessages = messageRows.filter((row) => visibleConversationIds.has(cell(row, "conversation_id")));
+  const chronologicalMessages = [...messageRows].reverse();
+  const scopedMessages = chronologicalMessages.filter((row) => visibleConversationIds.has(cell(row, "conversation_id")));
   const assigneeIds = [...new Set(scopedConversations.map((row) => cell(row, "assignee_id")).filter(Boolean))];
   const assigneeNames = new Map<string, string>();
   if (assigneeIds.length) {
     const people = await supabaseAdmin.from("profiles").select("id, full_name").in("id", assigneeIds);
     for (const person of people.data ?? []) assigneeNames.set(person.id, person.full_name.trim());
   }
-  const [pinState, readState, inbound] = await Promise.all([
+  const [pinState, readState, activity] = await Promise.all([
     rowsOrMissing(table("chatbot_conversation_pins").select("conversation_id").eq("user_id", userId).eq("organization_id", organizationId)),
     rowsOrMissing(table("chatbot_conversation_reads").select("conversation_id, last_read_at").eq("user_id", userId).eq("organization_id", organizationId)),
     rows(
       table("chatbot_messages")
-        .select("conversation_id, created_at")
+        .select("conversation_id, created_at, direction")
         .eq("organization_id", organizationId)
-        .eq("direction", "in")
         .order("created_at", { ascending: false })
         .limit(2000),
     ),
   ]);
   const pinnedIds = new Set(pinState.rows.map((row) => cell(row, "conversation_id")));
   const readAt = new Map(readState.rows.map((row) => [cell(row, "conversation_id"), cell(row, "last_read_at")]));
+  const latestAt = new Map<string, string>();
   const inboundAt = new Map<string, string[]>();
-  for (const message of inbound) {
-    if (!visibleConversationIds.has(cell(message, "conversation_id"))) continue;
+  for (const message of activity) {
     const id = cell(message, "conversation_id");
+    if (!visibleConversationIds.has(id)) continue;
+    if (!latestAt.has(id)) latestAt.set(id, cell(message, "created_at"));
+    if (cell(message, "direction") !== "in") continue;
     const times = inboundAt.get(id) ?? [];
     times.push(cell(message, "created_at"));
     inboundAt.set(id, times);
@@ -232,8 +235,9 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   const ordered = inboxOrder(
     scopedConversations.map((row) => ({
       row,
+      id: cell(row, "id"),
       pinned: pinnedIds.has(cell(row, "id")),
-      updatedAt: cell(row, "updated_at"),
+      updatedAt: latestAt.get(cell(row, "id")) || cell(row, "updated_at"),
     })),
   );
   return {
@@ -815,19 +819,25 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown)
     .insert(content.mediaKind ? { ...messageRow, media_kind: content.mediaKind, media_mime: content.mediaMime } : messageRow)
     .select("id")
     .maybeSingle();
-  if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
-    await table("chatbot_messages")
+  let inserted = !saved.error;
+  if (saved.error && duplicate(saved.error)) {
+    if (content.mediaKind) {
+      await table("chatbot_messages")
+        .update({ media_kind: content.mediaKind, media_mime: content.mediaMime, text })
+        .eq("conversation_id", conversationId)
+        .eq("external_id", externalId);
+    }
+  } else if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
+    const retry = await table("chatbot_messages")
       .insert({ ...messageRow, text: text || (content.mediaKind === "video" ? "[vídeo]" : "[imagem]") })
       .select("id")
       .maybeSingle();
-  } else if (saved.error && duplicate(saved.error) && content.mediaKind) {
-    await table("chatbot_messages")
-      .update({ media_kind: content.mediaKind, media_mime: content.mediaMime, text })
-      .eq("conversation_id", conversationId)
-      .eq("external_id", externalId);
-  } else if (saved.error && !duplicate(saved.error)) {
+    if (retry.error && !duplicate(retry.error)) return;
+    inserted = !retry.error;
+  } else if (saved.error) {
     return;
   }
+  if (!inserted) return;
   await table("chatbot_conversations")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", conversationId);

@@ -56,6 +56,13 @@ assert.deepEqual(
   ]).map((item) => item.id),
   ["fixa", "nova", "antiga"],
 );
+assert.deepEqual(
+  inboxOrder([
+    { id: "b", pinned: false, updatedAt: "2026-10-13T12:00:00.000Z" },
+    { id: "a", pinned: false, updatedAt: "2026-10-13T12:00:00.000Z" },
+  ]).map((item) => item.id),
+  ["a", "b"],
+);
 assert.equal(attendancePhone("+55 (11) 99999-9999"), "5511999999999");
 assert.equal(attendancePhone("+55 (11) 99999-9"), "");
 assert.equal(attendancePhone("11999999999"), "5511999999999");

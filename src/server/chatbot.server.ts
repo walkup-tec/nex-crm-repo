@@ -10,6 +10,9 @@ import {
   evolutionQrImage,
   evolutionSameOwnerInstance,
   preferredWhatsappPhone,
+  sameWhatsappAccount,
+  whatsappDeviceRemoved,
+  whatsappDeviceRemovedMessage,
   whatsappJidPhone,
   type ChatbotConnectionStatus,
   type ChatbotSnapshot,
@@ -117,6 +120,32 @@ async function ensureWebhook(instanceName: string) {
   await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody()).catch(() => null);
 }
 
+async function findEvolutionInstance(instanceName: string) {
+  const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
+  if (!Array.isArray(listed)) return null;
+  const found = listed.find((item) => item && typeof item === "object" && cell(item as Record<string, unknown>, "name") === instanceName);
+  return found && typeof found === "object" ? (found as Record<string, unknown>) : null;
+}
+
+async function whatsappAlreadyRegistered(phone: string) {
+  const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
+  if (!Array.isArray(listed)) return false;
+  return listed.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const record = item as Record<string, unknown>;
+    return sameWhatsappAccount(phone, cell(record, "number")) || sameWhatsappAccount(phone, cell(record, "ownerJid"));
+  });
+}
+
+function connectionStatusReason(payload: Record<string, unknown>) {
+  const data = payload["data"];
+  if (data && typeof data === "object") {
+    const reason = (data as Record<string, unknown>)["statusReason"];
+    if (reason != null && reason !== "") return reason;
+  }
+  return payload["statusReason"];
+}
+
 function sameSecret(left: string, right: string) {
   const a = new TextEncoder().encode(left);
   const b = new TextEncoder().encode(right);
@@ -192,6 +221,9 @@ export async function createChatbotConnection(userId: string, name: string, phon
   if (clean.length > 25) fail("O nome de atendimento pode ter no máximo 25 caracteres.");
   const number = attendancePhone(phone);
   if (!number) fail("Informe o número com DDD.");
+  if (await whatsappAlreadyRegistered(number)) {
+    fail("Esse número já está na API WhatsApp. Use o card existente e leia o QR Code uma única vez.");
+  }
   const { organizationId, admin } = await membership(userId);
   if (!admin) fail("Somente o administrador da empresa pode conectar um WhatsApp.");
   const instanceName = chatbotInstanceName(organizationId);
@@ -225,15 +257,19 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
   const current = await ownedConnection(organizationId, connectionId);
   const instanceName = cell(current, "instance_name");
   const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
+  const listed = await findEvolutionInstance(instanceName);
   await ensureWebhook(instanceName);
-  const status = evolutionConnectionStatus(readState(stateBody));
+  const listedState = cell(listed, "connectionStatus");
+  const status = evolutionConnectionStatus(listedState || readState(stateBody));
+  const removed = listedState === "close" && whatsappDeviceRemoved(listed?.["disconnectionReasonCode"]);
   const previous = cell(current, "status");
   const qrCode = withQr && status !== "connected" ? evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET")) : "";
   const live = status === "connected" ? "connected" : qrCode ? "qr" : status;
-  const next = previous === "connected" && live !== "connected" && !withQr ? "connected" : live;
+  const next = !removed && previous === "connected" && live !== "connected" && !withQr ? "connected" : live;
+  const lastError = next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : cell(current, "last_error");
   if (next === "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
-    .update({ status: next, last_error: "", updated_at: new Date().toISOString() })
+    .update({ status: next, last_error: lastError, updated_at: new Date().toISOString() })
     .eq("id", connectionId)
     .eq("organization_id", organizationId)
     .select("*")
@@ -364,16 +400,19 @@ export async function ingestEvolutionWebhook(request: Request) {
   const event = cell(payload, "event").toLowerCase();
   if (event.includes("connection")) {
     const status = evolutionConnectionStatus(readState(payload["data"] ?? payload));
+    const previous = cell(found.data, "status");
+    const removed = status === "disconnected" && whatsappDeviceRemoved(connectionStatusReason(payload));
+    const next = status === "disconnected" && previous === "connected" && !removed ? previous : status;
     const sender = payload["sender"];
     const senderPhone = whatsappJidPhone(typeof sender === "string" ? sender : "");
     const phone = preferredWhatsappPhone(cell(found.data, "phone"), senderPhone);
-    if (status === "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
+    if (next === "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
     await table("chatbot_connections")
       .update({
-        status,
+        status: next,
         ...(phone ? { phone } : {}),
         updated_at: new Date().toISOString(),
-        last_error: "",
+        last_error: next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : cell(found.data, "last_error"),
       })
       .eq("id", cell(found.data, "id"));
   }

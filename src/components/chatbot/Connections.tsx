@@ -170,24 +170,13 @@ export function Connections() {
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => {
-      void refreshChatbotConnectionFn({ data: { connectionId: active, withQr: false } }).then(async (result) => {
+      void refreshChatbotConnectionFn({ data: { connectionId: active, withQr: false } }).then((result) => {
         if (!result.ok) return;
         applyStatus(active, result.data.status, result.data.error);
         if (result.data.status === "connected") {
           closeQr();
           setMessage("Conexão finalizada");
-          return;
         }
-        if (result.data.status === "connecting" || Date.now() - qrIssuedAt.current < 45000) return;
-        const again = await refreshChatbotConnectionFn({ data: { connectionId: active, withQr: true } });
-        if (!again.ok) return;
-        applyStatus(active, again.data.status, again.data.error);
-        if (again.data.status === "connected") {
-          closeQr();
-          setMessage("Conexão finalizada");
-          return;
-        }
-        if (again.data.qrCode) await presentQr(again.data.qrCode);
       });
     }, 3000);
     return () => window.clearInterval(timer);
@@ -269,7 +258,7 @@ export function Connections() {
             />
           </span>
         </label>
-        <Button className="connect-action" disabled={pending || name.trim().length < 2 || !attendancePhone(phone)}>
+        <Button disabled={pending || name.trim().length < 2 || !attendancePhone(phone)}>
           <Smartphone />
           {pending ? "Gerando QR Code" : "Conectar"}
         </Button>

@@ -10,6 +10,8 @@ import {
   attendanceLabel,
   attendancePhone,
   preferredWhatsappPhone,
+  sameWhatsappAccount,
+  whatsappDeviceRemoved,
   whatsappJidPhone,
   whatsappMask,
 } from "./chatbot-evo";
@@ -24,6 +26,11 @@ assert.equal(whatsappMask("555198335401"), "(51) 99833-5401");
 assert.equal(whatsappMask("5551998335401"), "(51) 99833-5401");
 assert.equal(whatsappMask("5199833540"), "(51) 99833-540");
 assert.equal(preferredWhatsappPhone("5551998335401", "555198335401"), "5551998335401");
+assert.equal(sameWhatsappAccount("5551998335401", "555198335401"), true);
+assert.equal(sameWhatsappAccount("5551998335401", "555198335401@s.whatsapp.net"), true);
+assert.equal(sameWhatsappAccount("5551998335401", "5511999999999"), false);
+assert.equal(whatsappDeviceRemoved(401), true);
+assert.equal(whatsappDeviceRemoved(428), false);
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "Em fila");
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");

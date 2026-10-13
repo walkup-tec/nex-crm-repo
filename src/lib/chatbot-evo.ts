@@ -68,6 +68,25 @@ export function preferredWhatsappPhone(stored: string, incoming: string) {
   return stored.replace(/\D/g, "").length >= incoming.replace(/\D/g, "").length ? stored : incoming;
 }
 
+export const whatsappDeviceRemovedMessage =
+  "O WhatsApp removeu o aparelho vinculado. Escaneie o QR Code novamente, uma única vez.";
+
+export function whatsappDeviceRemoved(reason: unknown) {
+  return Number(reason) === 401;
+}
+
+export function sameWhatsappAccount(left: string, right: string) {
+  const compact = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    const local = digits.startsWith("55") && digits.length > 11 ? digits.slice(2) : digits;
+    if (local.length === 11 && local[2] === "9") return `${local.slice(0, 2)}${local.slice(3)}`;
+    return local;
+  };
+  const first = compact(left);
+  const second = compact(right);
+  return first.length >= 10 && first === second;
+}
+
 export function attendancePhone(value: string) {
   const raw = value.replace(/\D/g, "");
   const hasCountry = value.includes("+") || raw.length > 11;

@@ -252,6 +252,7 @@ export function LiveInbox() {
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const [savedMedia, setSavedMedia] = useState(0);
   const selectedRef = useRef("");
+  const pendingOpen = useRef("");
   const snapshotRequest = useRef(0);
   const appliedSnapshot = useRef(0);
   const inFlight = useRef(false);
@@ -294,7 +295,14 @@ export function LiveInbox() {
         setOutgoing((current) => pendingOutgoing(next.messages, current));
         setData(next);
         setMessage((current) => (sending.current ? current : ""));
-        setSelected((current) => (next.conversations.some((item) => item.id === current) ? current : ""));
+        setSelected((current) => {
+          const wanted = current || pendingOpen.current;
+          if (wanted && next.conversations.some((item) => item.id === wanted)) {
+            pendingOpen.current = "";
+            return wanted;
+          }
+          return next.conversations.some((item) => item.id === current) ? current : "";
+        });
         if (openId && conversations.some((item) => item.id === openId)) {
           void markChatbotConversationReadFn({ data: { conversationId: openId } }).then((marked) => {
             if (!marked.ok) return;
@@ -315,6 +323,11 @@ export function LiveInbox() {
   }
 
   useEffect(() => {
+    pendingOpen.current = sessionStorage.getItem("nex-kanban-conversation") ?? "";
+    if (pendingOpen.current) {
+      sessionStorage.removeItem("nex-kanban-conversation");
+      setSelected(pendingOpen.current);
+    }
     void load();
     const timer = window.setInterval(() => void load(), 2000);
     return () => window.clearInterval(timer);

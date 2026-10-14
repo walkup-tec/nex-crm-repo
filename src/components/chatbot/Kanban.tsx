@@ -1,172 +1,119 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Plus, MessageSquare, Columns3 } from "lucide-react";
+import { Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { listChatbotStagesFn } from "@/lib/chatbot.functions";
-import { useWorkspace, uid } from "@/lib/chatbot/store";
-import { money } from "@/lib/chatbot/model";
-import { Modal, Field, SaveActions } from "./common";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { callChatbotContactFn, listChatbotKanbanFn } from "@/lib/chatbot.functions";
+import { negotiatedLabel, type ChatbotKanbanCard } from "@/lib/chatbot-evo";
+
+const openConversationKey = "nex-kanban-conversation";
+
+function WhatsAppIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M20.5 3.5A11 11 0 0 0 2.1 17.8L1 23l5.3-1.1A11 11 0 0 0 20.5 3.5zM12 20.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3.1.8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.2.1-.3.2-.5.1a6.7 6.7 0 0 1-2-1.2 7.4 7.4 0 0 1-1.4-1.7c-.1-.2 0-.4.1-.5l.4-.5c.1-.1.2-.2.2-.3a.5.5 0 0 0 0-.5c-.2-.4-.7-1.5-.7-1.6s-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.4 2.4 0 0 0-.8 1.8 4.4 4.4 0 0 0 .9 2.3 9.9 9.9 0 0 0 3.8 3.4c.5.2.9.4 1.3.5a3 3 0 0 0 1.4.1 2.3 2.3 0 0 0 1.5-1c.2-.3.2-.7.1-1.1-.1-.1-.3-.2-.5-.3z"
+      />
+    </svg>
+  );
+}
 
 export function Kanban() {
-  const { data, update } = useWorkspace();
   const navigate = useNavigate();
-  const [modal, setModal] = useState(false);
+  const [stages, setStages] = useState<string[]>([]);
+  const [cards, setCards] = useState<ChatbotKanbanCard[]>([]);
   const [search, setSearch] = useState("");
-  const [notice, setNotice] = useState("");
-  const funnel = data.funnels[0] || "Funil principal";
+  const [ready, setReady] = useState(true);
+  const [calling, setCalling] = useState("");
+  const [failure, setFailure] = useState("");
 
   useEffect(() => {
-    void listChatbotStagesFn().then((result) => {
-      if (!result.ok) return;
-      const stages = result.data.stages.map((item) => item.name);
-      if (stages.length) update((current) => ({ ...current, stages }));
+    void listChatbotKanbanFn().then((result) => {
+      if (!result.ok) {
+        setFailure(result.message);
+        return;
+      }
+      setReady(result.data.ready);
+      setStages(result.data.stages);
+      setCards(result.data.cards);
     });
   }, []);
 
-  function move(id: string, stage: string) {
-    update((current) => ({
-      ...current,
-      opportunities: current.opportunities.map((item) => (item.id === id ? { ...item, stage } : item)),
-    }));
+  async function call(contactId: string) {
+    setCalling(contactId);
+    const result = await callChatbotContactFn({ data: { contactId } });
+    setCalling("");
+    if (!result.ok) {
+      setFailure(result.message);
+      return;
+    }
+    sessionStorage.setItem(openConversationKey, result.data.conversationId);
+    void navigate({ to: "/chatbot" });
   }
+
+  const term = search.trim().toLowerCase();
 
   return (
     <main className="page kanban-page">
       <div className="table-toolbar mb-5 rounded-md border bg-card">
-        <input placeholder="Buscar oportunidade ou cliente" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar oportunidade ou cliente" />
+        <input placeholder="Buscar contato" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar contato" />
       </div>
+      {ready ? null : <p className="info-note mb-5">A etapa do contato ainda não está disponível. Aplique a migração do kanban no Supabase.</p>}
       <div className="kanban-board">
-        {data.stages.map((stage) => {
-          const items = data.opportunities.filter((item) => {
-            const contact = data.contacts.find((person) => person.id === item.contactId)?.name ?? "";
-            return item.stage === stage && item.funnel === funnel && `${item.title} ${contact}`.toLowerCase().includes(search.toLowerCase());
+        {stages.map((stage) => {
+          const items = cards.filter((card) => {
+            const product = card.products.join(", ");
+            return card.stage === stage && `${card.name} ${product}`.toLowerCase().includes(term);
           });
+          const total = items.reduce((sum, card) => sum + (card.negotiatedCents ?? 0), 0);
           return (
-            <section
-              key={stage}
-              className="kanban-column"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                move(event.dataTransfer.getData("opportunity"), stage);
-              }}
-            >
+            <section key={stage} className="kanban-column">
               <h2>
                 {stage}
                 <span className="count">{items.length}</span>
               </h2>
-              <p className="column-total">{money(items.reduce((sum, item) => sum + item.value, 0))}</p>
-              {items.map((item) => {
-                const contact = data.contacts.find((person) => person.id === item.contactId);
-                return (
-                  <article key={item.id} className="kanban-card" draggable onDragStart={(event) => event.dataTransfer.setData("opportunity", item.id)}>
-                    <strong>{contact?.name}</strong>
-                    <p>{item.title}</p>
-                    <p>{data.products.find((product) => product.id === item.productId)?.name || "Sem produto vinculado"}</p>
-                    <select value={item.stage} onChange={(event) => move(item.id, event.target.value)} aria-label={`Etapa de ${item.title}`}>
-                      {data.stages.map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                    <footer>
-                      <strong>{money(item.value)}</strong>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Abrir conversa do cliente"
-                        onClick={() => {
-                          const conversation = data.conversations.find((entry) => entry.contactId === item.contactId);
-                          if (conversation) {
-                            update((current) => ({ ...current, activeConversationId: conversation.id }));
-                            void navigate({ to: "/chatbot" });
-                          } else setNotice("Este cliente ainda não possui uma conversa. Crie uma na caixa de entrada.");
-                        }}
-                      >
-                        <MessageSquare />
-                      </Button>
-                    </footer>
-                  </article>
-                );
-              })}
+              <p className="column-total">{negotiatedLabel(total)}</p>
+              {items.map((card) => (
+                <article key={card.id} className="kanban-card">
+                  <strong>{card.name || "Contato sem nome"}</strong>
+                  <p>{card.products.join(", ") || "Sem produto"}</p>
+                  <p className="kanban-value">{negotiatedLabel(card.negotiatedCents ?? 0)}</p>
+                  <Button variant="outline" className="kanban-call" disabled={calling === card.id} onClick={() => void call(card.id)}>
+                    <WhatsAppIcon />
+                    {calling === card.id ? "Abrindo" : "Chamar"}
+                  </Button>
+                </article>
+              ))}
               {!items.length ? (
                 <div className="text-center text-xs text-muted-foreground py-10">
                   <Columns3 className="mx-auto mb-3 size-5 opacity-40" />
-                  Nenhuma oportunidade
+                  Nenhum contato
                 </div>
               ) : null}
-              <Button variant="ghost" className="w-full text-xs" onClick={() => setModal(true)}>
-                <Plus />
-                Adicionar oportunidade
-              </Button>
             </section>
           );
         })}
       </div>
-      {notice ? <p className="info-note mt-4">{notice}</p> : null}
-      <Modal title="Nova oportunidade" open={modal} onClose={() => setModal(false)}>
-        <form
-          className="modal-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            update((current) => ({
-              ...current,
-              opportunities: [
-                ...current.opportunities,
-                {
-                  id: uid(),
-                  title: String(form.get("title")),
-                  contactId: String(form.get("contact")),
-                  productId: String(form.get("product")),
-                  value: Number(form.get("value")),
-                  stage: String(form.get("stage")),
-                  funnel,
-                },
-              ],
-            }));
-            setModal(false);
-          }}
-        >
-          <Field label="Título da oportunidade">
-            <input name="title" required />
-          </Field>
-          <Field label="Cliente">
-            <select name="contact" required>
-              <option value="">Selecione</option>
-              {data.contacts.map((contact) => (
-                <option key={contact.id} value={contact.id}>
-                  {contact.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Produto / serviço">
-            <select name="product">
-              <option value="">Sem produto</option>
-              {data.products
-                .filter((product) => product.active)
-                .map((product) => (
-                  <option value={product.id} key={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-            </select>
-          </Field>
-          <div className="form-grid">
-            <Field label="Valor estimado (R$)">
-              <input name="value" type="number" min="0" step="0.01" required />
-            </Field>
-            <Field label="Etapa">
-              <select name="stage">
-                {data.stages.map((stage) => (
-                  <option key={stage}>{stage}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <SaveActions onClose={() => setModal(false)} />
-        </form>
-      </Modal>
+      <AlertDialog open={failure !== ""} onOpenChange={(open) => !open && setFailure("")}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Não foi possível concluir</AlertDialogTitle>
+            <AlertDialogDescription>{failure}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Entendi</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

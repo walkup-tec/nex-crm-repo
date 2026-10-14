@@ -44,6 +44,7 @@ import {
   type ChatbotCatalogItem,
   type ChatbotOverview,
   type ChatbotClientRow,
+  type ChatbotKanbanBoard,
   type ChatbotContactProfile,
   type ChatbotTag,
   type ChatbotConnectionStatus,
@@ -743,7 +744,9 @@ export async function chatbotTransferTargets(userId: string, conversationId: str
     ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", candidateIds)
     : { data: [], error: null };
   if (roles.error) fail(schemaMessage(roles.error.message));
-  const attendants = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
+  const attendants = new Set(
+    (roles.data ?? []).filter((row) => row.role === "client_user" || row.role === "client_admin" || row.role === "master").map((row) => row.user_id),
+  );
   return (profiles.data ?? []).filter((row) => attendants.has(row.id)).map((row) => ({ id: row.id, name: row.full_name.trim() }));
 }
 
@@ -1342,14 +1345,20 @@ export async function chatbotTeamSnapshot(userId: string) {
     : { data: [], error: null };
   if (roles.error) fail(schemaMessage(roles.error.message));
   const attendants = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
-  const attendantIds = [...attendants];
+  const owners = new Set((roles.data ?? []).filter((row) => row.role === "master" || row.role === "client_admin").map((row) => row.user_id));
+  const memberIds = new Set(members.map((member) => cell(member, "user_id")));
+  const listedOwners = new Set([...owners].filter((id) => memberIds.has(id)));
+  const attendantIds = [...new Set([...attendants, ...listedOwners])];
   const permissionRows = attendantIds.length
     ? await supabaseAdmin.from("user_permissions").select("user_id, chatbot_menus").in("user_id", attendantIds)
     : { data: [], error: null };
   if (permissionRows.error && !/chatbot_menus/i.test(permissionRows.error.message)) fail(schemaMessage(permissionRows.error.message));
   const menuByUser = new Map((permissionRows.error ? [] : permissionRows.data ?? []).map((row) => [row.user_id, row.chatbot_menus]));
   const channelName = new Map(channels.map((row) => [cell(row, "id"), { name: cell(row, "display_name"), phone: cell(row, "phone") }]));
+  const account = (profiles.data ?? []).find((row) => row.id === userId);
   return {
+    account: { id: userId, name: account?.full_name?.trim() ?? "", email: account?.email ?? "" },
+    canAddMyself: owners.has(userId) && !listedOwners.has(userId),
     channels: channels.map((row) => ({ id: cell(row, "id"), name: cell(row, "display_name"), phone: cell(row, "phone") })),
     teams: teams.map((row) => {
       const connectionIds = channelsOfTeam(cell(row, "id"), cell(row, "connection_id"), links);
@@ -1364,11 +1373,12 @@ export async function chatbotTeamSnapshot(userId: string) {
       };
     }),
     attendants: (profiles.data ?? [])
-      .filter((row) => attendants.has(row.id))
+      .filter((row) => attendants.has(row.id) || listedOwners.has(row.id))
       .map((row) => ({
         id: row.id,
         name: row.full_name,
         email: row.email,
+        self: listedOwners.has(row.id),
         teamIds: members.filter((member) => cell(member, "user_id") === row.id).map((member) => cell(member, "team_id")),
         menus: chatbotMenusFromStorage(menuByUser.get(row.id) ?? null),
       })),
@@ -1437,6 +1447,21 @@ export async function resendAttendantInvite(userId: string, email: string, name:
   await sendInviteEmail(profile.data.email, name.trim() || profile.data.full_name);
 }
 
+export async function addMyselfAsChatbotAttendant(userId: string, teamIds: string[], menusInput: unknown) {
+  const menus = attendantMenus(menusInput);
+  const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
+  if (!uniqueTeams.length) fail("Selecione ao menos uma equipe.");
+  const { organizationId, admin } = await membership(userId, "team");
+  if (!admin) fail("Somente o administrador da empresa pode se adicionar como atendente.");
+  const profile = await supabaseAdmin.from("profiles").select("id, full_name, email").eq("id", userId).eq("organization_id", organizationId).maybeSingle();
+  if (profile.error) fail(schemaMessage(profile.error.message));
+  if (!profile.data) fail("Sua conta não pertence a esta empresa.");
+  if ((profile.data.full_name ?? "").trim().length < 2) fail("Informe o nome completo em Dados da conta antes de se adicionar.");
+  await ownedTeams(organizationId, uniqueTeams);
+  await setMemberTeams(organizationId, userId, uniqueTeams, true);
+  await saveAttendantMenus(userId, menus);
+}
+
 export async function inviteChatbotAttendant(userId: string, name: string, email: string, teamIds: string[], menusInput: unknown) {
   const menus = attendantMenus(menusInput);
   const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
@@ -1468,6 +1493,11 @@ export async function updateChatbotAttendant(userId: string, attendantId: string
   const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode editar um atendente.");
   await ownedTeams(organizationId, uniqueTeams);
+  if (attendantId === userId) {
+    await setMemberTeams(organizationId, userId, uniqueTeams, true);
+    await saveAttendantMenus(userId, menus);
+    return;
+  }
   const attendant = await ownedAttendant(organizationId, attendantId);
   const taken = await supabaseAdmin.from("profiles").select("id").eq("email", address).maybeSingle();
   if (taken.error) fail(schemaMessage(taken.error.message));
@@ -1483,6 +1513,15 @@ export async function updateChatbotAttendant(userId: string, attendantId: string
 export async function deleteChatbotAttendant(userId: string, attendantId: string) {
   const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode excluir um atendente.");
+  const roles = await supabaseAdmin.from("user_roles").select("role").eq("user_id", attendantId);
+  if (roles.error) fail(schemaMessage(roles.error.message));
+  const owner = (roles.data ?? []).some((row) => row.role === "master" || row.role === "client_admin");
+  if (owner) {
+    if (attendantId !== userId) fail("O acesso do administrador não pode ser excluído.");
+    await done(table("chatbot_conversations").update({ assignee_id: null }).eq("assignee_id", userId).eq("organization_id", organizationId));
+    await done(table("chatbot_team_members").delete().eq("user_id", userId).eq("organization_id", organizationId));
+    return;
+  }
   if (attendantId === userId) fail("Você não pode excluir o próprio acesso.");
   await ownedAttendant(organizationId, attendantId);
   const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(attendantId);
@@ -1720,6 +1759,109 @@ export async function listChatbotClients(userId: string): Promise<ChatbotClientR
       products: productNames.get(id) ?? [],
     };
   });
+}
+
+export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBoard> {
+  const { organizationId } = await membership(userId, "kanban");
+  const stages = await listChatbotStages(userId);
+  const contactQuery = (withDeal: boolean) =>
+    table("chatbot_contacts")
+      .select(withDeal ? "id, name, negotiated_cents, stage_name" : "id, name, stage_name")
+      .eq("organization_id", organizationId)
+      .not("stage_name", "is", null)
+      .order("name", { ascending: true });
+  const listed = await rowsOrMissing(contactQuery(true));
+  const contacts = listed.missing ? await rowsOrMissing(contactQuery(false)) : listed;
+  if (contacts.missing) return { ready: false, stages: stages.stages.map((item) => item.name), cards: [] };
+  const visible = contacts.rows.filter((row) => cell(row, "stage_name"));
+  const ids = visible.map((row) => cell(row, "id")).filter(Boolean);
+  const productLinks = ids.length
+    ? await rowsOrMissing(table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId).in("contact_id", ids))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const products = ids.length
+    ? await rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const productCatalog = new Map(products.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
+  const productNames = new Map<string, string[]>();
+  for (const link of productLinks.rows) {
+    const contactId = cell(link, "contact_id");
+    const name = productCatalog.get(cell(link, "product_id"));
+    if (!name) continue;
+    productNames.set(contactId, [...(productNames.get(contactId) ?? []), name]);
+  }
+  return {
+    ready: stages.ready,
+    stages: stages.stages.map((item) => item.name),
+    cards: visible.map((row) => {
+      const raw = row["negotiated_cents"];
+      const amount = raw == null || raw === "" ? null : Number(raw);
+      const id = cell(row, "id");
+      return {
+        id,
+        name: cell(row, "name"),
+        stage: cell(row, "stage_name"),
+        products: productNames.get(id) ?? [],
+        negotiatedCents: amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null,
+      };
+    }),
+  };
+}
+
+export async function callChatbotContact(userId: string, contactId: string) {
+  const { organizationId, admin } = await membership(userId, "inbox");
+  await ownedContact(organizationId, contactId);
+  const conversations = await rows(
+    table("chatbot_conversations")
+      .select("id, connection_id, assignee_id, status, updated_at")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId),
+  );
+  const allowed = admin ? null : await teamConnectionIds(userId, organizationId);
+  const visible = [...conversations]
+    .filter((row) => !allowed || allowed.has(cell(row, "connection_id")))
+    .sort((left, right) => cell(right, "updated_at").localeCompare(cell(left, "updated_at")));
+  if (conversations.length && !visible.length) fail("Essa conversa já está com outro atendente.");
+  const current = visible[0];
+  if (current) {
+    const assignee = cell(current, "assignee_id");
+    if (assignee && assignee !== userId) fail("Essa conversa já está com outro atendente.");
+    if (assignee !== userId || cell(current, "status") !== "active") {
+      const updated = await table("chatbot_conversations")
+        .update({ status: "active", assignee_id: userId, bot_paused: true, updated_at: new Date().toISOString() })
+        .eq("id", cell(current, "id"))
+        .eq("organization_id", organizationId)
+        .select("id")
+        .maybeSingle();
+      if (updated.error) fail(schemaMessage(updated.error.message));
+    }
+    return { conversationId: cell(current, "id") };
+  }
+  const connectionId = admin
+    ? cell((await rows(table("chatbot_connections").select("id").eq("organization_id", organizationId).order("created_at", { ascending: true })))[0], "id")
+    : [...(allowed ?? [])][0] ?? "";
+  if (!connectionId) fail("Conecte um canal de WhatsApp antes de chamar o contato.");
+  const created = await table("chatbot_conversations")
+    .insert({
+      organization_id: organizationId,
+      contact_id: contactId,
+      connection_id: connectionId,
+      status: "active",
+      assignee_id: userId,
+      bot_paused: true,
+    })
+    .select("id")
+    .maybeSingle();
+  if (created.data) return { conversationId: cell(created.data, "id") };
+  if (!duplicate(created.error)) fail(schemaMessage(created.error?.message ?? ""));
+  const again = await table("chatbot_conversations")
+    .select("id, assignee_id")
+    .eq("connection_id", connectionId)
+    .eq("contact_id", contactId)
+    .maybeSingle();
+  if (again.error) fail(schemaMessage(again.error.message));
+  const assignee = cell(again.data, "assignee_id");
+  if (!again.data || (assignee && assignee !== userId)) fail("Essa conversa já está com outro atendente.");
+  return { conversationId: cell(again.data, "id") };
 }
 
 export async function renameChatbotContact(userId: string, contactId: string, name: string) {

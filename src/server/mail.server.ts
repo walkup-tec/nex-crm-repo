@@ -16,6 +16,10 @@ export function appUrl() {
 }
 
 export async function sendInviteEmail(to: string, name: string) {
+  const smtp = smtpConfig();
+  if (!smtp) {
+    throw new Error("O envio de e-mail não está configurado no servidor.");
+  }
   const displayName = name.trim();
   const hello = displayName ? `Olá, ${displayName}!` : "Olá!";
   const link = `${appUrl()}/primeiro-acesso?email=${encodeURIComponent(to)}`;
@@ -62,52 +66,6 @@ export async function sendInviteEmail(to: string, name: string) {
       <p>Até logo,<br>Equipe NEX<br>Dados claros. Decisões melhores.</p>
     </div>
   `;
-  await deliverMail({ to, subject: "Seja bem-vindo a Agência NEX", text, html });
-}
-
-export async function sendAttendantInviteEmail(to: string, name: string) {
-  const displayName = name.trim();
-  const hello = displayName ? `Olá, ${displayName}!` : "Olá!";
-  const link = `${appUrl()}/login`;
-  const safeHello = escapeHtml(hello);
-  const safeEmail = escapeHtml(to);
-  const safeLink = escapeHtml(link);
-  const text = [
-    hello,
-    "",
-    "Você recebeu um convite para atender conversas no time da NEX.",
-    "",
-    "Acesse a plataforma com o e-mail abaixo.",
-    "",
-    link,
-    "",
-    `Seu e-mail: ${to}`,
-    "",
-    "Se você não reconhece este convite, ignore esta mensagem.",
-    "",
-    "Equipe NEX",
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:16px">
-      <p>${safeHello}</p>
-      <p>Você recebeu um convite para atender conversas no time da NEX.</p>
-      <p>Acesse a plataforma com o e-mail abaixo.</p>
-      <p style="margin:28px 0">
-        <a href="${safeLink}" style="display:inline-block;background:#6F02FD;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 22px;border-radius:8px">ACESSAR O TIME</a>
-      </p>
-      <p><strong>Seu e-mail:</strong> ${safeEmail}</p>
-      <p>Se você não reconhece este convite, ignore esta mensagem.</p>
-      <p>Equipe NEX</p>
-    </div>
-  `;
-  await deliverMail({ to, subject: "Convite para o time de atendimento NEX", text, html });
-}
-
-async function deliverMail(message: { to: string; subject: string; text: string; html: string }) {
-  const smtp = smtpConfig();
-  if (!smtp) {
-    throw new Error("O envio de e-mail não está configurado no servidor.");
-  }
   let address = smtp.host;
   try {
     address = (await lookup(smtp.host, { family: 4 })).address;
@@ -131,10 +89,10 @@ async function deliverMail(message: { to: string; subject: string; text: string;
   try {
     await transporter.sendMail({
       from: smtp.from,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
+      to,
+      subject: "Seja bem-vindo a Agência NEX",
+      text,
+      html,
     });
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "error";

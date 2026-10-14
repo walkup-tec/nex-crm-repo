@@ -184,6 +184,17 @@ export const updateChatbotTeamFn = createServerFn({ method: "POST" })
     return guard(() => updateChatbotTeam(context.userId, data.teamId, data.name, data.connectionId));
   });
 
+export const addMyselfAsChatbotAttendantFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { teamIds: string[]; menus?: unknown }) => ({
+    teamIds: Array.isArray(data.teamIds) ? data.teamIds.filter((id) => typeof id === "string") : [],
+    menus: data.menus,
+  }))
+  .handler(async ({ context, data }) => {
+    const { addMyselfAsChatbotAttendant } = await import("@/server/chatbot.server");
+    return guard(() => addMyselfAsChatbotAttendant(context.userId, data.teamIds, data.menus));
+  });
+
 export const inviteChatbotAttendantFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { name: string; email: string; teamIds: string[]; menus?: unknown }) => ({
@@ -251,6 +262,21 @@ export const listChatbotClientsFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { listChatbotClients } = await import("@/server/chatbot.server");
     return guard(() => listChatbotClients(context.userId));
+  });
+
+export const listChatbotKanbanFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotKanban } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotKanban(context.userId));
+  });
+
+export const callChatbotContactFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string }) => ({ contactId: data.contactId }))
+  .handler(async ({ context, data }) => {
+    const { callChatbotContact } = await import("@/server/chatbot.server");
+    return guard(() => callChatbotContact(context.userId, data.contactId));
   });
 
 export const renameChatbotContactFn = createServerFn({ method: "POST" })

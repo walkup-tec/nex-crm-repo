@@ -628,6 +628,20 @@ export type ChatbotClientRow = {
   products: string[];
 };
 
+export type ChatbotKanbanCard = {
+  id: string;
+  name: string;
+  stage: string;
+  products: string[];
+  negotiatedCents: number | null;
+};
+
+export type ChatbotKanbanBoard = {
+  ready: boolean;
+  stages: string[];
+  cards: ChatbotKanbanCard[];
+};
+
 export type ClientListFilters = {
   search: string;
   name: string;

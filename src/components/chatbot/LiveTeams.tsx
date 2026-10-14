@@ -15,6 +15,7 @@ import {
   createChatbotTeamFn,
   deleteChatbotAttendantFn,
   deleteChatbotTeamFn,
+  addMyselfAsChatbotAttendantFn,
   inviteChatbotAttendantFn,
   resendAttendantInviteFn,
   updateChatbotAttendantFn,
@@ -24,9 +25,10 @@ import { whatsappMask } from "@/lib/chatbot-evo";
 import { allChatbotMenus, chatbotMenuItems, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 
 type TeamRecord = { id: string; name: string; connectionId: string; connectionIds?: string[]; channelName: string; channelPhone: string };
-type AttendantRecord = { id: string; name: string; email: string; teamIds: string[]; menus: ChatbotMenuMap };
+type AttendantRecord = { id: string; name: string; email: string; self?: boolean; teamIds: string[]; menus: ChatbotMenuMap };
 type ChannelRecord = { id: string; name: string; phone: string };
-type TeamData = { teams: TeamRecord[]; attendants: AttendantRecord[]; channels: ChannelRecord[] };
+type AccountRecord = { id: string; name: string; email: string };
+type TeamData = { teams: TeamRecord[]; attendants: AttendantRecord[]; channels: ChannelRecord[]; account?: AccountRecord; canAddMyself?: boolean };
 
 export function LiveTeams() {
   const [data, setData] = useState<TeamData | null>(null);
@@ -40,6 +42,7 @@ export function LiveTeams() {
   const [pending, setPending] = useState("");
   const [editingTeamId, setEditingTeamId] = useState("");
   const [editingAttendantId, setEditingAttendantId] = useState("");
+  const [addMyself, setAddMyself] = useState(false);
   const [removing, setRemoving] = useState<{ kind: "team" | "attendant"; id: string; name: string; channelName: string } | null>(null);
   const [failure, setFailure] = useState("");
 
@@ -76,6 +79,7 @@ export function LiveTeams() {
     setSelectedTeams([]);
     setSelectedMenus([]);
     setEditingAttendantId("");
+    setAddMyself(false);
   }
 
   async function saveTeam() {
@@ -107,6 +111,18 @@ export function LiveTeams() {
       resetAttendantForm();
       await load();
       setMessage("Atendente atualizado.");
+      return;
+    }
+    if (addMyself) {
+      const result = await addMyselfAsChatbotAttendantFn({ data: { teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
+      setPending("");
+      if (!result.ok) {
+        showFailure(result.message);
+        return;
+      }
+      resetAttendantForm();
+      await load();
+      setMessage("Você entrou na lista de atendentes.");
       return;
     }
     const result = await inviteChatbotAttendantFn({ data: { name: attendantName, email, teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
@@ -150,6 +166,7 @@ export function LiveTeams() {
     setEmail(attendant.email);
     setSelectedTeams(attendant.teamIds);
     setSelectedMenus(chatbotMenuItems.filter((item) => attendant.menus[item.key]).map((item) => item.key));
+    setAddMyself(false);
     setMessage("");
   }
 
@@ -165,6 +182,7 @@ export function LiveTeams() {
 
   const teams = data?.teams ?? [];
   const channels = data?.channels ?? [];
+  const editingSelf = Boolean(editingAttendantId && data?.attendants.some((attendant) => attendant.id === editingAttendantId && attendant.self));
   function channelIds(team: TeamRecord) {
     return team.connectionIds ?? (team.connectionId ? [team.connectionId] : []);
   }
@@ -264,13 +282,35 @@ export function LiveTeams() {
             }}
           >
             <h2>{editingAttendantId ? "Editar atendente" : "Novo atendente"}</h2>
+            {data?.canAddMyself && !editingAttendantId ? (
+              <label className="team-choice">
+                <input
+                  type="checkbox"
+                  checked={addMyself}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setAddMyself(enabled);
+                    const account = data.account;
+                    if (!account) return;
+                    if (enabled) {
+                      setAttendantName(account.name);
+                      setEmail(account.email);
+                      return;
+                    }
+                    setAttendantName("");
+                    setEmail("");
+                  }}
+                />
+                Me adicionar
+              </label>
+            ) : null}
             <label>
               Nome
-              <input value={attendantName} onChange={(event) => setAttendantName(event.target.value)} placeholder="Nome do atendente" />
+              <input value={attendantName} readOnly={addMyself || editingSelf} onChange={(event) => setAttendantName(event.target.value)} placeholder="Nome do atendente" />
             </label>
             <label>
               E-mail
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="atendente@empresa.com" />
+              <input type="email" value={email} readOnly={addMyself || editingSelf} onChange={(event) => setEmail(event.target.value)} placeholder="atendente@empresa.com" />
             </label>
             <div className="team-choices">
               <span>Equipes</span>
@@ -307,7 +347,7 @@ export function LiveTeams() {
             <div className="team-form-actions">
               <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length || !selectedMenus.length} type="submit">
                 <UsersRound />
-                {pending === "invite" ? "Salvando" : editingAttendantId ? "Salvar atendente" : "Convidar atendente"}
+                {pending === "invite" ? "Salvando" : editingAttendantId ? "Salvar atendente" : addMyself ? "Me adicionar" : "Convidar atendente"}
               </Button>
               {editingAttendantId ? (
                 <Button
@@ -335,11 +375,13 @@ export function LiveTeams() {
                       Editar
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setRemoving({ kind: "attendant", id: attendant.id, name: attendant.name, channelName: "" })}>
-                      Excluir
+                      {attendant.self ? "Remover" : "Excluir"}
                     </Button>
-                    <Button variant="ghost" size="sm" disabled={pending === `resend:${attendant.id}`} onClick={() => void resend(attendant)}>
-                      {pending === `resend:${attendant.id}` ? "Enviando" : "Reenviar convite"}
-                    </Button>
+                    {attendant.self ? null : (
+                      <Button variant="ghost" size="sm" disabled={pending === `resend:${attendant.id}`} onClick={() => void resend(attendant)}>
+                        {pending === `resend:${attendant.id}` ? "Enviando" : "Reenviar convite"}
+                      </Button>
+                    )}
                   </div>
                 </article>
               ))
@@ -366,7 +408,9 @@ export function LiveTeams() {
             <AlertDialogTitle>{removing?.kind === "attendant" ? "Excluir atendente" : "Excluir equipe"}</AlertDialogTitle>
             <AlertDialogDescription>
               {removing?.kind === "attendant"
-                ? `Excluir ${removing.name}? O acesso é removido e as conversas dessa pessoa voltam para a fila.`
+                ? data?.attendants.some((attendant) => attendant.id === removing.id && attendant.self)
+                  ? `Remover ${removing.name} da lista de atendentes? O acesso de administrador continua.`
+                  : `Excluir ${removing.name}? O acesso é removido e as conversas dessa pessoa voltam para a fila.`
                 : `Excluir ${removing?.name}? Os atendentes deixam de receber as mensagens do canal ${removing?.channelName}.`}
             </AlertDialogDescription>
           </AlertDialogHeader>

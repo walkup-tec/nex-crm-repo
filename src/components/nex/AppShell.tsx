@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, ListOrdered, LogOut, Menu, MessageSquare, Package, RefreshCw, Settings, ShieldCheck, Smartphone, Tags, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
+import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, ListOrdered, LogOut, Menu, MessageSquare, Package, RefreshCw, Settings, ShieldCheck, Smartphone, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -116,10 +116,8 @@ function Nav({
   lowBalance?: boolean;
   showClients?: boolean;
 }) {
-  const location = useLocation();
-  const path = demoPath ?? location.pathname;
-  const hash = demoPath ? "" : location.hash.replace(/^#/, "");
-  const isCurrent = (to: string) => (to === "/chatbot/configuracoes" ? path === to && hash !== "etiquetas" : path === to);
+  const loc = useLocation().pathname;
+  const path = demoPath ?? loc;
   const entries = master ? masterNav : clientItems(showClients);
   const link = (to: string, label: string, Icon: (typeof entries)[number][2], nested = false) => (
     <Link
@@ -132,7 +130,7 @@ function Nav({
         }
         close?.();
       }}
-      className={`flex items-center gap-3 rounded-lg text-sm font-medium transition ${nested ? "h-auto min-h-11 py-2 pr-3 pl-9 whitespace-normal text-left leading-snug" : "h-11 px-3"} ${isCurrent(to) ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"}`}
+      className={`flex items-center gap-3 rounded-lg text-sm font-medium transition ${nested ? "h-auto min-h-11 py-2 pr-3 pl-9 whitespace-normal text-left leading-snug" : "h-11 px-3"} ${path === to ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"}`}
     >
       <Icon className="size-[18px]" />
       {label}
@@ -170,30 +168,7 @@ function Nav({
               <CollapsibleContent>
                 {section.paths.map((to) => {
                   const item = clientNav.find((entry) => entry[0] === to);
-                  if (!item) return null;
-                  const tags = to === "/chatbot/configuracoes" && section.label === "Chatbot";
-                  return (
-                    <div key={to}>
-                      {link(item[0], item[1], item[2], true)}
-                      {tags ? (
-                        <Link
-                          to="/chatbot/configuracoes"
-                          hash="etiquetas"
-                          onClick={(event) => {
-                            if (onDemoNavigate) {
-                              event.preventDefault();
-                              onDemoNavigate("/chatbot/configuracoes");
-                            }
-                            close?.();
-                          }}
-                          className={`mt-1 flex h-auto min-h-9 items-center gap-3 rounded-lg py-2 pr-3 pl-12 text-left text-xs font-medium leading-snug ${path === "/chatbot/configuracoes" && hash === "etiquetas" ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"}`}
-                        >
-                          <Tags className="size-3.5" />
-                          Etiquetas
-                        </Link>
-                      ) : null}
-                    </div>
-                  );
+                  return item ? link(item[0], item[1], item[2], true) : null;
                 })}
               </CollapsibleContent>
             </div>

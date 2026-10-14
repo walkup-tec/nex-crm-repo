@@ -6,7 +6,7 @@ import { Field, PageHeading } from "./common";
 
 const tagColors = ["#6F02FD", "#16A34A", "#2563EB", "#D97706", "#DC2626", "#DB2777", "#0F766E", "#111827"];
 
-export function TagSettings() {
+export function TagSettings({ embedded = false }: { embedded?: boolean }) {
   const [tags, setTags] = useState<ChatbotTag[]>([]);
   const [name, setName] = useState("");
   const [color, setColor] = useState(tagColors[0]);
@@ -52,10 +52,8 @@ export function TagSettings() {
   }
 
   const preview = name.trim() || "Etiqueta";
-
-  return (
-    <main className="page">
-      <PageHeading title="Etiquetas" description="Nome e cor usados no cadastro do contato." />
+  const body = (
+    <>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <form className="tag-form" onSubmit={(event) => void save(event)}>
         <Field label="Nome">
@@ -95,6 +93,13 @@ export function TagSettings() {
       ) : (
         <p className="info-note">Nenhuma etiqueta gravada ainda. A prévia acima mostra como ela ficará no contato.</p>
       )}
+    </>
+  );
+  if (embedded) return body;
+  return (
+    <main className="page">
+      <PageHeading title="Etiquetas" description="Nome e cor usados no cadastro do contato." />
+      {body}
     </main>
   );
 }

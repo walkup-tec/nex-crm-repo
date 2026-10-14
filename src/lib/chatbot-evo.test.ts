@@ -7,6 +7,8 @@ import {
   learnLidPhones,
   resolveIncomingPhone,
   composerSendsOnEnter,
+  shouldSyncEvolution,
+  pendingOutgoing,
   acceptSnapshot,
   stickToLatestMessage,
   evolutionIncomingMessages,
@@ -111,6 +113,29 @@ assert.equal(composerSendsOnEnter({ key: "Enter", code: "NumpadEnter", shiftKey:
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: true, pending: false, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: true, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: false, text: "   " }), false);
+assert.equal(shouldSyncEvolution(0, 10000), true);
+assert.equal(shouldSyncEvolution(1000, 5000), false);
+assert.deepEqual(
+  pendingOutgoing(
+    [{ conversationId: "conversa", direction: "out", text: "Oi", createdAt: "2026-10-14T12:00:00.000Z" }],
+    [{ id: "novo", conversationId: "conversa", text: "Bom dia", createdAt: "2026-10-14T12:01:00.000Z" }],
+  ).map((item) => item.id),
+  ["novo"],
+);
+assert.deepEqual(
+  pendingOutgoing(
+    [{ conversationId: "conversa", direction: "out", text: "Bom dia", createdAt: "2026-10-14T12:01:01.000Z" }],
+    [{ id: "novo", conversationId: "conversa", text: "Bom dia", createdAt: "2026-10-14T12:01:00.000Z" }],
+  ),
+  [],
+);
+assert.deepEqual(
+  pendingOutgoing(
+    [{ conversationId: "conversa", direction: "out", text: "Oi", createdAt: "2026-10-14T11:00:00.000Z" }],
+    [{ id: "novo", conversationId: "conversa", text: "Oi", createdAt: "2026-10-14T12:01:00.000Z" }],
+  ).map((item) => item.id),
+  ["novo"],
+);
 assert.equal(acceptSnapshot(1, 0), true);
 assert.equal(acceptSnapshot(2, 1), true);
 assert.equal(acceptSnapshot(1, 2), false);

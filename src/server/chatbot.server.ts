@@ -8,6 +8,7 @@ import {
   inboxOrder,
   inboxUnread,
   inboxVisible,
+  shouldSyncEvolution,
   evolutionConnectionStatus,
   evolutionInstanceClosed,
   evolutionInstanceNameOf,
@@ -184,12 +185,22 @@ function duplicate(error: DbError | null) {
   return Boolean(error && (error.code === "23505" || /duplicate key/i.test(error.message)));
 }
 
+const evolutionSyncAt = new Map<string, number>();
+
+function scheduleEvolutionImport(organizationId: string, connectionRows: Record<string, unknown>[]) {
+  const now = Date.now();
+  const last = evolutionSyncAt.get(organizationId) ?? 0;
+  if (!shouldSyncEvolution(last, now)) return;
+  evolutionSyncAt.set(organizationId, now);
+  void Promise.all(connectionRows.map((row) => importEvolutionMessages(row).catch(() => null)));
+}
+
 export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> {
   const { organizationId, admin } = await membership(userId);
   const connectionRows = await rows(
     table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }),
   );
-  await Promise.all(connectionRows.map((row) => importEvolutionMessages(row).catch(() => null)));
+  scheduleEvolutionImport(organizationId, connectionRows);
   const [contactRows, conversationRows, messageRows] = await Promise.all([
     rows(table("chatbot_contacts").select("*").eq("organization_id", organizationId).order("name", { ascending: true })),
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
@@ -233,7 +244,11 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     times.push(cell(message, "created_at"));
     inboundAt.set(id, times);
   }
-  const freshAvatars = await refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations);
+  void refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations)
+    .then((fresh) => {
+      for (const [contactId, url] of fresh) avatarCache.set(contactId, url);
+    })
+    .catch(() => null);
   const savedMedia = await savedMessageIds(organizationId);
   const ordered = inboxOrder(
     scopedConversations.map((row) => ({
@@ -257,9 +272,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       id: cell(row, "id"),
       name: cell(row, "name"),
       phone: cell(row, "phone"),
-      avatarUrl: freshAvatars.has(cell(row, "id"))
-        ? freshAvatars.get(cell(row, "id")) ?? ""
-        : avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
+      avatarUrl: avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
     })),
     conversations: ordered.map(({ row, pinned, updatedAt }) => {
       const assigneeId = cell(row, "assignee_id");
@@ -353,7 +366,6 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
     .select("*")
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
-  await importEvolutionMessages(updated.data ?? current).catch(() => null);
   return { status: next, qrCode, error: lastError };
 }
 
@@ -687,7 +699,7 @@ export async function ingestEvolutionWebhook(request: Request) {
     const knownLids = rememberLidPhones(items);
     for (const item of items) {
       await storeIncoming(found.data, item, knownLids);
-      await refreshMessageAvatar(found.data, item, knownLids);
+      void refreshMessageAvatar(found.data, item, knownLids).catch(() => null);
     }
   }
   if (event.includes("contacts")) {

@@ -61,6 +61,26 @@ export function inboxUnread(createdAt: string[], lastReadAt: string) {
   return createdAt.filter((at) => at > lastReadAt).length;
 }
 
+export function shouldSyncEvolution(lastStartedAt: number, now: number) {
+  return now - lastStartedAt >= 10000;
+}
+
+export function pendingOutgoing<T extends { conversationId: string; direction: string; text: string; createdAt: string }>(
+  saved: T[],
+  previews: { id: string; conversationId: string; text: string; createdAt: string }[],
+) {
+  const consumed = saved.filter((message) => message.direction === "out");
+  return previews.filter((preview) => {
+    const earliest = new Date(Date.parse(preview.createdAt) - 5000).toISOString();
+    const index = consumed.findIndex(
+      (message) => message.conversationId === preview.conversationId && message.text === preview.text && message.createdAt >= earliest,
+    );
+    if (index < 0) return true;
+    consumed.splice(index, 1);
+    return false;
+  });
+}
+
 export function composerSendsOnEnter(input: { key: string; code: string; shiftKey: boolean; pending: boolean; text: string }) {
   const enter = input.key === "Enter" || input.code === "Enter" || input.code === "NumpadEnter";
   return enter && !input.shiftKey && !input.pending && input.text.trim().length > 0;

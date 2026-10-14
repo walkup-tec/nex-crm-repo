@@ -13,9 +13,10 @@ import {
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
-import { acceptSnapshot, attendanceLabel, composerSendsOnEnter, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, composerSendsOnEnter, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
+type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
 type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" };
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
 
@@ -154,6 +155,7 @@ export function LiveInbox() {
   const [pending, setPending] = useState(false);
   const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
   const [targetId, setTargetId] = useState("");
+  const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const selectedRef = useRef("");
   const snapshotRequest = useRef(0);
   const appliedSnapshot = useRef(0);
@@ -191,18 +193,26 @@ export function LiveInbox() {
           continue;
         }
         const openId = selectedRef.current;
-        let conversations = result.data.conversations;
-        if (openId && conversations.some((item) => item.id === openId)) {
-          const marked = await markChatbotConversationReadFn({ data: { conversationId: openId } });
-          if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
-          if (marked.ok) conversations = conversations.map((item) => (item.id === openId ? { ...item, unreadCount: 0 } : item));
-        }
-        if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
+        const conversations = result.data.conversations;
         appliedSnapshot.current = requestId;
         const next = { ...result.data, conversations };
+        setOutgoing((current) => pendingOutgoing(next.messages, current));
         setData(next);
         setMessage((current) => (sending.current ? current : ""));
         setSelected((current) => (next.conversations.some((item) => item.id === current) ? current : ""));
+        if (openId && conversations.some((item) => item.id === openId)) {
+          void markChatbotConversationReadFn({ data: { conversationId: openId } }).then((marked) => {
+            if (!marked.ok) return;
+            setData((current) =>
+              current
+                ? {
+                    ...current,
+                    conversations: current.conversations.map((item) => (item.id === openId ? { ...item, unreadCount: 0 } : item)),
+                  }
+                : current,
+            );
+          });
+        }
       } while (loadAgain.current);
     } finally {
       inFlight.current = false;
@@ -211,7 +221,7 @@ export function LiveInbox() {
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 5000);
+    const timer = window.setInterval(() => void load(), 2000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -224,7 +234,23 @@ export function LiveInbox() {
   const conversation = data?.conversations.find((item) => item.id === selected);
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
   const channel = data?.connections.find((item) => item.id === conversation?.connectionId)?.name ?? "";
-  const messages = data?.messages.filter((item) => item.conversationId === selected) ?? [];
+  const storedMessages = data?.messages.filter((item) => item.conversationId === selected) ?? [];
+  const messages: InboxMessage[] = [
+    ...storedMessages,
+    ...pendingOutgoing(data?.messages ?? [], outgoing)
+      .filter((item) => item.conversationId === selected)
+      .map((item) => ({
+        id: item.id,
+        conversationId: item.conversationId,
+        text: item.text,
+        direction: "out" as const,
+        status: "pending" as const,
+        createdAt: item.createdAt,
+        mediaKind: "" as const,
+        mediaMime: "",
+        saved: false,
+      })),
+  ];
 
   useEffect(() => {
     const box = historyRef.current;
@@ -293,18 +319,27 @@ export function LiveInbox() {
   async function send(text = draft) {
     const clean = text.trim();
     if (!selected || !clean || sending.current) return;
+    const preview: OutgoingPreview = {
+      id: `local-${Date.now()}`,
+      conversationId: selected,
+      text: clean,
+      createdAt: new Date().toISOString(),
+    };
+    setOutgoing((current) => [...current, preview]);
+    setDraft("");
     sending.current = true;
     setPending(true);
     const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
     sending.current = false;
     setPending(false);
     if (!result.ok) {
+      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+      setDraft(clean);
       setMessage(result.message);
       return;
     }
-    setDraft("");
     setMessage("");
-    await load();
+    void load();
   }
 
   return (

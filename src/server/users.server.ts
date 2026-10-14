@@ -219,10 +219,11 @@ export async function listUsers(userId: string) {
     organizationsWithPortfolio(),
   ]);
   const names = new Map(rows.map((row) => [row.id, row.full_name]));
+  const ownPermissions = permissions.get(actor.id) ?? defaultPermissions;
   const visible = rows.filter((row) => {
     if (actor.role === "master") return true;
     if (actor.role === "client_admin") return row.owner_id === actor.id;
-    return false;
+    return ownPermissions.manage && roles.get(row.id) === "client_user" && row.organization_id === actor.organizationId;
   });
   return {
     actor: { id: actor.id, role: actor.role, fullName: actor.fullName, organizationId: actor.organizationId },

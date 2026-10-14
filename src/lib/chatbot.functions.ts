@@ -125,6 +125,14 @@ export const assumeChatbotConversationFn = createServerFn({ method: "POST" })
     return guard(() => assumeChatbotConversation(context.userId, data.conversationId));
   });
 
+export const finishChatbotConversationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { finishChatbotConversation } = await import("@/server/chatbot.server");
+    return guard(() => finishChatbotConversation(context.userId, data.conversationId));
+  });
+
 export const chatbotTransferTargetsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string }) => data)
@@ -135,10 +143,14 @@ export const chatbotTransferTargetsFn = createServerFn({ method: "POST" })
 
 export const transferChatbotConversationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { conversationId: string; attendantId: string }) => data)
+  .validator((data: { conversationId: string; attendantId: string; note?: string }) => ({
+    conversationId: data.conversationId,
+    attendantId: data.attendantId,
+    note: typeof data.note === "string" ? data.note : "",
+  }))
   .handler(async ({ context, data }) => {
     const { transferChatbotConversation } = await import("@/server/chatbot.server");
-    return guard(() => transferChatbotConversation(context.userId, data.conversationId, data.attendantId));
+    return guard(() => transferChatbotConversation(context.userId, data.conversationId, data.attendantId, data.note));
   });
 
 export const chatbotTeamSnapshotFn = createServerFn({ method: "POST" })
@@ -213,6 +225,32 @@ export const chatbotContactProfileFn = createServerFn({ method: "POST" })
     return guard(() => chatbotContactProfile(context.userId, data.contactId));
   });
 
+export const setChatbotContactDealFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; cents: number | null }) => ({
+    contactId: data.contactId,
+    cents: data.cents == null ? null : data.cents,
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactDeal } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactDeal(context.userId, data.contactId, data.cents));
+  });
+
+export const registerChatbotClientFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { registerChatbotClient } = await import("@/server/chatbot.server");
+    return guard(() => registerChatbotClient(context.userId, data.contactId));
+  });
+
+export const listChatbotClientsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotClients } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotClients(context.userId));
+  });
+
 export const renameChatbotContactFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; name: string }) => data)
@@ -227,6 +265,14 @@ export const renameChatbotContactFileFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { renameChatbotContactFile } = await import("@/server/chatbot.server");
     return guard(() => renameChatbotContactFile(context.userId, data.fileId, data.name));
+  });
+
+export const setChatbotContactStageFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; stage: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactStage } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactStage(context.userId, data.contactId, data.stage));
   });
 
 export const setChatbotContactTagsFn = createServerFn({ method: "POST" })
@@ -295,6 +341,13 @@ export const deleteChatbotProductFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { deleteChatbotProduct } = await import("@/server/chatbot.server");
     return guard(() => deleteChatbotProduct(context.userId, data.productId));
+  });
+
+export const chatbotOverviewFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotOverview } = await import("@/server/chatbot.server");
+    return guard(() => chatbotOverview(context.userId));
   });
 
 export const listChatbotStagesFn = createServerFn({ method: "POST" })

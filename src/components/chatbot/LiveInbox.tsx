@@ -3,18 +3,16 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  assumeChatbotConversationFn,
   chatbotMessageMediaFn,
   chatbotSnapshotFn,
-  chatbotTransferTargetsFn,
+  finishChatbotConversationFn,
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
   sendChatbotMessageFn,
   setChatbotConversationPinFn,
-  transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, headerAttendant, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -243,8 +241,7 @@ export function LiveInbox() {
   const [draft, setDraft] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
-  const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
-  const [targetId, setTargetId] = useState("");
+  const [finishing, setFinishing] = useState(false);
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const [savedMedia, setSavedMedia] = useState(0);
   const selectedRef = useRef("");
@@ -318,8 +315,6 @@ export function LiveInbox() {
 
   useEffect(() => {
     stickToBottom.current = true;
-    setTargets([]);
-    setTargetId("");
   }, [selected]);
 
   const conversation = data?.conversations.find((item) => item.id === selected);
@@ -340,6 +335,7 @@ export function LiveInbox() {
         mediaKind: "" as const,
         mediaMime: "",
         saved: false,
+        internal: false,
       })),
   ];
 
@@ -376,34 +372,26 @@ export function LiveInbox() {
     await load();
   }
 
-  async function assume(id: string) {
-    const result = await assumeChatbotConversationFn({ data: { conversationId: id } });
+  async function finish(id: string) {
+    if (finishing) return;
+    setFinishing(true);
+    const result = await finishChatbotConversationFn({ data: { conversationId: id } });
+    setFinishing(false);
     if (!result.ok) {
       setMessage(result.message);
       return;
     }
-    await load();
-  }
-
-  async function showTransfer(id: string) {
-    const result = await chatbotTransferTargetsFn({ data: { conversationId: id } });
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
-    }
-    setTargets(result.data);
-    setTargetId(result.data[0]?.id ?? "");
-    setMessage(result.data.length ? "" : "Não há outro atendente neste canal.");
-  }
-
-  async function transfer(id: string) {
-    if (!targetId) return;
-    const result = await transferChatbotConversationFn({ data: { conversationId: id, attendantId: targetId } });
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
-    }
-    setTargets([]);
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            conversations: current.conversations.map((item) =>
+              item.id === id ? { ...item, status: "closed", assigneeName: "", mine: false, open: true, botPaused: false } : item,
+            ),
+          }
+        : current,
+    );
+    setMessage("");
     await load();
   }
 
@@ -507,49 +495,27 @@ export function LiveInbox() {
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSelected("")}>
               Conversas
             </Button>
-            <span>
-              <MessageSquare size={15} />
-              {contact?.name || "Nenhuma conversa selecionada"}
-              {channel ? <span className="status-pill">{channel}</span> : null}
-              {conversation ? <span className="status-pill">{labelFor(conversation.id)}</span> : null}
-            </span>
             {conversation ? (
-              <div className="chat-actions">
-                <Button type="button" variant="outline" size="sm" onClick={() => void togglePin(conversation.id, conversation.pinned)}>
-                  {conversation.pinned ? "Desafixar" : "Fixar"}
-                </Button>
-                {conversation.open ? (
-                  <Button type="button" size="sm" onClick={() => void assume(conversation.id)}>
-                    Assumir
-                  </Button>
-                ) : null}
-                {conversation.mine ? (
-                  targets.length ? (
-                    <form
-                      className="transfer-box"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void transfer(conversation.id);
-                      }}
-                    >
-                      <select aria-label="Atendente" value={targetId} onChange={(event) => setTargetId(event.target.value)}>
-                        {targets.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                      <Button type="submit" size="sm">
-                        Transferir
-                      </Button>
-                    </form>
-                  ) : (
-                    <Button type="button" variant="outline" size="sm" onClick={() => void showTransfer(conversation.id)}>
-                      Transferir
-                    </Button>
-                  )
-                ) : null}
+              <div className="chat-identity">
+                <span>
+                  <small>Canal</small>
+                  <strong>{channel || "Sem canal"}</strong>
+                </span>
+                <span>
+                  <small>Atendente</small>
+                  <strong>{headerAttendant(conversation.assigneeName)}</strong>
+                </span>
               </div>
+            ) : (
+              <span>
+                <MessageSquare size={15} />
+                Nenhuma conversa selecionada
+              </span>
+            )}
+            {conversation ? (
+              <Button type="button" size="sm" disabled={finishing || !conversation.assigneeName.trim()} onClick={() => void finish(conversation.id)}>
+                {finishing ? "Finalizando" : "Finalizar"}
+              </Button>
             ) : null}
           </div>
           {conversation ? (
@@ -563,7 +529,13 @@ export function LiveInbox() {
                 }}
               >
                 {messages.map((item) =>
-                  expectsMedia(item) ? (
+                  item.internal ? (
+                    <div className="internal-note" key={item.id}>
+                      <span>Nota interna</span>
+                      <p>{item.text}</p>
+                      <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
+                    </div>
+                  ) : expectsMedia(item) ? (
                     <ChatMedia item={item} key={item.id} onSaved={() => setSavedMedia((value) => value + 1)} />
                   ) : (
                     <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>

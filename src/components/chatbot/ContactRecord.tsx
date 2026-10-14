@@ -1,14 +1,19 @@
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
 import {
   chatbotContactProfileFn,
+  registerChatbotClientFn,
   renameChatbotContactFileFn,
   renameChatbotContactFn,
+  setChatbotContactDealFn,
   setChatbotContactProductsFn,
+  setChatbotContactStageFn,
   setChatbotContactTagsFn,
 } from "@/lib/chatbot.functions";
-import { messageClock, savedMediaTitle, tagInk, whatsappMask, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+import { applyMask } from "@/lib/masks";
+import { messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, whatsappMask, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
 function SavedMediaName({
   file,
@@ -101,6 +106,8 @@ export function ContactRecord({
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
+  const [deal, setDeal] = useState("");
+  const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
     setEditing(false);
@@ -116,6 +123,7 @@ export function ContactRecord({
       }
       setProfile(result.data);
       setDraft(result.data.name);
+      setDeal(negotiatedLabel(result.data.negotiatedCents));
     });
     return () => {
       active = false;
@@ -141,6 +149,48 @@ export function ContactRecord({
     setProfile({ ...profile, name: result.data.name });
     setDraft(result.data.name);
     onRenamed(profile.id, result.data.name);
+  }
+
+  async function saveDeal() {
+    if (!profile || !profile.dealReady || savingLinks) return;
+    const cents = negotiatedCents(deal);
+    if (cents === profile.negotiatedCents) return;
+    setSavingLinks(true);
+    const result = await setChatbotContactDealFn({ data: { contactId: profile.id, cents } });
+    setSavingLinks(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setProfile({ ...profile, negotiatedCents: result.data.cents });
+    setDeal(negotiatedLabel(result.data.cents));
+  }
+
+  async function registerClient() {
+    if (!profile || !profile.dealReady || registering || profile.clientOwnerId) return;
+    setRegistering(true);
+    const result = await registerChatbotClientFn({ data: { contactId: profile.id } });
+    setRegistering(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setProfile({ ...profile, clientOwnerId: result.data.ownerId });
+  }
+
+  async function saveStage(stage: string) {
+    if (!profile || savingLinks) return;
+    setSavingLinks(true);
+    const result = await setChatbotContactStageFn({ data: { contactId: profile.id, stage } });
+    setSavingLinks(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setProfile({ ...profile, stage: result.data.stage });
   }
 
   async function toggleTag(tagId: string) {
@@ -241,6 +291,21 @@ export function ContactRecord({
             )}
           </section>
           <section className="contact-section">
+            <h3>Kanban</h3>
+            {profile.stageReady ? (
+              <select aria-label="Etapa do kanban" value={profile.stage} disabled={savingLinks} onChange={(event) => void saveStage(event.target.value)}>
+                <option value="">Sem etapa</option>
+                {(profile.stage && !profile.stages.includes(profile.stage) ? [...profile.stages, profile.stage] : profile.stages).map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p>A etapa do kanban ainda não está disponível.</p>
+            )}
+          </section>
+          <section className="contact-section">
             <h3>Etiquetas</h3>
             {profile.catalogReady && profile.tags.length ? (
               <div className="contact-tags">
@@ -263,6 +328,29 @@ export function ContactRecord({
                 {profile.catalogReady ? "Nenhuma etiqueta cadastrada. " : "O cadastro de etiquetas ainda não está disponível. "}
                 <Link to="/chatbot/configuracoes" hash="etiquetas">Abrir Etiquetas</Link>
               </p>
+            )}
+          </section>
+          <section className="contact-section">
+            <h3>Valor negociado</h3>
+            {profile.dealReady ? (
+              <input
+                className="contact-deal"
+                inputMode="numeric"
+                aria-label="Valor negociado"
+                value={deal}
+                disabled={savingLinks}
+                placeholder="R$ 0,00"
+                onChange={(event) => setDeal(applyMask("money", event.target.value))}
+                onBlur={() => void saveDeal()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void saveDeal();
+                  }
+                }}
+              />
+            ) : (
+              <p>O valor negociado ainda não está disponível.</p>
             )}
           </section>
           <section className="contact-section">
@@ -293,6 +381,11 @@ export function ContactRecord({
             ) : (
               <p>Nenhuma mídia salva neste contato.</p>
             )}
+            {profile.dealReady ? (
+              <Button type="button" className="contact-register" disabled={registering || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
+                {profile.clientOwnerId ? "Cliente cadastrado" : registering ? "Cadastrando" : "Cadastrar cliente"}
+              </Button>
+            ) : null}
           </section>
         </>
       )}

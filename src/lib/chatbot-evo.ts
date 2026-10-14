@@ -40,8 +40,37 @@ export type ChatbotSnapshot = {
     mediaKind: "" | "image" | "video" | "audio";
     mediaMime: string;
     saved: boolean;
+    internal: boolean;
   }[];
 };
+
+export function internalNote(value: string) {
+  const clean = value.trim().replace(/\s+/g, " ");
+  if (!clean || clean.length > 500) return "";
+  return clean;
+}
+
+export function headerAttendant(name: string) {
+  return name.trim() || "Fila";
+}
+
+export function negotiatedCents(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 13);
+  if (!digits) return null;
+  const cents = Number(digits);
+  return Number.isFinite(cents) ? cents : null;
+}
+
+export function negotiatedLabel(cents: number | null) {
+  if (cents == null) return "";
+  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export function clientVisibleTo(ownerId: string, userId: string, admin: boolean) {
+  if (!ownerId) return false;
+  if (admin) return true;
+  return ownerId === userId;
+}
 
 export function attendanceLabel(input: { assigneeName: string; botPaused: boolean; botSpoke: boolean; closed: boolean }) {
   if (input.closed) return "Encerrado";
@@ -65,11 +94,11 @@ export function shouldSyncEvolution(lastStartedAt: number, now: number) {
   return now - lastStartedAt >= 10000;
 }
 
-export function pendingOutgoing<T extends { conversationId: string; direction: string; text: string; createdAt: string }>(
+export function pendingOutgoing<T extends { conversationId: string; direction: string; text: string; createdAt: string; internal?: boolean }>(
   saved: T[],
   previews: { id: string; conversationId: string; text: string; createdAt: string }[],
 ) {
-  const consumed = saved.filter((message) => message.direction === "out");
+  const consumed = saved.filter((message) => message.direction === "out" && !message.internal);
   return previews.filter((preview) => {
     const earliest = new Date(Date.parse(preview.createdAt) - 5000).toISOString();
     const index = consumed.findIndex(
@@ -466,7 +495,51 @@ export function evolutionMessageText(message: unknown): string {
   return record["conversation"] === undefined && Object.keys(record).length ? "[mensagem]" : "";
 }
 
-export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho"];
+export const wonKanbanStage = "Sucesso";
+export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho", wonKanbanStage];
+
+export function protectedKanbanStage(name: string) {
+  return name.trim().toLowerCase() === wonKanbanStage.toLowerCase();
+}
+
+export function withWonKanbanStage(names: string[]) {
+  if (names.some((name) => protectedKanbanStage(name))) return names;
+  return [...names, wonKanbanStage];
+}
+
+export type ChatbotOverview = {
+  received: number;
+  attending: number;
+  finished: number;
+  openDeals: number;
+  negotiatingCents: number;
+  wonCents: number;
+  clients: number;
+};
+
+export function overviewMetrics(input: {
+  conversations: { contactId: string; assigneeId: string; finishedCount: number }[];
+  contacts: { negotiatedCents: number | null; stage: string; ownerId: string }[];
+  userId: string;
+  admin: boolean;
+}): ChatbotOverview {
+  const received = new Set(input.conversations.map((item) => item.contactId).filter(Boolean));
+  const attending = new Set(
+    input.conversations.filter((item) => item.assigneeId).map((item) => item.contactId).filter(Boolean),
+  );
+  const deals = input.contacts.filter((item) => item.negotiatedCents != null);
+  const won = deals.filter((item) => protectedKanbanStage(item.stage));
+  const clients = input.contacts.filter((item) => clientVisibleTo(item.ownerId, input.userId, input.admin));
+  return {
+    received: received.size,
+    attending: attending.size,
+    finished: input.conversations.reduce((sum, item) => sum + Math.max(0, item.finishedCount), 0),
+    openDeals: deals.length,
+    negotiatingCents: deals.reduce((sum, item) => sum + (item.negotiatedCents ?? 0), 0),
+    wonCents: won.reduce((sum, item) => sum + (item.negotiatedCents ?? 0), 0),
+    clients: clients.length,
+  };
+}
 
 export function kanbanStageName(value: string) {
   return catalogName(value, 40);
@@ -533,9 +606,23 @@ export type ChatbotContactProfile = {
   name: string;
   phone: string;
   catalogReady: boolean;
+  stageReady: boolean;
+  stage: string;
+  stages: string[];
   tags: { id: string; name: string; color: string; selected: boolean }[];
   products: { id: string; name: string; selected: boolean }[];
   files: { id: string; name: string; mime: string; createdAt: string; url: string }[];
+  dealReady: boolean;
+  negotiatedCents: number | null;
+  clientOwnerId: string;
+};
+
+export type ChatbotClientRow = {
+  id: string;
+  name: string;
+  phone: string;
+  negotiatedCents: number | null;
+  tags: string[];
 };
 
 export type ChatbotTag = { id: string; name: string; color: string };

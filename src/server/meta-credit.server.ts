@@ -326,10 +326,19 @@ export async function getClientBalanceAlert(userId: string) {
     .from("user_roles")
     .select("role")
     .eq("user_id", userId);
-  const client = (roles ?? []).some(
-    (row) => row.role === "client_admin" || row.role === "client_user",
-  );
-  if (roleError || !client) return { low: false, cents: null };
+  const admin = (roles ?? []).some((row) => row.role === "client_admin" || row.role === "master");
+  const attendant = (roles ?? []).some((row) => row.role === "client_user");
+  if (roleError || (!admin && !attendant)) return { low: false, cents: null };
+  if (!admin && attendant) {
+    const { data: perms, error: permError } = await supabaseAdmin
+      .from("user_permissions")
+      .select("can_view_meta_balance, can_add_meta_credit")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (permError || (perms?.can_view_meta_balance !== true && perms?.can_add_meta_credit !== true)) {
+      return { low: false, cents: null };
+    }
+  }
   const { data: accounts, error: accountError } = await supabaseAdmin
     .from("meta_accounts")
     .select("external_account_id, balance_cents, last_synced_at")

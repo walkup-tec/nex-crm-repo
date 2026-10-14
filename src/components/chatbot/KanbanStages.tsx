@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { listChatbotStagesFn, saveChatbotStagesFn } from "@/lib/chatbot.functions";
-import { kanbanStageName, moveKanbanStage } from "@/lib/chatbot-evo";
+import { kanbanStageName, moveKanbanStage, protectedKanbanStage } from "@/lib/chatbot-evo";
 import { useWorkspace } from "@/lib/chatbot/store";
 import { Field } from "./common";
 
@@ -64,12 +64,16 @@ export function KanbanStages() {
   }
 
   async function remove(index: number) {
+    const removed = stages[index];
+    if (!removed) return;
+    if (protectedKanbanStage(removed)) {
+      setMessage("A etapa Sucesso é padrão do sistema e não pode ser excluída.");
+      return;
+    }
     if (stages.length < 2) {
       setMessage("O kanban precisa de ao menos uma etapa.");
       return;
     }
-    const removed = stages[index];
-    if (!removed) return;
     const next = stages.filter((_, item) => item !== index);
     const fallback = next[Math.max(0, index - 1)] ?? next[0] ?? "";
     await persist(next, removed, fallback);
@@ -99,7 +103,7 @@ export function KanbanStages() {
               <Button type="button" variant="ghost" size="sm" disabled={!ready || saving || index === stages.length - 1} onClick={() => void persist(moveKanbanStage(stages, index, 1))}>
                 Descer
               </Button>
-              <Button type="button" variant="ghost" size="sm" disabled={!ready || saving} onClick={() => void remove(index)}>
+              <Button type="button" variant="ghost" size="sm" disabled={!ready || saving || protectedKanbanStage(item)} onClick={() => void remove(index)}>
                 Excluir
               </Button>
             </span>

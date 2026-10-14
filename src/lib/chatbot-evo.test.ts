@@ -23,6 +23,13 @@ import {
   evolutionQrImage,
   tintQrPixel,
   attendanceLabel,
+  headerAttendant,
+  negotiatedCents,
+  negotiatedLabel,
+  clientVisibleTo,
+  overviewMetrics,
+  protectedKanbanStage,
+  withWonKanbanStage,
   inboxOrder,
   inboxUnread,
   inboxVisible,
@@ -41,6 +48,7 @@ import {
   keepWhatsappName,
   contactFileLabel,
   savedMediaTitle,
+  internalNote,
   kanbanStageName,
   moveKanbanStage,
 } from "./chatbot-evo";
@@ -60,6 +68,35 @@ assert.equal(sameWhatsappAccount("5551998335401", "555198335401@s.whatsapp.net")
 assert.equal(sameWhatsappAccount("5551998335401", "5511999999999"), false);
 assert.equal(whatsappDeviceRemoved(401), true);
 assert.equal(whatsappDeviceRemoved(428), false);
+assert.equal(headerAttendant("  Marina Costa  "), "Marina Costa");
+assert.equal(headerAttendant("   "), "Fila");
+assert.equal(negotiatedCents(""), null);
+assert.equal(negotiatedCents("R$ 1.250,00"), 125000);
+assert.equal(negotiatedLabel(125000).replace(/\s/g, " "), "R$ 1.250,00");
+assert.equal(clientVisibleTo("ana", "ana", false), true);
+assert.equal(clientVisibleTo("ana", "bia", false), false);
+assert.equal(clientVisibleTo("ana", "bia", true), true);
+assert.equal(clientVisibleTo("", "ana", false), false);
+assert.equal(protectedKanbanStage(" sucesso "), true);
+assert.deepEqual(withWonKanbanStage(["Proposta"]), ["Proposta", "Sucesso"]);
+assert.deepEqual(withWonKanbanStage(["Sucesso", "Proposta"]), ["Sucesso", "Proposta"]);
+assert.deepEqual(
+  overviewMetrics({
+    conversations: [
+      { contactId: "c1", assigneeId: "ana", finishedCount: 1 },
+      { contactId: "c1", assigneeId: "", finishedCount: 0 },
+      { contactId: "c2", assigneeId: "", finishedCount: 2 },
+    ],
+    contacts: [
+      { negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+      { negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+      { negotiatedCents: null, stage: "", ownerId: "" },
+    ],
+    userId: "ana",
+    admin: false,
+  }),
+  { received: 2, attending: 1, finished: 3, openDeals: 2, negotiatingCents: 35000, wonCents: 25000, clients: 1 },
+);
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "Em fila");
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");
@@ -236,6 +273,9 @@ assert.equal(contactFileLabel("image/jpeg", "imagem.jpg"), "Imagem");
 assert.equal(savedMediaTitle("image/jpeg", "imagem.jpg"), "Imagem");
 assert.equal(savedMediaTitle("audio/ogg", "audio.ogg"), "Áudio");
 assert.equal(savedMediaTitle("image/jpeg", "Fachada"), "Fachada");
+assert.equal(internalNote("  Cliente pediu retorno  "), "Cliente pediu retorno");
+assert.equal(internalNote(` ${"a".repeat(500)} `), "a".repeat(500));
+assert.equal(internalNote("a".repeat(501)), "");
 assert.equal(kanbanStageName("  Proposta  "), "Proposta");
 assert.equal(kanbanStageName("a"), "");
 assert.deepEqual(moveKanbanStage(["Novos leads", "Proposta", "Ganho"], 2, -1), ["Novos leads", "Ganho", "Proposta"]);

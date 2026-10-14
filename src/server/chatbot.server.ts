@@ -34,7 +34,14 @@ import {
   kanbanStageName,
   keepWhatsappName,
   tagColorValue,
+  clientVisibleTo,
+  overviewMetrics,
+  protectedKanbanStage,
+  withWonKanbanStage,
+  wonKanbanStage,
   type ChatbotCatalogItem,
+  type ChatbotOverview,
+  type ChatbotClientRow,
   type ChatbotContactProfile,
   type ChatbotTag,
   type ChatbotConnectionStatus,
@@ -47,6 +54,9 @@ type Query = {
   update: (value: Record<string, unknown>) => Query;
   delete: () => Query;
   eq: (column: string, value: string) => Query;
+  in: (column: string, values: string[]) => Query;
+  is: (column: string, value: null) => Query;
+  not: (column: string, operator: string, value: null) => Query;
   order: (column: string, options: { ascending: boolean }) => Query;
   limit: (count: number) => Query;
   maybeSingle: () => Promise<{ data: Record<string, unknown> | null; error: DbError | null }>;
@@ -72,8 +82,17 @@ function schemaMessage(message: string) {
   if (/chatbot_teams|chatbot_team_members|chatbot_team_channels/i.test(message)) {
     return "A migração das equipes ainda não foi aplicada no Supabase.";
   }
-  if (/chatbot_stages/i.test(message)) {
+  if (/column "?internal"?|chatbot_messages.*internal/i.test(message)) {
+    return "A migração da nota interna ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_stages|stage_name/i.test(message)) {
     return "A migração das etapas do kanban ainda não foi aplicada no Supabase.";
+  }
+  if (/negotiated_cents|client_owner_id|client_registered_at/i.test(message)) {
+    return "A migração do cadastro de clientes ainda não foi aplicada no Supabase.";
+  }
+  if (/finished_count/i.test(message)) {
+    return "A migração dos atendimentos encerrados ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
     return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
@@ -99,6 +118,15 @@ async function membership(userId: string) {
   if (!profile || profile.is_blocked) fail("Este acesso está bloqueado.");
   if (!profile.organization_id) fail("Sua conta ainda não está ligada a uma empresa.");
   const admin = (roles ?? []).some((role) => role.role === "master" || role.role === "client_admin");
+  if (!admin) {
+    const { data: perms, error: permError } = await supabaseAdmin
+      .from("user_permissions")
+      .select("can_use_chatbot")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (permError) fail(schemaMessage(permError.message));
+    if (perms?.can_use_chatbot !== true) fail("Você não tem permissão para usar o chatbot.");
+  }
   return { organizationId: profile.organization_id, admin };
 }
 
@@ -314,6 +342,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : cell(row, "media_kind") === "audio" ? "audio" as const : "" as const,
       mediaMime: cell(row, "media_mime"),
       saved: savedMedia.has(cell(row, "id")),
+      internal: row["internal"] === true,
     })),
   };
 }
@@ -628,6 +657,29 @@ export async function assumeChatbotConversation(userId: string, conversationId: 
   if (updated.error) fail(schemaMessage(updated.error.message));
 }
 
+export async function finishChatbotConversation(userId: string, conversationId: string) {
+  const { organizationId, admin, conversation } = await requireVisibleConversation(userId, conversationId);
+  const assignee = cell(conversation, "assignee_id");
+  if (!assignee) return;
+  if (!admin && assignee !== userId) fail("Só quem está atendendo pode finalizar.");
+  const finished = Number(conversation["finished_count"]);
+  const updated = await table("chatbot_conversations")
+    .update({
+      status: "closed",
+      assignee_id: null,
+      bot_paused: false,
+      finished_count: (Number.isFinite(finished) ? finished : 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .eq("assignee_id", assignee)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("O atendimento já foi finalizado.");
+}
+
 export async function chatbotTransferTargets(userId: string, conversationId: string) {
   const { organizationId, conversation } = await requireVisibleConversation(userId, conversationId);
   if (cell(conversation, "assignee_id") !== userId) fail("Só quem assumiu a conversa pode transferir.");
@@ -658,10 +710,26 @@ export async function chatbotTransferTargets(userId: string, conversationId: str
   return (profiles.data ?? []).filter((row) => attendants.has(row.id)).map((row) => ({ id: row.id, name: row.full_name.trim() }));
 }
 
-export async function transferChatbotConversation(userId: string, conversationId: string, attendantId: string) {
+export async function transferChatbotConversation(userId: string, conversationId: string, attendantId: string, note: string) {
+  const cleanNote = note.trim();
+  if (cleanNote.length > 500) fail("A nota interna pode ter no máximo 500 caracteres.");
   const targets = await chatbotTransferTargets(userId, conversationId);
   if (!targets.some((item) => item.id === attendantId)) fail("Esse atendente não atende este canal.");
   const { organizationId } = await requireVisibleConversation(userId, conversationId);
+  if (cleanNote) {
+    const saved = await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text: cleanNote,
+        direction: "out",
+        status: "sent",
+        internal: true,
+      })
+      .select("id")
+      .maybeSingle();
+    if (saved.error) fail(schemaMessage(saved.error.message));
+  }
   const updated = await table("chatbot_conversations")
     .update({ status: "active", assignee_id: attendantId, bot_paused: true })
     .eq("id", conversationId)
@@ -968,6 +1036,10 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   await table("chatbot_conversations")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", conversationId);
+  await table("chatbot_conversations")
+    .update({ status: "queue" })
+    .eq("id", conversationId)
+    .eq("status", "closed");
 }
 
 async function ownedConnection(organizationId: string, connectionId: string) {
@@ -1435,6 +1507,29 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
   ]);
   const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
   const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
+  const listedStages = await listChatbotStages(userId);
+  const stageRow = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const dealRow = await table("chatbot_contacts").select("negotiated_cents, client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  let dealReady = true;
+  let negotiated: number | null = null;
+  let clientOwnerId = "";
+  if (dealRow.error) {
+    if (/negotiated_cents|client_owner_id|schema cache|does not exist|PGRST205/i.test(dealRow.error.message)) dealReady = false;
+    else fail(schemaMessage(dealRow.error.message));
+  } else {
+    const raw = dealRow.data?.["negotiated_cents"];
+    const amount = raw == null || raw === "" ? null : Number(raw);
+    negotiated = amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null;
+    clientOwnerId = cell(dealRow.data, "client_owner_id");
+  }
+  let stageReady = listedStages.ready;
+  let stage = "";
+  if (stageRow.error) {
+    if (/stage_name|schema cache|does not exist|PGRST205/i.test(stageRow.error.message)) stageReady = false;
+    else fail(schemaMessage(stageRow.error.message));
+  } else {
+    stage = cell(stageRow.data, "stage_name");
+  }
   const savedFiles = await Promise.all(
     files.map(async (row) => {
       const storagePath = cell(row, "storage_path");
@@ -1453,6 +1548,9 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     name: cell(contact, "name"),
     phone: cell(contact, "phone"),
     catalogReady: !tags.missing && !products.missing && !tagLinks.missing && !productLinks.missing,
+    stageReady,
+    stage: stageReady ? stage : "",
+    stages: stageReady ? listedStages.stages.map((item) => item.name) : [],
     tags: tags.rows.map((row) => ({
       id: cell(row, "id"),
       name: cell(row, "name"),
@@ -1465,7 +1563,86 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
       selected: selectedProducts.has(cell(row, "id")),
     })),
     files: savedFiles,
+    dealReady,
+    negotiatedCents: dealReady ? negotiated : null,
+    clientOwnerId: dealReady ? clientOwnerId : "",
   };
+}
+
+export async function setChatbotContactDeal(userId: string, contactId: string, cents: number | null) {
+  if (cents != null && (!Number.isInteger(cents) || cents < 0 || cents > 9999999999999)) fail("Informe um valor negociado válido.");
+  const { organizationId } = await membership(userId);
+  await ownedContact(organizationId, contactId);
+  const updated = await table("chatbot_contacts")
+    .update({ negotiated_cents: cents })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { cents };
+}
+
+export async function registerChatbotClient(userId: string, contactId: string) {
+  const { organizationId } = await membership(userId);
+  await ownedContact(organizationId, contactId);
+  const current = await table("chatbot_contacts").select("client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) fail(schemaMessage(current.error.message));
+  const ownerId = cell(current.data, "client_owner_id");
+  if (ownerId) return { ownerId };
+  const updated = await table("chatbot_contacts")
+    .update({ client_owner_id: userId, client_registered_at: new Date().toISOString() })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .is("client_owner_id", null)
+    .select("client_owner_id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) {
+    const again = await table("chatbot_contacts").select("client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    if (again.error) fail(schemaMessage(again.error.message));
+    const kept = cell(again.data, "client_owner_id");
+    if (!kept) fail("Não foi possível cadastrar o cliente.");
+    return { ownerId: kept };
+  }
+  return { ownerId: cell(updated.data, "client_owner_id") || userId };
+}
+
+export async function listChatbotClients(userId: string): Promise<ChatbotClientRow[]> {
+  const { organizationId, admin } = await membership(userId);
+  let query = table("chatbot_contacts")
+    .select("id, name, phone, negotiated_cents, client_owner_id")
+    .eq("organization_id", organizationId)
+    .not("client_owner_id", "is", null)
+    .order("name", { ascending: true });
+  if (!admin) query = query.eq("client_owner_id", userId);
+  const contacts = await rows(query);
+  const visible = contacts.filter((row) => clientVisibleTo(cell(row, "client_owner_id"), userId, admin));
+  const ids = visible.map((row) => cell(row, "id")).filter(Boolean);
+  const tagNames = new Map<string, string[]>();
+  if (ids.length) {
+    const links = await rowsOrMissing(table("chatbot_contact_tags").select("contact_id, tag_id").eq("organization_id", organizationId).in("contact_id", ids));
+    const tags = await rowsOrMissing(table("chatbot_tags").select("id, name").eq("organization_id", organizationId));
+    const names = new Map(tags.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
+    for (const link of links.rows) {
+      const contactId = cell(link, "contact_id");
+      const name = names.get(cell(link, "tag_id"));
+      if (!name) continue;
+      tagNames.set(contactId, [...(tagNames.get(contactId) ?? []), name]);
+    }
+  }
+  return visible.map((row) => {
+    const raw = row["negotiated_cents"];
+    const amount = raw == null || raw === "" ? null : Number(raw);
+    return {
+      id: cell(row, "id"),
+      name: cell(row, "name"),
+      phone: cell(row, "phone"),
+      negotiatedCents: amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null,
+      tags: tagNames.get(cell(row, "id")) ?? [],
+    };
+  });
 }
 
 export async function renameChatbotContact(userId: string, contactId: string, name: string) {
@@ -1497,6 +1674,25 @@ export async function renameChatbotContactFile(userId: string, fileId: string, n
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("Essa mídia não pertence à sua empresa.");
   return { name: clean };
+}
+
+export async function setChatbotContactStage(userId: string, contactId: string, stageName: string) {
+  const clean = stageName.trim();
+  const { organizationId } = await membership(userId);
+  await ownedContact(organizationId, contactId);
+  if (clean) {
+    const stages = await rows(table("chatbot_stages").select("name").eq("organization_id", organizationId));
+    if (!stages.some((row) => cell(row, "name") === clean)) fail("Escolha uma etapa do kanban.");
+  }
+  const updated = await table("chatbot_contacts")
+    .update({ stage_name: clean || null })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { stage: clean };
 }
 
 export async function setChatbotContactTags(userId: string, contactId: string, tagIds: string[]) {
@@ -1595,6 +1791,12 @@ export async function listChatbotStages(userId: string) {
         .maybeSingle();
       if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
     }
+  } else if (!loaded.rows.some((row) => protectedKanbanStage(cell(row, "name")))) {
+    const inserted = await table("chatbot_stages")
+      .insert({ organization_id: organizationId, name: wonKanbanStage, position: loaded.rows.length })
+      .select("id")
+      .maybeSingle();
+    if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
   }
   const stages = await rows(
     table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
@@ -1603,8 +1805,8 @@ export async function listChatbotStages(userId: string) {
 }
 
 export async function saveChatbotStages(userId: string, names: string[]) {
-  const clean = names.map((name) => kanbanStageName(name));
-  if (!clean.length || clean.length > 12 || clean.some((name) => !name)) fail("O kanban precisa de 1 a 12 etapas, cada uma com 2 a 40 caracteres.");
+  const clean = withWonKanbanStage(names.map((name) => kanbanStageName(name)).filter((name) => name));
+  if (!clean.length || clean.length > 13 || clean.some((name) => !name)) fail("O kanban precisa de etapas com 2 a 40 caracteres. A etapa Sucesso permanece no quadro.");
   const unique = new Set(clean.map((name) => name.toLowerCase()));
   if (unique.size !== clean.length) fail("Cada etapa precisa de um nome diferente.");
   const { organizationId } = await membership(userId);
@@ -1620,6 +1822,33 @@ export async function saveChatbotStages(userId: string, names: string[]) {
     table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
   );
   return stageRows(stages);
+}
+
+export async function chatbotOverview(userId: string): Promise<ChatbotOverview> {
+  const { organizationId, admin } = await membership(userId);
+  await listChatbotStages(userId);
+  const [conversations, contacts] = await Promise.all([
+    rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count").eq("organization_id", organizationId)),
+    rows(table("chatbot_contacts").select("negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId)),
+  ]);
+  return overviewMetrics({
+    userId,
+    admin,
+    conversations: conversations.map((row) => ({
+      contactId: cell(row, "contact_id"),
+      assigneeId: cell(row, "assignee_id"),
+      finishedCount: Number(row["finished_count"]) || 0,
+    })),
+    contacts: contacts.map((row) => {
+      const raw = row["negotiated_cents"];
+      const amount = raw == null || raw === "" ? null : Number(raw);
+      return {
+        negotiatedCents: amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null,
+        stage: cell(row, "stage_name"),
+        ownerId: cell(row, "client_owner_id"),
+      };
+    }),
+  });
 }
 
 async function setMemberTeams(organizationId: string, attendantId: string, teamIds: string[], replace: boolean) {

@@ -89,6 +89,11 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .transfer-box{display:flex;align-items:center;gap:8px}
 .chatbot-app .transfer-box select{width:auto;min-width:160px;height:32px;padding:4px 8px}
 .chatbot-app .composer-locked{margin:0;padding:16px 20px;border-top:1px solid var(--border);background:var(--card);color:var(--muted-foreground);font-size:12px}
+.chatbot-app .internal-note{align-self:stretch;background:color-mix(in srgb,#f6e7a8 16%,var(--card));border:1px solid color-mix(in srgb,#e7c85a 28%,transparent);border-radius:7px;padding:10px 12px;color:var(--foreground)}
+.chatbot-app .internal-note span{display:block;margin-bottom:4px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a16207}
+.chatbot-app .internal-note p{margin:0;font-size:12px;line-height:1.5;white-space:pre-wrap}
+.chatbot-app .internal-note time{display:block;margin-top:6px;text-align:right;font-size:10px;color:var(--muted-foreground)}
+.chatbot-app .note-count{margin:-8px 0 0;text-align:right;font-size:11px;color:var(--muted-foreground)}
 .chatbot-app .contact-panel{display:flex;flex-direction:column;min-height:0;overflow:auto;background:var(--card)}
 .chatbot-app .contact-name{display:block;width:100%;border:0;background:transparent;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:700;color:var(--foreground);cursor:pointer}
 .chatbot-app .contact-name-edit{display:flex;align-items:center;gap:6px}
@@ -123,4 +128,10 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .stage-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px;font-size:13px}
 .chatbot-app .stage-actions{display:flex;gap:4px}
 @media(max-width:1200px){.chatbot-app .contact-panel{display:none}}
+.chatbot-app .chat-identity{display:flex;align-items:center;gap:18px;min-width:0}
+.chatbot-app .chat-identity span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.chatbot-app .chat-identity small{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}
+.chatbot-app .chat-identity strong{font-size:13px;font-weight:600;color:var(--foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
+.chatbot-app .contact-deal{width:100%;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--background);padding:0 10px;font-size:13px}
+.chatbot-app .contact-register{margin-top:16px;width:100%}
 

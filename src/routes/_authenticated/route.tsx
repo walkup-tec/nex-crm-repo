@@ -1,10 +1,42 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  clientUserCanSee,
+  firstAllowedClientPath,
+  isClientPermissionPath,
+  noClientPermissions,
+} from "@/lib/client-permissions";
 import { readMasterRoles } from "@/lib/master-role";
+import type { UserPermissions, UserRole } from "@/lib/user-access";
+
+async function readOwnPermissions(userId: string): Promise<UserPermissions> {
+  const full = await supabase
+    .from("user_permissions")
+    .select("can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users, can_use_chatbot")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const row =
+    full.error && /can_use_chatbot/i.test(full.error.message)
+      ? await supabase
+          .from("user_permissions")
+          .select("can_view_campaigns, can_view_meta_balance, can_add_meta_credit, can_manage_users")
+          .eq("user_id", userId)
+          .maybeSingle()
+      : full;
+  if (row.error) return noClientPermissions;
+  if (!row.data) return { ...noClientPermissions, campaigns: true };
+  return {
+    campaigns: row.data.can_view_campaigns === true,
+    balance: row.data.can_view_meta_balance === true,
+    credit: row.data.can_add_meta_credit === true,
+    manage: row.data.can_manage_users === true,
+    chatbot: "can_use_chatbot" in row.data ? row.data.can_use_chatbot === true : false,
+  };
+}
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) throw redirect({ to: "/auth" });
     const { data: profile } = await supabase
@@ -16,7 +48,7 @@ export const Route = createFileRoute("/_authenticated")({
       await supabase.auth.signOut();
       throw redirect({ to: "/auth" });
     }
-    const { master } = await readMasterRoles(data.user.id);
+    const { master, roles } = await readMasterRoles(data.user.id);
     if (profile?.organization_id) {
       const { data: org } = await supabase
         .from("organizations")
@@ -30,7 +62,13 @@ export const Route = createFileRoute("/_authenticated")({
         throw redirect({ href: "/auth?motivo=inativo" });
       }
     }
-    return { user: data.user, master };
+    const role: UserRole = master || roles.includes("master") ? "master" : roles.includes("client_admin") ? "client_admin" : "client_user";
+    const permissions = role === "client_user" ? await readOwnPermissions(data.user.id) : null;
+    if (permissions && isClientPermissionPath(location.pathname) && !clientUserCanSee(location.pathname, permissions)) {
+      const next = firstAllowedClientPath(permissions);
+      if (next !== location.pathname) throw redirect({ to: next });
+    }
+    return { user: data.user, master, role, permissions };
   },
   component: () => <Outlet />,
 });

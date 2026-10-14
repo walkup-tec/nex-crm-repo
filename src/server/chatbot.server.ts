@@ -30,6 +30,8 @@ import {
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
   catalogName,
+  defaultKanbanStages,
+  kanbanStageName,
   keepWhatsappName,
   tagColorValue,
   type ChatbotCatalogItem,
@@ -69,6 +71,9 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_teams|chatbot_team_members|chatbot_team_channels/i.test(message)) {
     return "A migração das equipes ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_stages/i.test(message)) {
+    return "A migração das etapas do kanban ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
     return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
@@ -1551,6 +1556,55 @@ export async function deleteChatbotProduct(userId: string, productId: string) {
   if (!current.data) fail("Esse produto não pertence à sua empresa.");
   await done(table("chatbot_products").delete().eq("id", productId).eq("organization_id", organizationId));
   return { deleted: true as const };
+}
+
+function stageRows(rowsToMap: Record<string, unknown>[]) {
+  return [...rowsToMap]
+    .sort((left, right) => Number(cell(left, "position")) - Number(cell(right, "position")))
+    .map((row) => ({ id: cell(row, "id"), name: cell(row, "name") }));
+}
+
+export async function listChatbotStages(userId: string) {
+  const { organizationId } = await membership(userId);
+  const loaded = await rowsOrMissing(
+    table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
+  );
+  if (loaded.missing) {
+    return { ready: false, stages: defaultKanbanStages.map((name) => ({ id: "", name })) };
+  }
+  if (!loaded.rows.length) {
+    for (let position = 0; position < defaultKanbanStages.length; position += 1) {
+      const inserted = await table("chatbot_stages")
+        .insert({ organization_id: organizationId, name: defaultKanbanStages[position], position })
+        .select("id")
+        .maybeSingle();
+      if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
+    }
+  }
+  const stages = await rows(
+    table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
+  );
+  return { ready: true, stages: stageRows(stages) };
+}
+
+export async function saveChatbotStages(userId: string, names: string[]) {
+  const clean = names.map((name) => kanbanStageName(name));
+  if (!clean.length || clean.length > 12 || clean.some((name) => !name)) fail("O kanban precisa de 1 a 12 etapas, cada uma com 2 a 40 caracteres.");
+  const unique = new Set(clean.map((name) => name.toLowerCase()));
+  if (unique.size !== clean.length) fail("Cada etapa precisa de um nome diferente.");
+  const { organizationId } = await membership(userId);
+  await done(table("chatbot_stages").delete().eq("organization_id", organizationId));
+  for (let position = 0; position < clean.length; position += 1) {
+    const inserted = await table("chatbot_stages")
+      .insert({ organization_id: organizationId, name: clean[position], position })
+      .select("id")
+      .maybeSingle();
+    if (inserted.error) fail(schemaMessage(inserted.error.message));
+  }
+  const stages = await rows(
+    table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
+  );
+  return stageRows(stages);
 }
 
 async function setMemberTeams(organizationId: string, attendantId: string, teamIds: string[], replace: boolean) {

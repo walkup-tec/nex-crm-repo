@@ -289,6 +289,23 @@ export const deleteChatbotProductFn = createServerFn({ method: "POST" })
     return guard(() => deleteChatbotProduct(context.userId, data.productId));
   });
 
+export const listChatbotStagesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotStages } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotStages(context.userId));
+  });
+
+export const saveChatbotStagesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { names: string[] }) => ({
+    names: Array.isArray(data.names) ? data.names.filter((name) => typeof name === "string") : [],
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotStages } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotStages(context.userId, data.names));
+  });
+
 export const setChatbotAttendantTeamsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { attendantId: string; teamIds: string[] }) => ({

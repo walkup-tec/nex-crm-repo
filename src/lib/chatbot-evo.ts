@@ -466,6 +466,24 @@ export function evolutionMessageText(message: unknown): string {
   return record["conversation"] === undefined && Object.keys(record).length ? "[mensagem]" : "";
 }
 
+export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho"];
+
+export function kanbanStageName(value: string) {
+  return catalogName(value, 40);
+}
+
+export function moveKanbanStage(stages: string[], index: number, direction: -1 | 1) {
+  const target = index + direction;
+  if (index < 0 || index >= stages.length || target < 0 || target >= stages.length) return stages;
+  const next = [...stages];
+  const current = next[index];
+  const other = next[target];
+  if (!current || !other) return stages;
+  next[index] = other;
+  next[target] = current;
+  return next;
+}
+
 export function catalogName(value: string, max = 80) {
   const clean = value.trim().replace(/\s+/g, " ");
   if (clean.length < 2 || clean.length > max) return "";

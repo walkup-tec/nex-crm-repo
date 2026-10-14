@@ -29,6 +29,12 @@ import {
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
+  catalogName,
+  keepWhatsappName,
+  tagColorValue,
+  type ChatbotCatalogItem,
+  type ChatbotContactProfile,
+  type ChatbotTag,
   type ChatbotConnectionStatus,
   type ChatbotSnapshot,
 } from "@/lib/chatbot-evo";
@@ -63,6 +69,9 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_teams|chatbot_team_members|chatbot_team_channels/i.test(message)) {
     return "A migração das equipes ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
+    return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_|schema cache|does not exist|PGRST205/i.test(message)) {
     return "A migração do atendimento ainda não foi aplicada no Supabase.";
@@ -850,10 +859,21 @@ async function importEvolutionMessages(connection: Record<string, unknown>) {
   for (const item of items) await storeIncoming(connection, item, knownLids);
 }
 
+async function refreshWhatsappName(organizationId: string, contactId: string, phone: string, name: string) {
+  const current = await table("chatbot_contacts").select("name, name_edited").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error || !current.data) return;
+  const next = keepWhatsappName(cell(current.data, "name"), cell(current.data, "name_edited") === "true", name, phone);
+  if (!next || next === cell(current.data, "name")) return;
+  await table("chatbot_contacts").update({ name: next }).eq("id", contactId).eq("organization_id", organizationId);
+}
+
 async function contactIdForMessage(organizationId: string, phone: string, name: string) {
   const known = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
   const found = known.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone));
-  if (found) return cell(found, "id");
+  if (found) {
+    await refreshWhatsappName(organizationId, cell(found, "id"), phone, name);
+    return cell(found, "id");
+  }
   const created = await table("chatbot_contacts")
     .insert({ organization_id: organizationId, name, phone })
     .select("id")
@@ -1070,15 +1090,32 @@ export async function chatbotMessageMedia(userId: string, messageId: string) {
 }
 
 const mediaBucket = "nex-chatbot-media";
+const mediaMimeTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/3gpp",
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/webm",
+  "audio/aac",
+  "audio/opus",
+  "audio/wav",
+];
 
 async function ensureMediaBucket() {
+  const options = { public: false, fileSizeLimit: 40 * 1024 * 1024, allowedMimeTypes: mediaMimeTypes };
   const existing = await supabaseAdmin.storage.getBucket(mediaBucket);
-  if (!existing.error && existing.data) return;
-  const created = await supabaseAdmin.storage.createBucket(mediaBucket, {
-    public: false,
-    fileSizeLimit: 40 * 1024 * 1024,
-    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm", "video/quicktime", "video/3gpp"],
-  });
+  if (!existing.error && existing.data) {
+    await supabaseAdmin.storage.updateBucket(mediaBucket, options).catch(() => undefined);
+    return;
+  }
+  const created = await supabaseAdmin.storage.createBucket(mediaBucket, options);
   if (created.error && !/already exists|duplicate/i.test(created.error.message)) fail("Não foi possível guardar a mídia.");
 }
 
@@ -1108,8 +1145,9 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
               : "ogg"
             : "jpg";
   const storagePath = `${owned.organizationId}/${contactId}/${id}.${extension}`;
+  const contentType = file.mime.split(";")[0]?.trim().toLowerCase() || (file.kind === "audio" ? "audio/ogg" : file.kind === "video" ? "video/mp4" : "image/jpeg");
   const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(storagePath, Buffer.from(file.base64, "base64"), {
-    contentType: file.mime,
+    contentType,
     upsert: false,
   });
   if (uploaded.error) fail("Não foi possível salvar a mídia no contato.");
@@ -1120,7 +1158,7 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
       contact_id: contactId,
       message_id: messageId,
       name: file.kind === "video" ? `video.${extension}` : file.kind === "audio" ? `audio.${extension}` : `imagem.${extension}`,
-      mime_type: file.mime,
+      mime_type: contentType,
       storage_path: storagePath,
     })
     .select("id")
@@ -1346,6 +1384,173 @@ async function ownedAttendant(organizationId: string, attendantId: string) {
     fail("Esse acesso não é de um atendente.");
   }
   return profile.data;
+}
+
+async function ownedContact(organizationId: string, contactId: string) {
+  const contact = await table("chatbot_contacts").select("id, name, phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (contact.error) fail(schemaMessage(contact.error.message));
+  if (!contact.data) fail("Esse contato não pertence à sua empresa.");
+  return contact.data;
+}
+
+function uniqueIds(ids: string[]) {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+}
+
+async function replaceContactLinks(
+  linkTable: "chatbot_contact_tags" | "chatbot_contact_products",
+  column: "tag_id" | "product_id",
+  catalogTable: "chatbot_tags" | "chatbot_products",
+  organizationId: string,
+  contactId: string,
+  ids: string[],
+) {
+  const catalog = await rows(table(catalogTable).select("id").eq("organization_id", organizationId));
+  const known = new Set(catalog.map((row) => cell(row, "id")));
+  const unique = uniqueIds(ids).filter((id) => known.has(id));
+  await done(table(linkTable).delete().eq("contact_id", contactId).eq("organization_id", organizationId));
+  for (const id of unique) {
+    const inserted = await table(linkTable)
+      .insert({ contact_id: contactId, [column]: id, organization_id: organizationId })
+      .select("contact_id")
+      .maybeSingle();
+    if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
+  }
+}
+
+export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
+  const { organizationId } = await membership(userId);
+  const contact = await ownedContact(organizationId, contactId);
+  const [tags, products, tagLinks, productLinks, files] = await Promise.all([
+    rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
+    rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
+    rowsOrMissing(table("chatbot_contact_tags").select("tag_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
+    rows(table("chatbot_contact_files").select("id, name, mime_type, storage_path, created_at").eq("contact_id", contactId).eq("organization_id", organizationId).order("created_at", { ascending: false })),
+  ]);
+  const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
+  const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
+  const savedFiles = await Promise.all(
+    files.map(async (row) => {
+      const storagePath = cell(row, "storage_path");
+      const signed = storagePath ? await supabaseAdmin.storage.from(mediaBucket).createSignedUrl(storagePath, 60 * 30) : null;
+      return {
+        id: cell(row, "id"),
+        name: cell(row, "name"),
+        mime: cell(row, "mime_type"),
+        createdAt: cell(row, "created_at"),
+        url: signed?.data?.signedUrl ?? "",
+      };
+    }),
+  );
+  return {
+    id: cell(contact, "id"),
+    name: cell(contact, "name"),
+    phone: cell(contact, "phone"),
+    catalogReady: !tags.missing && !products.missing && !tagLinks.missing && !productLinks.missing,
+    tags: tags.rows.map((row) => ({
+      id: cell(row, "id"),
+      name: cell(row, "name"),
+      color: cell(row, "color"),
+      selected: selectedTags.has(cell(row, "id")),
+    })),
+    products: products.rows.map((row) => ({
+      id: cell(row, "id"),
+      name: cell(row, "name"),
+      selected: selectedProducts.has(cell(row, "id")),
+    })),
+    files: savedFiles,
+  };
+}
+
+export async function renameChatbotContact(userId: string, contactId: string, name: string) {
+  const clean = catalogName(name, 80);
+  if (!clean) fail("Informe o nome do contato.");
+  const { organizationId } = await membership(userId);
+  await ownedContact(organizationId, contactId);
+  const updated = await table("chatbot_contacts")
+    .update({ name: clean, name_edited: true })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { name: clean };
+}
+
+export async function setChatbotContactTags(userId: string, contactId: string, tagIds: string[]) {
+  const { organizationId } = await membership(userId);
+  await ownedContact(organizationId, contactId);
+  await replaceContactLinks("chatbot_contact_tags", "tag_id", "chatbot_tags", organizationId, contactId, tagIds);
+  return { saved: true as const };
+}
+
+export async function setChatbotContactProducts(userId: string, contactId: string, productIds: string[]) {
+  const { organizationId } = await membership(userId);
+  await ownedContact(organizationId, contactId);
+  await replaceContactLinks("chatbot_contact_products", "product_id", "chatbot_products", organizationId, contactId, productIds);
+  return { saved: true as const };
+}
+
+export async function listChatbotTags(userId: string): Promise<ChatbotTag[]> {
+  const { organizationId } = await membership(userId);
+  const tags = await rows(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true }));
+  return tags.map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), color: cell(row, "color") }));
+}
+
+export async function saveChatbotTag(userId: string, name: string, color: string) {
+  const clean = catalogName(name, 32);
+  const ink = tagColorValue(color);
+  if (!clean) fail("A etiqueta precisa de um nome com 2 a 32 caracteres.");
+  if (!ink) fail("Escolha a cor da etiqueta.");
+  const { organizationId } = await membership(userId);
+  const inserted = await table("chatbot_tags")
+    .insert({ organization_id: organizationId, name: clean, color: ink })
+    .select("id")
+    .maybeSingle();
+  if (duplicate(inserted.error)) fail("Já existe uma etiqueta com esse nome.");
+  if (inserted.error) fail(schemaMessage(inserted.error.message));
+  if (!inserted.data) fail("Não foi possível gravar a etiqueta.");
+  return { id: cell(inserted.data, "id"), name: clean, color: ink };
+}
+
+export async function deleteChatbotTag(userId: string, tagId: string) {
+  const { organizationId } = await membership(userId);
+  const current = await table("chatbot_tags").select("id").eq("id", tagId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) fail(schemaMessage(current.error.message));
+  if (!current.data) fail("Essa etiqueta não pertence à sua empresa.");
+  await done(table("chatbot_tags").delete().eq("id", tagId).eq("organization_id", organizationId));
+  return { deleted: true as const };
+}
+
+export async function listChatbotProducts(userId: string): Promise<ChatbotCatalogItem[]> {
+  const { organizationId } = await membership(userId);
+  const products = await rows(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true }));
+  return products.map((row) => ({ id: cell(row, "id"), name: cell(row, "name") }));
+}
+
+export async function saveChatbotProduct(userId: string, name: string) {
+  const clean = catalogName(name, 80);
+  if (!clean) fail("Informe o produto ou serviço.");
+  const { organizationId } = await membership(userId);
+  const inserted = await table("chatbot_products")
+    .insert({ organization_id: organizationId, name: clean })
+    .select("id")
+    .maybeSingle();
+  if (duplicate(inserted.error)) fail("Já existe um produto com esse nome.");
+  if (inserted.error) fail(schemaMessage(inserted.error.message));
+  if (!inserted.data) fail("Não foi possível gravar o produto.");
+  return { id: cell(inserted.data, "id"), name: clean };
+}
+
+export async function deleteChatbotProduct(userId: string, productId: string) {
+  const { organizationId } = await membership(userId);
+  const current = await table("chatbot_products").select("id").eq("id", productId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) fail(schemaMessage(current.error.message));
+  if (!current.data) fail("Esse produto não pertence à sua empresa.");
+  await done(table("chatbot_products").delete().eq("id", productId).eq("organization_id", organizationId));
+  return { deleted: true as const };
 }
 
 async function setMemberTeams(organizationId: string, attendantId: string, teamIds: string[], replace: boolean) {

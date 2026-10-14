@@ -205,6 +205,90 @@ export const deleteChatbotAttendantFn = createServerFn({ method: "POST" })
     return guard(() => deleteChatbotAttendant(context.userId, data.attendantId));
   });
 
+export const chatbotContactProfileFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { chatbotContactProfile } = await import("@/server/chatbot.server");
+    return guard(() => chatbotContactProfile(context.userId, data.contactId));
+  });
+
+export const renameChatbotContactFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; name: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { renameChatbotContact } = await import("@/server/chatbot.server");
+    return guard(() => renameChatbotContact(context.userId, data.contactId, data.name));
+  });
+
+export const setChatbotContactTagsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; tagIds: string[] }) => ({
+    contactId: data.contactId,
+    tagIds: Array.isArray(data.tagIds) ? data.tagIds.filter((id) => typeof id === "string") : [],
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactTags } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactTags(context.userId, data.contactId, data.tagIds));
+  });
+
+export const setChatbotContactProductsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; productIds: string[] }) => ({
+    contactId: data.contactId,
+    productIds: Array.isArray(data.productIds) ? data.productIds.filter((id) => typeof id === "string") : [],
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactProducts } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactProducts(context.userId, data.contactId, data.productIds));
+  });
+
+export const listChatbotTagsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotTags } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotTags(context.userId));
+  });
+
+export const saveChatbotTagFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name: string; color: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { saveChatbotTag } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotTag(context.userId, data.name, data.color));
+  });
+
+export const deleteChatbotTagFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { tagId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { deleteChatbotTag } = await import("@/server/chatbot.server");
+    return guard(() => deleteChatbotTag(context.userId, data.tagId));
+  });
+
+export const listChatbotProductsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotProducts } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotProducts(context.userId));
+  });
+
+export const saveChatbotProductFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { saveChatbotProduct } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotProduct(context.userId, data.name));
+  });
+
+export const deleteChatbotProductFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { productId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { deleteChatbotProduct } = await import("@/server/chatbot.server");
+    return guard(() => deleteChatbotProduct(context.userId, data.productId));
+  });
+
 export const setChatbotAttendantTeamsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { attendantId: string; teamIds: string[] }) => ({

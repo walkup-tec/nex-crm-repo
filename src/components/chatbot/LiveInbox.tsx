@@ -13,6 +13,7 @@ import {
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
+import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
@@ -113,7 +114,7 @@ function VoiceNote({ file, sentAt, outgoing }: { file: LoadedMedia; sentAt: stri
   );
 }
 
-function ChatMedia({ item }: { item: InboxMessage }) {
+function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void }) {
   const cached = loadedMedia.get(item.id);
   const [file, setFile] = useState<LoadedMedia | null>(cached && !("none" in cached) ? cached : null);
   const [missing, setMissing] = useState(Boolean(cached && "none" in cached));
@@ -200,6 +201,7 @@ function ChatMedia({ item }: { item: InboxMessage }) {
               }
               setSaved(true);
               setError("");
+              onSaved?.();
             });
           }}
         >
@@ -244,6 +246,7 @@ export function LiveInbox() {
   const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
   const [targetId, setTargetId] = useState("");
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
+  const [savedMedia, setSavedMedia] = useState(0);
   const selectedRef = useRef("");
   const snapshotRequest = useRef(0);
   const appliedSnapshot = useRef(0);
@@ -561,7 +564,7 @@ export function LiveInbox() {
               >
                 {messages.map((item) =>
                   expectsMedia(item) ? (
-                    <ChatMedia item={item} key={item.id} />
+                    <ChatMedia item={item} key={item.id} onSaved={() => setSavedMedia((value) => value + 1)} />
                   ) : (
                     <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
                       {item.text}
@@ -610,6 +613,17 @@ export function LiveInbox() {
             </div>
           )}
         </section>
+        <ContactRecord
+          contactId={contact?.id ?? ""}
+          tick={savedMedia}
+          onRenamed={(contactId, name) =>
+            setData((current) =>
+              current
+                ? { ...current, contacts: current.contacts.map((item) => (item.id === contactId ? { ...item, name } : item)) }
+                : current,
+            )
+          }
+        />
       </div>
     </main>
   );

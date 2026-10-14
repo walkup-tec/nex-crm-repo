@@ -89,4 +89,31 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .transfer-box{display:flex;align-items:center;gap:8px}
 .chatbot-app .transfer-box select{width:auto;min-width:160px;height:32px;padding:4px 8px}
 .chatbot-app .composer-locked{margin:0;padding:16px 20px;border-top:1px solid var(--border);background:var(--card);color:var(--muted-foreground);font-size:12px}
+.chatbot-app .contact-panel{display:flex;flex-direction:column;min-height:0;overflow:auto;background:var(--card)}
+.chatbot-app .contact-name{display:block;width:100%;border:0;background:transparent;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:700;color:var(--foreground);cursor:pointer}
+.chatbot-app .contact-name-edit{display:flex;align-items:center;gap:6px}
+.chatbot-app .contact-name-edit input{height:34px;font-size:12px}
+.chatbot-app .contact-check{display:grid;place-items:center;width:34px;height:34px;flex:none;border:0;border-radius:6px;background:#6F02FD;color:#fff;cursor:pointer}
+.chatbot-app .contact-check:disabled{opacity:.6}
+.chatbot-app .contact-section .contact-phone{font-size:12px;font-weight:600;color:var(--foreground)}
+.chatbot-app .contact-section a{color:#6F02FD;font-weight:700}
+.chatbot-app .contact-choices{display:grid;gap:8px}
+.chatbot-app .contact-choice{display:flex;align-items:flex-start;gap:8px;font-size:12px;font-weight:500}
+.chatbot-app .contact-choice input{width:16px;height:16px;flex:none;margin-top:1px}
+.chatbot-app .contact-tags{display:flex;flex-wrap:wrap;gap:6px}
+.chatbot-app .tag-chip{display:inline-flex;align-items:center;max-width:100%;border:1px solid var(--border);border-radius:999px;background:transparent;padding:4px 10px;font-size:11px;font-weight:700;line-height:1.3;cursor:pointer}
+.chatbot-app .tag-chip.selected{cursor:pointer}
+.chatbot-app .contact-files{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.chatbot-app .contact-files li{display:grid;gap:2px;font-size:11px}
+.chatbot-app .contact-files time,.chatbot-app .contact-files a{color:var(--muted-foreground)}
+.chatbot-app .contact-error{margin:0 18px 18px;font-size:11px;color:var(--destructive,#b91c1c)}
+.chatbot-app .tag-form{display:grid;gap:16px;max-width:520px;margin-bottom:24px}
+.chatbot-app .tag-color{width:72px;height:40px;padding:4px}
+.chatbot-app .tag-swatches{display:flex;flex-wrap:wrap;gap:8px}
+.chatbot-app .tag-swatch{width:28px;height:28px;border:2px solid transparent;border-radius:999px;cursor:pointer}
+.chatbot-app .tag-swatch.selected{border-color:var(--foreground)}
+.chatbot-app .tag-live{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted-foreground)}
+.chatbot-app .tag-list{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-width:520px}
+.chatbot-app .tag-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px}
+@media(max-width:1200px){.chatbot-app .contact-panel{display:none}}
 

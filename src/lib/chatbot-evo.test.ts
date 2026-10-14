@@ -35,6 +35,11 @@ import {
   whatsappDeviceRemoved,
   whatsappJidPhone,
   whatsappMask,
+  catalogName,
+  tagColorValue,
+  tagInk,
+  keepWhatsappName,
+  contactFileLabel,
 } from "./chatbot-evo";
 
 assert.equal(whatsappMask("1"), "(1");
@@ -213,3 +218,15 @@ assert.equal(
   false,
 );
 assert.equal(evolutionNumberInUse([{ name: "ativo", ownerJid: "5551998335401@s.whatsapp.net", connectionStatus: "open" }], "5551998335401"), true);
+assert.equal(catalogName("  Marcelo Mozart  "), "Marcelo Mozart");
+assert.equal(catalogName("a"), "");
+assert.equal(catalogName("Etiqueta", 32), "Etiqueta");
+assert.equal(tagColorValue("#6F02FD"), "#6f02fd");
+assert.equal(tagColorValue("roxo"), "");
+assert.equal(tagInk("#ffffff"), "#1a1a1a");
+assert.equal(tagInk("#6f02fd"), "#ffffff");
+assert.equal(keepWhatsappName("5551999666841", false, "Marcelo Mozart", "5551999666841"), "Marcelo Mozart");
+assert.equal(keepWhatsappName("Cliente VIP", true, "Marcelo Mozart", "5551999666841"), "Cliente VIP");
+assert.equal(keepWhatsappName("Marcelo Mozart", false, "5551999666841", "5551999666841"), "Marcelo Mozart");
+assert.equal(contactFileLabel("audio/ogg", "audio.ogg"), "Áudio");
+assert.equal(contactFileLabel("image/jpeg", "imagem.jpg"), "Imagem");

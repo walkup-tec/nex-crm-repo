@@ -466,6 +466,55 @@ export function evolutionMessageText(message: unknown): string {
   return record["conversation"] === undefined && Object.keys(record).length ? "[mensagem]" : "";
 }
 
+export function catalogName(value: string, max = 80) {
+  const clean = value.trim().replace(/\s+/g, " ");
+  if (clean.length < 2 || clean.length > max) return "";
+  return clean;
+}
+
+export function tagColorValue(value: string) {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(value.trim());
+  return match ? `#${match[1].toLowerCase()}` : "";
+}
+
+export function tagInk(color: string) {
+  const hex = tagColorValue(color);
+  if (!hex) return "#111111";
+  const red = Number.parseInt(hex.slice(1, 3), 16);
+  const green = Number.parseInt(hex.slice(3, 5), 16);
+  const blue = Number.parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.62 ? "#1a1a1a" : "#ffffff";
+}
+
+export function keepWhatsappName(currentName: string, edited: boolean, pushName: string, phone: string) {
+  if (edited) return currentName;
+  const next = catalogName(pushName, 80);
+  if (!next || next === phone.trim()) return currentName;
+  return next;
+}
+
+export function contactFileLabel(mime: string, name: string) {
+  const kind = `${mime} ${name}`.toLowerCase();
+  if (kind.includes("audio")) return "Áudio";
+  if (kind.includes("video")) return "Vídeo";
+  if (kind.includes("image") || kind.includes("imagem")) return "Imagem";
+  return "Arquivo";
+}
+
+export type ChatbotContactProfile = {
+  id: string;
+  name: string;
+  phone: string;
+  catalogReady: boolean;
+  tags: { id: string; name: string; color: string; selected: boolean }[];
+  products: { id: string; name: string; selected: boolean }[];
+  files: { id: string; name: string; mime: string; createdAt: string; url: string }[];
+};
+
+export type ChatbotTag = { id: string; name: string; color: string };
+export type ChatbotCatalogItem = { id: string; name: string };
+
 function findString(value: unknown, keys: string[]): string {
   if (!value || typeof value !== "object") return "";
   const record = value as Record<string, unknown>;

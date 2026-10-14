@@ -1,0 +1,215 @@
+import { Check } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import {
+  chatbotContactProfileFn,
+  renameChatbotContactFn,
+  setChatbotContactProductsFn,
+  setChatbotContactTagsFn,
+} from "@/lib/chatbot.functions";
+import { contactFileLabel, messageClock, tagInk, whatsappMask, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+
+export function ContactRecord({
+  contactId,
+  tick,
+  onRenamed,
+}: {
+  contactId: string;
+  tick: number;
+  onRenamed: (contactId: string, name: string) => void;
+}) {
+  const [profile, setProfile] = useState<ChatbotContactProfile | null>(null);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [savingLinks, setSavingLinks] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setProfile(null);
+    setError("");
+    if (!contactId) return;
+    let active = true;
+    void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setProfile(result.data);
+      setDraft(result.data.name);
+    });
+    return () => {
+      active = false;
+    };
+  }, [contactId, tick]);
+
+  async function saveName() {
+    if (!profile || savingName) return;
+    const name = draft.trim().replace(/\s+/g, " ");
+    if (name.length < 2) {
+      setError("Informe o nome do contato.");
+      return;
+    }
+    setSavingName(true);
+    const result = await renameChatbotContactFn({ data: { contactId: profile.id, name } });
+    setSavingName(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setEditing(false);
+    setProfile({ ...profile, name: result.data.name });
+    setDraft(result.data.name);
+    onRenamed(profile.id, result.data.name);
+  }
+
+  async function toggleTag(tagId: string) {
+    if (!profile || savingLinks) return;
+    const selected = profile.tags.filter((item) => item.selected).map((item) => item.id);
+    const next = selected.includes(tagId) ? selected.filter((id) => id !== tagId) : [...selected, tagId];
+    setSavingLinks(true);
+    const result = await setChatbotContactTagsFn({ data: { contactId: profile.id, tagIds: next } });
+    setSavingLinks(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setProfile({ ...profile, tags: profile.tags.map((item) => ({ ...item, selected: next.includes(item.id) })) });
+  }
+
+  async function toggleProduct(productId: string) {
+    if (!profile || savingLinks) return;
+    const selected = profile.products.filter((item) => item.selected).map((item) => item.id);
+    const next = selected.includes(productId) ? selected.filter((id) => id !== productId) : [...selected, productId];
+    setSavingLinks(true);
+    const result = await setChatbotContactProductsFn({ data: { contactId: profile.id, productIds: next } });
+    setSavingLinks(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setProfile({ ...profile, products: profile.products.map((item) => ({ ...item, selected: next.includes(item.id) })) });
+  }
+
+  return (
+    <aside className="contact-panel" aria-label="Cadastro do contato">
+      <div className="contact-panel-title">Contato</div>
+      {!contactId ? (
+        <div className="contact-placeholder">
+          <strong>Nenhum contato selecionado</strong>
+          <p>Abra uma conversa para ver o cadastro.</p>
+        </div>
+      ) : !profile ? (
+        <div className="contact-placeholder">
+          <p>{error || "Carregando o contato..."}</p>
+        </div>
+      ) : (
+        <>
+          {error ? <p className="contact-error">{error}</p> : null}
+          <section className="contact-section">
+            <h3>Nome</h3>
+            {editing ? (
+              <div className="contact-name-edit">
+                <input
+                  value={draft}
+                  autoFocus
+                  aria-label="Nome do contato"
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void saveName();
+                    }
+                    if (event.key === "Escape") {
+                      setDraft(profile.name);
+                      setEditing(false);
+                    }
+                  }}
+                />
+                <button type="button" className="contact-check" aria-label="Salvar nome" disabled={savingName} onClick={() => void saveName()}>
+                  <Check />
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="contact-name" onClick={() => { setDraft(profile.name); setEditing(true); }}>
+                {profile.name}
+              </button>
+            )}
+          </section>
+          <section className="contact-section">
+            <h3>WhatsApp</h3>
+            <p className="contact-phone">{whatsappMask(profile.phone) || profile.phone}</p>
+          </section>
+          <section className="contact-section">
+            <h3>Produtos e serviços</h3>
+            {profile.catalogReady && profile.products.length ? (
+              <div className="contact-choices">
+                {profile.products.map((item) => (
+                  <label className="contact-choice" key={item.id}>
+                    <input type="checkbox" checked={item.selected} disabled={savingLinks} onChange={() => void toggleProduct(item.id)} />
+                    <span>{item.name}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p>
+                {profile.catalogReady ? "Nenhum produto cadastrado. " : "O cadastro de produtos ainda não está disponível. "}
+                <Link to="/chatbot/produtos">Abrir Produtos</Link>
+              </p>
+            )}
+          </section>
+          <section className="contact-section">
+            <h3>Etiquetas</h3>
+            {profile.catalogReady && profile.tags.length ? (
+              <div className="contact-tags">
+                {profile.tags.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`tag-chip${item.selected ? " selected" : ""}`}
+                    aria-pressed={item.selected}
+                    disabled={savingLinks}
+                    style={item.selected ? { background: item.color, color: tagInk(item.color), borderColor: item.color } : { color: item.color, borderColor: item.color }}
+                    onClick={() => void toggleTag(item.id)}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p>
+                {profile.catalogReady ? "Nenhuma etiqueta cadastrada. " : "O cadastro de etiquetas ainda não está disponível. "}
+                <Link to="/chatbot/configuracoes" hash="etiquetas">Abrir Etiquetas</Link>
+              </p>
+            )}
+          </section>
+          <section className="contact-section">
+            <h3>Mídias salvas</h3>
+            {profile.files.length ? (
+              <ul className="contact-files">
+                {profile.files.map((file) => (
+                  <li key={file.id}>
+                    <strong>{contactFileLabel(file.mime, file.name)}</strong>
+                    <time dateTime={file.createdAt}>{messageClock(file.createdAt)}</time>
+                    {file.url ? (
+                      <a href={file.url} target="_blank" rel="noreferrer">
+                        Abrir
+                      </a>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Nenhuma mídia salva neste contato.</p>
+            )}
+          </section>
+        </>
+      )}
+    </aside>
+  );
+}

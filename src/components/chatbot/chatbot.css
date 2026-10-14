@@ -115,9 +115,6 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .tag-live{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted-foreground)}
 .chatbot-app .tag-list{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-width:520px}
 .chatbot-app .tag-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px}
-.chatbot-app .stage-preview{display:flex;gap:8px;overflow:auto;padding-bottom:4px}
-.chatbot-app .stage-preview-item{flex:none;min-width:120px;border:1px solid var(--border);border-radius:7px;background:var(--muted);padding:10px 12px;font-size:11px;font-weight:700}
-.chatbot-app .stage-preview-item.draft{border-style:dashed;color:var(--primary)}
 .chatbot-app .stage-list{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-width:640px}
 .chatbot-app .stage-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px;font-size:13px}
 .chatbot-app .stage-actions{display:flex;gap:4px}

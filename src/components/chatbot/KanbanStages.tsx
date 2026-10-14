@@ -75,9 +75,6 @@ export function KanbanStages() {
     await persist(next, removed, fallback);
   }
 
-  const draft = kanbanStageName(name);
-  const preview = draft && !stages.some((item) => item.toLowerCase() === draft.toLowerCase()) ? [...stages, draft] : stages;
-
   return (
     <div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
@@ -85,14 +82,7 @@ export function KanbanStages() {
         <Field label="Nome da etapa">
           <input value={name} maxLength={40} disabled={!ready || saving} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Contrato enviado" />
         </Field>
-        <div className="stage-preview" aria-label="Prévia das etapas">
-          {preview.map((item) => (
-            <span className={`stage-preview-item${item === draft ? " draft" : ""}`} key={`${item}-${item === draft ? "draft" : "saved"}`}>
-              {item}
-            </span>
-          ))}
-        </div>
-        <Button type="submit" disabled={!ready || saving || !draft}>
+        <Button type="submit" disabled={!ready || saving || name.trim().length < 2}>
           {saving ? "Salvando" : "Gravar etapa"}
         </Button>
       </form>
@@ -116,7 +106,6 @@ export function KanbanStages() {
           </li>
         ))}
       </ol>
-      {ready ? <p className="info-note">A prévia mostra a ordem das colunas no kanban.</p> : null}
     </div>
   );
 }

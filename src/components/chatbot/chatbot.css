@@ -161,7 +161,13 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .kanban-column h2 span{flex:none}
 .chatbot-app .kanban-card,.chatbot-app .column-total{overflow-wrap:anywhere}
 .chatbot-app .kanban-column button{white-space:normal;height:auto;min-height:32px}
-.chatbot-app .kanban-value{margin:0;color:var(--foreground);font-size:12px;font-weight:600}
-.chatbot-app .kanban-call{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:32px;margin-top:12px;font-size:12px}
-.chatbot-app .kanban-call svg{width:14px;height:14px;flex:none}
+.chatbot-app .kanban-column h2:before,.chatbot-app .kanban-column:nth-child(2) h2:before,.chatbot-app .kanban-column:nth-child(3) h2:before,.chatbot-app .kanban-column:last-child h2:before{width:8px;height:8px;background:var(--stage,var(--primary))}
+.chatbot-app .kanban-card{display:grid;gap:4px;margin:0 0 10px;padding:12px 12px 12px 14px;border:1px solid color-mix(in oklch,var(--stage,var(--primary)) 34%,var(--border));border-radius:8px;background:var(--card);box-shadow:inset 3px 0 0 var(--stage,var(--primary));cursor:default}
+.chatbot-app .kanban-card strong{font-size:13px;font-weight:600;line-height:1.35;letter-spacing:-.01em}
+.chatbot-app .kanban-card p{margin:0}
+.chatbot-app .kanban-product{color:var(--muted-foreground);font-size:11px;line-height:1.4}
+.chatbot-app .kanban-value{margin-top:2px;color:var(--stage,var(--primary));font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
+.chatbot-app .kanban-column button.kanban-call{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:32px;min-height:32px;margin-top:8px;padding:0 10px;border:1px solid color-mix(in oklch,var(--stage,var(--primary)) 28%,var(--border));border-radius:6px;background:color-mix(in oklch,var(--stage,var(--primary)) 8%,var(--background));color:var(--foreground);font-size:12px;font-weight:600;line-height:1;white-space:nowrap}
+.chatbot-app .kanban-column button.kanban-call:hover{background:color-mix(in oklch,var(--stage,var(--primary)) 16%,var(--background));color:var(--foreground)}
+.chatbot-app .kanban-column button.kanban-call svg{width:18px;height:18px;flex:none}
 

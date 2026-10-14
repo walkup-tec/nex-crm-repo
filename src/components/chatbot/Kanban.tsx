@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,12 +16,22 @@ import { negotiatedLabel, type ChatbotKanbanCard } from "@/lib/chatbot-evo";
 
 const openConversationKey = "nex-kanban-conversation";
 
+const stagePalette = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)"];
+
+function stageTone(name: string, index: number) {
+  const key = name.trim().toLocaleLowerCase("pt-BR");
+  if (key === "sucesso") return "var(--success)";
+  if (key === "perdido") return "var(--destructive)";
+  return stagePalette[index % stagePalette.length];
+}
+
 function WhatsAppIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+      <circle cx="9" cy="9" r="9" fill="#25D366" />
       <path
-        fill="currentColor"
-        d="M20.5 3.5A11 11 0 0 0 2.1 17.8L1 23l5.3-1.1A11 11 0 0 0 20.5 3.5zM12 20.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3.1.8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.2.1-.3.2-.5.1a6.7 6.7 0 0 1-2-1.2 7.4 7.4 0 0 1-1.4-1.7c-.1-.2 0-.4.1-.5l.4-.5c.1-.1.2-.2.2-.3a.5.5 0 0 0 0-.5c-.2-.4-.7-1.5-.7-1.6s-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.4 2.4 0 0 0-.8 1.8 4.4 4.4 0 0 0 .9 2.3 9.9 9.9 0 0 0 3.8 3.4c.5.2.9.4 1.3.5a3 3 0 0 0 1.4.1 2.3 2.3 0 0 0 1.5-1c.2-.3.2-.7.1-1.1-.1-.1-.3-.2-.5-.3z"
+        fill="#fff"
+        d="M12.7 10.2c-.2-.1-1.1-.55-1.27-.61-.17-.06-.3-.1-.42.1-.12.19-.48.61-.59.74-.11.12-.22.14-.41.05-.19-.1-.79-.29-1.5-.93-.56-.5-.93-1.11-1.04-1.3-.11-.19-.01-.29.08-.38.08-.08.19-.22.28-.33.09-.11.12-.19.19-.32.06-.12.03-.24-.02-.33-.05-.1-.42-1.02-.58-1.4-.15-.36-.31-.31-.42-.32h-.32c-.13 0-.33.05-.5.24-.17.19-.66.64-.66 1.57s.68 1.82.77 1.95c.1.12 1.33 2.03 3.22 2.85.45.19.8.31 1.07.4.45.14.86.12 1.18.07.36-.05 1.1-.45 1.26-.89.15-.44.15-.81.11-.89-.05-.08-.17-.12-.36-.21z"
       />
     </svg>
   );
@@ -69,14 +79,14 @@ export function Kanban() {
       </div>
       {ready ? null : <p className="info-note mb-5">A etapa do contato ainda não está disponível. Aplique a migração do kanban no Supabase.</p>}
       <div className="kanban-board">
-        {stages.map((stage) => {
+        {stages.map((stage, index) => {
           const items = cards.filter((card) => {
             const product = card.products.join(", ");
             return card.stage === stage && `${card.name} ${product}`.toLowerCase().includes(term);
           });
           const total = items.reduce((sum, card) => sum + (card.negotiatedCents ?? 0), 0);
           return (
-            <section key={stage} className="kanban-column">
+            <section key={stage} className="kanban-column" style={{ "--stage": stageTone(stage, index) } as CSSProperties}>
               <h2>
                 {stage}
                 <span className="count">{items.length}</span>
@@ -85,7 +95,7 @@ export function Kanban() {
               {items.map((card) => (
                 <article key={card.id} className="kanban-card">
                   <strong>{card.name || "Contato sem nome"}</strong>
-                  <p>{card.products.join(", ") || "Sem produto"}</p>
+                  <p className="kanban-product">{card.products.join(", ") || "Sem produto"}</p>
                   <p className="kanban-value">{negotiatedLabel(card.negotiatedCents ?? 0)}</p>
                   <Button variant="outline" className="kanban-call" disabled={calling === card.id} onClick={() => void call(card.id)}>
                     <WhatsAppIcon />

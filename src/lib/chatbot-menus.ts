@@ -1,15 +1,13 @@
 export const chatbotMenuItems = [
   { key: "inbox", path: "/chatbot", label: "Caixa de Entrada" },
   { key: "overview", path: "/chatbot/visao-geral", label: "Visão Geral" },
-  { key: "queue", path: "/chatbot/fila", label: "Fila" },
   { key: "kanban", path: "/chatbot/kanban", label: "Kanban" },
   { key: "clients", path: "/chatbot/clientes", label: "Clientes" },
   { key: "products", path: "/chatbot/produtos", label: "Produtos" },
   { key: "schedules", path: "/chatbot/agendamentos", label: "Agendamentos" },
-  { key: "automations", path: "/chatbot/automacoes", label: "Automações" },
+  { key: "automations", path: "/chatbot/automacoes", label: "Criação Bots" },
   { key: "team", path: "/chatbot/equipes", label: "Time" },
   { key: "connection", path: "/chatbot/whatsapps", label: "Conexão" },
-  { key: "reports", path: "/chatbot/relatorios", label: "Relatórios" },
   { key: "settings", path: "/chatbot/configuracoes", label: "Configurações" },
 ] as const;
 

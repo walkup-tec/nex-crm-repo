@@ -41,15 +41,19 @@ export function LiveTeams() {
   const [editingTeamId, setEditingTeamId] = useState("");
   const [editingAttendantId, setEditingAttendantId] = useState("");
   const [removing, setRemoving] = useState<{ kind: "team" | "attendant"; id: string; name: string; channelName: string } | null>(null);
+  const [failure, setFailure] = useState("");
+
+  function showFailure(text: string) {
+    setFailure(text.trim() || "Não foi possível concluir esta ação.");
+  }
 
   async function load() {
     const result = await chatbotTeamSnapshotFn();
     if (!result.ok) {
-      setMessage(result.message);
+      showFailure(result.message);
       return;
     }
     setData(result.data);
-    setMessage("");
   }
 
   useEffect(() => {
@@ -81,7 +85,7 @@ export function LiveTeams() {
       : await createChatbotTeamFn({ data: { name: teamName, connectionId: channelId } });
     setPending("");
     if (!result.ok) {
-      setMessage(result.message);
+      showFailure(result.message);
       return;
     }
     setTeamName("");
@@ -97,7 +101,7 @@ export function LiveTeams() {
       const result = await updateChatbotAttendantFn({ data: { attendantId: editingAttendantId, name: attendantName, email, teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
       setPending("");
       if (!result.ok) {
-        setMessage(result.message);
+        showFailure(result.message);
         return;
       }
       resetAttendantForm();
@@ -108,7 +112,7 @@ export function LiveTeams() {
     const result = await inviteChatbotAttendantFn({ data: { name: attendantName, email, teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
     setPending("");
     if (!result.ok) {
-      setMessage(result.message);
+      showFailure(result.message);
       return;
     }
     const notice = !result.data.created
@@ -129,7 +133,8 @@ export function LiveTeams() {
     setPending(`resend:${attendant.id}`);
     const result = await resendAttendantInviteFn({ data: { email: attendant.email, name: attendant.name } });
     setPending("");
-    setMessage(result.ok ? "Convite reenviado." : result.message);
+    if (result.ok) setMessage("Convite reenviado.");
+    else showFailure(result.message);
   }
 
   function editTeam(team: TeamRecord) {
@@ -344,6 +349,17 @@ export function LiveTeams() {
           </div>
         </article>
       </section>
+      <AlertDialog open={failure !== ""} onOpenChange={(open) => !open && setFailure("")}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Não foi possível concluir</AlertDialogTitle>
+            <AlertDialogDescription>{failure}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Entendi</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -369,8 +385,8 @@ export function LiveTeams() {
                 void request.then(async (result) => {
                   setPending("");
                   if (!result.ok) {
-                    setMessage(result.message);
                     setRemoving(null);
+                    showFailure(result.message);
                     return;
                   }
                   if (current.kind === "team" && editingTeamId === current.id) {

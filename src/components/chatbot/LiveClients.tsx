@@ -3,11 +3,10 @@ import { Button } from "@/components/ui/button";
 import { listChatbotClientsFn } from "@/lib/chatbot.functions";
 import { clientFilterOptions, clientPhoneLabel, filterChatbotClients, negotiatedLabel, type ChatbotClientRow, type ClientListFilters } from "@/lib/chatbot-evo";
 
-const emptyFilters: ClientListFilters = { search: "", name: "", phone: "", tag: "", attendant: "", stage: "", product: "" };
+const emptyFilters: ClientListFilters = { search: "", name: "", tag: "", attendant: "", stage: "", product: "" };
 
 const selectors = [
   { key: "name", label: "Cliente" },
-  { key: "phone", label: "WhatsApp" },
   { key: "tag", label: "Etiquetas" },
   { key: "attendant", label: "Atendente" },
   { key: "stage", label: "Kanban" },

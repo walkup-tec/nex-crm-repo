@@ -631,7 +631,6 @@ export type ChatbotClientRow = {
 export type ClientListFilters = {
   search: string;
   name: string;
-  phone: string;
   tag: string;
   attendant: string;
   stage: string;
@@ -649,7 +648,6 @@ function uniqueLabels(values: string[]) {
 export function clientFilterOptions(clients: ChatbotClientRow[]) {
   return {
     name: uniqueLabels(clients.map((client) => client.name)),
-    phone: uniqueLabels(clients.map((client) => clientPhoneLabel(client.phone))),
     tag: uniqueLabels(clients.flatMap((client) => client.tags)),
     attendant: uniqueLabels(clients.map((client) => client.attendant)),
     stage: uniqueLabels(clients.map((client) => client.stage)),
@@ -662,13 +660,13 @@ export function filterChatbotClients(clients: ChatbotClientRow[], filters: Clien
   const digits = term.replace(/\D/g, "");
   return clients.filter((client) => {
     if (filters.name && client.name !== filters.name) return false;
-    if (filters.phone && clientPhoneLabel(client.phone) !== filters.phone) return false;
     if (filters.tag && !client.tags.includes(filters.tag)) return false;
     if (filters.attendant && client.attendant !== filters.attendant) return false;
     if (filters.stage && client.stage !== filters.stage) return false;
     if (filters.product && !client.products.includes(filters.product)) return false;
     if (!term) return true;
-    return client.name.toLowerCase().includes(term) || (digits.length > 0 && client.phone.includes(digits));
+    const phone = clientPhoneLabel(client.phone).toLowerCase();
+    return client.name.toLowerCase().includes(term) || phone.includes(term) || (digits.length > 0 && client.phone.includes(digits));
   });
 }
 

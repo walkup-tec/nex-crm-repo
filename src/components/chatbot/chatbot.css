@@ -154,4 +154,11 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app select.client-filter{width:148px;height:36px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:12px;font-weight:500;line-height:36px;appearance:none}
 .chatbot-app select.client-filter:focus,.chatbot-app input.client-search:focus{outline:none;border-color:#6F02FD}
 .chatbot-app .client-clear{height:36px;flex:none}
+.chatbot-app .kanban-page{min-width:0}
+.chatbot-app .kanban-board{display:flex;gap:12px;width:100%;min-width:0;overflow:hidden}
+.chatbot-app .kanban-column{width:auto;min-width:0;flex:1 1 0}
+.chatbot-app .kanban-column h2{min-width:0;flex-wrap:wrap;overflow-wrap:anywhere}
+.chatbot-app .kanban-column h2 span{flex:none}
+.chatbot-app .kanban-card,.chatbot-app .column-total{overflow-wrap:anywhere}
+.chatbot-app .kanban-column button{white-space:normal;height:auto;min-height:32px}
 

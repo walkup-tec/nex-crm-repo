@@ -108,7 +108,7 @@ function schemaMessage(message: string) {
   return "Não foi possível gravar o atendimento.";
 }
 
-const stageMenus = ["inbox", "kanban", "settings", "overview", "reports"] as const satisfies readonly ChatbotMenuKey[];
+const stageMenus = ["inbox", "kanban", "settings", "overview"] as const satisfies readonly ChatbotMenuKey[];
 
 async function membership(userId: string, menu?: ChatbotMenuKey | readonly ChatbotMenuKey[]) {
   const [{ data: profile, error: profileError }, { data: roles, error: roleError }] =
@@ -1902,7 +1902,7 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 }
 
 export async function chatbotOverview(userId: string): Promise<ChatbotOverview> {
-  const { organizationId, admin } = await membership(userId, ["overview", "reports"]);
+  const { organizationId, admin } = await membership(userId, "overview");
   await listChatbotStages(userId);
   const [conversations, contacts] = await Promise.all([
     rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count").eq("organization_id", organizationId)),

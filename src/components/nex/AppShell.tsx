@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, ListOrdered, LogOut, Menu, MessageSquare, Package, RefreshCw, Settings, ShieldCheck, Smartphone, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
+import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, LogOut, Menu, MessageSquare, Package, RefreshCw, Settings, ShieldCheck, Smartphone, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -36,15 +36,13 @@ const clientNav = [
   ["/minha-conta", "Minha conta", Settings],
   ["/chatbot", "Caixa de Entrada", MessageSquare],
   ["/chatbot/visao-geral", "Visão Geral", LayoutDashboard],
-  ["/chatbot/fila", "Fila", ListOrdered],
   ["/chatbot/kanban", "Kanban", Columns3],
   ["/chatbot/clientes", "Clientes", Users],
   ["/chatbot/produtos", "Produtos", Package],
   ["/chatbot/agendamentos", "Agendamentos", CalendarDays],
-  ["/chatbot/automacoes", "Automações", Workflow],
+  ["/chatbot/automacoes", "Criação Bots", Workflow],
   ["/chatbot/equipes", "Time", UsersRound],
   ["/chatbot/whatsapps", "Conexão", Smartphone],
-  ["/chatbot/relatorios", "Relatórios", BarChart3],
   ["/chatbot/configuracoes", "Configurações", Settings],
 ] as const;
 
@@ -57,7 +55,7 @@ const clientSections = [
   {
     label: "Chatbot",
     icon: Bot,
-    paths: ["/chatbot", "/chatbot/visao-geral", "/chatbot/fila", "/chatbot/kanban", "/chatbot/clientes", "/chatbot/produtos", "/chatbot/agendamentos", "/chatbot/automacoes", "/chatbot/equipes", "/chatbot/whatsapps", "/chatbot/relatorios", "/chatbot/configuracoes"],
+    paths: ["/chatbot", "/chatbot/visao-geral", "/chatbot/kanban", "/chatbot/clientes", "/chatbot/produtos", "/chatbot/agendamentos", "/chatbot/automacoes", "/chatbot/equipes", "/chatbot/whatsapps", "/chatbot/configuracoes"],
   },
   {
     label: "Configurações",

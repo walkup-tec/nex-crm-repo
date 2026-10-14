@@ -3,9 +3,9 @@ import { Automations } from "@/components/chatbot/Automations";
 import { ChatbotFrame } from "@/components/chatbot/frame";
 
 export const Route = createFileRoute("/_authenticated/chatbot/automacoes")({
-  head: () => ({ meta: [{ title: "Automações — Chatbot" }] }),
+  head: () => ({ meta: [{ title: "Criação Bots — Chatbot" }] }),
   component: () => (
-    <ChatbotFrame title="Automações" subtitle="Fluxos preparados para o atendimento.">
+    <ChatbotFrame title="Criação Bots" subtitle="Fluxos preparados para o atendimento.">
       <Automations />
     </ChatbotFrame>
   ),

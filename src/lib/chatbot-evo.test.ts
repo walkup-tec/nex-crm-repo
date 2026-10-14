@@ -288,7 +288,9 @@ const listedClients: ChatbotClientRow[] = [
   { id: "1", name: "Marcelo Mozart", phone: "51999666841", negotiatedCents: 140000, tags: ["Alto Potencial"], attendant: "Walkup", stage: "Proposta", products: ["Site", "Tráfego"] },
   { id: "2", name: "Ana", phone: "51988887777", negotiatedCents: null, tags: ["Novo"], attendant: "Nex", stage: "Sucesso", products: ["Site"] },
 ];
-assert.deepEqual(filterChatbotClients(listedClients, { search: "", name: "", phone: "", tag: "Alto Potencial", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
-assert.deepEqual(filterChatbotClients(listedClients, { search: "", name: "", phone: "", tag: "", attendant: "", stage: "", product: "Site" }).map((client) => client.id), ["1", "2"]);
-assert.deepEqual(filterChatbotClients(listedClients, { search: "ana", name: "", phone: "", tag: "", attendant: "", stage: "Sucesso", product: "" }).map((client) => client.id), ["2"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "", name: "", tag: "Alto Potencial", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "", name: "", tag: "", attendant: "", stage: "", product: "Site" }).map((client) => client.id), ["1", "2"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "ana", name: "", tag: "", attendant: "", stage: "Sucesso", product: "" }).map((client) => client.id), ["2"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "99966", name: "", tag: "", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "mozart", name: "", tag: "", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
 assert.equal(clientFilterOptions(listedClients).product.join(","), "Site,Tráfego");

@@ -5,11 +5,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   chatbotMessageMediaFn,
   chatbotSnapshotFn,
+  chatbotTransferTargetsFn,
   finishChatbotConversationFn,
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
   sendChatbotMessageFn,
   setChatbotConversationPinFn,
+  transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, headerAttendant, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
@@ -242,6 +244,11 @@ export function LiveInbox() {
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
+  const [targetId, setTargetId] = useState("");
+  const [note, setNote] = useState("");
+  const [transferring, setTransferring] = useState(false);
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const [savedMedia, setSavedMedia] = useState(0);
   const selectedRef = useRef("");
@@ -315,6 +322,7 @@ export function LiveInbox() {
 
   useEffect(() => {
     stickToBottom.current = true;
+    setTransferOpen(false);
   }, [selected]);
 
   const conversation = data?.conversations.find((item) => item.id === selected);
@@ -369,6 +377,54 @@ export function LiveInbox() {
       setMessage(result.message);
       return;
     }
+    await load();
+  }
+
+  async function openTransfer(id: string) {
+    setTransferOpen(true);
+    setNote("");
+    setTargets([]);
+    setTargetId("");
+    const result = await chatbotTransferTargetsFn({ data: { conversationId: id } });
+    if (selectedRef.current !== id) return;
+    if (!result.ok) {
+      setTransferOpen(false);
+      setMessage(result.message);
+      return;
+    }
+    setTargets(result.data);
+    setTargetId(result.data[0]?.id ?? "");
+  }
+
+  async function transfer(id: string) {
+    const clean = note.trim();
+    if (!targetId || transferring) return;
+    if (clean.length > 500) {
+      setMessage("A nota interna pode ter no máximo 500 caracteres.");
+      return;
+    }
+    setTransferring(true);
+    const result = await transferChatbotConversationFn({ data: { conversationId: id, attendantId: targetId, note: clean } });
+    setTransferring(false);
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    const attendant = targets.find((item) => item.id === targetId)?.name ?? "";
+    setTransferOpen(false);
+    setNote("");
+    setTargets([]);
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            conversations: current.conversations.map((item) =>
+              item.id === id ? { ...item, status: "active", assigneeName: attendant, mine: false, open: false, botPaused: true } : item,
+            ),
+          }
+        : current,
+    );
+    setMessage("");
     await load();
   }
 
@@ -513,9 +569,16 @@ export function LiveInbox() {
               </span>
             )}
             {conversation ? (
-              <Button type="button" size="sm" disabled={finishing || !conversation.assigneeName.trim()} onClick={() => void finish(conversation.id)}>
-                {finishing ? "Finalizando" : "Finalizar"}
-              </Button>
+              <div className="chat-actions">
+                {conversation.mine ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => void openTransfer(conversation.id)}>
+                    Transferir
+                  </Button>
+                ) : null}
+                <Button type="button" size="sm" disabled={finishing || !conversation.assigneeName.trim()} onClick={() => void finish(conversation.id)}>
+                  {finishing ? "Finalizando" : "Finalizar"}
+                </Button>
+              </div>
             ) : null}
           </div>
           {conversation ? (
@@ -585,6 +648,53 @@ export function LiveInbox() {
             </div>
           )}
         </section>
+        <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+          <DialogContent className="chatbot-app sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Transferir atendimento</DialogTitle>
+            </DialogHeader>
+            <form
+              className="transfer-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (conversation) void transfer(conversation.id);
+              }}
+            >
+              <label>
+                Atendente
+                <select className="transfer-agent" aria-label="Atendente" value={targetId} disabled={!targets.length || transferring} onChange={(event) => setTargetId(event.target.value)}>
+                  {targets.length ? null : <option value="">Nenhum atendente neste canal</option>}
+                  {targets.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nota interna
+                <textarea
+                  value={note}
+                  maxLength={500}
+                  rows={4}
+                  disabled={transferring}
+                  placeholder="Visível só para os atendentes"
+                  aria-label="Nota interna"
+                  onChange={(event) => setNote(event.target.value)}
+                />
+                <span className="note-count">{note.trim().length}/500</span>
+              </label>
+              <div className="modal-actions">
+                <Button type="button" variant="outline" onClick={() => setTransferOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={transferring || !targetId}>
+                  {transferring ? "Transferindo" : "Transferir"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
         <ContactRecord
           contactId={contact?.id ?? ""}
           tick={savedMedia}

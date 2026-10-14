@@ -293,7 +293,7 @@ export function ContactRecord({
           <section className="contact-section">
             <h3>Kanban</h3>
             {profile.stageReady ? (
-              <select aria-label="Etapa do kanban" value={profile.stage} disabled={savingLinks} onChange={(event) => void saveStage(event.target.value)}>
+              <select className="contact-stage" aria-label="Etapa do kanban" value={profile.stage} disabled={savingLinks} onChange={(event) => void saveStage(event.target.value)}>
                 <option value="">Sem etapa</option>
                 {(profile.stage && !profile.stages.includes(profile.stage) ? [...profile.stages, profile.stage] : profile.stages).map((item) => (
                   <option key={item} value={item}>

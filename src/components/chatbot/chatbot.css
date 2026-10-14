@@ -133,5 +133,16 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .chat-identity small{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}
 .chatbot-app .chat-identity strong{font-size:13px;font-weight:600;color:var(--foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
 .chatbot-app .contact-deal{width:100%;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--background);padding:0 10px;font-size:13px}
+.chatbot-app .contact-section:has(.contact-stage) h3{margin-bottom:8px}
+.chatbot-app select.contact-stage{height:32px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:12px;font-weight:500;line-height:32px;appearance:none}
+.chatbot-app select.contact-stage:focus{outline:none;border-color:#6F02FD}
+.chatbot-app select.contact-stage:disabled{opacity:.6}
 .chatbot-app .contact-register{margin-top:16px;width:100%}
+.chatbot-app .transfer-form{display:grid;gap:14px}
+.chatbot-app .transfer-form label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--foreground)}
+.chatbot-app .transfer-form select.transfer-agent{height:36px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:13px;font-weight:500;line-height:36px;appearance:none}
+.chatbot-app .transfer-form select.transfer-agent:focus,.chatbot-app .transfer-form textarea:focus{outline:none;border-color:#6F02FD}
+.chatbot-app .transfer-form select.transfer-agent:disabled{opacity:.6}
+.chatbot-app .transfer-form textarea{min-height:96px;padding:10px 12px;font-size:13px;line-height:1.45;resize:vertical}
+.chatbot-app .transfer-form .note-count{margin:0}
 

@@ -3,11 +3,88 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   chatbotContactProfileFn,
+  renameChatbotContactFileFn,
   renameChatbotContactFn,
   setChatbotContactProductsFn,
   setChatbotContactTagsFn,
 } from "@/lib/chatbot.functions";
-import { contactFileLabel, messageClock, tagInk, whatsappMask, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+import { messageClock, savedMediaTitle, tagInk, whatsappMask, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+
+function SavedMediaName({
+  file,
+  onRenamed,
+}: {
+  file: ChatbotContactProfile["files"][number];
+  onRenamed: (fileId: string, name: string) => void;
+}) {
+  const title = savedMediaTitle(file.mime, file.name);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    const name = draft.trim().replace(/\s+/g, " ");
+    if (saving) return;
+    if (name.length < 2) {
+      setError("Informe o nome da mídia.");
+      return;
+    }
+    setSaving(true);
+    const result = await renameChatbotContactFileFn({ data: { fileId: file.id, name } });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setEditing(false);
+    onRenamed(file.id, result.data.name);
+  }
+
+  if (editing) {
+    return (
+      <>
+        <div className="contact-name-edit">
+          <input
+            value={draft}
+            autoFocus
+            aria-label="Nome da mídia"
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void save();
+              }
+              if (event.key === "Escape") {
+                setDraft(title);
+                setEditing(false);
+                setError("");
+              }
+            }}
+          />
+          <button type="button" className="contact-check" aria-label="Salvar nome da mídia" disabled={saving} onClick={() => void save()}>
+            <Check />
+          </button>
+        </div>
+        {error ? <span className="contact-file-error">{error}</span> : null}
+      </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="contact-name"
+      onClick={() => {
+        setDraft(title);
+        setEditing(true);
+      }}
+    >
+      {title}
+    </button>
+  );
+}
 
 export function ContactRecord({
   contactId,
@@ -194,7 +271,16 @@ export function ContactRecord({
               <ul className="contact-files">
                 {profile.files.map((file) => (
                   <li key={file.id}>
-                    <strong>{contactFileLabel(file.mime, file.name)}</strong>
+                    <SavedMediaName
+                      file={file}
+                      onRenamed={(fileId, name) =>
+                        setProfile((current) =>
+                          current
+                            ? { ...current, files: current.files.map((item) => (item.id === fileId ? { ...item, name } : item)) }
+                            : current,
+                        )
+                      }
+                    />
                     <time dateTime={file.createdAt}>{messageClock(file.createdAt)}</time>
                     {file.url ? (
                       <a href={file.url} target="_blank" rel="noreferrer">

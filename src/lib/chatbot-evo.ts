@@ -520,6 +520,14 @@ export function contactFileLabel(mime: string, name: string) {
   return "Arquivo";
 }
 
+const generatedMediaName = /^(imagem|audio|video)\.[a-z0-9]+$/i;
+
+export function savedMediaTitle(mime: string, name: string) {
+  const clean = name.trim();
+  if (clean && !generatedMediaName.test(clean)) return clean;
+  return contactFileLabel(mime, clean);
+}
+
 export type ChatbotContactProfile = {
   id: string;
   name: string;

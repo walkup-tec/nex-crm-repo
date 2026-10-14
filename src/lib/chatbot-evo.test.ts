@@ -40,6 +40,7 @@ import {
   tagInk,
   keepWhatsappName,
   contactFileLabel,
+  savedMediaTitle,
   kanbanStageName,
   moveKanbanStage,
 } from "./chatbot-evo";
@@ -232,6 +233,9 @@ assert.equal(keepWhatsappName("Cliente VIP", true, "Marcelo Mozart", "5551999666
 assert.equal(keepWhatsappName("Marcelo Mozart", false, "5551999666841", "5551999666841"), "Marcelo Mozart");
 assert.equal(contactFileLabel("audio/ogg", "audio.ogg"), "Áudio");
 assert.equal(contactFileLabel("image/jpeg", "imagem.jpg"), "Imagem");
+assert.equal(savedMediaTitle("image/jpeg", "imagem.jpg"), "Imagem");
+assert.equal(savedMediaTitle("audio/ogg", "audio.ogg"), "Áudio");
+assert.equal(savedMediaTitle("image/jpeg", "Fachada"), "Fachada");
 assert.equal(kanbanStageName("  Proposta  "), "Proposta");
 assert.equal(kanbanStageName("a"), "");
 assert.deepEqual(moveKanbanStage(["Novos leads", "Proposta", "Ganho"], 2, -1), ["Novos leads", "Ganho", "Proposta"]);

@@ -19,7 +19,7 @@ function GoogleAdsMark({ className }: { className?: string }) {
 
 const options = [
   { id: "meta", label: "Meta Ads", icon: MetaMark, iconClass: "h-7 w-auto aspect-[177/99]" },
-  { id: "google", label: "Google Ads", icon: GoogleAdsMark, iconClass: "size-10" },
+  { id: "google", label: "Google Ads", icon: GoogleAdsMark, iconClass: "size-7" },
 ] as const;
 
 export function AdsPlatformSwitch({

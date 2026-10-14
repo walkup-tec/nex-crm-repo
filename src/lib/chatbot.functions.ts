@@ -221,6 +221,14 @@ export const renameChatbotContactFn = createServerFn({ method: "POST" })
     return guard(() => renameChatbotContact(context.userId, data.contactId, data.name));
   });
 
+export const renameChatbotContactFileFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { fileId: string; name: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { renameChatbotContactFile } = await import("@/server/chatbot.server");
+    return guard(() => renameChatbotContactFile(context.userId, data.fileId, data.name));
+  });
+
 export const setChatbotContactTagsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; tagIds: string[] }) => ({

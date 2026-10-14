@@ -1484,6 +1484,21 @@ export async function renameChatbotContact(userId: string, contactId: string, na
   return { name: clean };
 }
 
+export async function renameChatbotContactFile(userId: string, fileId: string, name: string) {
+  const clean = catalogName(name, 80);
+  if (!clean) fail("Informe o nome da mídia.");
+  const { organizationId } = await membership(userId);
+  const updated = await table("chatbot_contact_files")
+    .update({ name: clean })
+    .eq("id", fileId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Essa mídia não pertence à sua empresa.");
+  return { name: clean };
+}
+
 export async function setChatbotContactTags(userId: string, contactId: string, tagIds: string[]) {
   const { organizationId } = await membership(userId);
   await ownedContact(organizationId, contactId);

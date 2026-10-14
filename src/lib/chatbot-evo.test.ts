@@ -7,7 +7,7 @@ import {
   learnLidPhones,
   resolveIncomingPhone,
   composerSendsOnEnter,
-  acceptLatestSnapshot,
+  acceptSnapshot,
   stickToLatestMessage,
   evolutionIncomingMessages,
   evolutionMessageText,
@@ -111,8 +111,26 @@ assert.equal(composerSendsOnEnter({ key: "Enter", code: "NumpadEnter", shiftKey:
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: true, pending: false, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: true, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: false, text: "   " }), false);
-assert.equal(acceptLatestSnapshot(2, 2), true);
-assert.equal(acceptLatestSnapshot(1, 2), false);
+assert.equal(acceptSnapshot(1, 0), true);
+assert.equal(acceptSnapshot(2, 1), true);
+assert.equal(acceptSnapshot(1, 2), false);
+let lastApplied = 0;
+let started = 0;
+function startSnapshot() {
+  started += 1;
+  return started;
+}
+function finishSnapshot(requestId: number) {
+  const keep = acceptSnapshot(requestId, lastApplied);
+  if (keep) lastApplied = requestId;
+  return keep;
+}
+const firstLoad = startSnapshot();
+const overlappedLoad = startSnapshot();
+assert.equal(started, 2);
+assert.equal(finishSnapshot(firstLoad), true);
+assert.equal(finishSnapshot(overlappedLoad), true);
+assert.equal(finishSnapshot(firstLoad), false);
 assert.equal(stickToLatestMessage(0), true);
 assert.equal(stickToLatestMessage(120), false);
 assert.equal(evolutionIncomingMessages({ message: { key: { id: "2", remoteJid: "5511999999999@s.whatsapp.net" }, message: { conversation: "segunda" } } }).length, 1);

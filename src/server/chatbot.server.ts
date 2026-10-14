@@ -816,7 +816,7 @@ async function refreshStaleAvatars(
 async function listMessages(instanceName: string) {
   return evo(`/chat/findMessages/${encodeURIComponent(instanceName)}`, "POST", {
     page: 1,
-    offset: 100,
+    offset: 40,
   }).catch(() => null);
 }
 

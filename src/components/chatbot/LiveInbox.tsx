@@ -13,7 +13,7 @@ import {
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
-import { acceptLatestSnapshot, attendanceLabel, composerSendsOnEnter, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, composerSendsOnEnter, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" };
@@ -156,31 +156,57 @@ export function LiveInbox() {
   const [targetId, setTargetId] = useState("");
   const selectedRef = useRef("");
   const snapshotRequest = useRef(0);
+  const appliedSnapshot = useRef(0);
+  const inFlight = useRef(false);
+  const loadAgain = useRef(false);
   const historyRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const sending = useRef(false);
   selectedRef.current = selected;
 
   async function load() {
-    const requestId = snapshotRequest.current + 1;
-    snapshotRequest.current = requestId;
-    const result = await chatbotSnapshotFn();
-    if (!acceptLatestSnapshot(requestId, snapshotRequest.current)) return;
-    if (!result.ok) {
-      setMessage(result.message);
+    if (inFlight.current) {
+      loadAgain.current = true;
       return;
     }
-    const openId = selectedRef.current;
-    let conversations = result.data.conversations;
-    if (openId && conversations.some((item) => item.id === openId)) {
-      const marked = await markChatbotConversationReadFn({ data: { conversationId: openId } });
-      if (!acceptLatestSnapshot(requestId, snapshotRequest.current)) return;
-      if (marked.ok) conversations = conversations.map((item) => (item.id === openId ? { ...item, unreadCount: 0 } : item));
+    inFlight.current = true;
+    try {
+      do {
+        loadAgain.current = false;
+        const requestId = snapshotRequest.current + 1;
+        snapshotRequest.current = requestId;
+        let result: Awaited<ReturnType<typeof chatbotSnapshotFn>>;
+        try {
+          result = await chatbotSnapshotFn();
+        } catch (error) {
+          if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
+          appliedSnapshot.current = requestId;
+          setMessage(error instanceof Error ? error.message : "Não foi possível carregar as conversas.");
+          continue;
+        }
+        if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
+        if (!result.ok) {
+          appliedSnapshot.current = requestId;
+          setMessage(result.message);
+          continue;
+        }
+        const openId = selectedRef.current;
+        let conversations = result.data.conversations;
+        if (openId && conversations.some((item) => item.id === openId)) {
+          const marked = await markChatbotConversationReadFn({ data: { conversationId: openId } });
+          if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
+          if (marked.ok) conversations = conversations.map((item) => (item.id === openId ? { ...item, unreadCount: 0 } : item));
+        }
+        if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
+        appliedSnapshot.current = requestId;
+        const next = { ...result.data, conversations };
+        setData(next);
+        setMessage((current) => (sending.current ? current : ""));
+        setSelected((current) => (next.conversations.some((item) => item.id === current) ? current : ""));
+      } while (loadAgain.current);
+    } finally {
+      inFlight.current = false;
     }
-    const next = { ...result.data, conversations };
-    setData(next);
-    setMessage((current) => (sending.current ? current : ""));
-    setSelected((current) => (next.conversations.some((item) => item.id === current) ? current : ""));
   }
 
   useEffect(() => {

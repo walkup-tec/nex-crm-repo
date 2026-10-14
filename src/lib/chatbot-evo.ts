@@ -66,8 +66,8 @@ export function composerSendsOnEnter(input: { key: string; code: string; shiftKe
   return enter && !input.shiftKey && !input.pending && input.text.trim().length > 0;
 }
 
-export function acceptLatestSnapshot(requestId: number, latestRequestId: number) {
-  return requestId === latestRequestId && requestId > 0;
+export function acceptSnapshot(requestId: number, lastAppliedId: number) {
+  return requestId > lastAppliedId;
 }
 
 export function stickToLatestMessage(distanceFromBottom: number) {

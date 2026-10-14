@@ -297,7 +297,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       direction: cell(row, "direction") as "in" | "out",
       status: cell(row, "status") as "pending" | "sent" | "failed",
       createdAt: cell(row, "created_at"),
-      mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : "" as const,
+      mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : cell(row, "media_kind") === "audio" ? "audio" as const : "" as const,
       mediaMime: cell(row, "media_mime"),
       saved: savedMedia.has(cell(row, "id")),
     })),
@@ -931,7 +931,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     }
   } else if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
     const retry = await table("chatbot_messages")
-      .insert({ ...messageRow, text: text || (content.mediaKind === "video" ? "[vídeo]" : "[imagem]") })
+      .insert({ ...messageRow, text: text || (content.mediaKind === "video" ? "[vídeo]" : content.mediaKind === "audio" ? "[áudio]" : "[imagem]") })
       .select("id")
       .maybeSingle();
     if (retry.error && !duplicate(retry.error)) return;
@@ -988,7 +988,7 @@ async function savedMessageIds(organizationId: string) {
   return new Set((result.data ?? []).map((row) => cell(row, "message_id")).filter(Boolean));
 }
 
-const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" }>();
+const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" | "audio" }>();
 
 async function ownedChatMessage(userId: string, messageId: string) {
   const { organizationId, admin } = await membership(userId);
@@ -1012,19 +1012,19 @@ async function ownedChatMessage(userId: string, messageId: string) {
   return { organizationId, message: message.data, conversation: conversation.data, connection };
 }
 
-async function fetchEvolutionMedia(instanceName: string, externalId: string, video: boolean) {
+async function fetchEvolutionMedia(instanceName: string, externalId: string, kind: "image" | "video" | "audio") {
   if (!instanceName || !externalId) return null;
-  const cacheKey = `${instanceName}:${externalId}:${video ? "video" : "file"}`;
+  const cacheKey = `${instanceName}:${externalId}:${kind}`;
   const cached = mediaFileCache.get(cacheKey);
   if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached;
   const payload = await evo(
     `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
     "POST",
-    { message: { key: { id: externalId } }, convertToMp4: video },
+    { message: { key: { id: externalId } }, convertToMp4: kind === "video" },
     60000,
   );
-  let file = evolutionMediaFile(payload, video ? "video" : "");
-  if (!video && file.kind === "video" && file.mime !== "video/mp4" && file.mime !== "video/webm") {
+  let file = evolutionMediaFile(payload, kind === "image" ? "" : kind);
+  if (kind === "video" && file.kind === "video" && file.mime !== "video/mp4" && file.mime !== "video/webm") {
     const converted = await evo(
       `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
       "POST",
@@ -1041,17 +1041,24 @@ async function fetchEvolutionMedia(instanceName: string, externalId: string, vid
 }
 
 function mediaPlaceholder(text: string) {
-  return text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]";
+  return text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]" || text === "[áudio]";
+}
+
+function storedMediaKind(value: string, text: string): "image" | "video" | "audio" | "" {
+  if (value === "video" || text === "[vídeo]") return "video";
+  if (value === "audio" || text === "[áudio]") return "audio";
+  if (value === "image" || text === "[imagem]" || text === "[mensagem]") return "image";
+  return "";
 }
 
 export async function chatbotMessageMedia(userId: string, messageId: string) {
   const owned = await ownedChatMessage(userId, messageId);
   const text = cell(owned.message, "text");
-  const hinted = cell(owned.message, "media_kind") === "video" ? "video" : cell(owned.message, "media_kind") === "image" ? "image" : "";
+  const hinted = storedMediaKind(cell(owned.message, "media_kind"), text);
   if (!hinted && !mediaPlaceholder(text)) fail("Essa mensagem não tem mídia.");
-  let file: { mime: string; base64: string; kind: "image" | "video" } | null = null;
+  let file: { mime: string; base64: string; kind: "image" | "video" | "audio" } | null = null;
   try {
-    file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), hinted === "video" || text === "[vídeo]");
+    file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), hinted || "image");
   } catch {
     file = null;
   }
@@ -1082,12 +1089,24 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
   if (existing.error) fail(schemaMessage(existing.error.message));
   if (existing.data) return { saved: true as const };
   const text = cell(owned.message, "text");
-  const video = cell(owned.message, "media_kind") === "video" || text === "[vídeo]";
-  const file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), video);
+  const kind = storedMediaKind(cell(owned.message, "media_kind"), text);
+  const file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), kind || "image");
   if (!file) fail("Não foi possível salvar essa mídia.");
   await ensureMediaBucket();
   const id = crypto.randomUUID();
-  const extension = file.mime.includes("png") ? "png" : file.mime.includes("webp") ? "webp" : file.mime.includes("gif") ? "gif" : file.kind === "video" ? "mp4" : "jpg";
+  const extension = file.mime.includes("png")
+    ? "png"
+    : file.mime.includes("webp")
+      ? "webp"
+      : file.mime.includes("gif")
+        ? "gif"
+        : file.kind === "video"
+          ? "mp4"
+          : file.kind === "audio"
+            ? file.mime.includes("mpeg")
+              ? "mp3"
+              : "ogg"
+            : "jpg";
   const storagePath = `${owned.organizationId}/${contactId}/${id}.${extension}`;
   const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(storagePath, Buffer.from(file.base64, "base64"), {
     contentType: file.mime,
@@ -1100,7 +1119,7 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
       organization_id: owned.organizationId,
       contact_id: contactId,
       message_id: messageId,
-      name: file.kind === "video" ? `video.${extension}` : `imagem.${extension}`,
+      name: file.kind === "video" ? `video.${extension}` : file.kind === "audio" ? `audio.${extension}` : `imagem.${extension}`,
       mime_type: file.mime,
       storage_path: storagePath,
     })

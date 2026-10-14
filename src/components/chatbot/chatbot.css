@@ -55,6 +55,7 @@
 .chatbot-app .message-bubble.media{align-self:flex-start;max-width:min(360px,86%);background:var(--card);color:var(--foreground);border:1px solid var(--border);padding:8px}
 .chatbot-app .message-bubble.media.out{align-self:flex-end}
 .chatbot-app .message-bubble.media img,.chatbot-app .message-bubble.media video{width:100%;max-height:280px;object-fit:contain;border-radius:6px;background:#000;display:block}
+.chatbot-app .message-bubble.media audio{width:100%;display:block}
 img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;border-radius:6px;background:#000;display:block}
 .chatbot-app .message-bubble.media p{margin:8px 0 0;font-size:12px}
 .chatbot-app .media-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}

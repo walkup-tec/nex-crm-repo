@@ -37,7 +37,7 @@ export type ChatbotSnapshot = {
     direction: "in" | "out";
     status: "pending" | "sent" | "failed";
     createdAt: string;
-    mediaKind: "" | "image" | "video";
+    mediaKind: "" | "image" | "video" | "audio";
     mediaMime: string;
     saved: boolean;
   }[];
@@ -341,9 +341,10 @@ function unwrapEvolutionMessage(message: Record<string, unknown>) {
   return current;
 }
 
-function mediaKindFromName(value: unknown): "" | "image" | "video" {
+function mediaKindFromName(value: unknown): "" | "image" | "video" | "audio" {
   if (value === "imageMessage") return "image";
   if (value === "videoMessage" || value === "ptvMessage") return "video";
+  if (value === "audioMessage" || value === "pttMessage") return "audio";
   return "";
 }
 
@@ -352,18 +353,30 @@ function mediaMime(value: unknown) {
   return value.split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
-export function evolutionMessageContent(data: unknown): { text: string; mediaKind: "" | "image" | "video"; mediaMime: string } {
+export function evolutionMessageContent(data: unknown): { text: string; mediaKind: "" | "image" | "video" | "audio"; mediaMime: string } {
   const root = isRecord(data) ? data : {};
   const source = isRecord(root["message"]) ? root["message"] : root;
   const message = unwrapEvolutionMessage(source);
-  const nested = isRecord(message["imageMessage"]) ? message["imageMessage"] : isRecord(message["videoMessage"]) ? message["videoMessage"] : isRecord(message["ptvMessage"]) ? message["ptvMessage"] : message;
-  const mediaKind = mediaKindFromName(root["messageType"]) || mediaKindFromName(message["messageType"]) || (message["imageMessage"] ? "image" : message["videoMessage"] || message["ptvMessage"] ? "video" : "") || (mediaMime(nested["mimetype"]).startsWith("image/") ? "image" : mediaMime(nested["mimetype"]).startsWith("video/") ? "video" : "");
+  const nested = isRecord(message["imageMessage"])
+    ? message["imageMessage"]
+    : isRecord(message["videoMessage"])
+      ? message["videoMessage"]
+      : isRecord(message["ptvMessage"])
+        ? message["ptvMessage"]
+        : isRecord(message["audioMessage"])
+          ? message["audioMessage"]
+          : message;
+  const mediaKind =
+    mediaKindFromName(root["messageType"]) ||
+    mediaKindFromName(message["messageType"]) ||
+    (message["imageMessage"] ? "image" : message["videoMessage"] || message["ptvMessage"] ? "video" : message["audioMessage"] ? "audio" : "") ||
+    (mediaMime(nested["mimetype"]).startsWith("image/") ? "image" : mediaMime(nested["mimetype"]).startsWith("video/") ? "video" : mediaMime(nested["mimetype"]).startsWith("audio/") ? "audio" : "");
   if (!mediaKind) return { text: evolutionMessageText(message), mediaKind: "", mediaMime: "" };
   const caption = typeof nested["caption"] === "string" ? nested["caption"].trim() : "";
-  return { text: caption, mediaKind, mediaMime: mediaMime(nested["mimetype"]) };
+  return { text: caption || (mediaKind === "audio" ? "[áudio]" : ""), mediaKind, mediaMime: mediaMime(nested["mimetype"]) };
 }
 
-export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video" = ""): { mime: string; base64: string; kind: "" | "image" | "video" } {
+export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video" | "audio" = ""): { mime: string; base64: string; kind: "" | "image" | "video" | "audio" } {
   const root = isRecord(payload) ? payload : {};
   const record = typeof root["base64"] === "string" ? root : isRecord(root["data"]) && typeof root["data"]["base64"] === "string" ? root["data"] : root;
   let base64 = typeof record["base64"] === "string" ? record["base64"].replace(/\s/g, "") : "";
@@ -376,11 +389,13 @@ export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video
   const named = typeof record["mediaType"] === "string" ? record["mediaType"] : "";
   const kind = mime.startsWith("video/") || named === "video" || named === "videoMessage"
     ? "video"
-    : mime.startsWith("image/") || named === "image" || named === "imageMessage"
-      ? "image"
-      : hint;
+    : mime.startsWith("audio/") || named === "audio" || named === "audioMessage"
+      ? "audio"
+      : mime.startsWith("image/") || named === "image" || named === "imageMessage"
+        ? "image"
+        : hint;
   if (!base64 || !kind || base64.length > 40_000_000) return { mime: "", base64: "", kind: "" };
-  return { mime: mime || (kind === "video" ? "video/mp4" : "image/jpeg"), base64, kind };
+  return { mime: mime || (kind === "video" ? "video/mp4" : kind === "audio" ? "audio/ogg" : "image/jpeg"), base64, kind };
 }
 
 export function evolutionMessageText(message: unknown): string {

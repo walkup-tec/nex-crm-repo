@@ -17,7 +17,7 @@ import { acceptSnapshot, attendanceLabel, composerSendsOnEnter, pendingOutgoing,
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
-type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" };
+type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" | "audio" };
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
 
 function mediaCaption(text: string) {
@@ -26,7 +26,7 @@ function mediaCaption(text: string) {
 }
 
 function expectsMedia(item: InboxMessage) {
-  return item.mediaKind === "image" || item.mediaKind === "video" || item.text === "[mensagem]" || item.text === "[imagem]" || item.text === "[vídeo]";
+  return item.mediaKind === "image" || item.mediaKind === "video" || item.mediaKind === "audio" || item.text === "[mensagem]" || item.text === "[imagem]" || item.text === "[vídeo]" || item.text === "[áudio]";
 }
 
 function downloadMedia(file: LoadedMedia) {
@@ -34,7 +34,7 @@ function downloadMedia(file: LoadedMedia) {
   const url = URL.createObjectURL(new Blob([bytes], { type: file.mime }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = file.kind === "video" ? "video.mp4" : "imagem.jpg";
+  link.download = file.kind === "video" ? "video.mp4" : file.kind === "audio" ? "audio.ogg" : "imagem.jpg";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -92,7 +92,7 @@ function ChatMedia({ item }: { item: InboxMessage }) {
   const caption = mediaCaption(item.text);
   return (
     <div className={`message-bubble media ${item.direction}`}>
-      {file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
+      {file.kind === "audio" ? <audio src={file.url} controls /> : file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
       {caption ? <p>{caption}</p> : null}
       <div className="media-actions">
         <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
@@ -126,9 +126,9 @@ function ChatMedia({ item }: { item: InboxMessage }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{file.kind === "video" ? "Vídeo" : "Imagem"}</DialogTitle>
+            <DialogTitle>{file.kind === "audio" ? "Áudio" : file.kind === "video" ? "Vídeo" : "Imagem"}</DialogTitle>
           </DialogHeader>
-          {file.kind === "video" ? <video className="media-frame" src={file.url} controls autoPlay /> : <img className="media-frame" src={file.url} alt="" />}
+          {file.kind === "audio" ? <audio className="media-frame" src={file.url} controls autoPlay /> : file.kind === "video" ? <video className="media-frame" src={file.url} controls autoPlay /> : <img className="media-frame" src={file.url} alt="" />}
         </DialogContent>
       </Dialog>
     </div>

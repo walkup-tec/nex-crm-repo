@@ -6,6 +6,7 @@ import {
   noClientPermissions,
   type ClientHome,
 } from "./client-permissions";
+import { allChatbotMenus, chatbotMenusFromStorage, explicitChatbotMenus } from "./chatbot-menus";
 import type { UserPermissions } from "./user-access";
 
 const chatbotOnly: UserPermissions = { ...noClientPermissions, chatbot: true };
@@ -42,3 +43,19 @@ for (const permissions of homes) {
 }
 assert.equal(firstAllowedClientPath(chatbotOnly), "/chatbot");
 assert.equal(firstAllowedClientPath(noClientPermissions), "/minha-conta");
+
+const inboxOnly = allChatbotMenus(false);
+inboxOnly.inbox = true;
+assert.equal(clientUserCanSee("/chatbot", chatbotOnly, inboxOnly), true);
+assert.equal(clientUserCanSee("/chatbot/fila", chatbotOnly, inboxOnly), false);
+assert.equal(clientUserCanSee("/chatbot/configuracoes", chatbotOnly, inboxOnly), false);
+assert.equal(clientUserCanSee("/chatbot/equipes", chatbotOnly, inboxOnly), false);
+assert.equal(firstAllowedClientPath(chatbotOnly, inboxOnly), "/chatbot");
+const queueOnly = allChatbotMenus(false);
+queueOnly.queue = true;
+assert.equal(firstAllowedClientPath(chatbotOnly, queueOnly), "/chatbot/fila");
+assert.equal(firstAllowedClientPath(chatbotOnly, allChatbotMenus(false)), "/minha-conta");
+assert.equal(chatbotMenusFromStorage(null).inbox, true);
+assert.equal(chatbotMenusFromStorage({ inbox: true }).overview, false);
+assert.equal(explicitChatbotMenus({ inbox: false }), null);
+assert.equal(explicitChatbotMenus({ kanban: true })?.kanban, true);

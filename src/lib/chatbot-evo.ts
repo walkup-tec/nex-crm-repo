@@ -623,7 +623,54 @@ export type ChatbotClientRow = {
   phone: string;
   negotiatedCents: number | null;
   tags: string[];
+  attendant: string;
+  stage: string;
+  products: string[];
 };
+
+export type ClientListFilters = {
+  search: string;
+  name: string;
+  phone: string;
+  tag: string;
+  attendant: string;
+  stage: string;
+  product: string;
+};
+
+export function clientPhoneLabel(phone: string) {
+  return whatsappMask(phone) || phone;
+}
+
+function uniqueLabels(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right, "pt-BR"));
+}
+
+export function clientFilterOptions(clients: ChatbotClientRow[]) {
+  return {
+    name: uniqueLabels(clients.map((client) => client.name)),
+    phone: uniqueLabels(clients.map((client) => clientPhoneLabel(client.phone))),
+    tag: uniqueLabels(clients.flatMap((client) => client.tags)),
+    attendant: uniqueLabels(clients.map((client) => client.attendant)),
+    stage: uniqueLabels(clients.map((client) => client.stage)),
+    product: uniqueLabels(clients.flatMap((client) => client.products)),
+  };
+}
+
+export function filterChatbotClients(clients: ChatbotClientRow[], filters: ClientListFilters) {
+  const term = filters.search.trim().toLowerCase();
+  const digits = term.replace(/\D/g, "");
+  return clients.filter((client) => {
+    if (filters.name && client.name !== filters.name) return false;
+    if (filters.phone && clientPhoneLabel(client.phone) !== filters.phone) return false;
+    if (filters.tag && !client.tags.includes(filters.tag)) return false;
+    if (filters.attendant && client.attendant !== filters.attendant) return false;
+    if (filters.stage && client.stage !== filters.stage) return false;
+    if (filters.product && !client.products.includes(filters.product)) return false;
+    if (!term) return true;
+    return client.name.toLowerCase().includes(term) || (digits.length > 0 && client.phone.includes(digits));
+  });
+}
 
 export type ChatbotTag = { id: string; name: string; color: string };
 export type ChatbotCatalogItem = { id: string; name: string };

@@ -1,6 +1,8 @@
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { Json } from "@/integrations/supabase/types";
+import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -73,6 +75,9 @@ function fail(message: string): never {
 }
 
 function schemaMessage(message: string) {
+  if (/chatbot_menus/i.test(message)) {
+    return "Falta aplicar os menus do chatbot no Supabase.";
+  }
   if (/chatbot_conversation_pins|chatbot_conversation_reads/i.test(message)) {
     return "A migração da caixa de entrada ainda não foi aplicada no Supabase.";
   }
@@ -103,7 +108,9 @@ function schemaMessage(message: string) {
   return "Não foi possível gravar o atendimento.";
 }
 
-async function membership(userId: string) {
+const stageMenus = ["inbox", "kanban", "settings", "overview", "reports"] as const satisfies readonly ChatbotMenuKey[];
+
+async function membership(userId: string, menu?: ChatbotMenuKey | readonly ChatbotMenuKey[]) {
   const [{ data: profile, error: profileError }, { data: roles, error: roleError }] =
     await Promise.all([
       supabaseAdmin
@@ -118,16 +125,46 @@ async function membership(userId: string) {
   if (!profile || profile.is_blocked) fail("Este acesso está bloqueado.");
   if (!profile.organization_id) fail("Sua conta ainda não está ligada a uma empresa.");
   const admin = (roles ?? []).some((role) => role.role === "master" || role.role === "client_admin");
+  let menus = chatbotMenusFromStorage(null);
   if (!admin) {
-    const { data: perms, error: permError } = await supabaseAdmin
-      .from("user_permissions")
-      .select("can_use_chatbot")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (permError) fail(schemaMessage(permError.message));
-    if (perms?.can_use_chatbot !== true) fail("Você não tem permissão para usar o chatbot.");
+    const full = await supabaseAdmin.from("user_permissions").select("can_use_chatbot, chatbot_menus").eq("user_id", userId).maybeSingle();
+    const perms = full.error && /chatbot_menus/i.test(full.error.message)
+      ? await supabaseAdmin.from("user_permissions").select("can_use_chatbot").eq("user_id", userId).maybeSingle()
+      : full;
+    if (perms.error) fail(schemaMessage(perms.error.message));
+    if (perms.data?.can_use_chatbot !== true) fail("Você não tem permissão para usar o chatbot.");
+    const stored = perms.data && "chatbot_menus" in perms.data ? perms.data.chatbot_menus : null;
+    menus = chatbotMenusFromStorage(stored);
+    if (menu && !chatbotMenuAllowed(menus, menu)) fail("Você não tem permissão para esta área do chatbot.");
   }
-  return { organizationId: profile.organization_id, admin };
+  return { organizationId: profile.organization_id, admin, menus };
+}
+
+async function saveAttendantMenus(attendantId: string, menus: ChatbotMenuMap) {
+  const updated = await supabaseAdmin
+    .from("user_permissions")
+    .update({ chatbot_menus: menus as unknown as Json, can_use_chatbot: true })
+    .eq("user_id", attendantId)
+    .select("user_id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (updated.data) return;
+  const inserted = await supabaseAdmin.from("user_permissions").insert({
+    user_id: attendantId,
+    can_view_campaigns: false,
+    can_view_meta_balance: false,
+    can_add_meta_credit: false,
+    can_manage_users: false,
+    can_use_chatbot: true,
+    chatbot_menus: menus as unknown as Json,
+  });
+  if (inserted.error) fail(schemaMessage(inserted.error.message));
+}
+
+function attendantMenus(value: unknown) {
+  const menus = explicitChatbotMenus(value);
+  if (!menus) fail("Selecione ao menos um menu do chatbot.");
+  return menus;
 }
 
 async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: unknown, timeoutMs = 20000) {
@@ -238,7 +275,7 @@ function scheduleEvolutionImport(organizationId: string, connectionRows: Record<
 }
 
 export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, ["inbox", "connection"]);
   const connectionRows = await rows(
     table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }),
   );
@@ -353,7 +390,7 @@ export async function createChatbotConnection(userId: string, name: string, phon
   if (clean.length > 25) fail("O nome de atendimento pode ter no máximo 25 caracteres.");
   const number = attendancePhone(phone);
   if (!number) fail("Informe o número com DDD.");
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode conectar um WhatsApp.");
   const savedNumbers = await rows(table("chatbot_connections").select("phone").eq("organization_id", organizationId));
   if (savedNumbers.some((row) => sameWhatsappAccount(cell(row, "phone"), number)) || (await whatsappAlreadyRegistered(number))) {
@@ -386,7 +423,7 @@ export async function createChatbotConnection(userId: string, name: string, phon
 }
 
 export async function refreshChatbotConnection(userId: string, connectionId: string, withQr = false) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "connection");
   const current = await ownedConnection(organizationId, connectionId);
   const instanceName = cell(current, "instance_name");
   const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
@@ -413,7 +450,7 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
 }
 
 export async function deleteChatbotConnection(userId: string, connectionId: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
   const current = await ownedConnection(organizationId, connectionId);
   await removeEvolutionInstance(cell(current, "instance_name"));
@@ -524,7 +561,7 @@ async function rememberTeamChannel(organizationId: string, teamId: string, conne
 }
 
 export async function disconnectChatbotConnection(userId: string, connectionId: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode desconectar um WhatsApp.");
   const current = await ownedConnection(organizationId, connectionId);
   await evo(`/instance/logout/${encodeURIComponent(cell(current, "instance_name"))}`, "DELETE").catch(
@@ -542,7 +579,7 @@ export async function disconnectChatbotConnection(userId: string, connectionId: 
 export async function sendChatbotMessage(userId: string, conversationId: string, text: string) {
   const clean = text.trim();
   if (!clean) fail("Escreva a mensagem.");
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")
     .eq("id", conversationId)
@@ -598,7 +635,7 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
 }
 
 async function requireVisibleConversation(userId: string, conversationId: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")
     .eq("id", conversationId)
@@ -1088,7 +1125,7 @@ async function savedMessageIds(organizationId: string) {
 const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" | "audio" }>();
 
 async function ownedChatMessage(userId: string, messageId: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "inbox");
   const message = await table("chatbot_messages").select("*").eq("id", messageId).eq("organization_id", organizationId).maybeSingle();
   if (message.error) fail(schemaMessage(message.error.message));
   if (!message.data) fail("Essa mensagem não pertence à sua empresa.");
@@ -1290,8 +1327,7 @@ async function ownedTeams(organizationId: string, teamIds: string[]) {
 }
 
 export async function chatbotTeamSnapshot(userId: string) {
-  const { organizationId, admin } = await membership(userId);
-  if (!admin) fail("Somente o administrador da empresa pode ver as equipes.");
+  const { organizationId } = await membership(userId, "team");
   const [teams, members, channels, profiles, links] = await Promise.all([
     rows(table("chatbot_teams").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true })),
     rows(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
@@ -1306,6 +1342,12 @@ export async function chatbotTeamSnapshot(userId: string) {
     : { data: [], error: null };
   if (roles.error) fail(schemaMessage(roles.error.message));
   const attendants = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
+  const attendantIds = [...attendants];
+  const permissionRows = attendantIds.length
+    ? await supabaseAdmin.from("user_permissions").select("user_id, chatbot_menus").in("user_id", attendantIds)
+    : { data: [], error: null };
+  if (permissionRows.error && !/chatbot_menus/i.test(permissionRows.error.message)) fail(schemaMessage(permissionRows.error.message));
+  const menuByUser = new Map((permissionRows.error ? [] : permissionRows.data ?? []).map((row) => [row.user_id, row.chatbot_menus]));
   const channelName = new Map(channels.map((row) => [cell(row, "id"), { name: cell(row, "display_name"), phone: cell(row, "phone") }]));
   return {
     channels: channels.map((row) => ({ id: cell(row, "id"), name: cell(row, "display_name"), phone: cell(row, "phone") })),
@@ -1328,6 +1370,7 @@ export async function chatbotTeamSnapshot(userId: string) {
         name: row.full_name,
         email: row.email,
         teamIds: members.filter((member) => cell(member, "user_id") === row.id).map((member) => cell(member, "team_id")),
+        menus: chatbotMenusFromStorage(menuByUser.get(row.id) ?? null),
       })),
   };
 }
@@ -1336,7 +1379,7 @@ export async function createChatbotTeam(userId: string, name: string, connection
   const clean = name.trim();
   if (clean.length < 2) fail("Informe o nome da equipe.");
   if (clean.length > 40) fail("O nome da equipe pode ter no máximo 40 caracteres.");
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode criar uma equipe.");
   await ownedConnection(organizationId, connectionId);
   const inserted = await table("chatbot_teams")
@@ -1351,7 +1394,7 @@ export async function createChatbotTeam(userId: string, name: string, connection
 }
 
 export async function deleteChatbotTeam(userId: string, teamId: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode excluir uma equipe.");
   const current = await table("chatbot_teams").select("id").eq("id", teamId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) fail(schemaMessage(current.error.message));
@@ -1363,7 +1406,7 @@ export async function updateChatbotTeam(userId: string, teamId: string, name: st
   const clean = name.trim();
   if (clean.length < 2) fail("Informe o nome da equipe.");
   if (clean.length > 40) fail("O nome da equipe pode ter no máximo 40 caracteres.");
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode editar uma equipe.");
   await ownedConnection(organizationId, connectionId);
   const current = await table("chatbot_teams").select("id").eq("id", teamId).eq("organization_id", organizationId).maybeSingle();
@@ -1383,7 +1426,7 @@ export async function updateChatbotTeam(userId: string, teamId: string, name: st
 }
 
 export async function resendAttendantInvite(userId: string, email: string, name: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode reenviar o convite.");
   const address = email.trim().toLowerCase();
   const profile = await supabaseAdmin.from("profiles").select("id, email, full_name").eq("email", address).eq("organization_id", organizationId).maybeSingle();
@@ -1394,32 +1437,35 @@ export async function resendAttendantInvite(userId: string, email: string, name:
   await sendInviteEmail(profile.data.email, name.trim() || profile.data.full_name);
 }
 
-export async function inviteChatbotAttendant(userId: string, name: string, email: string, teamIds: string[]) {
+export async function inviteChatbotAttendant(userId: string, name: string, email: string, teamIds: string[], menusInput: unknown) {
+  const menus = attendantMenus(menusInput);
   const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode convidar um atendente.");
   await ownedTeams(organizationId, uniqueTeams);
   const attendant = await createOrganizationAttendant(userId, name, email);
   await setMemberTeams(organizationId, attendant.id, uniqueTeams, false);
+  await saveAttendantMenus(attendant.id, menus);
   return { created: attendant.created, emailSent: attendant.emailSent, mailError: attendant.mailError };
 }
 
 export async function setChatbotAttendantTeams(userId: string, attendantId: string, teamIds: string[]) {
   const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode alterar as equipes.");
   await ownedTeams(organizationId, uniqueTeams);
   await ownedAttendant(organizationId, attendantId);
   await setMemberTeams(organizationId, attendantId, uniqueTeams, true);
 }
 
-export async function updateChatbotAttendant(userId: string, attendantId: string, name: string, email: string, teamIds: string[]) {
+export async function updateChatbotAttendant(userId: string, attendantId: string, name: string, email: string, teamIds: string[], menusInput: unknown) {
   const uniqueTeams = [...new Set(teamIds.map((id) => id.trim()).filter(Boolean))];
   const clean = name.trim();
   const address = email.trim().toLowerCase();
   if (clean.length < 2) fail("Informe o nome.");
   if (!address.includes("@")) fail("Informe um e-mail válido.");
-  const { organizationId, admin } = await membership(userId);
+  const menus = attendantMenus(menusInput);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode editar um atendente.");
   await ownedTeams(organizationId, uniqueTeams);
   const attendant = await ownedAttendant(organizationId, attendantId);
@@ -1431,10 +1477,11 @@ export async function updateChatbotAttendant(userId: string, attendantId: string
   const { error } = await supabaseAdmin.from("profiles").update({ full_name: clean, email: address }).eq("id", attendantId).eq("organization_id", organizationId);
   if (error) fail(schemaMessage(error.message));
   await setMemberTeams(organizationId, attendant.id, uniqueTeams, true);
+  await saveAttendantMenus(attendantId, menus);
 }
 
 export async function deleteChatbotAttendant(userId: string, attendantId: string) {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, "team");
   if (!admin) fail("Somente o administrador da empresa pode excluir um atendente.");
   if (attendantId === userId) fail("Você não pode excluir o próprio acesso.");
   await ownedAttendant(organizationId, attendantId);
@@ -1496,7 +1543,7 @@ async function replaceContactLinks(
 }
 
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   const contact = await ownedContact(organizationId, contactId);
   const [tags, products, tagLinks, productLinks, files] = await Promise.all([
     rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
@@ -1571,7 +1618,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
 
 export async function setChatbotContactDeal(userId: string, contactId: string, cents: number | null) {
   if (cents != null && (!Number.isInteger(cents) || cents < 0 || cents > 9999999999999)) fail("Informe um valor negociado válido.");
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
   const updated = await table("chatbot_contacts")
     .update({ negotiated_cents: cents })
@@ -1585,7 +1632,7 @@ export async function setChatbotContactDeal(userId: string, contactId: string, c
 }
 
 export async function registerChatbotClient(userId: string, contactId: string) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
   const current = await table("chatbot_contacts").select("client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) fail(schemaMessage(current.error.message));
@@ -1610,37 +1657,67 @@ export async function registerChatbotClient(userId: string, contactId: string) {
 }
 
 export async function listChatbotClients(userId: string): Promise<ChatbotClientRow[]> {
-  const { organizationId, admin } = await membership(userId);
-  let query = table("chatbot_contacts")
-    .select("id, name, phone, negotiated_cents, client_owner_id")
-    .eq("organization_id", organizationId)
-    .not("client_owner_id", "is", null)
-    .order("name", { ascending: true });
-  if (!admin) query = query.eq("client_owner_id", userId);
-  const contacts = await rows(query);
+  const { organizationId, admin } = await membership(userId, "clients");
+  const clientQuery = (withStage: boolean) => {
+    let query = table("chatbot_contacts")
+      .select(withStage ? "id, name, phone, negotiated_cents, client_owner_id, stage_name" : "id, name, phone, negotiated_cents, client_owner_id")
+      .eq("organization_id", organizationId)
+      .not("client_owner_id", "is", null)
+      .order("name", { ascending: true });
+    if (!admin) query = query.eq("client_owner_id", userId);
+    return query;
+  };
+  const listed = await rowsOrMissing(clientQuery(true));
+  const contacts = listed.missing ? await rows(clientQuery(false)) : listed.rows;
   const visible = contacts.filter((row) => clientVisibleTo(cell(row, "client_owner_id"), userId, admin));
   const ids = visible.map((row) => cell(row, "id")).filter(Boolean);
+  const ownerIds = [...new Set(visible.map((row) => cell(row, "client_owner_id")).filter(Boolean))];
   const tagNames = new Map<string, string[]>();
-  if (ids.length) {
-    const links = await rowsOrMissing(table("chatbot_contact_tags").select("contact_id, tag_id").eq("organization_id", organizationId).in("contact_id", ids));
-    const tags = await rowsOrMissing(table("chatbot_tags").select("id, name").eq("organization_id", organizationId));
-    const names = new Map(tags.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
-    for (const link of links.rows) {
-      const contactId = cell(link, "contact_id");
-      const name = names.get(cell(link, "tag_id"));
-      if (!name) continue;
-      tagNames.set(contactId, [...(tagNames.get(contactId) ?? []), name]);
-    }
+  const productNames = new Map<string, string[]>();
+  const tagLinks = ids.length
+    ? await rowsOrMissing(table("chatbot_contact_tags").select("contact_id, tag_id").eq("organization_id", organizationId).in("contact_id", ids))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const tags = ids.length
+    ? await rowsOrMissing(table("chatbot_tags").select("id, name").eq("organization_id", organizationId))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const productLinks = ids.length
+    ? await rowsOrMissing(table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId).in("contact_id", ids))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const products = ids.length
+    ? await rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const profiles = ownerIds.length
+    ? await supabaseAdmin.from("profiles").select("id, full_name").in("id", ownerIds)
+    : { data: [], error: null };
+  if (profiles.error) fail(schemaMessage(profiles.error.message));
+  const tagCatalog = new Map(tags.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
+  for (const link of tagLinks.rows) {
+    const contactId = cell(link, "contact_id");
+    const name = tagCatalog.get(cell(link, "tag_id"));
+    if (!name) continue;
+    tagNames.set(contactId, [...(tagNames.get(contactId) ?? []), name]);
   }
+  const productCatalog = new Map(products.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
+  for (const link of productLinks.rows) {
+    const contactId = cell(link, "contact_id");
+    const name = productCatalog.get(cell(link, "product_id"));
+    if (!name) continue;
+    productNames.set(contactId, [...(productNames.get(contactId) ?? []), name]);
+  }
+  const attendantNames = new Map((profiles.data ?? []).map((row) => [row.id, row.full_name.trim()]));
   return visible.map((row) => {
     const raw = row["negotiated_cents"];
     const amount = raw == null || raw === "" ? null : Number(raw);
+    const id = cell(row, "id");
     return {
-      id: cell(row, "id"),
+      id,
       name: cell(row, "name"),
       phone: cell(row, "phone"),
       negotiatedCents: amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null,
-      tags: tagNames.get(cell(row, "id")) ?? [],
+      tags: tagNames.get(id) ?? [],
+      attendant: attendantNames.get(cell(row, "client_owner_id")) ?? "",
+      stage: cell(row, "stage_name"),
+      products: productNames.get(id) ?? [],
     };
   });
 }
@@ -1648,7 +1725,7 @@ export async function listChatbotClients(userId: string): Promise<ChatbotClientR
 export async function renameChatbotContact(userId: string, contactId: string, name: string) {
   const clean = catalogName(name, 80);
   if (!clean) fail("Informe o nome do contato.");
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
   const updated = await table("chatbot_contacts")
     .update({ name: clean, name_edited: true })
@@ -1664,7 +1741,7 @@ export async function renameChatbotContact(userId: string, contactId: string, na
 export async function renameChatbotContactFile(userId: string, fileId: string, name: string) {
   const clean = catalogName(name, 80);
   if (!clean) fail("Informe o nome da mídia.");
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   const updated = await table("chatbot_contact_files")
     .update({ name: clean })
     .eq("id", fileId)
@@ -1678,7 +1755,7 @@ export async function renameChatbotContactFile(userId: string, fileId: string, n
 
 export async function setChatbotContactStage(userId: string, contactId: string, stageName: string) {
   const clean = stageName.trim();
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
   if (clean) {
     const stages = await rows(table("chatbot_stages").select("name").eq("organization_id", organizationId));
@@ -1696,21 +1773,21 @@ export async function setChatbotContactStage(userId: string, contactId: string, 
 }
 
 export async function setChatbotContactTags(userId: string, contactId: string, tagIds: string[]) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
   await replaceContactLinks("chatbot_contact_tags", "tag_id", "chatbot_tags", organizationId, contactId, tagIds);
   return { saved: true as const };
 }
 
 export async function setChatbotContactProducts(userId: string, contactId: string, productIds: string[]) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
   await replaceContactLinks("chatbot_contact_products", "product_id", "chatbot_products", organizationId, contactId, productIds);
   return { saved: true as const };
 }
 
 export async function listChatbotTags(userId: string): Promise<ChatbotTag[]> {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "settings");
   const tags = await rows(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true }));
   return tags.map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), color: cell(row, "color") }));
 }
@@ -1720,7 +1797,7 @@ export async function saveChatbotTag(userId: string, name: string, color: string
   const ink = tagColorValue(color);
   if (!clean) fail("A etiqueta precisa de um nome com 2 a 32 caracteres.");
   if (!ink) fail("Escolha a cor da etiqueta.");
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "settings");
   const inserted = await table("chatbot_tags")
     .insert({ organization_id: organizationId, name: clean, color: ink })
     .select("id")
@@ -1732,7 +1809,7 @@ export async function saveChatbotTag(userId: string, name: string, color: string
 }
 
 export async function deleteChatbotTag(userId: string, tagId: string) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "settings");
   const current = await table("chatbot_tags").select("id").eq("id", tagId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) fail(schemaMessage(current.error.message));
   if (!current.data) fail("Essa etiqueta não pertence à sua empresa.");
@@ -1741,7 +1818,7 @@ export async function deleteChatbotTag(userId: string, tagId: string) {
 }
 
 export async function listChatbotProducts(userId: string): Promise<ChatbotCatalogItem[]> {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "products");
   const products = await rows(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true }));
   return products.map((row) => ({ id: cell(row, "id"), name: cell(row, "name") }));
 }
@@ -1749,7 +1826,7 @@ export async function listChatbotProducts(userId: string): Promise<ChatbotCatalo
 export async function saveChatbotProduct(userId: string, name: string) {
   const clean = catalogName(name, 80);
   if (!clean) fail("Informe o produto ou serviço.");
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "products");
   const inserted = await table("chatbot_products")
     .insert({ organization_id: organizationId, name: clean })
     .select("id")
@@ -1761,7 +1838,7 @@ export async function saveChatbotProduct(userId: string, name: string) {
 }
 
 export async function deleteChatbotProduct(userId: string, productId: string) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "products");
   const current = await table("chatbot_products").select("id").eq("id", productId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) fail(schemaMessage(current.error.message));
   if (!current.data) fail("Esse produto não pertence à sua empresa.");
@@ -1776,7 +1853,7 @@ function stageRows(rowsToMap: Record<string, unknown>[]) {
 }
 
 export async function listChatbotStages(userId: string) {
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, stageMenus);
   const loaded = await rowsOrMissing(
     table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
   );
@@ -1809,7 +1886,7 @@ export async function saveChatbotStages(userId: string, names: string[]) {
   if (!clean.length || clean.length > 13 || clean.some((name) => !name)) fail("O kanban precisa de etapas com 2 a 40 caracteres. A etapa Sucesso permanece no quadro.");
   const unique = new Set(clean.map((name) => name.toLowerCase()));
   if (unique.size !== clean.length) fail("Cada etapa precisa de um nome diferente.");
-  const { organizationId } = await membership(userId);
+  const { organizationId } = await membership(userId, "settings");
   await done(table("chatbot_stages").delete().eq("organization_id", organizationId));
   for (let position = 0; position < clean.length; position += 1) {
     const inserted = await table("chatbot_stages")
@@ -1825,7 +1902,7 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 }
 
 export async function chatbotOverview(userId: string): Promise<ChatbotOverview> {
-  const { organizationId, admin } = await membership(userId);
+  const { organizationId, admin } = await membership(userId, ["overview", "reports"]);
   await listChatbotStages(userId);
   const [conversations, contacts] = await Promise.all([
     rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count").eq("organization_id", organizationId)),

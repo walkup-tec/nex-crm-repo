@@ -1,6 +1,7 @@
+import { allChatbotMenus, chatbotMenuForPath, firstChatbotPath, type ChatbotMenuMap, type ChatbotMenuPath } from "@/lib/chatbot-menus";
 import type { UserPermissions } from "@/lib/user-access";
 
-export type ClientHome = "/dashboard" | "/creditos-meta" | "/chatbot" | "/usuarios" | "/minha-conta";
+export type ClientHome = "/dashboard" | "/creditos-meta" | "/usuarios" | "/minha-conta" | ChatbotMenuPath;
 
 export const noClientPermissions: UserPermissions = {
   campaigns: false,
@@ -16,13 +17,17 @@ function cleanPath(path: string) {
   return bare || "/";
 }
 
-export function clientUserCanSee(path: string, permissions: UserPermissions) {
+export function clientUserCanSee(path: string, permissions: UserPermissions, menus: ChatbotMenuMap = allChatbotMenus(true)) {
   const clean = cleanPath(path);
   if (clean === "/minha-conta") return true;
   if (clean === "/dashboard" || clean === "/campanhas" || clean === "/criativos") return permissions.campaigns;
   if (clean === "/creditos-meta") return permissions.balance || permissions.credit;
   if (clean === "/usuarios") return permissions.manage;
-  if (clean === "/chatbot" || clean.startsWith("/chatbot/")) return permissions.chatbot;
+  if (clean === "/chatbot" || clean.startsWith("/chatbot/")) {
+    if (!permissions.chatbot) return false;
+    const menu = chatbotMenuForPath(clean);
+    return menu ? menus[menu] : false;
+  }
   return false;
 }
 
@@ -41,10 +46,13 @@ export function isClientPermissionPath(path: string) {
   );
 }
 
-export function firstAllowedClientPath(permissions: UserPermissions): ClientHome {
+export function firstAllowedClientPath(permissions: UserPermissions, menus: ChatbotMenuMap = allChatbotMenus(true)): ClientHome {
   if (permissions.campaigns) return "/dashboard";
   if (permissions.balance || permissions.credit) return "/creditos-meta";
-  if (permissions.chatbot) return "/chatbot";
+  if (permissions.chatbot) {
+    const next = firstChatbotPath(menus);
+    if (next) return next;
+  }
   if (permissions.manage) return "/usuarios";
   return "/minha-conta";
 }

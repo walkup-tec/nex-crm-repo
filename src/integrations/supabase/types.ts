@@ -611,6 +611,7 @@ export type Database = {
           can_view_campaigns: boolean
           can_view_meta_balance: boolean
           chatbot_default_applied: boolean
+          chatbot_menus: Json | null
           updated_at: string
           user_id: string
         }
@@ -621,6 +622,7 @@ export type Database = {
           can_view_campaigns?: boolean
           can_view_meta_balance?: boolean
           chatbot_default_applied?: boolean
+          chatbot_menus?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -631,6 +633,7 @@ export type Database = {
           can_view_campaigns?: boolean
           can_view_meta_balance?: boolean
           chatbot_default_applied?: boolean
+          chatbot_menus?: Json | null
           updated_at?: string
           user_id?: string
         }

@@ -186,27 +186,29 @@ export const updateChatbotTeamFn = createServerFn({ method: "POST" })
 
 export const inviteChatbotAttendantFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { name: string; email: string; teamIds: string[] }) => ({
+  .validator((data: { name: string; email: string; teamIds: string[]; menus?: unknown }) => ({
     name: data.name,
     email: data.email,
     teamIds: Array.isArray(data.teamIds) ? data.teamIds.filter((id) => typeof id === "string") : [],
+    menus: data.menus,
   }))
   .handler(async ({ context, data }) => {
     const { inviteChatbotAttendant } = await import("@/server/chatbot.server");
-    return guard(() => inviteChatbotAttendant(context.userId, data.name, data.email, data.teamIds));
+    return guard(() => inviteChatbotAttendant(context.userId, data.name, data.email, data.teamIds, data.menus));
   });
 
 export const updateChatbotAttendantFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { attendantId: string; name: string; email: string; teamIds: string[] }) => ({
+  .validator((data: { attendantId: string; name: string; email: string; teamIds: string[]; menus?: unknown }) => ({
     attendantId: data.attendantId,
     name: data.name,
     email: data.email,
     teamIds: Array.isArray(data.teamIds) ? data.teamIds.filter((id) => typeof id === "string") : [],
+    menus: data.menus,
   }))
   .handler(async ({ context, data }) => {
     const { updateChatbotAttendant } = await import("@/server/chatbot.server");
-    return guard(() => updateChatbotAttendant(context.userId, data.attendantId, data.name, data.email, data.teamIds));
+    return guard(() => updateChatbotAttendant(context.userId, data.attendantId, data.name, data.email, data.teamIds, data.menus));
   });
 
 export const deleteChatbotAttendantFn = createServerFn({ method: "POST" })

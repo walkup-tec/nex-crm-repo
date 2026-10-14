@@ -51,6 +51,9 @@ import {
   internalNote,
   kanbanStageName,
   moveKanbanStage,
+  clientFilterOptions,
+  filterChatbotClients,
+  type ChatbotClientRow,
 } from "./chatbot-evo";
 
 assert.equal(whatsappMask("1"), "(1");
@@ -280,3 +283,12 @@ assert.equal(kanbanStageName("  Proposta  "), "Proposta");
 assert.equal(kanbanStageName("a"), "");
 assert.deepEqual(moveKanbanStage(["Novos leads", "Proposta", "Ganho"], 2, -1), ["Novos leads", "Ganho", "Proposta"]);
 assert.deepEqual(moveKanbanStage(["Novos leads", "Ganho"], 0, -1), ["Novos leads", "Ganho"]);
+
+const listedClients: ChatbotClientRow[] = [
+  { id: "1", name: "Marcelo Mozart", phone: "51999666841", negotiatedCents: 140000, tags: ["Alto Potencial"], attendant: "Walkup", stage: "Proposta", products: ["Site", "Tráfego"] },
+  { id: "2", name: "Ana", phone: "51988887777", negotiatedCents: null, tags: ["Novo"], attendant: "Nex", stage: "Sucesso", products: ["Site"] },
+];
+assert.deepEqual(filterChatbotClients(listedClients, { search: "", name: "", phone: "", tag: "Alto Potencial", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "", name: "", phone: "", tag: "", attendant: "", stage: "", product: "Site" }).map((client) => client.id), ["1", "2"]);
+assert.deepEqual(filterChatbotClients(listedClients, { search: "ana", name: "", phone: "", tag: "", attendant: "", stage: "Sucesso", product: "" }).map((client) => client.id), ["2"]);
+assert.equal(clientFilterOptions(listedClients).product.join(","), "Site,Tráfego");

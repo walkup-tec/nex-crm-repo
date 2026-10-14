@@ -75,6 +75,9 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .team-row-main p,.chatbot-app .team-empty,.chatbot-app .team-choice span{margin:0;font-size:12px;color:var(--muted-foreground);font-weight:500}
 .chatbot-app .team-choices{display:grid;gap:8px}
 .chatbot-app .team-choices>span{font-size:12px;font-weight:600}
+.chatbot-app .menu-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.chatbot-app .menu-choices .team-choice{font-size:12px}
+.chatbot-app .team-choice input{width:16px;height:16px;flex:none;padding:0}
 @media(max-width:900px){.chatbot-app .team-board{grid-template-columns:1fr}}
 
 .chatbot-app .conversation-row{display:flex;align-items:flex-start;gap:10px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;text-align:left}
@@ -145,4 +148,10 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .transfer-form select.transfer-agent:disabled{opacity:.6}
 .chatbot-app .transfer-form textarea{min-height:96px;padding:10px 12px;font-size:13px;line-height:1.45;resize:vertical}
 .chatbot-app .transfer-form .note-count{margin:0}
+.chatbot-app .client-toolbar{align-items:center;flex-wrap:wrap}
+.chatbot-app .client-filters{display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.chatbot-app input.client-search{width:220px;max-width:220px;height:36px;padding:0 10px;font-size:12px}
+.chatbot-app select.client-filter{width:148px;height:36px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:12px;font-weight:500;line-height:36px;appearance:none}
+.chatbot-app select.client-filter:focus,.chatbot-app input.client-search:focus{outline:none;border-color:#6F02FD}
+.chatbot-app .client-clear{height:36px;flex:none}
 

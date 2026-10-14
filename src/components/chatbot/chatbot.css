@@ -49,6 +49,7 @@
 .chatbot-app .team-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .chatbot-app .team-row>button{justify-self:start;width:auto}
 .chatbot-app .team-row-actions{display:flex;flex-wrap:wrap;gap:4px}
+.chatbot-app .team-channel-missing{margin:4px 0 0;color:var(--destructive);font-size:12px;font-weight:700}
 .chatbot-app .team-form-actions{display:flex;gap:8px;align-items:center}
 .chatbot-app .team-form-actions button[type="submit"]{flex:1}
 .chatbot-app .message-bubble.media{align-self:flex-start;max-width:min(360px,86%);background:var(--card);color:var(--foreground);border:1px solid var(--border);padding:8px}

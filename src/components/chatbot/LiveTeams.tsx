@@ -22,7 +22,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { whatsappMask } from "@/lib/chatbot-evo";
 
-type TeamRecord = { id: string; name: string; connectionId: string; channelName: string; channelPhone: string };
+type TeamRecord = { id: string; name: string; connectionId: string; connectionIds?: string[]; channelName: string; channelPhone: string };
 type AttendantRecord = { id: string; name: string; email: string; teamIds: string[] };
 type ChannelRecord = { id: string; name: string; phone: string };
 type TeamData = { teams: TeamRecord[]; attendants: AttendantRecord[]; channels: ChannelRecord[] };
@@ -142,6 +142,9 @@ export function LiveTeams() {
 
   const teams = data?.teams ?? [];
   const channels = data?.channels ?? [];
+  function channelIds(team: TeamRecord) {
+    return team.connectionIds ?? (team.connectionId ? [team.connectionId] : []);
+  }
 
   return (
     <main className="page">
@@ -203,8 +206,14 @@ export function LiveTeams() {
                   <div className="team-row-head">
                     <div className="team-row-main">
                       <strong>{team.name}</strong>
-                      <p>{team.channelName}</p>
-                      <p>{whatsappMask(team.channelPhone) || "Canal sem número"}</p>
+                      {channelIds(team).length ? (
+                        <>
+                          <p>{team.channelName}</p>
+                          {channelIds(team).length === 1 ? <p>{whatsappMask(team.channelPhone) || "Canal sem número"}</p> : null}
+                        </>
+                      ) : (
+                        <p className="team-channel-missing">Conecte um novo canal</p>
+                      )}
                     </div>
                     <span className="status-pill">Canal</span>
                   </div>

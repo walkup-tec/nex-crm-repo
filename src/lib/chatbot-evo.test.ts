@@ -18,6 +18,9 @@ import {
   attendancePhone,
   preferredWhatsappPhone,
   sameWhatsappAccount,
+  evolutionInstanceClosed,
+  evolutionInstanceNameOf,
+  evolutionNumberInUse,
   whatsappDeviceRemoved,
   whatsappJidPhone,
   whatsappMask,
@@ -109,3 +112,19 @@ assert.deepEqual(evolutionContactAvatar({ remoteJid: "5511999999999@s.whatsapp.n
 });
 assert.equal(evolutionContactAvatar({ id: "5511999999999@s.whatsapp.net", imgUrl: "changed" })?.changed, true);
 assert.deepEqual(tintQrPixel(255, 255, 255, 255), [255, 255, 255, 255]);
+assert.equal(evolutionInstanceNameOf({ name: "nex-walkup" }), "nex-walkup");
+assert.equal(evolutionInstanceNameOf({ instance: { instanceName: "nex-walkup" } }), "nex-walkup");
+assert.equal(evolutionInstanceClosed({ connectionStatus: "close", disconnectionReasonCode: 401 }), true);
+assert.equal(evolutionInstanceClosed({ connectionStatus: "open" }), false);
+assert.equal(evolutionInstanceClosed(null), true);
+assert.equal(
+  evolutionNumberInUse(
+    [
+      { name: "caiu", number: "5551997979224", connectionStatus: "close" },
+      { name: "ativo", number: "5551998335401", connectionStatus: "open" },
+    ],
+    "5551997979224",
+  ),
+  false,
+);
+assert.equal(evolutionNumberInUse([{ name: "ativo", ownerJid: "5551998335401@s.whatsapp.net", connectionStatus: "open" }], "5551998335401"), true);

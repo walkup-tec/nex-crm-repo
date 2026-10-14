@@ -111,6 +111,7 @@ export function Connections() {
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<Connection | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [dialogError, setDialogError] = useState("");
   const qrIssuedAt = useRef(0);
 
   function applyStatus(connectionId: string, status: ChatbotConnectionStatus, error = "") {
@@ -302,7 +303,14 @@ export function Connections() {
                 >
                   Desconectar
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setRemoving(row)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDialogError("");
+                    setRemoving(row);
+                  }}
+                >
                   Excluir
                 </Button>
               </div>
@@ -317,30 +325,43 @@ export function Connections() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir número</AlertDialogTitle>
             <AlertDialogDescription>
-              Excluir {removing?.name} e apagar essa instância na Evolution? As conversas desse número também serão removidas.
+              Excluir {removing?.name ?? "este número"} e apagar essa instância na Evolution? As conversas desse número também serão removidas.
             </AlertDialogDescription>
+            {dialogError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {dialogError}
+              </p>
+            ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <Button
+              type="button"
               variant="destructive"
               disabled={deleting}
               onClick={() => {
                 if (!removing) return;
                 const connectionId = removing.id;
+                setDialogError("");
                 setDeleting(true);
-                void deleteChatbotConnectionFn({ data: { connectionId } }).then((result) => {
-                  setDeleting(false);
-                  if (!result.ok) {
-                    setMessage(result.message);
+                void deleteChatbotConnectionFn({ data: { connectionId } })
+                  .then((result) => {
+                    setDeleting(false);
+                    if (!result.ok) {
+                      setDialogError(result.message);
+                      return;
+                    }
+                    if (active === connectionId) closeQr();
+                    setRows((current) => current.filter((row) => row.id !== connectionId));
+                    setMessage("");
+                    setDialogError("");
                     setRemoving(null);
-                    return;
-                  }
-                  if (active === connectionId) closeQr();
-                  setMessage("");
-                  setRemoving(null);
-                  void reload();
-                });
+                    void reload();
+                  })
+                  .catch(() => {
+                    setDeleting(false);
+                    setDialogError("Não foi possível excluir o número.");
+                  });
               }}
             >
               {deleting ? "Excluindo" : "Excluir"}

@@ -137,6 +137,41 @@ export function evolutionConnectionStatus(state: string): ChatbotConnectionStatu
   return "waiting";
 }
 
+export function evolutionInstanceNameOf(record: Record<string, unknown>) {
+  const nested = record["instance"];
+  const nestedRecord = nested && typeof nested === "object" ? (nested as Record<string, unknown>) : null;
+  const found = [record["name"], record["instanceName"], nestedRecord?.["instanceName"], nestedRecord?.["name"]].find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  return typeof found === "string" ? found.trim() : "";
+}
+
+export function evolutionInstanceClosed(record: Record<string, unknown> | null) {
+  if (!record) return true;
+  const nested = record["instance"];
+  const nestedRecord = nested && typeof nested === "object" ? (nested as Record<string, unknown>) : null;
+  const status = [record["connectionStatus"], record["status"], record["state"], nestedRecord?.["state"], nestedRecord?.["status"]].find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  const value = typeof status === "string" ? status.toLowerCase() : "";
+  return value === "close" || value === "closed" || value === "disconnected";
+}
+
+export function evolutionNumberInUse(instances: unknown, phone: string) {
+  if (!Array.isArray(instances)) return false;
+  return instances.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const record = item as Record<string, unknown>;
+    if (evolutionInstanceClosed(record)) return false;
+    const number = record["number"];
+    const owner = record["ownerJid"];
+    return (
+      (typeof number === "string" && sameWhatsappAccount(phone, number)) ||
+      (typeof owner === "string" && sameWhatsappAccount(phone, owner))
+    );
+  });
+}
+
 const nexQrPurple = { r: 0x6f, g: 0x02, b: 0xfd };
 
 export function tintQrPixel(r: number, g: number, b: number, a: number) {

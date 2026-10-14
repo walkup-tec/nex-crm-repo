@@ -9,6 +9,9 @@ import {
   composerSendsOnEnter,
   shouldSyncEvolution,
   pendingOutgoing,
+  messageClock,
+  audioDurationLabel,
+  audioWaveBars,
   acceptSnapshot,
   stickToLatestMessage,
   evolutionIncomingMessages,
@@ -139,6 +142,13 @@ assert.deepEqual(
   ).map((item) => item.id),
   ["novo"],
 );
+assert.equal(messageClock("2026-10-14T12:05:00.000Z", "2026-10-14T15:00:00.000Z"), "Hoje, 09:05");
+assert.equal(messageClock("2026-10-13T12:05:00.000Z", "2026-10-14T15:00:00.000Z"), "Ontem, 09:05");
+assert.equal(messageClock("2026-10-10T15:10:00.000Z", "2026-10-14T15:00:00.000Z"), "10/10, 12:10");
+assert.equal(audioDurationLabel(12), "0:12");
+assert.equal(audioDurationLabel(125), "2:05");
+assert.equal(audioWaveBars([0, 0.2, 0.8, 0.4], 2).length, 2);
+assert.equal(Math.max(...audioWaveBars([0, 0.2, 0.8, 0.4], 2)), 1);
 assert.equal(acceptSnapshot(1, 0), true);
 assert.equal(acceptSnapshot(2, 1), true);
 assert.equal(acceptSnapshot(1, 2), false);

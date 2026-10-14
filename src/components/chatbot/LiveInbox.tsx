@@ -1,5 +1,5 @@
-import { MessageSquare, Pin, Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { MessageSquare, Pause, Pin, Play, Send } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -13,7 +13,7 @@ import {
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
-import { acceptSnapshot, attendanceLabel, composerSendsOnEnter, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -21,7 +21,7 @@ type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | 
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
 
 function mediaCaption(text: string) {
-  if (text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]") return "";
+  if (text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]" || text === "[áudio]") return "";
   return text;
 }
 
@@ -37,6 +37,80 @@ function downloadMedia(file: LoadedMedia) {
   link.download = file.kind === "video" ? "video.mp4" : file.kind === "audio" ? "audio.ogg" : "imagem.jpg";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function VoiceNote({ file, sentAt, outgoing }: { file: LoadedMedia; sentAt: string; outgoing: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [current, setCurrent] = useState(0);
+  const [bars, setBars] = useState<number[]>(() => Array.from({ length: 32 }, () => 0.22));
+
+  useEffect(() => {
+    let active = true;
+    const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0));
+    const context = new AudioContext();
+    void context
+      .decodeAudioData(bytes.buffer.slice(0))
+      .then((buffer) => {
+        if (!active) return;
+        setDuration(buffer.duration);
+        setBars(audioWaveBars(buffer.getChannelData(0), 32));
+      })
+      .catch(() => undefined)
+      .finally(() => void context.close().catch(() => undefined));
+    return () => {
+      active = false;
+    };
+  }, [file.base64]);
+
+  const progress = duration > 0 ? Math.min(1, current / duration) : 0;
+  const total = audioDurationLabel(duration);
+  const elapsed = audioDurationLabel(current);
+
+  function toggle() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) void audio.play();
+    else audio.pause();
+  }
+
+  function seek(event: MouseEvent<HTMLButtonElement>) {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    setCurrent(audio.currentTime);
+  }
+
+  return (
+    <div className={`voice-note${outgoing ? " out" : ""}`}>
+      <button type="button" className={`voice-play${playing ? " playing" : ""}`} onClick={toggle} aria-label={playing ? "Pausar áudio" : "Reproduzir áudio"}>
+        {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+      </button>
+      <button type="button" className="voice-wave" onClick={seek} aria-label="Posição do áudio">
+        {bars.map((height, index) => (
+          <span key={index} className={index / bars.length < progress ? "played" : ""} style={{ height: `${Math.round(4 + height * 18)}px` }} />
+        ))}
+      </button>
+      <span className="voice-time">{playing ? `${elapsed} / ${total}` : total}</span>
+      <audio
+        ref={audioRef}
+        src={file.url}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrent(0);
+        }}
+        onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+      />
+      <time dateTime={sentAt}>{messageClock(sentAt)}</time>
+    </div>
+  );
 }
 
 function ChatMedia({ item }: { item: InboxMessage }) {
@@ -84,15 +158,28 @@ function ChatMedia({ item }: { item: InboxMessage }) {
   }, [item.id]);
 
   if (missing) {
-    return <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`}>{item.text}</div>;
+    return (
+      <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`}>
+        {item.text === "[áudio]" ? "Áudio indisponível" : item.text}
+        <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
+      </div>
+    );
   }
   if (!file) {
     return <div className="message-bubble media">{error || "Carregando mídia"}</div>;
   }
+  if (file.kind === "audio") {
+    return (
+      <div className={`message-bubble media voice ${item.direction}`}>
+        <VoiceNote file={file} sentAt={item.createdAt} outgoing={item.direction === "out"} />
+        {error ? <p>{error}</p> : null}
+      </div>
+    );
+  }
   const caption = mediaCaption(item.text);
   return (
     <div className={`message-bubble media ${item.direction}`}>
-      {file.kind === "audio" ? <audio src={file.url} controls /> : file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
+      {file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
       {caption ? <p>{caption}</p> : null}
       <div className="media-actions">
         <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
@@ -123,12 +210,13 @@ function ChatMedia({ item }: { item: InboxMessage }) {
         </Button>
       </div>
       {error ? <p>{error}</p> : null}
+      <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{file.kind === "audio" ? "Áudio" : file.kind === "video" ? "Vídeo" : "Imagem"}</DialogTitle>
+            <DialogTitle>{file.kind === "video" ? "Vídeo" : "Imagem"}</DialogTitle>
           </DialogHeader>
-          {file.kind === "audio" ? <audio className="media-frame" src={file.url} controls autoPlay /> : file.kind === "video" ? <video className="media-frame" src={file.url} controls autoPlay /> : <img className="media-frame" src={file.url} alt="" />}
+          {file.kind === "video" ? <video className="media-frame" src={file.url} controls autoPlay /> : <img className="media-frame" src={file.url} alt="" />}
         </DialogContent>
       </Dialog>
     </div>
@@ -477,6 +565,7 @@ export function LiveInbox() {
                   ) : (
                     <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
                       {item.text}
+                      <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
                     </div>
                   ),
                 )}

@@ -55,7 +55,19 @@
 .chatbot-app .message-bubble.media{align-self:flex-start;max-width:min(360px,86%);background:var(--card);color:var(--foreground);border:1px solid var(--border);padding:8px}
 .chatbot-app .message-bubble.media.out{align-self:flex-end}
 .chatbot-app .message-bubble.media img,.chatbot-app .message-bubble.media video{width:100%;max-height:280px;object-fit:contain;border-radius:6px;background:#000;display:block}
-.chatbot-app .message-bubble.media audio{width:100%;display:block}
+.chatbot-app .message-bubble .message-when{display:block;margin-top:6px;font-size:10px;line-height:1;opacity:.72;text-align:right}
+.chatbot-app .message-bubble.media.voice{width:min(320px,86%);padding:10px 12px 8px}
+.chatbot-app .message-bubble.media.voice.out{background:var(--primary);color:var(--primary-foreground)}
+.chatbot-app .voice-note{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;column-gap:10px;row-gap:6px}
+.chatbot-app .voice-play{width:34px;height:34px;border:0;border-radius:50%;background:var(--primary);color:var(--primary-foreground);display:grid;place-items:center;cursor:pointer;padding:0}
+.chatbot-app .message-bubble.voice.out .voice-play{background:oklch(.98 .01 280);color:var(--primary)}
+.chatbot-app .voice-play:not(.playing) svg{margin-left:1px}
+.chatbot-app .voice-wave{display:flex;align-items:center;gap:2px;height:28px;min-width:0;padding:0;border:0;background:transparent;cursor:pointer}
+.chatbot-app .voice-wave span{width:3px;border-radius:999px;background:color-mix(in oklch, currentColor 32%, transparent);display:block}
+.chatbot-app .voice-wave span.played{background:currentColor}
+.chatbot-app .voice-time{font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;min-width:72px;text-align:right}
+.chatbot-app .voice-note audio{display:none}
+.chatbot-app .voice-note time{grid-column:1 / -1;justify-self:end;font-size:10px;line-height:1;opacity:.72}
 img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;border-radius:6px;background:#000;display:block}
 .chatbot-app .message-bubble.media p{margin:8px 0 0;font-size:12px}
 .chatbot-app .media-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}

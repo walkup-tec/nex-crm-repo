@@ -81,6 +81,48 @@ export function pendingOutgoing<T extends { conversationId: string; direction: s
   });
 }
 
+export function messageClock(iso: string, nowIso = new Date().toISOString()) {
+  const date = new Date(iso);
+  const now = new Date(nowIso);
+  if (Number.isNaN(date.getTime()) || Number.isNaN(now.getTime())) return "";
+  const time = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(date);
+  const dayKey = (value: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+  const sentDay = dayKey(iso);
+  const today = dayKey(nowIso);
+  const yesterdayDate = new Date(`${today}T12:00:00Z`);
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  const yesterday = yesterdayDate.toISOString().slice(0, 10);
+  if (sentDay === today) return `Hoje, ${time}`;
+  if (sentDay === yesterday) return `Ontem, ${time}`;
+  const day = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" }).format(date);
+  return `${day}, ${time}`;
+}
+
+export function audioDurationLabel(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const total = Math.round(seconds);
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+export function audioWaveBars(samples: ArrayLike<number>, bars: number) {
+  const count = Math.max(1, Math.floor(bars));
+  if (!samples.length) return Array.from({ length: count }, () => 0.22);
+  const block = Math.max(1, Math.floor(samples.length / count));
+  const peaks: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const start = index * block;
+    const end = Math.min(samples.length, start + block);
+    let peak = 0;
+    const step = Math.max(1, Math.floor((end - start) / 20));
+    for (let cursor = start; cursor < end; cursor += step) peak = Math.max(peak, Math.abs(samples[cursor] ?? 0));
+    peaks.push(peak);
+  }
+  const max = Math.max(...peaks, 0.001);
+  return peaks.map((peak) => Math.max(0.18, Math.min(1, peak / max)));
+}
+
 export function composerSendsOnEnter(input: { key: string; code: string; shiftKey: boolean; pending: boolean; text: string }) {
   const enter = input.key === "Enter" || input.code === "Enter" || input.code === "NumpadEnter";
   return enter && !input.shiftKey && !input.pending && input.text.trim().length > 0;

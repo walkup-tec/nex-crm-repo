@@ -3,6 +3,12 @@ import {
   evolutionConnectionStatus,
   evolutionContactAvatar,
   evolutionContactPhone,
+  evolutionContactIdentity,
+  learnLidPhones,
+  resolveIncomingPhone,
+  composerSendsOnEnter,
+  acceptLatestSnapshot,
+  stickToLatestMessage,
   evolutionIncomingMessages,
   evolutionMessageText,
   evolutionMessageContent,
@@ -87,6 +93,29 @@ assert.equal(
   "data:image/png;base64,abc",
 );
 assert.equal(evolutionContactPhone({ remoteJid: "123@lid", remoteJidAlt: "5511999999999@s.whatsapp.net" }), "5511999999999");
+assert.equal(evolutionContactPhone({ remoteJid: "999@lid", senderPn: "5551999666841@s.whatsapp.net" }), "5551999666841");
+const marceloLid = "123456789012345@lid";
+const marceloPhone = "5551999666841@s.whatsapp.net";
+const learned = learnLidPhones([
+  { remoteJid: marceloLid, remoteJidAlt: marceloPhone },
+  { remoteJid: marceloPhone, remoteJidAlt: marceloLid },
+]);
+assert.equal(learned[marceloLid], "5551999666841");
+assert.equal(resolveIncomingPhone({ remoteJid: marceloLid }, learned), "5551999666841");
+assert.equal(resolveIncomingPhone({ remoteJid: marceloLid }, {}), "");
+assert.equal(evolutionContactPhone({ remoteJid: marceloLid }), "");
+assert.equal(evolutionContactIdentity({ remoteJid: marceloPhone, remoteJidAlt: marceloLid }).lid, marceloLid);
+assert.equal(evolutionMessageText("segunda mensagem"), "segunda mensagem");
+assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: false, text: "Bom dia" }), true);
+assert.equal(composerSendsOnEnter({ key: "Enter", code: "NumpadEnter", shiftKey: false, pending: false, text: "Bom dia" }), true);
+assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: true, pending: false, text: "Bom dia" }), false);
+assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: true, text: "Bom dia" }), false);
+assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: false, text: "   " }), false);
+assert.equal(acceptLatestSnapshot(2, 2), true);
+assert.equal(acceptLatestSnapshot(1, 2), false);
+assert.equal(stickToLatestMessage(0), true);
+assert.equal(stickToLatestMessage(120), false);
+assert.equal(evolutionIncomingMessages({ message: { key: { id: "2", remoteJid: "5511999999999@s.whatsapp.net" }, message: { conversation: "segunda" } } }).length, 1);
 assert.equal(evolutionIncomingMessages({ messages: { records: [{ key: { id: "1" } }] } }).length, 1);
 assert.equal(evolutionIncomingMessages({ key: { id: "1" }, message: { conversation: "Oi" } }).length, 1);
 assert.equal(evolutionIncomingMessages([{ key: { id: "1" } }, { key: { id: "2" } }]).length, 2);

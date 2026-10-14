@@ -61,6 +61,19 @@ export function inboxUnread(createdAt: string[], lastReadAt: string) {
   return createdAt.filter((at) => at > lastReadAt).length;
 }
 
+export function composerSendsOnEnter(input: { key: string; code: string; shiftKey: boolean; pending: boolean; text: string }) {
+  const enter = input.key === "Enter" || input.code === "Enter" || input.code === "NumpadEnter";
+  return enter && !input.shiftKey && !input.pending && input.text.trim().length > 0;
+}
+
+export function acceptLatestSnapshot(requestId: number, latestRequestId: number) {
+  return requestId === latestRequestId && requestId > 0;
+}
+
+export function stickToLatestMessage(distanceFromBottom: number) {
+  return distanceFromBottom <= 80;
+}
+
 export function inboxOrder<T extends { id: string; pinned: boolean; updatedAt: string }>(items: T[]) {
   return [...items].sort((left, right) => {
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
@@ -211,17 +224,45 @@ export function evolutionQrImage(payload: unknown): string {
   return "";
 }
 
-export function evolutionContactPhone(key: Record<string, unknown>) {
-  const candidates = [key["remoteJidAlt"], key["senderPn"], key["participant"], key["remoteJid"]];
-  let fallback = "";
-  for (const candidate of candidates) {
-    if (typeof candidate !== "string") continue;
-    const phone = whatsappJidPhone(candidate);
-    if (!phone) continue;
-    if (!candidate.endsWith("@lid")) return phone;
-    fallback = phone;
+export function evolutionContactIdentity(key: Record<string, unknown>) {
+  const fields = ["remoteJidAlt", "senderPn", "participantPn", "participant", "remoteJid"];
+  let phone = "";
+  let lid = "";
+  for (const field of fields) {
+    const value = key[field];
+    if (typeof value !== "string" || !value) continue;
+    if (value.endsWith("@lid")) {
+      if (!lid) lid = value;
+      continue;
+    }
+    const digits = whatsappJidPhone(value);
+    if (digits && !phone) phone = digits;
   }
-  return fallback;
+  return { phone, lid };
+}
+
+export function learnLidPhones(keys: Record<string, unknown>[]) {
+  const known: Record<string, string> = {};
+  for (const key of keys) {
+    const identity = evolutionContactIdentity(key);
+    if (identity.lid && identity.phone) known[identity.lid] = identity.phone;
+  }
+  return known;
+}
+
+export function resolveIncomingPhone(key: Record<string, unknown>, known: Record<string, string>) {
+  const identity = evolutionContactIdentity(key);
+  if (identity.phone) return identity.phone;
+  if (identity.lid && known[identity.lid]) return known[identity.lid];
+  return "";
+}
+
+export function evolutionContactPhone(key: Record<string, unknown>) {
+  const resolved = resolveIncomingPhone(key, {});
+  if (resolved) return resolved;
+  const digits = evolutionContactIdentity(key).lid.split("@")[0]?.replace(/\D/g, "") ?? "";
+  if (digits.length >= 8 && digits.length <= 13) return digits;
+  return "";
 }
 
 export function evolutionSameOwnerInstance(instances: unknown, currentName: string) {
@@ -256,6 +297,9 @@ export function evolutionIncomingMessages(data: unknown): Record<string, unknown
   if (Array.isArray(messages)) return messages.filter(isRecord);
   if (isRecord(messages) && Array.isArray(messages["records"])) return messages["records"].filter(isRecord);
   if (Array.isArray(data["records"])) return data["records"].filter(isRecord);
+  if (isRecord(data["message"]) && isRecord((data["message"] as Record<string, unknown>)["key"])) {
+    return [data["message"] as Record<string, unknown>];
+  }
   if (data["key"] || data["message"]) return [data];
   return [];
 }
@@ -320,6 +364,7 @@ export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video
 }
 
 export function evolutionMessageText(message: unknown): string {
+  if (typeof message === "string") return message.trim();
   if (!message || typeof message !== "object") return "";
   const record = message as Record<string, unknown>;
   if (typeof record["conversation"] === "string") return record["conversation"];

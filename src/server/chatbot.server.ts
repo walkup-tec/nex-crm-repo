@@ -13,6 +13,8 @@ import {
   evolutionInstanceNameOf,
   evolutionNumberInUse,
   evolutionContactPhone,
+  learnLidPhones,
+  resolveIncomingPhone,
   evolutionIncomingMessages,
   evolutionMediaFile,
   evolutionMessageContent,
@@ -681,9 +683,11 @@ export async function ingestEvolutionWebhook(request: Request) {
       .eq("id", cell(found.data, "id"));
   }
   if (event.includes("messages")) {
-    for (const item of evolutionIncomingMessages(payload["data"])) {
-      await storeIncoming(found.data, item);
-      await refreshMessageAvatar(found.data, item);
+    const items = evolutionIncomingMessages(payload["data"]);
+    const knownLids = rememberLidPhones(items);
+    for (const item of items) {
+      await storeIncoming(found.data, item, knownLids);
+      await refreshMessageAvatar(found.data, item, knownLids);
     }
   }
   if (event.includes("contacts")) {
@@ -733,12 +737,30 @@ async function findContactByPhone(organizationId: string, phone: string) {
   }
 }
 
-async function refreshMessageAvatar(connection: Record<string, unknown>, data: unknown) {
+const knownLidPhones: Record<string, string> = {};
+
+function messageKeys(items: Record<string, unknown>[]) {
+  return items.map((item) => {
+    const raw = item["key"];
+    return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  });
+}
+
+function rememberLidPhones(items: Record<string, unknown>[]) {
+  Object.assign(knownLidPhones, learnLidPhones(messageKeys(items)));
+  return knownLidPhones;
+}
+
+function incomingPhone(key: Record<string, unknown>, knownLids: Record<string, string>) {
+  return resolveIncomingPhone(key, knownLids) || evolutionContactPhone(key);
+}
+
+async function refreshMessageAvatar(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}) {
   const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const rawKey = record["key"];
   const key = rawKey && typeof rawKey === "object" ? (rawKey as Record<string, unknown>) : {};
   if (key["fromMe"] === true) return;
-  const phone = evolutionContactPhone(key);
+  const phone = incomingPhone(key, knownLids);
   if (!phone) return;
   const organizationId = cell(connection, "organization_id");
   const contact = await findContactByPhone(organizationId, phone);
@@ -794,7 +816,7 @@ async function refreshStaleAvatars(
 async function listMessages(instanceName: string) {
   return evo(`/chat/findMessages/${encodeURIComponent(instanceName)}`, "POST", {
     page: 1,
-    offset: 40,
+    offset: 100,
   }).catch(() => null);
 }
 
@@ -812,7 +834,8 @@ async function importEvolutionMessages(connection: Record<string, unknown>) {
       items = evolutionIncomingMessages(listed);
     }
   }
-  for (const item of items) await storeIncoming(connection, item);
+  const knownLids = rememberLidPhones(items);
+  for (const item of items) await storeIncoming(connection, item, knownLids);
 }
 
 async function contactIdForMessage(organizationId: string, phone: string, name: string) {
@@ -830,12 +853,12 @@ async function contactIdForMessage(organizationId: string, phone: string, name: 
   return cell(retry, "id");
 }
 
-async function storeIncoming(connection: Record<string, unknown>, data: unknown) {
+async function storeIncoming(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}) {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
   const key = (rawKey && typeof rawKey === "object" ? rawKey : {}) as Record<string, unknown>;
   if (key["fromMe"] === true) return;
-  const phone = evolutionContactPhone(key);
+  const phone = incomingPhone(key, knownLids);
   const externalId = cell(key, "id");
   const content = evolutionMessageContent(record);
   const text = content.mediaKind ? content.text : evolutionMessageText(record["message"]);

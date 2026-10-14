@@ -13,7 +13,7 @@ import {
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
-import { attendanceLabel, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptLatestSnapshot, attendanceLabel, composerSendsOnEnter, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" };
@@ -155,10 +155,17 @@ export function LiveInbox() {
   const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
   const [targetId, setTargetId] = useState("");
   const selectedRef = useRef("");
+  const snapshotRequest = useRef(0);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+  const sending = useRef(false);
   selectedRef.current = selected;
 
   async function load() {
+    const requestId = snapshotRequest.current + 1;
+    snapshotRequest.current = requestId;
     const result = await chatbotSnapshotFn();
+    if (!acceptLatestSnapshot(requestId, snapshotRequest.current)) return;
     if (!result.ok) {
       setMessage(result.message);
       return;
@@ -167,11 +174,12 @@ export function LiveInbox() {
     let conversations = result.data.conversations;
     if (openId && conversations.some((item) => item.id === openId)) {
       const marked = await markChatbotConversationReadFn({ data: { conversationId: openId } });
+      if (!acceptLatestSnapshot(requestId, snapshotRequest.current)) return;
       if (marked.ok) conversations = conversations.map((item) => (item.id === openId ? { ...item, unreadCount: 0 } : item));
     }
     const next = { ...result.data, conversations };
     setData(next);
-    setMessage("");
+    setMessage((current) => (sending.current ? current : ""));
     setSelected((current) => (next.conversations.some((item) => item.id === current) ? current : ""));
   }
 
@@ -182,6 +190,7 @@ export function LiveInbox() {
   }, []);
 
   useEffect(() => {
+    stickToBottom.current = true;
     setTargets([]);
     setTargetId("");
   }, [selected]);
@@ -190,6 +199,12 @@ export function LiveInbox() {
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
   const channel = data?.connections.find((item) => item.id === conversation?.connectionId)?.name ?? "";
   const messages = data?.messages.filter((item) => item.conversationId === selected) ?? [];
+
+  useEffect(() => {
+    const box = historyRef.current;
+    if (!box || !stickToBottom.current) return;
+    box.scrollTop = box.scrollHeight;
+  }, [messages.length, selected]);
 
   function labelFor(conversationId: string) {
     const current = data?.conversations.find((item) => item.id === conversationId);
@@ -249,16 +264,20 @@ export function LiveInbox() {
     await load();
   }
 
-  async function send() {
-    if (!selected) return;
+  async function send(text = draft) {
+    const clean = text.trim();
+    if (!selected || !clean || sending.current) return;
+    sending.current = true;
     setPending(true);
-    const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: draft } });
+    const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
+    sending.current = false;
     setPending(false);
     if (!result.ok) {
       setMessage(result.message);
       return;
     }
     setDraft("");
+    setMessage("");
     await load();
   }
 
@@ -383,7 +402,14 @@ export function LiveInbox() {
           </div>
           {conversation ? (
             <>
-              <div className="message-history">
+              <div
+                className="message-history"
+                ref={historyRef}
+                onScroll={(event) => {
+                  const box = event.currentTarget;
+                  stickToBottom.current = stickToLatestMessage(box.scrollHeight - box.scrollTop - box.clientHeight);
+                }}
+              >
                 {messages.map((item) =>
                   expectsMedia(item) ? (
                     <ChatMedia item={item} key={item.id} />
@@ -397,23 +423,27 @@ export function LiveInbox() {
               {conversation.open || conversation.mine ? (
               <form
                 className="composer"
-                onSubmit={(event) => event.preventDefault()}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void send();
+                }}
               >
                 <textarea
                   value={draft}
                   disabled={pending}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key !== "Enter" || event.shiftKey || pending || !draft.trim()) return;
+                    if (event.nativeEvent.isComposing) return;
+                    if (!composerSendsOnEnter({ key: event.key, code: event.code, shiftKey: event.shiftKey, pending, text: event.currentTarget.value })) return;
                     event.preventDefault();
-                    void send();
+                    void send(event.currentTarget.value);
                   }}
                   placeholder="Escreva a resposta para este contato..."
                   aria-label="Resposta"
                   rows={3}
                 />
                 <footer className="composer-actions">
-                  <Button type="button">
+                  <Button type="submit" disabled={pending || !draft.trim()}>
                     <Send />
                     Enviar
                   </Button>

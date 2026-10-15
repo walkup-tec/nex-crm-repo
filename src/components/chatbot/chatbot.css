@@ -209,7 +209,17 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .overview-filters select{width:220px;height:36px;font-size:12px}
 .chatbot-app .overview-filters .period-picker{width:18rem}
 .chatbot-app .overview-clear{height:36px}
-.chatbot-app .share-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+.chatbot-app .overview-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin-top:20px;align-items:stretch}
+.chatbot-app .share-stack{display:grid;gap:20px;align-content:start;min-width:0}
 .chatbot-app .share-note{margin:6px 0 0;color:var(--muted-foreground);font-size:12px}
-@media(max-width:600px){.chatbot-app .share-grid{grid-template-columns:1fr}}
+.chatbot-app .share-pie{display:block;width:min(100%,320px);height:auto;margin:2px auto 0;overflow:visible}
+.chatbot-app .share-pie path{cursor:pointer}
+.chatbot-app .share-legend{display:grid;gap:2px;width:min(100%,280px);margin:2px auto 0;padding:0;list-style:none}
+.chatbot-app .share-legend button{display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;gap:8px;align-items:center;width:100%;height:auto;min-height:30px;padding:4px 8px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.chatbot-app .share-legend button[data-active="true"]{background:var(--muted)}
+.chatbot-app .share-legend i{width:10px;height:10px;border-radius:3px}
+.chatbot-app .share-legend span{overflow:hidden;color:var(--foreground);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.chatbot-app .share-legend strong{color:var(--foreground);font-size:12px;font-weight:650;font-variant-numeric:tabular-nums}
+.chatbot-app .share-legend em{color:var(--muted-foreground);font-size:11px;font-style:normal;font-variant-numeric:tabular-nums}
+@media(max-width:900px){.chatbot-app .overview-split{grid-template-columns:1fr}}
 

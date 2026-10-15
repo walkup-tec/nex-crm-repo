@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, Star, TrendingUp, Users } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
 import { applyOverviewFilters, attendanceSeries, negotiatedLabel, ratingAverageLabel, type OverviewBoard, type OverviewFilters } from "@/lib/chatbot-evo";
 import { JourneyFunnel } from "@/components/nex/StageFunnel";
+import { SharePie } from "./SharePie";
 import { PageHeading } from "./common";
 
 const stagePalette = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)"];
@@ -15,48 +16,6 @@ function stageFill(name: string, index: number) {
   if (key === "sucesso") return "var(--success)";
   if (key === "perdido") return "var(--destructive)";
   return stagePalette[index % stagePalette.length];
-}
-
-const shareColors = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)", "var(--cyan)"];
-
-function SharePie({ title, slices }: { title: string; slices: { name: string; count: number }[] }) {
-  const total = slices.reduce((sum, item) => sum + item.count, 0);
-  return (
-    <section className="chart-panel">
-      <h2>{title}</h2>
-      <p className="share-note">Participação entre os atendimentos</p>
-      {total ? (
-        <div className="mt-2 h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={slices} dataKey="count" nameKey="name" cx="50%" cy="46%" outerRadius={88} stroke="var(--card)">
-                {slices.map((slice, index) => (
-                  <Cell key={`${slice.name}-${index}`} fill={shareColors[index % shareColors.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                content={({ active, payload }) => {
-                  const item = payload?.[0];
-                  if (!active || !item) return null;
-                  const count = Number(item.value ?? 0);
-                  const percent = total ? Math.round((count / total) * 100) : 0;
-                  return (
-                    <div className="rounded-md border bg-card px-3 py-2 text-xs">
-                      <p className="font-semibold">{item.name}</p>
-                      <p className="text-muted-foreground">{count} {count === 1 ? "atendimento" : "atendimentos"} · {percent}%</p>
-                    </div>
-                  );
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
-        <div className="chart-empty">Ainda não há dados para este período</div>
-      )}
-    </section>
-  );
 }
 
 const clearedFilters: OverviewFilters = { period: { mode: "total" }, attendantId: "", channelId: "" };
@@ -151,33 +110,37 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           </div>
         ))}
       </div>
-      <div className="chart-grid">
-        <section className="chart-panel">
-          <h2>Volume de atendimentos</h2>
-          <div className="mt-5 h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={24} />
-                <YAxis allowDecimals={false} domain={[0, (max: number) => Math.max(max, 1)]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={32} />
-                <Tooltip
-                  cursor={{ stroke: "var(--border)" }}
-                  content={({ active, payload, label }) => {
-                    if (!active || !payload?.length) return null;
-                    const count = Number(payload[0]?.value ?? 0);
-                    return (
-                      <div className="rounded-md border bg-card px-3 py-2 text-xs">
-                        <p className="text-muted-foreground">{label}</p>
-                        <p className="font-semibold">{count} {count === 1 ? "atendimento" : "atendimentos"}</p>
-                      </div>
-                    );
-                  }}
-                />
-                <Line type="monotone" dataKey="count" stroke="var(--primary)" strokeWidth={2} dot={series.length <= 1 ? { r: 3, strokeWidth: 0, fill: "var(--primary)" } : false} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+      <section className="chart-panel">
+        <h2>Volume de atendimentos</h2>
+        <div className="mt-5 h-[250px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={24} />
+              <YAxis allowDecimals={false} domain={[0, (max: number) => Math.max(max, 1)]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={32} />
+              <Tooltip
+                cursor={{ stroke: "var(--border)" }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const count = Number(payload[0]?.value ?? 0);
+                  return (
+                    <div className="rounded-md border bg-card px-3 py-2 text-xs">
+                      <p className="text-muted-foreground">{label}</p>
+                      <p className="font-semibold">{count} {count === 1 ? "atendimento" : "atendimentos"}</p>
+                    </div>
+                  );
+                }}
+              />
+              <Line type="monotone" dataKey="count" stroke="var(--primary)" strokeWidth={2} dot={series.length <= 1 ? { r: 3, strokeWidth: 0, fill: "var(--primary)" } : false} activeDot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+      <div className="overview-split">
+        <div className="share-stack">
+          <SharePie title="Produto" slices={view.productShares} />
+          <SharePie title="Canais" slices={view.channelShares} />
+        </div>
         <section className="chart-panel">
           <h2>Distribuição por etapa</h2>
           {view.stages.length ? (
@@ -199,10 +162,6 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           )}
         </section>
       </div>
-      <div className="share-grid">
-        <SharePie title="Produto" slices={view.productShares} />
-        <SharePie title="Canais" slices={view.channelShares} />
-      </div>
       <section className="chart-panel mt-5">
         <h2>Desempenho por atendente</h2>
         {view.agents.length ? (
@@ -221,15 +180,15 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                     return (
                       <div className="rounded-md border bg-card px-3 py-2 text-xs">
                         <p className="font-semibold">{label}</p>
-                        <p className="mt-1 text-muted-foreground">Total atendimento: {total}</p>
-                        <p className="text-muted-foreground">Atendimentos finalizados com Sucesso: {success}</p>
+                        <p className="mt-1 text-muted-foreground">Atendimento: {total}</p>
+                        <p className="text-muted-foreground">sucesso: {success}</p>
                       </div>
                     );
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="total" name="Total atendimento" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={12} />
-                <Bar dataKey="success" name="Atendimentos finalizados com Sucesso" fill="var(--success)" radius={[0, 4, 4, 0]} barSize={12} />
+                <Bar dataKey="total" name="Atendimento" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={12} />
+                <Bar dataKey="success" name="sucesso" fill="var(--success)" radius={[0, 4, 4, 0]} barSize={12} />
               </BarChart>
             </ResponsiveContainer>
           </div>

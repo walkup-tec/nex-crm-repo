@@ -678,17 +678,30 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
     contacts,
   });
   const stageOf = new Map(source.contacts.map((item) => [item.id, item.stage]));
+  const ownerOf = new Map(source.contacts.map((item) => [item.id, item.ownerId]));
+  const sucessoAssigned = new Set<string>();
+  const sucessoOpen = new Set<string>();
+  for (const item of inChannelAndPeriod) {
+    if (!item.contactId || !protectedKanbanStage(stageOf.get(item.contactId) ?? "")) continue;
+    if (item.assigneeId) sucessoAssigned.add(item.contactId);
+    else sucessoOpen.add(item.contactId);
+  }
+  for (const id of sucessoAssigned) sucessoOpen.delete(id);
   const agents = source.attendants
     .filter((person) => !filters.attendantId || person.id === filters.attendantId)
     .map((person) => {
       const rows = inChannelAndPeriod.filter((item) => item.assigneeId === person.id);
       const contactIds = [...new Set(rows.map((item) => item.contactId).filter(Boolean))];
+      const success = new Set(contactIds.filter((id) => protectedKanbanStage(stageOf.get(id) ?? "")));
+      for (const id of sucessoOpen) {
+        if (ownerOf.get(id) === person.id) success.add(id);
+      }
       return {
         id: person.id,
         name: person.name,
         team: person.team || "Sem equipe",
         total: contactIds.length,
-        success: contactIds.filter((id) => protectedKanbanStage(stageOf.get(id) ?? "")).length,
+        success: success.size,
       };
     });
   return { ...metrics, agents, ...attendanceShares(source, matched) };

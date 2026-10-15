@@ -250,6 +250,34 @@ assert.deepEqual(
 assert.deepEqual(
   applyOverviewFilters(
     {
+      stages: ["Proposta", "Sucesso"],
+      attendants: [
+        { id: "ana", name: "Ana", team: "Comercial" },
+        { id: "bia", name: "Bia", team: "" },
+      ],
+      channels: [{ id: "w1", name: "Principal" }],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+      ],
+      ratings: [],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "" },
+  ).agents.map((agent) => ({ name: agent.name, total: agent.total, success: agent.success })),
+  [
+    { name: "Ana", total: 1, success: 0 },
+    { name: "Bia", total: 0, success: 1 },
+  ],
+);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
       stages: [],
       attendants: [],
       channels: [

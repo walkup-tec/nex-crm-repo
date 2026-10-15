@@ -99,10 +99,12 @@ export function PeriodPicker({
   value,
   disabled,
   onApply,
+  totalHint = "Exibe os indicadores de todo o período disponível, desde o início das campanhas.",
 }: {
   value: MetaPeriod;
   disabled?: boolean;
   onApply: (period: MetaPeriod) => void;
+  totalHint?: string;
 }) {
   const today = todayInSaoPaulo();
   const [open, setOpen] = useState(false);
@@ -207,7 +209,7 @@ export function PeriodPicker({
           )}
           {mode === "total" && (
             <div className="flex min-h-40 flex-1 items-center p-6 text-sm text-muted-foreground lg:w-80">
-              Exibe os indicadores de todo o período disponível, desde o início das campanhas.
+              {totalHint}
             </div>
           )}
         </div>

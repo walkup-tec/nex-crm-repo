@@ -29,6 +29,7 @@ import {
   negotiatedCents,
   negotiatedLabel,
   clientVisibleTo,
+  applyOverviewFilters,
   attendanceSeries,
   dailyAttendanceCounts,
   overviewMetrics,
@@ -153,7 +154,7 @@ assert.deepEqual(
 assert.deepEqual(
   attendanceSeries(
     [{ day: "2026-10-14", count: 1 }, { day: "2026-10-15", count: 2 }, { day: "2026-09-01", count: 9 }],
-    "Últimos 7 dias",
+    { mode: "custom", since: "2026-10-09", until: "2026-10-15" },
     new Date("2026-10-15T15:00:00.000Z"),
   ).filter((point) => point.count > 0),
   [
@@ -161,9 +162,149 @@ assert.deepEqual(
     { label: "15/10", count: 2 },
   ],
 );
-assert.equal(attendanceSeries([], "Hoje", new Date("2026-10-15T15:00:00.000Z")).length, 1);
-assert.equal(attendanceSeries([], "Últimos 30 dias", new Date("2026-10-15T15:00:00.000Z")).length, 30);
-assert.equal(attendanceSeries([], "Este mês", new Date("2026-10-15T15:00:00.000Z"))[0]?.label, "01/10");
+assert.equal(attendanceSeries([], { mode: "custom", since: "2026-10-15", until: "2026-10-15" }, new Date("2026-10-15T15:00:00.000Z")).length, 1);
+assert.equal(attendanceSeries([], { mode: "custom", since: "2026-09-16", until: "2026-10-15" }, new Date("2026-10-15T15:00:00.000Z")).length, 30);
+assert.equal(attendanceSeries([], { mode: "custom", since: "2026-10-01", until: "2026-10-15" }, new Date("2026-10-15T15:00:00.000Z"))[0]?.label, "01/10");
+assert.equal(
+  applyOverviewFilters(
+    {
+      stages: ["Proposta", "Sucesso"],
+      attendants: [
+        { id: "ana", name: "Ana", team: "Comercial" },
+        { id: "bia", name: "Bia", team: "" },
+      ],
+      channels: [
+        { id: "w1", name: "Principal" },
+        { id: "w2", name: "Suporte" },
+      ],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w2", assigneeId: "bia", finishedCount: 2, createdAt: "2026-10-01T15:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+      ],
+      ratings: [
+        { conversationId: "a1", score: 5, createdAt: "2026-10-15T16:00:00.000Z" },
+        { conversationId: "b1", score: 3, createdAt: "2026-10-01T16:00:00.000Z" },
+      ],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "custom", since: "2026-10-15", until: "2026-10-15" }, attendantId: "ana", channelId: "w1" },
+  ).received,
+  1,
+);
+assert.equal(
+  applyOverviewFilters(
+    {
+      stages: ["Proposta", "Sucesso"],
+      attendants: [{ id: "ana", name: "Ana", team: "Comercial" }],
+      channels: [{ id: "w1", name: "Principal" }],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w2", assigneeId: "bia", finishedCount: 2, createdAt: "2026-10-01T15:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+      ],
+      ratings: [{ conversationId: "b1", score: 3, createdAt: "2026-10-01T16:00:00.000Z" }],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "w1" },
+  ).stages.find((stage) => stage.name === "Sucesso")?.count,
+  0,
+);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: ["Proposta", "Sucesso"],
+      attendants: [
+        { id: "ana", name: "Ana", team: "Comercial" },
+        { id: "bia", name: "Bia", team: "" },
+      ],
+      channels: [{ id: "w1", name: "Principal" }],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "bia", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b2", contactId: "c2", connectionId: "w1", assigneeId: "bia", finishedCount: 1, createdAt: "2026-10-15T18:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+      ],
+      ratings: [],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "" },
+  ).agents.map((agent) => ({ name: agent.name, total: agent.total, success: agent.success })),
+  [
+    { name: "Ana", total: 1, success: 0 },
+    { name: "Bia", total: 1, success: 1 },
+  ],
+);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: [],
+      attendants: [],
+      channels: [
+        { id: "w1", name: "Principal" },
+        { id: "w2", name: "Suporte" },
+      ],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w2", assigneeId: "bia", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+      ],
+      contacts: [],
+      ratings: [],
+      products: [
+        { id: "p1", name: "Meta Ads" },
+        { id: "p2", name: "Site" },
+      ],
+      productLinks: [
+        { contactId: "c1", productId: "p1" },
+        { contactId: "c2", productId: "p1" },
+        { contactId: "c2", productId: "p2" },
+      ],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "" },
+  ).productShares,
+  [
+    { name: "Meta Ads", count: 2 },
+    { name: "Site", count: 1 },
+  ],
+);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: [],
+      attendants: [],
+      channels: [
+        { id: "w1", name: "Principal" },
+        { id: "w2", name: "Suporte" },
+      ],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w2", assigneeId: "bia", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+      ],
+      contacts: [],
+      ratings: [],
+      products: [{ id: "p1", name: "Meta Ads" }],
+      productLinks: [{ contactId: "c1", productId: "p1" }],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "w1" },
+  ).channelShares,
+  [{ name: "Principal", count: 1 }],
+);
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "Em fila");
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");

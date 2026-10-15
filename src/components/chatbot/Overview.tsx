@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, SlidersHorizontal, Star, TrendingUp, Users } from "lucide-react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, Star, TrendingUp, Users } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
-import { attendanceSeries, negotiatedLabel, ratingAverageLabel, type ChatbotOverview } from "@/lib/chatbot-evo";
+import { applyOverviewFilters, attendanceSeries, negotiatedLabel, ratingAverageLabel, type OverviewBoard, type OverviewFilters } from "@/lib/chatbot-evo";
 import { JourneyFunnel } from "@/components/nex/StageFunnel";
-import { useWorkspace } from "@/lib/chatbot/store";
-import { Field, Modal, PageHeading } from "./common";
+import { PageHeading } from "./common";
 
 const stagePalette = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)"];
 
@@ -17,25 +17,64 @@ function stageFill(name: string, index: number) {
   return stagePalette[index % stagePalette.length];
 }
 
-const emptyOverview: ChatbotOverview = {
-  received: 0,
-  attending: 0,
-  finished: 0,
-  openDeals: 0,
-  negotiatingCents: 0,
-  wonCents: 0,
-  clients: 0,
-  ratingAverage: null,
-  ratingCount: 0,
+const shareColors = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)", "var(--cyan)"];
+
+function SharePie({ title, slices }: { title: string; slices: { name: string; count: number }[] }) {
+  const total = slices.reduce((sum, item) => sum + item.count, 0);
+  return (
+    <section className="chart-panel">
+      <h2>{title}</h2>
+      <p className="share-note">Participação entre os atendimentos</p>
+      {total ? (
+        <div className="mt-2 h-[280px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={slices} dataKey="count" nameKey="name" cx="50%" cy="46%" outerRadius={88} stroke="var(--card)">
+                {slices.map((slice, index) => (
+                  <Cell key={`${slice.name}-${index}`} fill={shareColors[index % shareColors.length]} />
+                ))}
+              </Pie>
+              <Tooltip
+                content={({ active, payload }) => {
+                  const item = payload?.[0];
+                  if (!active || !item) return null;
+                  const count = Number(item.value ?? 0);
+                  const percent = total ? Math.round((count / total) * 100) : 0;
+                  return (
+                    <div className="rounded-md border bg-card px-3 py-2 text-xs">
+                      <p className="font-semibold">{item.name}</p>
+                      <p className="text-muted-foreground">{count} {count === 1 ? "atendimento" : "atendimentos"} · {percent}%</p>
+                    </div>
+                  );
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="chart-empty">Ainda não há dados para este período</div>
+      )}
+    </section>
+  );
+}
+
+const clearedFilters: OverviewFilters = { period: { mode: "total" }, attendantId: "", channelId: "" };
+
+const emptyBoard: OverviewBoard = {
   stages: [],
-  days: [],
+  attendants: [],
+  channels: [],
+  conversations: [],
+  contacts: [],
+  ratings: [],
+  userId: "",
+  admin: false,
 };
 
 export function Overview({ reports = false }: { reports?: boolean }) {
-  const { data } = useWorkspace();
-  const [period, setPeriod] = useState("Últimos 30 dias");
-  const [filters, setFilters] = useState(false);
-  const [overview, setOverview] = useState<ChatbotOverview>(emptyOverview);
+  const [filters, setFilters] = useState<OverviewFilters>(clearedFilters);
+  const [board, setBoard] = useState<OverviewBoard>(emptyBoard);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -44,21 +83,22 @@ export function Overview({ reports = false }: { reports?: boolean }) {
         setMessage(result.message);
         return;
       }
-      setOverview(result.data);
+      setBoard(result.data);
     });
   }, []);
 
-  const series = useMemo(() => attendanceSeries(overview.days, period), [overview.days, period]);
+  const view = useMemo(() => applyOverviewFilters(board, filters), [board, filters]);
+  const series = useMemo(() => attendanceSeries(view.days, filters.period), [view.days, filters.period]);
 
   const metrics = [
-    ["Atendimentos recebidos", String(overview.received), MessageSquare],
-    ["Em atendimento", String(overview.attending), Users],
-    ["Encerrados", String(overview.finished), CheckCheck],
-    ["Oportunidades abertas", String(overview.openDeals), BriefcaseBusiness],
-    ["Valor em negociação", negotiatedLabel(overview.negotiatingCents), TrendingUp],
-    ["Valor ganho", negotiatedLabel(overview.wonCents), TrendingUp],
-    ["Clientes cadastrados", String(overview.clients), Users, ""],
-    ["Nota média", ratingAverageLabel(overview.ratingAverage), Star, overview.ratingCount ? `${overview.ratingCount} ${overview.ratingCount === 1 ? "avaliação" : "avaliações"}` : "Sem avaliações"],
+    ["Atendimentos recebidos", String(view.received), MessageSquare],
+    ["Em atendimento", String(view.attending), Users],
+    ["Encerrados", String(view.finished), CheckCheck],
+    ["Oportunidades abertas", String(view.openDeals), BriefcaseBusiness],
+    ["Valor em negociação", negotiatedLabel(view.negotiatingCents), TrendingUp],
+    ["Valor ganho", negotiatedLabel(view.wonCents), TrendingUp],
+    ["Clientes cadastrados", String(view.clients), Users, ""],
+    ["Nota média", ratingAverageLabel(view.ratingAverage), Star, view.ratingCount ? `${view.ratingCount} ${view.ratingCount === 1 ? "avaliação" : "avaliações"}` : "Sem avaliações"],
   ] as const;
 
   return (
@@ -66,18 +106,38 @@ export function Overview({ reports = false }: { reports?: boolean }) {
       <PageHeading
         title={reports ? "Relatórios" : "Dashboard Chatbot"}
         description={reports ? "Uma visão clara dos resultados da sua operação." : "Seu atendimento e sua operação comercial, em perspectiva."}
-      >
-        <select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Período">
-          <option>Hoje</option>
-          <option>Últimos 7 dias</option>
-          <option>Últimos 30 dias</option>
-          <option>Este mês</option>
-        </select>
-        <Button variant="outline" onClick={() => setFilters(true)}>
-          <SlidersHorizontal />
-          Filtros
-        </Button>
-      </PageHeading>
+      />
+      <div className="overview-filters">
+        <label>
+          Período
+          <span className="period-picker">
+            <PeriodPicker
+              value={filters.period}
+              totalHint="Exibe os indicadores de todo o período disponível, desde o início dos atendimentos."
+              onApply={(period) => setFilters((current) => ({ ...current, period }))}
+            />
+          </span>
+        </label>
+        <label>
+          Atendente
+          <select aria-label="Atendente" value={filters.attendantId} onChange={(event) => setFilters((current) => ({ ...current, attendantId: event.target.value }))}>
+            <option value="">Todos os atendentes</option>
+            {board.attendants.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Canal
+          <select aria-label="Canal" value={filters.channelId} onChange={(event) => setFilters((current) => ({ ...current, channelId: event.target.value }))}>
+            <option value="">Todos os canais</option>
+            {board.channels.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <Button type="button" variant="outline" className="overview-clear" onClick={() => setFilters(clearedFilters)}>Limpar filtro</Button>
+      </div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <div className="stats-strip">
         {metrics.map(([label, value, Icon, hint]) => (
@@ -120,14 +180,14 @@ export function Overview({ reports = false }: { reports?: boolean }) {
         </section>
         <section className="chart-panel">
           <h2>Distribuição por etapa</h2>
-          {overview.stages.length ? (
+          {view.stages.length ? (
             <div className="mt-5">
               <JourneyFunnel
                 compact
                 floor={0.2}
                 label="Funil das etapas do atendimento"
-                fills={overview.stages.map((stage, index) => stageFill(stage.name, index))}
-                stages={overview.stages.map((stage) => ({
+                fills={view.stages.map((stage, index) => stageFill(stage.name, index))}
+                stages={view.stages.map((stage) => ({
                   label: stage.name,
                   value: String(stage.count),
                   amount: stage.count,
@@ -139,29 +199,40 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           )}
         </section>
       </div>
+      <div className="share-grid">
+        <SharePie title="Produto" slices={view.productShares} />
+        <SharePie title="Canais" slices={view.channelShares} />
+      </div>
       <section className="chart-panel mt-5">
         <h2>Desempenho por atendente</h2>
-        {data.agents.length ? (
-          <table className="mt-5">
-            <thead>
-              <tr>
-                <th>Atendente</th>
-                <th>Equipe</th>
-                <th>Atendimentos</th>
-                <th>Encerrados</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.agents.map((agent) => (
-                <tr key={agent.id}>
-                  <td>{agent.name}</td>
-                  <td>{agent.team}</td>
-                  <td>{data.conversations.filter((item) => item.assigneeId === agent.id).length}</td>
-                  <td>{data.conversations.filter((item) => item.assigneeId === agent.id && item.status === "closed").length}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {view.agents.length ? (
+          <div className="mt-5" style={{ height: Math.max(220, view.agents.length * 64) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart layout="vertical" data={view.agents} margin={{ top: 8, right: 16, left: 8, bottom: 0 }} barGap={4} barCategoryGap={16}>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis type="number" allowDecimals={false} domain={[0, (max: number) => Math.max(max, 1)]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  cursor={{ fill: "var(--muted)", fillOpacity: 0.35 }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const total = Number(payload.find((item) => item.dataKey === "total")?.value ?? 0);
+                    const success = Number(payload.find((item) => item.dataKey === "success")?.value ?? 0);
+                    return (
+                      <div className="rounded-md border bg-card px-3 py-2 text-xs">
+                        <p className="font-semibold">{label}</p>
+                        <p className="mt-1 text-muted-foreground">Total atendimento: {total}</p>
+                        <p className="text-muted-foreground">Atendimentos finalizados com Sucesso: {success}</p>
+                      </div>
+                    );
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="total" name="Total atendimento" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={12} />
+                <Bar dataKey="success" name="Atendimentos finalizados com Sucesso" fill="var(--success)" radius={[0, 4, 4, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         ) : (
           <div className="empty-state">
             <BarChart3 />
@@ -169,27 +240,6 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           </div>
         )}
       </section>
-      <Modal title="Filtros dos indicadores" open={filters} onClose={() => setFilters(false)}>
-        <div className="modal-form">
-          <Field label="Número de WhatsApp">
-            <select>
-              <option>Todos os números</option>
-              {data.connections.map((item) => (
-                <option key={item.id}>{item.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Atendente">
-            <select>
-              <option>Todos os atendentes</option>
-              {data.agents.map((item) => (
-                <option key={item.id}>{item.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Button onClick={() => setFilters(false)}>Aplicar</Button>
-        </div>
-      </Modal>
     </main>
   );
 }

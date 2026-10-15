@@ -38,7 +38,6 @@ import {
   keepWhatsappName,
   tagColorValue,
   clientVisibleTo,
-  overviewMetrics,
   protectedKanbanStage,
   withWonKanbanStage,
   wonKanbanStage,
@@ -55,7 +54,7 @@ import {
   ratingPrompt,
   ratingScore,
   type ChatbotCatalogItem,
-  type ChatbotOverview,
+  type OverviewBoard,
   type ChatbotClientRow,
   type ChatbotKanbanBoard,
   type ChatbotContactProfile,
@@ -2479,20 +2478,56 @@ export async function saveChatbotStages(userId: string, names: string[]) {
   return stageRows(stages);
 }
 
-export async function chatbotOverview(userId: string): Promise<ChatbotOverview> {
+export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
   const { organizationId, admin } = await membership(userId, "overview");
   const listedStages = await listChatbotStages(userId);
-  const [conversations, contacts, ratings] = await Promise.all([
-    rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count, created_at").eq("organization_id", organizationId)),
-    rows(table("chatbot_contacts").select("negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId)),
-    rowsOrMissing(table("chatbot_ratings").select("score").eq("organization_id", organizationId)),
+  const [conversations, contacts, ratings, connections, profiles, members, teams, products, productLinks] = await Promise.all([
+    rows(table("chatbot_conversations").select("id, contact_id, connection_id, assignee_id, finished_count, created_at").eq("organization_id", organizationId)),
+    rows(table("chatbot_contacts").select("id, negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_ratings").select("conversation_id, score, created_at").eq("organization_id", organizationId)),
+    rows(table("chatbot_connections").select("id, display_name, phone").eq("organization_id", organizationId).order("created_at", { ascending: true })),
+    supabaseAdmin.from("profiles").select("id, full_name").eq("organization_id", organizationId).order("full_name", { ascending: true }),
+    rowsOrMissing(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_teams").select("id, name").eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
+    rowsOrMissing(table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId)),
   ]);
-  return overviewMetrics({
+  if (profiles.error) fail(schemaMessage(profiles.error.message));
+  const profileIds = (profiles.data ?? []).map((row) => row.id);
+  const roles = profileIds.length
+    ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", profileIds)
+    : { data: [], error: null };
+  if (roles.error) fail(schemaMessage(roles.error.message));
+  const attendantIds = new Set((roles.data ?? []).filter((row) => row.role === "client_user").map((row) => row.user_id));
+  const ownerIds = new Set((roles.data ?? []).filter((row) => row.role === "master" || row.role === "client_admin").map((row) => row.user_id));
+  const memberIds = new Set(members.rows.map((row) => cell(row, "user_id")));
+  const teamName = new Map(teams.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
+  const teamsOf = new Map<string, string[]>();
+  for (const member of members.rows) {
+    const name = teamName.get(cell(member, "team_id"));
+    const memberId = cell(member, "user_id");
+    if (!name || !memberId) continue;
+    teamsOf.set(memberId, [...(teamsOf.get(memberId) ?? []), name]);
+  }
+  return {
     userId,
     admin,
-    scores: ratings.rows.map((row) => Number(row["score"])).filter((score) => Number.isInteger(score)),
+    stages: listedStages.stages.map((item) => item.name),
+    channels: connections.map((row) => ({
+      id: cell(row, "id"),
+      name: cell(row, "display_name") || cell(row, "phone") || "Canal sem nome",
+    })),
+    attendants: (profiles.data ?? [])
+      .filter((row) => attendantIds.has(row.id) || (ownerIds.has(row.id) && memberIds.has(row.id)))
+      .map((row) => ({
+        id: row.id,
+        name: row.full_name.trim() || "Atendente",
+        team: (teamsOf.get(row.id) ?? []).join(", "),
+      })),
     conversations: conversations.map((row) => ({
+      id: cell(row, "id"),
       contactId: cell(row, "contact_id"),
+      connectionId: cell(row, "connection_id"),
       assigneeId: cell(row, "assignee_id"),
       finishedCount: Number(row["finished_count"]) || 0,
       createdAt: cell(row, "created_at"),
@@ -2501,13 +2536,20 @@ export async function chatbotOverview(userId: string): Promise<ChatbotOverview> 
       const raw = row["negotiated_cents"];
       const amount = raw == null || raw === "" ? null : Number(raw);
       return {
+        id: cell(row, "id"),
         negotiatedCents: amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null,
         stage: cell(row, "stage_name"),
         ownerId: cell(row, "client_owner_id"),
       };
     }),
-    stages: listedStages.stages.map((item) => item.name),
-  });
+    ratings: ratings.rows.map((row) => ({
+      conversationId: cell(row, "conversation_id"),
+      score: Number(row["score"]) || 0,
+      createdAt: cell(row, "created_at"),
+    })),
+    products: products.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name") })).filter((item) => item.id && item.name),
+    productLinks: productLinks.rows.map((row) => ({ contactId: cell(row, "contact_id"), productId: cell(row, "product_id") })),
+  };
 }
 
 async function setMemberTeams(organizationId: string, attendantId: string, teamIds: string[], replace: boolean) {

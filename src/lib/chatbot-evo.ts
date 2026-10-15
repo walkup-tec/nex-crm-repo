@@ -587,24 +587,146 @@ export function dailyAttendanceCounts(createdAts: string[], timeZone = attendanc
   return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([day, count]) => ({ day, count }));
 }
 
-export function attendanceSeries(counts: { day: string; count: number }[], period: string, now = new Date(), timeZone = attendanceTimeZone) {
-  const today = zonedDay(now, timeZone);
-  const start = period === "Hoje"
-    ? today
-    : period === "Últimos 7 dias"
-      ? addUtcDays(today, -6)
-      : period === "Este mês"
-        ? { ...today, day: 1 }
-        : addUtcDays(today, -29);
+export function attendanceSeries(
+  counts: { day: string; count: number }[],
+  period: OverviewPeriod,
+  now = new Date(),
+  timeZone = attendanceTimeZone,
+) {
+  const today = dayKey(zonedDay(now, timeZone));
+  const startKey = period.mode === "custom" ? period.since : counts[0]?.day ?? today;
+  const endKey = period.mode === "custom" ? period.until : today;
+  const start = parseDay(startKey);
+  if (!start || startKey > endKey) return [];
   const byDay = new Map(counts.map((item) => [item.day, item.count]));
   const points: { label: string; count: number }[] = [];
-  for (let cursor = start; dayKey(cursor) <= dayKey(today) && points.length < 62; cursor = addUtcDays(cursor, 1)) {
+  for (let cursor = start; dayKey(cursor) <= endKey && points.length < 400; cursor = addUtcDays(cursor, 1)) {
     points.push({
       label: `${String(cursor.day).padStart(2, "0")}/${String(cursor.month).padStart(2, "0")}`,
       count: byDay.get(dayKey(cursor)) ?? 0,
     });
   }
   return points;
+}
+
+export type OverviewPeriod = { mode: "total" } | { mode: "custom"; since: string; until: string };
+
+export type OverviewFilters = {
+  period: OverviewPeriod;
+  attendantId: string;
+  channelId: string;
+};
+
+export type OverviewBoard = {
+  stages: string[];
+  attendants: { id: string; name: string; team: string }[];
+  channels: { id: string; name: string }[];
+  conversations: { id: string; contactId: string; connectionId: string; assigneeId: string; finishedCount: number; createdAt: string }[];
+  contacts: { id: string; negotiatedCents: number | null; stage: string; ownerId: string }[];
+  ratings: { conversationId: string; score: number; createdAt: string }[];
+  products?: { id: string; name: string }[];
+  productLinks?: { contactId: string; productId: string }[];
+  userId: string;
+  admin: boolean;
+};
+
+export type OverviewAgent = { id: string; name: string; team: string; total: number; success: number };
+
+function parseDay(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+}
+
+function dayInPeriod(value: string, period: OverviewPeriod, timeZone = attendanceTimeZone) {
+  if (period.mode === "total") return true;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const day = dayKey(zonedDay(new Date(parsed), timeZone));
+  return day >= period.since && day <= period.until;
+}
+
+export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFilters) {
+  const narrowed = filters.period.mode === "custom" || filters.attendantId !== "" || filters.channelId !== "";
+  const inChannelAndPeriod = source.conversations.filter(
+    (item) => (!filters.channelId || item.connectionId === filters.channelId) && dayInPeriod(item.createdAt, filters.period),
+  );
+  const matched = inChannelAndPeriod.filter((item) => !filters.attendantId || item.assigneeId === filters.attendantId);
+  const contactIds = new Set(matched.map((item) => item.contactId).filter(Boolean));
+  const contacts = narrowed ? source.contacts.filter((item) => contactIds.has(item.id)) : source.contacts;
+  const conversationsById = new Map(source.conversations.map((item) => [item.id, item]));
+  const scores = source.ratings
+    .filter((rating) => {
+      const conversation = conversationsById.get(rating.conversationId);
+      if (filters.channelId && conversation?.connectionId !== filters.channelId) return false;
+      if (filters.attendantId && conversation?.assigneeId !== filters.attendantId) return false;
+      if ((filters.channelId || filters.attendantId) && !conversation) return false;
+      return dayInPeriod(rating.createdAt, filters.period);
+    })
+    .map((rating) => rating.score);
+  const metrics = overviewMetrics({
+    userId: source.userId,
+    admin: source.admin,
+    stages: source.stages,
+    scores,
+    conversations: matched.map((item) => ({
+      contactId: item.contactId,
+      assigneeId: item.assigneeId,
+      finishedCount: item.finishedCount,
+      createdAt: item.createdAt,
+    })),
+    contacts,
+  });
+  const stageOf = new Map(source.contacts.map((item) => [item.id, item.stage]));
+  const agents = source.attendants
+    .filter((person) => !filters.attendantId || person.id === filters.attendantId)
+    .map((person) => {
+      const rows = inChannelAndPeriod.filter((item) => item.assigneeId === person.id);
+      const contactIds = [...new Set(rows.map((item) => item.contactId).filter(Boolean))];
+      return {
+        id: person.id,
+        name: person.name,
+        team: person.team || "Sem equipe",
+        total: contactIds.length,
+        success: contactIds.filter((id) => protectedKanbanStage(stageOf.get(id) ?? "")).length,
+      };
+    });
+  return { ...metrics, agents, ...attendanceShares(source, matched) };
+}
+
+export type OverviewShare = { name: string; count: number };
+
+function attendanceShares(
+  source: OverviewBoard,
+  conversations: OverviewBoard["conversations"],
+): { productShares: OverviewShare[]; channelShares: OverviewShare[] } {
+  const channelName = new Map(source.channels.map((item) => [item.id, item.name]));
+  const channelCounts = new Map<string, number>();
+  const productName = new Map((source.products ?? []).map((item) => [item.id, item.name]));
+  const productsOf = new Map<string, string[]>();
+  for (const link of source.productLinks ?? []) {
+    const name = productName.get(link.productId);
+    if (!name || !link.contactId) continue;
+    const current = productsOf.get(link.contactId) ?? [];
+    if (!current.includes(name)) productsOf.set(link.contactId, [...current, name]);
+  }
+  const productCounts = new Map<string, number>();
+  for (const conversation of conversations) {
+    const channel = channelName.get(conversation.connectionId) || "Canal sem nome";
+    channelCounts.set(channel, (channelCounts.get(channel) ?? 0) + 1);
+    const names = productsOf.get(conversation.contactId) ?? [];
+    if (!names.length) {
+      productCounts.set("Sem produto", (productCounts.get("Sem produto") ?? 0) + 1);
+      continue;
+    }
+    for (const name of names) productCounts.set(name, (productCounts.get(name) ?? 0) + 1);
+  }
+  const shares = (counts: Map<string, number>) =>
+    [...counts.entries()]
+      .filter(([, count]) => count > 0)
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "pt-BR"))
+      .map(([name, count]) => ({ name, count }));
+  return { productShares: shares(productCounts), channelShares: shares(channelCounts) };
 }
 
 export function kanbanStageName(value: string) {

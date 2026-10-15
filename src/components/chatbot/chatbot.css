@@ -195,13 +195,21 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .kanban-card,.chatbot-app .column-total{overflow-wrap:anywhere}
 .chatbot-app .kanban-column button{white-space:normal;height:auto;min-height:32px}
 .chatbot-app .kanban-column h2:before,.chatbot-app .kanban-column:nth-child(2) h2:before,.chatbot-app .kanban-column:nth-child(3) h2:before,.chatbot-app .kanban-column:last-child h2:before{width:8px;height:8px;background:var(--stage,var(--primary))}
-.chatbot-app .kanban-card{display:grid;gap:4px;margin:0 0 10px;padding:12px 12px 12px 14px;border:1px solid color-mix(in oklch,var(--stage,var(--primary)) 34%,var(--border));border-radius:8px;background:var(--card);box-shadow:inset 3px 0 0 var(--stage,var(--primary));cursor:default}
+.chatbot-app .kanban-card{display:grid;gap:4px;margin:0 0 10px;padding:12px 12px 12px 14px;border:1px solid var(--stage,var(--primary));border-radius:8px;background:var(--card);box-shadow:inset 3px 0 0 var(--stage,var(--primary));cursor:default}
 .chatbot-app .kanban-card strong{font-size:13px;font-weight:600;line-height:1.35;letter-spacing:-.01em}
 .chatbot-app .kanban-card p{margin:0}
 .chatbot-app .kanban-product{color:var(--muted-foreground);font-size:11px;line-height:1.4}
 .chatbot-app .kanban-value{margin-top:2px;color:var(--stage,var(--primary));font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
-.chatbot-app .kanban-column button.kanban-call{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:32px;min-height:32px;margin-top:8px;padding:0 10px;border:1px solid color-mix(in oklch,var(--stage,var(--primary)) 28%,var(--border));border-radius:6px;background:color-mix(in oklch,var(--stage,var(--primary)) 8%,var(--background));color:var(--foreground);font-size:12px;font-weight:600;line-height:1;white-space:nowrap}
-.chatbot-app .kanban-column button.kanban-call:hover{background:color-mix(in oklch,var(--stage,var(--primary)) 16%,var(--background));color:var(--foreground)}
+.chatbot-app .kanban-column button.kanban-call{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:32px;min-height:32px;margin-top:8px;padding:0 10px;border:1px solid color-mix(in srgb,var(--stage,var(--primary)) 55%,transparent);border-radius:6px;background:color-mix(in srgb,var(--stage,var(--primary)) 14%,transparent);color:var(--foreground);font-size:12px;font-weight:600;line-height:1;white-space:nowrap}
+.chatbot-app .kanban-column button.kanban-call:hover{background:color-mix(in srgb,var(--stage,var(--primary)) 24%,transparent);color:var(--foreground)}
 .chatbot-app .kanban-column button.kanban-call svg{width:18px;height:18px;flex:none}
 .chatbot-app .page-heading{justify-content:flex-end}
+.chatbot-app .overview-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:-8px 0 20px}
+.chatbot-app .overview-filters label{display:grid;gap:6px;min-width:0;color:var(--muted-foreground);font-size:11px;font-weight:600}
+.chatbot-app .overview-filters select{width:220px;height:36px;font-size:12px}
+.chatbot-app .overview-filters .period-picker{width:18rem}
+.chatbot-app .overview-clear{height:36px}
+.chatbot-app .share-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+.chatbot-app .share-note{margin:6px 0 0;color:var(--muted-foreground);font-size:12px}
+@media(max-width:600px){.chatbot-app .share-grid{grid-template-columns:1fr}}
 

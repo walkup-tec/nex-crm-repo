@@ -56,6 +56,11 @@ import {
   clientFilterOptions,
   filterChatbotClients,
   queueMinutes,
+  chatbotCompanyName,
+  defaultOfflineNotice,
+  offlineNoticeText,
+  reactivationMinutes,
+  reactivatesClosedConversation,
   waitingMinutes,
   overdueQueue,
   noticeCue,
@@ -345,6 +350,16 @@ assert.equal(queueMinutes("5"), 5);
 assert.equal(queueMinutes(15), 15);
 assert.equal(queueMinutes("0"), null);
 assert.equal(queueMinutes("15.5"), null);
+assert.equal(chatbotCompanyName("  Nex  Marketing  "), "Nex Marketing");
+assert.equal(chatbotCompanyName("a"), "");
+assert.equal(chatbotCompanyName("a".repeat(121)), "");
+assert.equal(reactivationMinutes(20), 20);
+assert.equal(reactivationMinutes(10), 15);
+assert.equal(reactivatesClosedConversation("2026-10-15T12:00:00.000Z", 15, Date.parse("2026-10-15T12:14:00.000Z")), true);
+assert.equal(reactivatesClosedConversation("2026-10-15T12:00:00.000Z", 15, Date.parse("2026-10-15T12:15:00.000Z")), false);
+assert.equal(reactivatesClosedConversation("", 15, Date.parse("2026-10-15T12:01:00.000Z")), false);
+assert.equal(offlineNoticeText(`  ${defaultOfflineNotice}  `), defaultOfflineNotice);
+assert.equal(offlineNoticeText("a"), "");
 assert.equal(waitingMinutes("2026-10-15T12:00:00.000Z", Date.parse("2026-10-15T12:05:00.000Z")), 5);
 assert.deepEqual(
   overdueQueue(

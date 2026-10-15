@@ -319,6 +319,40 @@ export const saveChatbotNoticeFn = createServerFn({ method: "POST" })
     return guard(() => saveChatbotNotice(context.userId, data));
   });
 
+export const chatbotCompanySettingsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotCompanySettings } = await import("@/server/chatbot.server");
+    return guard(() => chatbotCompanySettings(context.userId));
+  });
+
+export const saveChatbotCompanyFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name: string }) => ({ name: String(data.name ?? "") }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotCompany } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotCompany(context.userId, data));
+  });
+
+export const chatbotAutomationSettingsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotAutomationSettings } = await import("@/server/chatbot.server");
+    return guard(() => chatbotAutomationSettings(context.userId));
+  });
+
+export const saveChatbotAutomationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { reactivationMinutes: number; offlineMessageEnabled: boolean; offlineMessage: string }) => ({
+    reactivationMinutes: Number(data.reactivationMinutes),
+    offlineMessageEnabled: data.offlineMessageEnabled === true,
+    offlineMessage: String(data.offlineMessage ?? ""),
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotAutomation } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotAutomation(context.userId, data));
+  });
+
 export const chatbotAttendanceSettingsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

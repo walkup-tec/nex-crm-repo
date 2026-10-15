@@ -749,6 +749,33 @@ export function queueMinutes(value: unknown) {
   return minutes;
 }
 
+export function chatbotCompanyName(value: unknown) {
+  const name = String(value ?? "").trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 120) return "";
+  return name;
+}
+
+export const reactivationChoices = [15, 20, 30, 40, 60] as const;
+
+export function reactivationMinutes(value: unknown) {
+  const minutes = Number(value);
+  return (reactivationChoices as readonly number[]).includes(minutes) ? minutes : 15;
+}
+
+export function reactivatesClosedConversation(closedAt: string, minutes: number, now: number) {
+  const closed = Date.parse(closedAt);
+  if (!Number.isFinite(closed)) return false;
+  return now - closed < reactivationMinutes(minutes) * 60_000;
+}
+
+export const defaultOfflineNotice = "No momento não há atendentes disponíveis. Sua mensagem continua na fila e será atendida assim que alguém entrar.";
+
+export function offlineNoticeText(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (text.length < 2 || text.length > 300) return "";
+  return text;
+}
+
 export function waitingMinutes(since: string, now = Date.now()) {
   const start = Date.parse(since);
   if (!Number.isFinite(start)) return 0;

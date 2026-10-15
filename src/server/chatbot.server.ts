@@ -45,7 +45,12 @@ import {
   defaultQueueMinutes,
   defaultRatingPrompt,
   overdueQueue,
+  reactivationMinutes,
+  reactivatesClosedConversation,
   queueMinutes,
+  chatbotCompanyName,
+  defaultOfflineNotice,
+  offlineNoticeText,
   ratingMessage,
   ratingPrompt,
   ratingScore,
@@ -119,6 +124,12 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_access_profiles/i.test(message)) {
     return "A migração dos perfis de acesso ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_company_name/i.test(message)) {
+    return "A migração do nome da empresa ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_reactivation_minutes|chatbot_offline_message|closed_at|offline_notified_at/i.test(message)) {
+    return "A migração da reativação ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
     return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
@@ -721,19 +732,32 @@ export async function finishChatbotConversation(userId: string, conversationId: 
   if (!assignee) return;
   if (!admin && assignee !== userId) fail("Só quem está atendendo pode finalizar.");
   const finished = Number(conversation["finished_count"]);
-  const updated = await table("chatbot_conversations")
-    .update({
-      status: "closed",
-      assignee_id: null,
-      bot_paused: false,
-      finished_count: (Number.isFinite(finished) ? finished : 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
+  const closedAt = new Date().toISOString();
+  const patch = {
+    status: "closed",
+    assignee_id: null,
+    bot_paused: true,
+    finished_count: (Number.isFinite(finished) ? finished : 0) + 1,
+    updated_at: closedAt,
+    closed_at: closedAt,
+  };
+  let updated = await table("chatbot_conversations")
+    .update(patch)
     .eq("id", conversationId)
     .eq("organization_id", organizationId)
     .eq("assignee_id", assignee)
     .select("id")
     .maybeSingle();
+  if (updated.error && /closed_at/i.test(updated.error.message)) {
+    const { closed_at: _closedAt, ...withoutClosedAt } = patch;
+    updated = await table("chatbot_conversations")
+      .update(withoutClosedAt)
+      .eq("id", conversationId)
+      .eq("organization_id", organizationId)
+      .eq("assignee_id", assignee)
+      .select("id")
+      .maybeSingle();
+  }
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("O atendimento já foi finalizado.");
   await requestChatbotRating(organizationId, conversation);
@@ -1156,7 +1180,8 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     await thankForRating(connection, organizationId, conversationId, contactId);
     return;
   }
-  await returnClosedToQueue(conversationId);
+  await returnClosedToQueue(organizationId, conversationId);
+  await noticeOfflineWaiting(connection, organizationId, conversationId, contactId);
 }
 
 async function thankForRating(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string) {
@@ -1183,17 +1208,65 @@ async function thankForRating(connection: Record<string, unknown>, organizationI
   }
 }
 
-async function returnClosedToQueue(conversationId: string) {
+async function returnClosedToQueue(organizationId: string, conversationId: string) {
+  const current = await table("chatbot_conversations").select("status, closed_at").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error && !/closed_at/i.test(current.error.message)) return;
+  if (!current.error && cell(current.data, "status") !== "closed") return;
+  const settings = await table("organizations").select("chatbot_reactivation_minutes").eq("id", organizationId).maybeSingle();
+  const minutes = settings.error ? 15 : reactivationMinutes(settings.data?.["chatbot_reactivation_minutes"]);
+  const reopen = !current.error && reactivatesClosedConversation(cell(current.data, "closed_at"), minutes, Date.now());
   const stamped = new Date().toISOString();
-  const reopened = await (table("chatbot_conversations")
-    .update({ status: "queue", queued_at: stamped })
-    .eq("id", conversationId)
-    .eq("status", "closed") as unknown as Promise<{ error: DbError | null }>);
-  if (!reopened.error || !/queued_at/i.test(reopened.error.message)) return;
-  await (table("chatbot_conversations")
-    .update({ status: "queue" })
-    .eq("id", conversationId)
-    .eq("status", "closed") as unknown as Promise<{ error: DbError | null }>);
+  const patch: Record<string, unknown> = {
+    status: "queue",
+    queued_at: stamped,
+    bot_paused: reopen,
+    closed_at: null,
+    offline_notified_at: null,
+  };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const updated = await (table("chatbot_conversations").update(patch).eq("id", conversationId).eq("status", "closed").select("id").maybeSingle());
+    if (!updated.error) return;
+    const missing = updated.error.message.match(/queued_at|bot_paused|closed_at|offline_notified_at/i);
+    if (!missing) return;
+    const key = missing[0].toLowerCase();
+    if (!(key in patch)) return;
+    delete patch[key];
+  }
+}
+
+async function noticeOfflineWaiting(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string) {
+  try {
+    const current = await table("chatbot_conversations").select("status, assignee_id, offline_notified_at").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+    if (current.error || cell(current.data, "status") !== "queue" || cell(current.data, "assignee_id") || cell(current.data, "offline_notified_at")) return;
+    const settings = await table("organizations").select("chatbot_offline_message_enabled, chatbot_offline_message").eq("id", organizationId).maybeSingle();
+    if (settings.error || settings.data?.["chatbot_offline_message_enabled"] !== true) return;
+    const text = offlineNoticeText(settings.data?.["chatbot_offline_message"]) || defaultOfflineNotice;
+    if (!(await teamMembersOffline(organizationId))) return;
+    if (cell(connection, "status") !== "connected") return;
+    const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    const phone = cell(contact.data, "phone");
+    if (!phone) return;
+    const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
+    await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text,
+        direction: "out",
+        status: "sent",
+        external_id: readMessageId(sent) || null,
+      })
+      .select("id")
+      .maybeSingle();
+    await table("chatbot_conversations")
+      .update({ offline_notified_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .eq("organization_id", organizationId)
+      .select("id")
+      .maybeSingle();
+  } catch {
+    return;
+  }
 }
 
 async function ownedConnection(organizationId: string, connectionId: string) {
@@ -1986,9 +2059,7 @@ async function touchPresence(organizationId: string, userId: string) {
     .maybeSingle();
 }
 
-async function companyAttendantsOffline(organizationId: string) {
-  const settings = await table("organizations").select("chatbot_offline_alert").eq("id", organizationId).maybeSingle();
-  if (settings.error || settings.data?.["chatbot_offline_alert"] === false) return false;
+async function teamMembersOffline(organizationId: string) {
   const connections = await rowsOrMissing(table("chatbot_connections").select("status").eq("organization_id", organizationId));
   if (!connections.rows.some((row) => cell(row, "status") === "connected")) return false;
   const members = await rowsOrMissing(table("chatbot_team_members").select("user_id").eq("organization_id", organizationId));
@@ -2006,6 +2077,12 @@ async function companyAttendantsOffline(organizationId: string) {
       .map((row) => cell(row, "user_id")),
   );
   return attendants.every((id) => !online.has(id));
+}
+
+async function companyAttendantsOffline(organizationId: string) {
+  const settings = await table("organizations").select("chatbot_offline_alert").eq("id", organizationId).maybeSingle();
+  if (settings.error || settings.data?.["chatbot_offline_alert"] === false) return false;
+  return teamMembersOffline(organizationId);
 }
 
 export async function chatbotNoticeTick(userId: string) {
@@ -2054,6 +2131,57 @@ export async function saveChatbotAccessProfiles(userId: string, input: ChatbotPr
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
   return profiles;
+}
+
+export async function chatbotCompanySettings(userId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const settings = await table("organizations").select("chatbot_company_name").eq("id", organizationId).maybeSingle();
+  if (settings.error && !/chatbot_company_name|schema cache|does not exist/i.test(settings.error.message)) fail(schemaMessage(settings.error.message));
+  return { name: settings.error ? "" : chatbotCompanyName(settings.data?.["chatbot_company_name"]) };
+}
+
+export async function saveChatbotCompany(userId: string, input: { name: string }) {
+  const name = chatbotCompanyName(input.name);
+  if (!name) fail("Informe o nome da empresa.");
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode alterar o nome.");
+  const updated = await table("organizations").update({ chatbot_company_name: name }).eq("id", organizationId).select("id").maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return { name };
+}
+
+export async function chatbotAutomationSettings(userId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const settings = await table("organizations")
+    .select("chatbot_reactivation_minutes, chatbot_offline_message_enabled, chatbot_offline_message")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (settings.error && !/chatbot_reactivation_minutes|chatbot_offline_message|schema cache|does not exist/i.test(settings.error.message)) fail(schemaMessage(settings.error.message));
+  const text = offlineNoticeText(settings.data?.["chatbot_offline_message"]) || defaultOfflineNotice;
+  return {
+    reactivationMinutes: settings.error ? 15 : reactivationMinutes(settings.data?.["chatbot_reactivation_minutes"]),
+    offlineMessageEnabled: !settings.error && settings.data?.["chatbot_offline_message_enabled"] === true,
+    offlineMessage: text,
+  };
+}
+
+export async function saveChatbotAutomation(userId: string, input: { reactivationMinutes: number; offlineMessageEnabled: boolean; offlineMessage: string }) {
+  const minutes = reactivationMinutes(input.reactivationMinutes);
+  const text = offlineNoticeText(input.offlineMessage) || defaultOfflineNotice;
+  if (input.offlineMessageEnabled && !offlineNoticeText(input.offlineMessage)) fail("Escreva a mensagem de indisponibilidade.");
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode alterar as automações.");
+  const updated = await table("organizations")
+    .update({
+      chatbot_reactivation_minutes: minutes,
+      chatbot_offline_message_enabled: input.offlineMessageEnabled,
+      chatbot_offline_message: text,
+    })
+    .eq("id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return { reactivationMinutes: minutes, offlineMessageEnabled: input.offlineMessageEnabled, offlineMessage: text };
 }
 
 export async function saveChatbotNotice(userId: string, input: { sound: boolean; offlineAlert: boolean }) {

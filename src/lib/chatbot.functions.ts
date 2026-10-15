@@ -134,6 +134,17 @@ export const finishChatbotConversationFn = createServerFn({ method: "POST" })
     return guard(() => finishChatbotConversation(context.userId, data.conversationId));
   });
 
+export const setChatbotContactBotsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; disabled: boolean }) => ({
+    contactId: data.contactId,
+    disabled: data.disabled === true,
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactBots } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactBots(context.userId, data.contactId, data.disabled));
+  });
+
 export const chatbotTransferTargetsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string }) => data)
@@ -455,6 +466,33 @@ export const deleteChatbotTagFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { deleteChatbotTag } = await import("@/server/chatbot.server");
     return guard(() => deleteChatbotTag(context.userId, data.tagId));
+  });
+
+export const listChatbotQuickRepliesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotQuickReplies } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotQuickReplies(context.userId));
+  });
+
+export const saveChatbotQuickReplyFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { title: string; text: string; replyId?: string }) => ({
+    title: data.title,
+    text: data.text,
+    replyId: typeof data.replyId === "string" ? data.replyId : "",
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotQuickReply } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotQuickReply(context.userId, data.title, data.text, data.replyId));
+  });
+
+export const deleteChatbotQuickReplyFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { replyId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { deleteChatbotQuickReply } = await import("@/server/chatbot.server");
+    return guard(() => deleteChatbotQuickReply(context.userId, data.replyId));
   });
 
 export const listChatbotProductsFn = createServerFn({ method: "POST" })

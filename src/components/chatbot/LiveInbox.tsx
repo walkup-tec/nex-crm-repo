@@ -1,4 +1,4 @@
-import { MessageSquare, Pause, Pin, Play, Send } from "lucide-react";
+import { MessageSquare, Bot, Pause, Pin, Play, Send } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,11 +10,13 @@ import {
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
   sendChatbotMessageFn,
+  listChatbotQuickRepliesFn,
+  setChatbotContactBotsFn,
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, headerAttendant, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -161,7 +163,7 @@ function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void
   if (missing) {
     return (
       <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`}>
-        {item.text === "[áudio]" ? "Áudio indisponível" : item.text}
+        <span className="message-text">{item.text === "[áudio]" ? "Áudio indisponível" : item.text}</span>
         <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
       </div>
     );
@@ -244,6 +246,11 @@ export function LiveInbox() {
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [blockingBots, setBlockingBots] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [botsOpen, setBotsOpen] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<ChatbotQuickReply[]>([]);
+  const [quickNote, setQuickNote] = useState("");
   const [transferOpen, setTransferOpen] = useState(false);
   const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
   const [targetId, setTargetId] = useState("");
@@ -346,6 +353,8 @@ export function LiveInbox() {
   useEffect(() => {
     stickToBottom.current = true;
     setTransferOpen(false);
+    setQuickOpen(false);
+    setBotsOpen(false);
   }, [selected]);
 
   const conversation = data?.conversations.find((item) => item.id === selected);
@@ -395,11 +404,22 @@ export function LiveInbox() {
   }
 
   async function togglePin(id: string, pinned: boolean) {
-    const result = await setChatbotConversationPinFn({ data: { conversationId: id, pinned: !pinned } });
+    const nextPinned = !pinned;
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            conversations: inboxOrder(current.conversations.map((item) => (item.id === id ? { ...item, pinned: nextPinned } : item))),
+          }
+        : current,
+    );
+    const result = await setChatbotConversationPinFn({ data: { conversationId: id, pinned: nextPinned } });
     if (!result.ok) {
       setMessage(result.message);
+      await load();
       return;
     }
+    setMessage("");
     await load();
   }
 
@@ -474,6 +494,47 @@ export function LiveInbox() {
     await load();
   }
 
+  async function toggleBots(contactId: string, disabled: boolean) {
+    if (blockingBots) return;
+    setBlockingBots(true);
+    const result = await setChatbotContactBotsFn({ data: { contactId, disabled } });
+    setBlockingBots(false);
+    if (!result.ok) {
+      setMessage(result.message);
+      return;
+    }
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            contacts: current.contacts.map((item) => (item.id === contactId ? { ...item, botsDisabled: disabled } : item)),
+            conversations: current.conversations.map((item) => {
+              if (item.contactId !== contactId) return item;
+              if (disabled || !item.assigneeName.trim()) return { ...item, botPaused: disabled };
+              return item;
+            }),
+          }
+        : current,
+    );
+    setMessage("");
+    await load();
+  }
+
+  async function openQuickReplies() {
+    setBotsOpen(false);
+    const next = !quickOpen;
+    setQuickOpen(next);
+    if (!next) return;
+    const result = await listChatbotQuickRepliesFn();
+    if (!result.ok) {
+      setQuickReplies([]);
+      setQuickNote(result.message);
+      return;
+    }
+    setQuickReplies(result.data);
+    setQuickNote(result.data.length ? "" : "Nenhuma resposta rápida cadastrada.");
+  }
+
   async function send(text = draft) {
     const clean = text.trim();
     if (!selected || !clean || sending.current) return;
@@ -500,6 +561,57 @@ export function LiveInbox() {
     void load();
   }
 
+  const conversations = data?.conversations ?? [];
+  const pinnedConversations = conversations.filter((item) => item.pinned);
+  const listedConversations = conversations.filter((item) => !item.pinned);
+
+  function conversationCard(item: ChatbotSnapshot["conversations"][number]) {
+    if (!data) return null;
+    const person = data.contacts.find((contact) => contact.id === item.contactId);
+    const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
+    const unread = item.unreadCount > 99 ? "99+" : String(item.unreadCount);
+    return (
+      <div
+        key={item.id}
+        role="button"
+        tabIndex={0}
+        className={`conversation-row${item.pinned ? " pinned" : ""}${item.id === selected ? " selected" : ""}${item.unreadCount ? " unread" : ""}`}
+        onClick={() => openConversation(item.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openConversation(item.id);
+          }
+        }}
+      >
+        <ContactAvatar name={person?.name ?? ""} avatarUrl={person?.avatarUrl ?? ""} />
+        <div className="conversation-main">
+          <strong>{person?.name}</strong>
+          <p>{whatsappMask(person?.phone ?? "") || person?.phone}</p>
+          <div className="conversation-tags">
+            {channel ? <span className="status-pill">{channel}</span> : null}
+            <span className="status-pill">{labelFor(item.id)}</span>
+          </div>
+        </div>
+        <div className="conversation-side">
+          {item.unreadCount > 0 ? <span className="unread-count">{unread}</span> : null}
+          <button
+            type="button"
+            className={`pin-toggle${item.pinned ? " pinned" : ""}`}
+            aria-label={item.pinned ? "Desafixar conversa" : "Fixar conversa"}
+            aria-pressed={item.pinned}
+            onClick={(event) => {
+              event.stopPropagation();
+              void togglePin(item.id, item.pinned);
+            }}
+          >
+            <Pin size={14} fill={item.pinned ? "currentColor" : "none"} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <main className="page">
       {message ? <p className="info-note mb-5">{message}</p> : null}
@@ -510,51 +622,11 @@ export function LiveInbox() {
               Conversas <span className="count">{data?.conversations.length ?? 0}</span>
             </h2>
           </div>
-          {data?.conversations.length ? (
-            data.conversations.map((item) => {
-              const person = data.contacts.find((contact) => contact.id === item.contactId);
-              const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
-              const unread = item.unreadCount > 99 ? "99+" : String(item.unreadCount);
-              return (
-                <div
-                  key={item.id}
-                  role="button"
-                  tabIndex={0}
-                  className={`conversation-row ${item.id === selected ? "selected" : ""} ${item.unreadCount ? "unread" : ""}`}
-                  onClick={() => openConversation(item.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openConversation(item.id);
-                    }
-                  }}
-                >
-                  <ContactAvatar name={person?.name ?? ""} avatarUrl={person?.avatarUrl ?? ""} />
-                  <div className="conversation-main">
-                    <strong>{person?.name}</strong>
-                    <p>{whatsappMask(person?.phone ?? "") || person?.phone}</p>
-                    <div className="conversation-tags">
-                      {channel ? <span className="status-pill">{channel}</span> : null}
-                      <span className="status-pill">{labelFor(item.id)}</span>
-                    </div>
-                  </div>
-                  <div className="conversation-side">
-                    {item.unreadCount > 0 ? <span className="unread-count">{unread}</span> : null}
-                    <button
-                      type="button"
-                      className={`pin-toggle${item.pinned ? " pinned" : ""}`}
-                      aria-label={item.pinned ? "Desafixar conversa" : "Fixar conversa"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void togglePin(item.id, item.pinned);
-                      }}
-                    >
-                      <Pin size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+          {conversations.length ? (
+            <>
+              {pinnedConversations.length ? <div className="conversation-pinned">{pinnedConversations.map((item) => conversationCard(item))}</div> : null}
+              <div className="conversation-scroll">{listedConversations.map((item) => conversationCard(item))}</div>
+            </>
           ) : (
             <div className="list-empty">
               <MessageSquare size={27} />
@@ -587,6 +659,17 @@ export function LiveInbox() {
             )}
             {conversation ? (
               <div className="chat-actions">
+                <button
+                  type="button"
+                  className={`bot-block${contact?.botsDisabled ? " blocked" : ""}`}
+                  aria-pressed={contact?.botsDisabled === true}
+                  aria-label={contact?.botsDisabled ? "Reativar bots deste contato" : "Desativar bots deste contato"}
+                  title={contact?.botsDisabled ? "Bots desativados para este contato" : "Bots ativos para este contato"}
+                  disabled={blockingBots || !contact}
+                  onClick={() => contact && void toggleBots(contact.id, !contact.botsDisabled)}
+                >
+                  <Bot size={16} />
+                </button>
                 {conversation.mine ? (
                   <Button type="button" size="sm" variant="outline" onClick={() => void openTransfer(conversation.id)}>
                     Transferir
@@ -619,7 +702,7 @@ export function LiveInbox() {
                     <ChatMedia item={item} key={item.id} onSaved={() => setSavedMedia((value) => value + 1)} />
                   ) : (
                     <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
-                      {item.text}
+                      <span className="message-text">{item.text}</span>
                       <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
                     </div>
                   ),
@@ -647,7 +730,40 @@ export function LiveInbox() {
                   aria-label="Resposta"
                   rows={3}
                 />
+                <p className="composer-hint">Shift + Enter para nova linha</p>
+                {quickOpen ? (
+                  <div className="composer-menu" role="listbox" aria-label="Respostas rápidas">
+                    {quickNote ? <p>{quickNote}</p> : null}
+                    {quickReplies.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="option"
+                        disabled={pending}
+                        onClick={() => {
+                          setQuickOpen(false);
+                          void send(item.text);
+                        }}
+                      >
+                        {item.title}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {botsOpen ? (
+                  <div className="composer-menu" role="listbox" aria-label="Bots">
+                    <p>Nenhum bot disponível para iniciar neste contato.</p>
+                  </div>
+                ) : null}
                 <footer className="composer-actions">
+                  <div className="composer-tools">
+                    <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>
+                      Respostas rápidas
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={botsOpen} onClick={() => { setQuickOpen(false); setBotsOpen((open) => !open); }}>
+                      Bots
+                    </Button>
+                  </div>
                   <Button type="submit" disabled={pending || !draft.trim()}>
                     <Send />
                     Enviar

@@ -11,6 +11,7 @@ import {
   inboxOrder,
   inboxUnread,
   inboxVisible,
+  keepAttendanceBotsPaused,
   shouldSyncEvolution,
   evolutionConnectionStatus,
   evolutionInstanceClosed,
@@ -33,6 +34,7 @@ import {
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
   catalogName,
+  quickReplyText,
   defaultKanbanStages,
   kanbanStageName,
   keepWhatsappName,
@@ -129,6 +131,15 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_reactivation_minutes|chatbot_offline_message|closed_at|offline_notified_at/i.test(message)) {
     return "A migração da reativação ainda não foi aplicada no Supabase.";
+  }
+  if (/assumed_by|stage_set_by/i.test(message)) {
+    return "A migração do desempenho do atendente ainda não foi aplicada no Supabase.";
+  }
+  if (/bots_disabled/i.test(message)) {
+    return "A migração dos bots por contato ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_quick_replies/i.test(message)) {
+    return "A migração das respostas rápidas ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
     return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
@@ -383,6 +394,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       name: cell(row, "name"),
       phone: cell(row, "phone"),
       avatarUrl: avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
+      botsDisabled: row["bots_disabled"] === true,
     })),
     conversations: ordered.map(({ row, pinned, updatedAt }) => {
       const assigneeId = cell(row, "assignee_id");
@@ -651,17 +663,11 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     .select("id")
     .maybeSingle();
   if (saved.error) fail(schemaMessage(saved.error.message));
-  const assigned = await table("chatbot_conversations")
-    .update({
-      status: "active",
-      assignee_id: userId,
-      bot_paused: true,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", conversationId)
-    .eq("organization_id", organizationId)
-    .select("id")
-    .maybeSingle();
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
 }
 
@@ -711,17 +717,30 @@ export async function setChatbotConversationPin(userId: string, conversationId: 
   if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
 }
 
+async function assignConversation(
+  conversationId: string,
+  organizationId: string,
+  attendantId: string,
+  extra: Record<string, unknown>,
+  onlyFrom?: string,
+) {
+  const attempt = (remember: boolean) => {
+    const patch = remember ? { ...extra, assignee_id: attendantId, assumed_by: attendantId } : { ...extra, assignee_id: attendantId };
+    let query = table("chatbot_conversations").update(patch).eq("id", conversationId).eq("organization_id", organizationId);
+    if (onlyFrom) query = query.eq("assignee_id", onlyFrom);
+    return query.select("id").maybeSingle();
+  };
+  let updated = await attempt(true);
+  if (updated.error && /assumed_by/i.test(updated.error.message)) updated = await attempt(false);
+  return updated;
+}
+
 export async function assumeChatbotConversation(userId: string, conversationId: string) {
   const { organizationId, conversation } = await requireVisibleConversation(userId, conversationId);
   const assignee = cell(conversation, "assignee_id");
   if (assignee && assignee !== userId) fail("Essa conversa já está com outro atendente.");
   if (assignee === userId) return;
-  const updated = await table("chatbot_conversations")
-    .update({ status: "active", assignee_id: userId, bot_paused: true })
-    .eq("id", conversationId)
-    .eq("organization_id", organizationId)
-    .select("id")
-    .maybeSingle();
+  const updated = await assignConversation(conversationId, organizationId, userId, { status: "active", bot_paused: true });
   if (updated.error) fail(schemaMessage(updated.error.message));
 }
 
@@ -732,9 +751,10 @@ export async function finishChatbotConversation(userId: string, conversationId: 
   if (!admin && assignee !== userId) fail("Só quem está atendendo pode finalizar.");
   const finished = Number(conversation["finished_count"]);
   const closedAt = new Date().toISOString();
-  const patch = {
+  const patch: Record<string, unknown> = {
     status: "closed",
     assignee_id: null,
+    assumed_by: assignee,
     bot_paused: true,
     finished_count: (Number.isFinite(finished) ? finished : 0) + 1,
     updated_at: closedAt,
@@ -747,10 +767,14 @@ export async function finishChatbotConversation(userId: string, conversationId: 
     .eq("assignee_id", assignee)
     .select("id")
     .maybeSingle();
-  if (updated.error && /closed_at/i.test(updated.error.message)) {
-    const { closed_at: _closedAt, ...withoutClosedAt } = patch;
+  for (let attempt = 0; updated.error && attempt < 2; attempt += 1) {
+    const missing = updated.error.message.match(/closed_at|assumed_by/i);
+    if (!missing) break;
+    const key = missing[0].toLowerCase();
+    if (!(key in patch)) break;
+    delete patch[key];
     updated = await table("chatbot_conversations")
-      .update(withoutClosedAt)
+      .update(patch)
       .eq("id", conversationId)
       .eq("organization_id", organizationId)
       .eq("assignee_id", assignee)
@@ -868,13 +892,7 @@ export async function transferChatbotConversation(userId: string, conversationId
       .maybeSingle();
     if (saved.error) fail(schemaMessage(saved.error.message));
   }
-  const updated = await table("chatbot_conversations")
-    .update({ status: "active", assignee_id: attendantId, bot_paused: true })
-    .eq("id", conversationId)
-    .eq("organization_id", organizationId)
-    .eq("assignee_id", userId)
-    .select("id")
-    .maybeSingle();
+  const updated = await assignConversation(conversationId, organizationId, attendantId, { status: "active", bot_paused: true }, userId);
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("Só quem assumiu a conversa pode transferir.");
 }
@@ -1110,6 +1128,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   const name = cell(record, "pushName") || phone;
   const contactId = await contactIdForMessage(organizationId, phone, name);
   if (!contactId) return;
+  const botsDisabled = await contactBotsDisabled(organizationId, contactId);
   const existingConversation = await table("chatbot_conversations")
     .select("id")
     .eq("connection_id", cell(connection, "id"))
@@ -1123,7 +1142,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
         contact_id: contactId,
         connection_id: cell(connection, "id"),
         status: "queue",
-        bot_paused: false,
+        bot_paused: botsDisabled,
       })
       .select("id")
       .maybeSingle();
@@ -1179,8 +1198,11 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     await thankForRating(connection, organizationId, conversationId, contactId);
     return;
   }
+  if (botsDisabled) {
+    await table("chatbot_conversations").update({ bot_paused: true }).eq("id", conversationId).eq("organization_id", organizationId);
+  }
   await returnClosedToQueue(organizationId, conversationId);
-  await noticeOfflineWaiting(connection, organizationId, conversationId, contactId);
+  if (!botsDisabled) await noticeOfflineWaiting(connection, organizationId, conversationId, contactId);
 }
 
 async function thankForRating(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string) {
@@ -1208,17 +1230,18 @@ async function thankForRating(connection: Record<string, unknown>, organizationI
 }
 
 async function returnClosedToQueue(organizationId: string, conversationId: string) {
-  const current = await table("chatbot_conversations").select("status, closed_at").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+  const current = await table("chatbot_conversations").select("status, closed_at, contact_id").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
   if (current.error && !/closed_at/i.test(current.error.message)) return;
   if (!current.error && cell(current.data, "status") !== "closed") return;
   const settings = await table("organizations").select("chatbot_reactivation_minutes").eq("id", organizationId).maybeSingle();
   const minutes = settings.error ? 15 : reactivationMinutes(settings.data?.["chatbot_reactivation_minutes"]);
   const reopen = !current.error && reactivatesClosedConversation(cell(current.data, "closed_at"), minutes, Date.now());
+  const botsDisabled = await contactBotsDisabled(organizationId, cell(current.data, "contact_id"));
   const stamped = new Date().toISOString();
   const patch: Record<string, unknown> = {
     status: "queue",
     queued_at: stamped,
-    bot_paused: reopen,
+    bot_paused: keepAttendanceBotsPaused(botsDisabled, reopen),
     closed_at: null,
     offline_notified_at: null,
   };
@@ -1742,6 +1765,13 @@ async function ownedContact(organizationId: string, contactId: string) {
   return contact.data;
 }
 
+async function contactBotsDisabled(organizationId: string, contactId: string) {
+  if (!contactId) return false;
+  const contact = await table("chatbot_contacts").select("bots_disabled").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (contact.error) return false;
+  return contact.data?.["bots_disabled"] === true;
+}
+
 function uniqueIds(ids: string[]) {
   return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
 }
@@ -2261,12 +2291,11 @@ export async function callChatbotContact(userId: string, contactId: string) {
     const assignee = cell(current, "assignee_id");
     if (assignee && assignee !== userId) fail("Essa conversa já está com outro atendente.");
     if (assignee !== userId || cell(current, "status") !== "active") {
-      const updated = await table("chatbot_conversations")
-        .update({ status: "active", assignee_id: userId, bot_paused: true, updated_at: new Date().toISOString() })
-        .eq("id", cell(current, "id"))
-        .eq("organization_id", organizationId)
-        .select("id")
-        .maybeSingle();
+      const updated = await assignConversation(cell(current, "id"), organizationId, userId, {
+        status: "active",
+        bot_paused: true,
+        updated_at: new Date().toISOString(),
+      });
       if (updated.error) fail(schemaMessage(updated.error.message));
     }
     return { conversationId: cell(current, "id") };
@@ -2275,17 +2304,20 @@ export async function callChatbotContact(userId: string, contactId: string) {
     ? cell((await rows(table("chatbot_connections").select("id").eq("organization_id", organizationId).order("created_at", { ascending: true })))[0], "id")
     : [...(allowed ?? [])][0] ?? "";
   if (!connectionId) fail("Conecte um canal de WhatsApp antes de chamar o contato.");
-  const created = await table("chatbot_conversations")
-    .insert({
-      organization_id: organizationId,
-      contact_id: contactId,
-      connection_id: connectionId,
-      status: "active",
-      assignee_id: userId,
-      bot_paused: true,
-    })
-    .select("id")
-    .maybeSingle();
+  const conversationInsert = {
+    organization_id: organizationId,
+    contact_id: contactId,
+    connection_id: connectionId,
+    status: "active",
+    assignee_id: userId,
+    assumed_by: userId,
+    bot_paused: true,
+  };
+  let created = await table("chatbot_conversations").insert(conversationInsert).select("id").maybeSingle();
+  if (created.error && /assumed_by/i.test(created.error.message)) {
+    const { assumed_by: _assumedBy, ...withoutCredit } = conversationInsert;
+    created = await table("chatbot_conversations").insert(withoutCredit).select("id").maybeSingle();
+  }
   if (created.data) return { conversationId: cell(created.data, "id") };
   if (!duplicate(created.error)) fail(schemaMessage(created.error?.message ?? ""));
   const again = await table("chatbot_conversations")
@@ -2338,15 +2370,36 @@ export async function setChatbotContactStage(userId: string, contactId: string, 
     const stages = await rows(table("chatbot_stages").select("name").eq("organization_id", organizationId));
     if (!stages.some((row) => cell(row, "name") === clean)) fail("Escolha uma etapa do kanban.");
   }
+  const stagePatch: Record<string, unknown> = { stage_name: clean || null, stage_set_by: clean ? userId : null };
+  let updated = await table("chatbot_contacts").update(stagePatch).eq("id", contactId).eq("organization_id", organizationId).select("id").maybeSingle();
+  if (updated.error && /stage_set_by/i.test(updated.error.message)) {
+    updated = await table("chatbot_contacts")
+      .update({ stage_name: clean || null })
+      .eq("id", contactId)
+      .eq("organization_id", organizationId)
+      .select("id")
+      .maybeSingle();
+  }
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { stage: clean };
+}
+
+export async function setChatbotContactBots(userId: string, contactId: string, disabled: boolean) {
+  const { organizationId } = await membership(userId, "inbox");
+  await ownedContact(organizationId, contactId);
   const updated = await table("chatbot_contacts")
-    .update({ stage_name: clean || null })
+    .update({ bots_disabled: disabled })
     .eq("id", contactId)
     .eq("organization_id", organizationId)
     .select("id")
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("Esse contato não pertence à sua empresa.");
-  return { stage: clean };
+  const conversations = table("chatbot_conversations").update({ bot_paused: disabled }).eq("organization_id", organizationId).eq("contact_id", contactId);
+  const paused = disabled ? await conversations : await conversations.is("assignee_id", null);
+  if (paused.error) fail(schemaMessage(paused.error.message));
+  return { disabled };
 }
 
 export async function setChatbotContactTags(userId: string, contactId: string, tagIds: string[]) {
@@ -2391,6 +2444,55 @@ export async function deleteChatbotTag(userId: string, tagId: string) {
   if (current.error) fail(schemaMessage(current.error.message));
   if (!current.data) fail("Essa etiqueta não pertence à sua empresa.");
   await done(table("chatbot_tags").delete().eq("id", tagId).eq("organization_id", organizationId));
+  return { deleted: true as const };
+}
+
+export async function listChatbotQuickReplies(userId: string) {
+  const { organizationId } = await membership(userId, ["inbox", "settings"]);
+  const replies = await rows(
+    table("chatbot_quick_replies").select("id, title, body").eq("organization_id", organizationId).order("title", { ascending: true }),
+  );
+  return replies.map((row) => ({ id: cell(row, "id"), title: cell(row, "title"), text: cell(row, "body") }));
+}
+
+export async function saveChatbotQuickReply(userId: string, title: string, text: string, replyId = "") {
+  const cleanTitle = catalogName(title, 80);
+  const cleanText = quickReplyText(text);
+  if (!cleanTitle) fail("A resposta precisa de um título com 2 a 80 caracteres.");
+  if (!cleanText) fail("A resposta precisa de um texto com 2 a 1000 caracteres.");
+  const { organizationId } = await membership(userId, "settings");
+  const id = replyId.trim();
+  if (id) {
+    const current = await table("chatbot_quick_replies").select("id").eq("id", id).eq("organization_id", organizationId).maybeSingle();
+    if (current.error) fail(schemaMessage(current.error.message));
+    if (!current.data) fail("Essa resposta não pertence à sua empresa.");
+    const updated = await table("chatbot_quick_replies")
+      .update({ title: cleanTitle, body: cleanText })
+      .eq("id", id)
+      .eq("organization_id", organizationId)
+      .select("id")
+      .maybeSingle();
+    if (duplicate(updated.error)) fail("Já existe uma resposta com esse título.");
+    if (updated.error) fail(schemaMessage(updated.error.message));
+    if (!updated.data) fail("Não foi possível gravar a resposta.");
+    return { id, title: cleanTitle, text: cleanText };
+  }
+  const inserted = await table("chatbot_quick_replies")
+    .insert({ organization_id: organizationId, title: cleanTitle, body: cleanText })
+    .select("id")
+    .maybeSingle();
+  if (duplicate(inserted.error)) fail("Já existe uma resposta com esse título.");
+  if (inserted.error) fail(schemaMessage(inserted.error.message));
+  if (!inserted.data) fail("Não foi possível gravar a resposta.");
+  return { id: cell(inserted.data, "id"), title: cleanTitle, text: cleanText };
+}
+
+export async function deleteChatbotQuickReply(userId: string, replyId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const current = await table("chatbot_quick_replies").select("id").eq("id", replyId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) fail(schemaMessage(current.error.message));
+  if (!current.data) fail("Essa resposta não pertence à sua empresa.");
+  await done(table("chatbot_quick_replies").delete().eq("id", replyId).eq("organization_id", organizationId));
   return { deleted: true as const };
 }
 
@@ -2482,8 +2584,20 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
   const { organizationId, admin } = await membership(userId, "overview");
   const listedStages = await listChatbotStages(userId);
   const [conversations, contacts, ratings, connections, profiles, members, teams, products, productLinks] = await Promise.all([
-    rows(table("chatbot_conversations").select("id, contact_id, connection_id, assignee_id, finished_count, created_at").eq("organization_id", organizationId)),
-    rows(table("chatbot_contacts").select("id, negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId)),
+    (async () => {
+      const credited = await rowsOrMissing(
+        table("chatbot_conversations").select("id, contact_id, connection_id, assignee_id, assumed_by, finished_count, created_at").eq("organization_id", organizationId),
+      );
+      if (!credited.missing) return credited.rows;
+      return rows(table("chatbot_conversations").select("id, contact_id, connection_id, assignee_id, finished_count, created_at").eq("organization_id", organizationId));
+    })(),
+    (async () => {
+      const credited = await rowsOrMissing(
+        table("chatbot_contacts").select("id, negotiated_cents, stage_name, stage_set_by, client_owner_id").eq("organization_id", organizationId),
+      );
+      if (!credited.missing) return credited.rows;
+      return rows(table("chatbot_contacts").select("id, negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId));
+    })(),
     rowsOrMissing(table("chatbot_ratings").select("conversation_id, score, created_at").eq("organization_id", organizationId)),
     rows(table("chatbot_connections").select("id, display_name, phone").eq("organization_id", organizationId).order("created_at", { ascending: true })),
     supabaseAdmin.from("profiles").select("id, full_name").eq("organization_id", organizationId).order("full_name", { ascending: true }),
@@ -2529,6 +2643,7 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
       contactId: cell(row, "contact_id"),
       connectionId: cell(row, "connection_id"),
       assigneeId: cell(row, "assignee_id"),
+      assumedBy: cell(row, "assumed_by"),
       finishedCount: Number(row["finished_count"]) || 0,
       createdAt: cell(row, "created_at"),
     })),
@@ -2539,6 +2654,7 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
         id: cell(row, "id"),
         negotiatedCents: amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null,
         stage: cell(row, "stage_name"),
+        stageSetBy: cell(row, "stage_set_by"),
         ownerId: cell(row, "client_owner_id"),
       };
     }),

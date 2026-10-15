@@ -33,6 +33,7 @@ const emptyBoard: OverviewBoard = {
 
 export function Overview({ reports = false }: { reports?: boolean }) {
   const [filters, setFilters] = useState<OverviewFilters>(clearedFilters);
+  const [rankingMode, setRankingMode] = useState<"vendas" | "monetario">("vendas");
   const [board, setBoard] = useState<OverviewBoard>(emptyBoard);
   const [message, setMessage] = useState("");
 
@@ -47,6 +48,10 @@ export function Overview({ reports = false }: { reports?: boolean }) {
   }, []);
 
   const view = useMemo(() => applyOverviewFilters(board, filters), [board, filters]);
+  const ranking = useMemo(
+    () => [...view.agents].sort((left, right) => (rankingMode === "vendas" ? right.success - left.success : right.wonCents - left.wonCents) || left.name.localeCompare(right.name, "pt-BR")),
+    [rankingMode, view.agents],
+  );
   const series = useMemo(() => attendanceSeries(view.days, filters.period), [view.days, filters.period]);
 
   const metrics = [
@@ -141,10 +146,10 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           <SharePie title="Produto" slices={view.productShares} />
           <SharePie title="Canais" slices={view.channelShares} />
         </div>
-        <section className="chart-panel">
+        <section className="chart-panel overview-funnel">
           <h2>Distribuição por etapa</h2>
           {view.stages.length ? (
-            <div className="mt-5">
+            <div className="overview-funnel-fit">
               <JourneyFunnel
                 compact
                 floor={0.2}
@@ -189,6 +194,59 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="total" name="Atendimento" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={12} />
                 <Bar dataKey="success" name="sucesso" fill="var(--success)" radius={[0, 4, 4, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <BarChart3 />
+            <p>Nenhum resultado disponível.</p>
+          </div>
+        )}
+      </section>
+      <section className="chart-panel mt-5">
+        <div className="ranking-head">
+          <h2>Ranking Atendentes</h2>
+          <div className="ranking-switch" role="group" aria-label="Tipo do ranking">
+            <button type="button" aria-pressed={rankingMode === "vendas"} onClick={() => setRankingMode("vendas")}>Vendas</button>
+            <button type="button" aria-pressed={rankingMode === "monetario"} onClick={() => setRankingMode("monetario")}>Monetário</button>
+          </div>
+        </div>
+        {ranking.length ? (
+          <div className="mt-5" style={{ height: Math.max(220, ranking.length * 52) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart layout="vertical" data={ranking} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  domain={[0, (max: number) => Math.max(max, 1)]}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                  tickFormatter={(value) => (rankingMode === "monetario" ? negotiatedLabel(Number(value)) : String(value))}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis type="category" dataKey="name" width={128} reversed tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  cursor={{ fill: "var(--muted)", fillOpacity: 0.35 }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const value = Number(payload[0]?.value ?? 0);
+                    return (
+                      <div className="rounded-md border bg-card px-3 py-2 text-xs">
+                        <p className="font-semibold">{label}</p>
+                        <p className="mt-1 text-muted-foreground">{rankingMode === "vendas" ? `${value} ${value === 1 ? "venda" : "vendas"}` : negotiatedLabel(value)}</p>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar
+                  dataKey={rankingMode === "vendas" ? "success" : "wonCents"}
+                  name={rankingMode === "vendas" ? "Vendas" : "Monetário"}
+                  fill={rankingMode === "vendas" ? "var(--success)" : "var(--primary)"}
+                  radius={[0, 4, 4, 0]}
+                  barSize={14}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

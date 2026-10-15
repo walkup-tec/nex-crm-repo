@@ -16,7 +16,7 @@ export type ChatbotSnapshot = {
     status: ChatbotConnectionStatus;
     error: string;
   }[];
-  contacts: { id: string; name: string; phone: string; avatarUrl: string }[];
+  contacts: { id: string; name: string; phone: string; avatarUrl: string; botsDisabled: boolean }[];
   conversations: {
     id: string;
     contactId: string;
@@ -70,6 +70,10 @@ export function clientVisibleTo(ownerId: string, userId: string, admin: boolean)
   if (!ownerId) return false;
   if (admin) return true;
   return ownerId === userId;
+}
+
+export function keepAttendanceBotsPaused(botsDisabled: boolean, reopenHuman: boolean) {
+  return botsDisabled || reopenHuman;
 }
 
 export function attendanceLabel(input: { assigneeName: string; botPaused: boolean; botSpoke: boolean; closed: boolean }) {
@@ -621,8 +625,8 @@ export type OverviewBoard = {
   stages: string[];
   attendants: { id: string; name: string; team: string }[];
   channels: { id: string; name: string }[];
-  conversations: { id: string; contactId: string; connectionId: string; assigneeId: string; finishedCount: number; createdAt: string }[];
-  contacts: { id: string; negotiatedCents: number | null; stage: string; ownerId: string }[];
+  conversations: { id: string; contactId: string; connectionId: string; assigneeId: string; assumedBy?: string; finishedCount: number; createdAt: string }[];
+  contacts: { id: string; negotiatedCents: number | null; stage: string; ownerId: string; stageSetBy?: string }[];
   ratings: { conversationId: string; score: number; createdAt: string }[];
   products?: { id: string; name: string }[];
   productLinks?: { contactId: string; productId: string }[];
@@ -630,7 +634,7 @@ export type OverviewBoard = {
   admin: boolean;
 };
 
-export type OverviewAgent = { id: string; name: string; team: string; total: number; success: number };
+export type OverviewAgent = { id: string; name: string; team: string; total: number; success: number; wonCents: number };
 
 function parseDay(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -677,31 +681,20 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
     })),
     contacts,
   });
-  const stageOf = new Map(source.contacts.map((item) => [item.id, item.stage]));
-  const ownerOf = new Map(source.contacts.map((item) => [item.id, item.ownerId]));
-  const sucessoAssigned = new Set<string>();
-  const sucessoOpen = new Set<string>();
-  for (const item of inChannelAndPeriod) {
-    if (!item.contactId || !protectedKanbanStage(stageOf.get(item.contactId) ?? "")) continue;
-    if (item.assigneeId) sucessoAssigned.add(item.contactId);
-    else sucessoOpen.add(item.contactId);
-  }
-  for (const id of sucessoAssigned) sucessoOpen.delete(id);
+  const visibleContacts = new Set(inChannelAndPeriod.map((item) => item.contactId).filter(Boolean));
   const agents = source.attendants
     .filter((person) => !filters.attendantId || person.id === filters.attendantId)
     .map((person) => {
-      const rows = inChannelAndPeriod.filter((item) => item.assigneeId === person.id);
-      const contactIds = [...new Set(rows.map((item) => item.contactId).filter(Boolean))];
-      const success = new Set(contactIds.filter((id) => protectedKanbanStage(stageOf.get(id) ?? "")));
-      for (const id of sucessoOpen) {
-        if (ownerOf.get(id) === person.id) success.add(id);
-      }
+      const won = source.contacts.filter(
+        (contact) => contact.stageSetBy === person.id && protectedKanbanStage(contact.stage) && visibleContacts.has(contact.id),
+      );
       return {
         id: person.id,
         name: person.name,
         team: person.team || "Sem equipe",
-        total: contactIds.length,
-        success: success.size,
+        total: inChannelAndPeriod.filter((item) => (item.assumedBy || item.assigneeId) === person.id).length,
+        success: won.length,
+        wonCents: won.reduce((sum, contact) => sum + (contact.negotiatedCents ?? 0), 0),
       };
     });
   return { ...metrics, agents, ...attendanceShares(source, matched) };
@@ -760,6 +753,12 @@ export function moveKanbanStage(stages: string[], index: number, direction: -1 |
 
 export function catalogName(value: string, max = 80) {
   const clean = value.trim().replace(/\s+/g, " ");
+  if (clean.length < 2 || clean.length > max) return "";
+  return clean;
+}
+
+export function quickReplyText(value: string, max = 1000) {
+  const clean = value.replace(/\r\n/g, "\n").trim();
   if (clean.length < 2 || clean.length > max) return "";
   return clean;
 }
@@ -886,6 +885,7 @@ export function filterChatbotClients(clients: ChatbotClientRow[], filters: Clien
 }
 
 export type ChatbotTag = { id: string; name: string; color: string };
+export type ChatbotQuickReply = { id: string; title: string; text: string };
 export type ChatbotCatalogItem = { id: string; name: string };
 
 export const defaultRatingPrompt = "Seu atendimento foi encerrado. Como você avalia?";

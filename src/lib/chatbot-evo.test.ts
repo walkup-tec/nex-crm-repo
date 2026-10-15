@@ -25,6 +25,7 @@ import {
   evolutionQrImage,
   tintQrPixel,
   attendanceLabel,
+  keepAttendanceBotsPaused,
   headerAttendant,
   negotiatedCents,
   negotiatedLabel,
@@ -49,6 +50,7 @@ import {
   whatsappJidPhone,
   whatsappMask,
   catalogName,
+  quickReplyText,
   tagColorValue,
   tagInk,
   keepWhatsappName,
@@ -234,7 +236,7 @@ assert.deepEqual(
       ],
       contacts: [
         { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
-        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia", stageSetBy: "bia" },
       ],
       ratings: [],
       userId: "ana",
@@ -244,7 +246,7 @@ assert.deepEqual(
   ).agents.map((agent) => ({ name: agent.name, total: agent.total, success: agent.success })),
   [
     { name: "Ana", total: 1, success: 0 },
-    { name: "Bia", total: 1, success: 1 },
+    { name: "Bia", total: 2, success: 1 },
   ],
 );
 assert.deepEqual(
@@ -258,11 +260,13 @@ assert.deepEqual(
       channels: [{ id: "w1", name: "Principal" }],
       conversations: [
         { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
-        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "", assumedBy: "bia", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "c3", contactId: "c3", connectionId: "w1", assigneeId: "bia", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
       ],
       contacts: [
         { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
-        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "ana", stageSetBy: "bia" },
+        { id: "c3", negotiatedCents: null, stage: "Sucesso", ownerId: "bia", stageSetBy: "ana" },
       ],
       ratings: [],
       userId: "ana",
@@ -271,8 +275,38 @@ assert.deepEqual(
     { period: { mode: "total" }, attendantId: "", channelId: "" },
   ).agents.map((agent) => ({ name: agent.name, total: agent.total, success: agent.success })),
   [
-    { name: "Ana", total: 1, success: 0 },
-    { name: "Bia", total: 0, success: 1 },
+    { name: "Ana", total: 1, success: 1 },
+    { name: "Bia", total: 2, success: 1 },
+  ],
+);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: ["Proposta", "Sucesso"],
+      attendants: [
+        { id: "ana", name: "Ana", team: "Comercial" },
+        { id: "bia", name: "Bia", team: "" },
+      ],
+      channels: [{ id: "w1", name: "Principal" }],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "", assumedBy: "bia", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "c3", contactId: "c3", connectionId: "w1", assigneeId: "bia", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "ana", stageSetBy: "bia" },
+        { id: "c3", negotiatedCents: 40000, stage: "Sucesso", ownerId: "bia", stageSetBy: "ana" },
+      ],
+      ratings: [],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "" },
+  ).agents.map((agent) => ({ name: agent.name, success: agent.success, wonCents: agent.wonCents })),
+  [
+    { name: "Ana", success: 1, wonCents: 40000 },
+    { name: "Bia", success: 1, wonCents: 25000 },
   ],
 );
 assert.deepEqual(
@@ -337,6 +371,13 @@ assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: fal
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: true }), "Encerrado");
+assert.equal(keepAttendanceBotsPaused(true, false), true);
+assert.equal(keepAttendanceBotsPaused(true, true), true);
+assert.equal(keepAttendanceBotsPaused(false, true), true);
+assert.equal(keepAttendanceBotsPaused(false, false), false);
+assert.equal(quickReplyText("  Olá\r\n\nmundo  "), "Olá\n\nmundo");
+assert.equal(quickReplyText(" a "), "");
+assert.equal(quickReplyText("ab"), "ab");
 assert.equal(inboxVisible({ assigneeId: "", userId: "a", admin: false }), true);
 assert.equal(inboxVisible({ assigneeId: "a", userId: "a", admin: false }), true);
 assert.equal(inboxVisible({ assigneeId: "b", userId: "a", admin: false }), false);

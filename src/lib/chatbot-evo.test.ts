@@ -70,6 +70,7 @@ import {
   waitingMinutes,
   overdueQueue,
   noticeCue,
+  noticePlayer,
   ratingScore,
   ratingAverage,
   ratingAverageLabel,
@@ -594,6 +595,10 @@ assert.equal(noticeCue(null, { messages: ["m1"], queues: ["q1"] }).play, false);
 assert.equal(noticeCue({ messages: ["m1"], queues: ["q1"] }, { messages: ["m1", "m2"], queues: ["q1"] }).play, true);
 assert.equal(noticeCue({ messages: ["m1"], queues: ["q1"] }, { messages: ["m1"], queues: [] }).play, false);
 assert.equal(noticeCue({ messages: ["m1"], queues: [] }, { messages: ["m1"], queues: ["q1"] }).play, true);
+assert.equal(noticePlayer("a", [{ tabId: "a", visible: true }, { tabId: "b", visible: false }]), true);
+assert.equal(noticePlayer("b", [{ tabId: "a", visible: true }, { tabId: "b", visible: false }]), false);
+assert.equal(noticePlayer("a", [{ tabId: "b", visible: false }, { tabId: "a", visible: false }]), true);
+assert.equal(noticePlayer("b", [{ tabId: "b", visible: false }, { tabId: "a", visible: false }]), false);
 assert.equal(queueMinutes("5"), 5);
 assert.equal(queueMinutes(15), 15);
 assert.equal(queueMinutes("0"), null);

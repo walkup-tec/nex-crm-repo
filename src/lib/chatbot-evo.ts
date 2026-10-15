@@ -994,6 +994,15 @@ export function noticeCue(
   };
 }
 
+export function noticePlayer(tabId: string, intents: { tabId: string; visible: boolean }[]) {
+  const unique = new Map<string, { tabId: string; visible: boolean }>();
+  for (const intent of intents) unique.set(intent.tabId, intent);
+  const ranked = [...unique.values()].sort(
+    (left, right) => Number(right.visible) - Number(left.visible) || left.tabId.localeCompare(right.tabId),
+  );
+  return ranked[0]?.tabId === tabId;
+}
+
 export function overdueQueue<T extends { since: string }>(rows: T[], limitMinutes: number, now = Date.now()) {
   const limit = queueMinutes(limitMinutes) ?? defaultQueueMinutes;
   return rows

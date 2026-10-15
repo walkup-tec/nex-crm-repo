@@ -3,6 +3,7 @@ let armed = false;
 let busyUntil = 0;
 let voiceBuffer: AudioBuffer | null = null;
 let voiceLoading: Promise<AudioBuffer | null> | null = null;
+let keeper: OscillatorNode | null = null;
 
 function audioContext() {
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -24,11 +25,25 @@ function loadVoice(ctx: AudioContext) {
   return voiceLoading;
 }
 
+function keepAudible(ctx: AudioContext) {
+  if (keeper) return;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.0001;
+  const tone = ctx.createOscillator();
+  tone.frequency.value = 40;
+  tone.connect(gain).connect(ctx.destination);
+  tone.start();
+  keeper = tone;
+}
+
 export function armNexNotice() {
   const ctx = audioContext();
   if (ctx?.state === "suspended") void ctx.resume();
   armed = true;
-  if (ctx) void loadVoice(ctx);
+  if (ctx) {
+    keepAudible(ctx);
+    void loadVoice(ctx);
+  }
 }
 
 function doorbell(ctx: AudioContext, frequency: number, delay: number, duration: number) {
@@ -70,9 +85,17 @@ function playVoice(ctx: AudioContext) {
 export function playNexNotice() {
   const ctx = audioContext();
   if (!armed || !ctx || Date.now() < busyUntil) return;
-  if (ctx.state === "suspended") void ctx.resume();
   busyUntil = Date.now() + 2600;
-  doorbell(ctx, 2093, 0, 0.32);
-  doorbell(ctx, 1568, 0.24, 0.62);
-  window.setTimeout(() => playVoice(ctx), 880);
+  const start = () => {
+    doorbell(ctx, 2093, 0, 0.32);
+    doorbell(ctx, 1568, 0.24, 0.62);
+    window.setTimeout(() => playVoice(ctx), 880);
+  };
+  if (ctx.state === "suspended") {
+    void ctx.resume().then(() => {
+      if (ctx.state === "running") start();
+    });
+    return;
+  }
+  start();
 }

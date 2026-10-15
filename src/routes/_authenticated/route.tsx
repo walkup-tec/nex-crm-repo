@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { ChatbotNotices } from "@/components/chatbot/ChatbotNotices";
 import {
   clientUserCanSee,
   firstAllowedClientPath,
@@ -84,5 +85,12 @@ export const Route = createFileRoute("/_authenticated")({
     }
     return { user: data.user, master, role, permissions, chatbotMenus };
   },
-  component: () => <Outlet />,
+  component: function AuthenticatedLayout() {
+    return (
+      <>
+        <ChatbotNotices />
+        <Outlet />
+      </>
+    );
+  },
 });

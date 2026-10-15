@@ -486,7 +486,7 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
   const live = removed ? "disconnected" : observed === "connected" ? "connected" : qrCode ? "qr" : observed;
   const next = !removed && previous === "connected" && live !== "connected" && !withQr ? "connected" : live;
   const lastError = next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : cell(current, "last_error");
-  if (next === "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
+  if (next === "connected" && previous !== "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
     .update({ status: next, last_error: lastError, updated_at: new Date().toISOString() })
     .eq("id", connectionId)
@@ -927,7 +927,7 @@ export async function ingestEvolutionWebhook(request: Request) {
     const sender = payload["sender"];
     const senderPhone = whatsappJidPhone(typeof sender === "string" ? sender : "");
     const phone = preferredWhatsappPhone(cell(found.data, "phone"), senderPhone);
-    if (next === "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
+    if (next === "connected" && previous !== "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
     await table("chatbot_connections")
       .update({
         status: next,
@@ -1078,7 +1078,6 @@ async function listMessages(instanceName: string) {
 async function importEvolutionMessages(connection: Record<string, unknown>) {
   const instanceName = cell(connection, "instance_name");
   if (!instanceName) return;
-  await ensureWebhook(instanceName);
   let listed = await listMessages(instanceName);
   let items = evolutionIncomingMessages(listed);
   if (!items.length) {

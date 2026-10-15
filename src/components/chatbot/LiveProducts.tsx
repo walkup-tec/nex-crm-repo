@@ -4,7 +4,7 @@ import { deleteChatbotProductFn, listChatbotProductsFn, saveChatbotProductFn } f
 import type { ChatbotCatalogItem } from "@/lib/chatbot-evo";
 import { Field, PageHeading } from "./common";
 
-export function LiveProducts() {
+export function LiveProducts({ embedded = false }: { embedded?: boolean }) {
   const [products, setProducts] = useState<ChatbotCatalogItem[]>([]);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
@@ -48,9 +48,8 @@ export function LiveProducts() {
     await load();
   }
 
-  return (
-    <main className="page">
-      <PageHeading title="Produtos" description="Produtos e serviços que podem ser vinculados ao contato." />
+  const body = (
+    <>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <form className="tag-form" onSubmit={(event) => void save(event)}>
         <Field label="Produto ou serviço">
@@ -74,6 +73,13 @@ export function LiveProducts() {
       ) : (
         <p className="info-note">Nenhum produto gravado. Eles aparecem no cadastro do contato, na caixa de entrada.</p>
       )}
+    </>
+  );
+  if (embedded) return body;
+  return (
+    <main className="page">
+      <PageHeading title="Produtos" description="Produtos e serviços que podem ser vinculados ao contato." />
+      {body}
     </main>
   );
 }

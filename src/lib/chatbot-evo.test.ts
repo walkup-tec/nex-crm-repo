@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { chatbotProfileLabel, chatbotProfilesFromStorage, defaultChatbotProfiles, profileForMenus } from "./chatbot-profiles";
+import { allChatbotMenus } from "./chatbot-menus";
 import {
   evolutionConnectionStatus,
   evolutionContactAvatar,
@@ -53,6 +55,15 @@ import {
   moveKanbanStage,
   clientFilterOptions,
   filterChatbotClients,
+  queueMinutes,
+  waitingMinutes,
+  overdueQueue,
+  noticeCue,
+  ratingScore,
+  ratingAverage,
+  ratingAverageLabel,
+  ratingMessage,
+  ratingPrompt,
   type ChatbotClientRow,
 } from "./chatbot-evo";
 
@@ -98,7 +109,17 @@ assert.deepEqual(
     userId: "ana",
     admin: false,
   }),
-  { received: 2, attending: 1, finished: 3, openDeals: 2, negotiatingCents: 35000, wonCents: 25000, clients: 1 },
+  { received: 2, attending: 1, finished: 3, openDeals: 2, negotiatingCents: 35000, wonCents: 25000, clients: 1, ratingAverage: null, ratingCount: 0 },
+);
+assert.equal(
+  overviewMetrics({
+    conversations: [],
+    contacts: [],
+    scores: [5, 4, 4],
+    userId: "ana",
+    admin: true,
+  }).ratingAverage,
+  4.3,
 );
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "Em fila");
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
@@ -294,3 +315,45 @@ assert.deepEqual(filterChatbotClients(listedClients, { search: "ana", name: "", 
 assert.deepEqual(filterChatbotClients(listedClients, { search: "99966", name: "", tag: "", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
 assert.deepEqual(filterChatbotClients(listedClients, { search: "mozart", name: "", tag: "", attendant: "", stage: "", product: "" }).map((client) => client.id), ["1"]);
 assert.equal(clientFilterOptions(listedClients).product.join(","), "Site,Tráfego");
+assert.equal(ratingScore("5"), 5);
+assert.equal(ratingScore("4 — Bom"), 4);
+assert.equal(ratingScore("Excelente"), 5);
+assert.equal(ratingScore("nota 3"), 3);
+assert.equal(ratingScore("quero continuar o atendimento"), null);
+assert.equal(ratingScore("15"), null);
+assert.equal(ratingAverage([5, 4, 4]), 4.3);
+assert.equal(ratingAverage([]), null);
+assert.equal(ratingAverageLabel(4.3), "4,3");
+assert.equal(ratingAverageLabel(null), "—");
+assert.equal(ratingPrompt("  "), "");
+assert.equal(ratingMessage("Como foi?").includes("1 — Péssimo"), true);
+assert.equal(defaultChatbotProfiles().attendant.inbox, true);
+assert.equal(defaultChatbotProfiles().attendant.settings, false);
+assert.equal(defaultChatbotProfiles().supervisor.team, true);
+assert.equal(defaultChatbotProfiles().supervisor.connection, false);
+assert.equal(defaultChatbotProfiles().manager.settings, true);
+assert.equal(profileForMenus(defaultChatbotProfiles().supervisor, defaultChatbotProfiles()), "supervisor");
+assert.equal(profileForMenus(allChatbotMenus(false), defaultChatbotProfiles()), null);
+assert.equal(chatbotProfilesFromStorage({ attendant: { inbox: true } }).attendant.kanban, false);
+assert.equal(chatbotProfilesFromStorage(null).manager.inbox, true);
+assert.equal(chatbotProfileLabel("manager"), "Gerente");
+assert.equal(noticeCue(null, { messages: ["m1"], queues: ["q1"] }).play, false);
+assert.equal(noticeCue({ messages: ["m1"], queues: ["q1"] }, { messages: ["m1", "m2"], queues: ["q1"] }).play, true);
+assert.equal(noticeCue({ messages: ["m1"], queues: ["q1"] }, { messages: ["m1"], queues: [] }).play, false);
+assert.equal(noticeCue({ messages: ["m1"], queues: [] }, { messages: ["m1"], queues: ["q1"] }).play, true);
+assert.equal(queueMinutes("5"), 5);
+assert.equal(queueMinutes(15), 15);
+assert.equal(queueMinutes("0"), null);
+assert.equal(queueMinutes("15.5"), null);
+assert.equal(waitingMinutes("2026-10-15T12:00:00.000Z", Date.parse("2026-10-15T12:05:00.000Z")), 5);
+assert.deepEqual(
+  overdueQueue(
+    [
+      { name: "Ana", since: "2026-10-15T12:00:00.000Z" },
+      { name: "Eduardo", since: "2026-10-15T12:03:00.000Z" },
+    ],
+    5,
+    Date.parse("2026-10-15T12:05:30.000Z"),
+  ).map((lead) => lead.name),
+  ["Ana"],
+);

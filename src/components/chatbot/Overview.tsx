@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, SlidersHorizontal, TrendingUp, Users } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, SlidersHorizontal, Star, TrendingUp, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
-import { negotiatedLabel, type ChatbotOverview } from "@/lib/chatbot-evo";
+import { negotiatedLabel, ratingAverageLabel, type ChatbotOverview } from "@/lib/chatbot-evo";
 import { useWorkspace } from "@/lib/chatbot/store";
 import { Field, Modal, PageHeading } from "./common";
 
@@ -14,6 +14,8 @@ const emptyOverview: ChatbotOverview = {
   negotiatingCents: 0,
   wonCents: 0,
   clients: 0,
+  ratingAverage: null,
+  ratingCount: 0,
 };
 
 export function Overview({ reports = false }: { reports?: boolean }) {
@@ -40,7 +42,8 @@ export function Overview({ reports = false }: { reports?: boolean }) {
     ["Oportunidades abertas", String(overview.openDeals), BriefcaseBusiness],
     ["Valor em negociação", negotiatedLabel(overview.negotiatingCents), TrendingUp],
     ["Valor ganho", negotiatedLabel(overview.wonCents), TrendingUp],
-    ["Clientes cadastrados", String(overview.clients), Users],
+    ["Clientes cadastrados", String(overview.clients), Users, ""],
+    ["Nota média", ratingAverageLabel(overview.ratingAverage), Star, overview.ratingCount ? `${overview.ratingCount} ${overview.ratingCount === 1 ? "avaliação" : "avaliações"}` : "Sem avaliações"],
   ] as const;
 
   return (
@@ -62,13 +65,14 @@ export function Overview({ reports = false }: { reports?: boolean }) {
       </PageHeading>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <div className="stats-strip">
-        {metrics.map(([label, value, Icon]) => (
+        {metrics.map(([label, value, Icon, hint]) => (
           <div className="metric" key={label}>
             <div className="metric-top">
               <span>{label}</span>
               <Icon />
             </div>
             <strong className="text-lg">{value}</strong>
+            {hint ? <small>{hint}</small> : null}
           </div>
         ))}
       </div>

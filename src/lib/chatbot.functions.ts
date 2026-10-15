@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -269,6 +270,80 @@ export const listChatbotKanbanFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { listChatbotKanban } = await import("@/server/chatbot.server");
     return guard(() => listChatbotKanban(context.userId));
+  });
+
+export const listChatbotQueueAlertsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotQueueAlerts } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotQueueAlerts(context.userId));
+  });
+
+export const chatbotAccessProfilesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotAccessProfiles } = await import("@/server/chatbot.server");
+    return guard(() => chatbotAccessProfiles(context.userId));
+  });
+
+export const saveChatbotAccessProfilesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: ChatbotProfiles) => chatbotProfilesFromStorage(data))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotAccessProfiles } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotAccessProfiles(context.userId, data));
+  });
+
+export const chatbotNoticeTickFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotNoticeTick } = await import("@/server/chatbot.server");
+    return guard(() => chatbotNoticeTick(context.userId));
+  });
+
+export const chatbotNoticeSettingsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotNoticeSettings } = await import("@/server/chatbot.server");
+    return guard(() => chatbotNoticeSettings(context.userId));
+  });
+
+export const saveChatbotNoticeFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { sound: boolean; offlineAlert: boolean }) => ({
+    sound: data.sound === true,
+    offlineAlert: data.offlineAlert === true,
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotNotice } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotNotice(context.userId, data));
+  });
+
+export const chatbotAttendanceSettingsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotAttendanceSettings } = await import("@/server/chatbot.server");
+    return guard(() => chatbotAttendanceSettings(context.userId));
+  });
+
+export const saveChatbotAttendanceFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { minutes: number; ratingEnabled: boolean; ratingPrompt: string }) => ({
+    minutes: data.minutes,
+    ratingEnabled: data.ratingEnabled === true,
+    ratingPrompt: typeof data.ratingPrompt === "string" ? data.ratingPrompt : "",
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotAttendance } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotAttendance(context.userId, data));
+  });
+
+export const saveChatbotQueueMinutesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { minutes: number }) => ({ minutes: data.minutes }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotQueueMinutes } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotQueueMinutes(context.userId, data.minutes));
   });
 
 export const callChatbotContactFn = createServerFn({ method: "POST" })

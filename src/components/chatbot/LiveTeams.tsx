@@ -20,9 +20,11 @@ import {
   resendAttendantInviteFn,
   updateChatbotAttendantFn,
   updateChatbotTeamFn,
+  chatbotAccessProfilesFn,
 } from "@/lib/chatbot.functions";
 import { whatsappMask } from "@/lib/chatbot-evo";
-import { allChatbotMenus, chatbotMenuItems, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
+import { chatbotMenuItems, type ChatbotMenuMap } from "@/lib/chatbot-menus";
+import { chatbotProfileItems, chatbotProfileLabel, defaultChatbotProfiles, profileForMenus, type ChatbotProfileKey, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 
 type TeamRecord = { id: string; name: string; connectionId: string; connectionIds?: string[]; channelName: string; channelPhone: string };
 type AttendantRecord = { id: string; name: string; email: string; self?: boolean; teamIds: string[]; menus: ChatbotMenuMap };
@@ -38,7 +40,9 @@ export function LiveTeams() {
   const [attendantName, setAttendantName] = useState("");
   const [email, setEmail] = useState("");
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [selectedMenus, setSelectedMenus] = useState<ChatbotMenuKey[]>([]);
+  const [profiles, setProfiles] = useState<ChatbotProfiles>(defaultChatbotProfiles);
+  const [profile, setProfile] = useState<ChatbotProfileKey>("attendant");
+  const [customMenus, setCustomMenus] = useState(false);
   const [pending, setPending] = useState("");
   const [editingTeamId, setEditingTeamId] = useState("");
   const [editingAttendantId, setEditingAttendantId] = useState("");
@@ -61,23 +65,21 @@ export function LiveTeams() {
 
   useEffect(() => {
     void load();
+    void chatbotAccessProfilesFn().then((result) => {
+      if (result.ok) setProfiles(result.data);
+    });
   }, []);
 
   function toggle(list: string[], id: string) {
     return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
   }
 
-  function menuPayload(keys: readonly string[]): ChatbotMenuMap {
-    const menus = allChatbotMenus(false);
-    for (const item of chatbotMenuItems) menus[item.key] = keys.includes(item.key);
-    return menus;
-  }
-
   function resetAttendantForm() {
     setAttendantName("");
     setEmail("");
     setSelectedTeams([]);
-    setSelectedMenus([]);
+    setProfile("attendant");
+    setCustomMenus(false);
     setEditingAttendantId("");
     setAddMyself(false);
   }
@@ -102,7 +104,7 @@ export function LiveTeams() {
   async function saveAttendant() {
     setPending("invite");
     if (editingAttendantId) {
-      const result = await updateChatbotAttendantFn({ data: { attendantId: editingAttendantId, name: attendantName, email, teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
+      const result = await updateChatbotAttendantFn({ data: { attendantId: editingAttendantId, name: attendantName, email, teamIds: selectedTeams, menus: profiles[profile] } });
       setPending("");
       if (!result.ok) {
         showFailure(result.message);
@@ -114,7 +116,7 @@ export function LiveTeams() {
       return;
     }
     if (addMyself) {
-      const result = await addMyselfAsChatbotAttendantFn({ data: { teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
+      const result = await addMyselfAsChatbotAttendantFn({ data: { teamIds: selectedTeams, menus: profiles[profile] } });
       setPending("");
       if (!result.ok) {
         showFailure(result.message);
@@ -125,7 +127,7 @@ export function LiveTeams() {
       setMessage("Você entrou na lista de atendentes.");
       return;
     }
-    const result = await inviteChatbotAttendantFn({ data: { name: attendantName, email, teamIds: selectedTeams, menus: menuPayload(selectedMenus) } });
+    const result = await inviteChatbotAttendantFn({ data: { name: attendantName, email, teamIds: selectedTeams, menus: profiles[profile] } });
     setPending("");
     if (!result.ok) {
       showFailure(result.message);
@@ -165,7 +167,9 @@ export function LiveTeams() {
     setAttendantName(attendant.name);
     setEmail(attendant.email);
     setSelectedTeams(attendant.teamIds);
-    setSelectedMenus(chatbotMenuItems.filter((item) => attendant.menus[item.key]).map((item) => item.key));
+    const matched = profileForMenus(attendant.menus, profiles);
+    setProfile(matched ?? "attendant");
+    setCustomMenus(!matched);
     setAddMyself(false);
     setMessage("");
   }
@@ -329,23 +333,18 @@ export function LiveTeams() {
                 <p className="team-empty">Crie uma equipe antes de convidar o atendente.</p>
               )}
             </div>
-            <div className="team-choices">
-              <span>Menus</span>
-              <div className="menu-choices">
-                {chatbotMenuItems.map((item) => (
-                  <label className="team-choice" key={item.key}>
-                    <input
-                      type="checkbox"
-                      checked={selectedMenus.includes(item.key)}
-                      onChange={() => setSelectedMenus((current) => toggle(current, item.key) as ChatbotMenuKey[])}
-                    />
-                    {item.label}
-                  </label>
+            <label>
+              Perfil de acesso
+              <select aria-label="Perfil de acesso" value={profile} onChange={(event) => { setProfile(event.target.value as ChatbotProfileKey); setCustomMenus(false); }}>
+                {chatbotProfileItems.map((item) => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
                 ))}
-              </div>
-            </div>
+              </select>
+            </label>
+            <p className="profile-grant">Inclui: {chatbotMenuItems.filter((item) => profiles[profile][item.key]).map((item) => item.label).join(", ") || "Nenhum menu"}</p>
+            {customMenus ? <p className="profile-grant">Os menus atuais não seguem um perfil. Ao salvar, passam a valer os menus do perfil escolhido.</p> : null}
             <div className="team-form-actions">
-              <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length || !selectedMenus.length} type="submit">
+              <Button disabled={pending === "invite" || attendantName.trim().length < 2 || !email.includes("@") || !selectedTeams.length || !chatbotMenuItems.some((item) => profiles[profile][item.key])} type="submit">
                 <UsersRound />
                 {pending === "invite" ? "Salvando" : editingAttendantId ? "Salvar atendente" : addMyself ? "Me adicionar" : "Convidar atendente"}
               </Button>
@@ -368,6 +367,7 @@ export function LiveTeams() {
                     <strong>{attendant.name}</strong>
                     <p>{attendant.email}</p>
                     <p>{teamNames(attendant.teamIds) || "Sem equipe"}</p>
+                    <p>{profileForMenus(attendant.menus, profiles) ? chatbotProfileLabel(profileForMenus(attendant.menus, profiles) as ChatbotProfileKey) : "Personalizado"}</p>
                     <p>{menuSummary(attendant.menus)}</p>
                   </div>
                   <div className="team-row-actions">

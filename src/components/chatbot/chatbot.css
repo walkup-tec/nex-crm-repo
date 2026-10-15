@@ -75,6 +75,11 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .team-row-main p,.chatbot-app .team-empty,.chatbot-app .team-choice span{margin:0;font-size:12px;color:var(--muted-foreground);font-weight:500}
 .chatbot-app .team-choices{display:grid;gap:8px}
 .chatbot-app .team-choices>span{font-size:12px;font-weight:600}
+.chatbot-app .profile-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 16px}
+.chatbot-app .profile-switch button{height:40px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--muted-foreground);font-size:12px;font-weight:650;cursor:pointer}
+.chatbot-app .profile-switch button[aria-pressed=true]{border-color:#6F02FD;background:color-mix(in oklch,var(--primary) 14%,var(--background));color:var(--foreground)}
+.chatbot-app .profile-note,.chatbot-app .profile-grant{margin:0 0 14px;color:var(--muted-foreground);font-size:12px;line-height:1.5}
+.chatbot-app .profile-grant{margin-top:8px}
 .chatbot-app .menu-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
 .chatbot-app .menu-choices .team-choice{font-size:12px}
 .chatbot-app .team-choice input{width:16px;height:16px;flex:none;padding:0}
@@ -154,6 +159,34 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app select.client-filter{width:148px;height:36px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:12px;font-weight:500;line-height:36px;appearance:none}
 .chatbot-app select.client-filter:focus,.chatbot-app input.client-search:focus{outline:none;border-color:#6F02FD}
 .chatbot-app .client-clear{height:36px;flex:none}
+.chatbot-app .client-name{display:flex;align-items:center;gap:8px}
+.chatbot-app button.client-view{display:grid;place-items:center;width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted-foreground);cursor:pointer}
+.chatbot-app button.client-view:hover{background:var(--accent);color:var(--primary)}
+.chatbot-app button.client-view svg{width:16px;height:16px}
+.chatbot-app .client-dialog{max-width:440px;background:var(--card);color:var(--foreground)}
+.chatbot-app .client-details{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin:0}
+.chatbot-app .client-details dt{margin:0 0 4px;color:var(--muted-foreground);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.chatbot-app .client-details dd{margin:0;font-size:13px;font-weight:600;line-height:1.4}
+.chatbot-app button.client-call{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:36px;margin-top:4px}
+.chatbot-app button.client-call svg{width:18px;height:18px;flex:none}
+.chatbot-app .hours-day{display:flex;align-items:center;gap:10px;min-width:0}
+.chatbot-app .hours-day input{width:16px;height:16px;flex:none;padding:0}
+.chatbot-app .hours-day strong{font-size:13px;font-weight:600}
+.chatbot-app .hours-range{display:flex;align-items:center;gap:8px;flex:none}
+.chatbot-app .hours-range span{color:var(--muted-foreground);font-size:12px}
+.chatbot-app input.hours-time{width:132px;height:36px;padding:0 8px;font-size:12px;font-weight:500;line-height:36px}
+.dark .chatbot-app input.hours-time{color-scheme:dark}
+.chatbot-app input.hours-time::-webkit-calendar-picker-indicator{margin:0 0 0 6px;cursor:pointer}
+.chatbot-app .settings-row:has(.hours-day input:not(:checked)) input.hours-time{opacity:.4}
+.chatbot-app .queue-limit{display:flex;align-items:center;gap:8px;flex:none}
+.chatbot-app .queue-limit span{color:var(--muted-foreground);font-size:12px;font-weight:600}
+.chatbot-app input.queue-minutes{width:88px;height:36px;padding:0 10px;font-size:13px;font-weight:600;text-align:center}
+.chatbot-app input.queue-minutes:focus{border-color:#6F02FD;outline:none}
+.chatbot-app .rating-editor{display:grid;gap:12px;padding:0 0 18px;border-bottom:1px solid var(--border)}
+.chatbot-app .rating-editor textarea{min-height:88px;font-size:13px;line-height:1.5}
+.chatbot-app .rating-editor p{margin:0;color:var(--muted-foreground);font-size:12px;line-height:1.5}
+.chatbot-app .rating-scale{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.chatbot-app .rating-scale li{padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--background);font-size:12px;font-weight:600}
 .chatbot-app .kanban-page{min-width:0}
 .chatbot-app .kanban-board{display:flex;gap:12px;width:100%;min-width:0;overflow:hidden}
 .chatbot-app .kanban-column{width:auto;min-width:0;flex:1 1 0}

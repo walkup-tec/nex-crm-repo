@@ -330,7 +330,17 @@ export function LiveInbox() {
     }
     void load();
     const timer = window.setInterval(() => void load(), 2000);
-    return () => window.clearInterval(timer);
+    function openStored() {
+      const id = sessionStorage.getItem("nex-kanban-conversation") ?? "";
+      if (!id) return;
+      pendingOpen.current = id;
+      setSelected(id);
+    }
+    window.addEventListener("nex-open-conversation", openStored);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("nex-open-conversation", openStored);
+    };
   }, []);
 
   useEffect(() => {

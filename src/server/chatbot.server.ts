@@ -3,6 +3,7 @@ import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
+import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -41,6 +42,13 @@ import {
   protectedKanbanStage,
   withWonKanbanStage,
   wonKanbanStage,
+  defaultQueueMinutes,
+  defaultRatingPrompt,
+  overdueQueue,
+  queueMinutes,
+  ratingMessage,
+  ratingPrompt,
+  ratingScore,
   type ChatbotCatalogItem,
   type ChatbotOverview,
   type ChatbotClientRow,
@@ -99,6 +107,18 @@ function schemaMessage(message: string) {
   }
   if (/finished_count/i.test(message)) {
     return "A migração dos atendimentos encerrados ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_queue_minutes|queued_at/i.test(message)) {
+    return "A migração do tempo da fila ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_ratings|rating_pending|chatbot_rating_enabled|chatbot_rating_prompt/i.test(message)) {
+    return "A migração da avaliação ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_sound_enabled|chatbot_offline_alert|chatbot_presence/i.test(message)) {
+    return "A migração das notificações ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_access_profiles/i.test(message)) {
+    return "A migração dos perfis de acesso ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
     return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
@@ -716,6 +736,61 @@ export async function finishChatbotConversation(userId: string, conversationId: 
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("O atendimento já foi finalizado.");
+  await requestChatbotRating(organizationId, conversation);
+}
+
+async function requestChatbotRating(organizationId: string, conversation: Record<string, unknown>) {
+  try {
+    const settings = await table("organizations")
+      .select("chatbot_rating_enabled, chatbot_rating_prompt")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if (settings.error || settings.data?.["chatbot_rating_enabled"] !== true) return;
+    const conversationId = cell(conversation, "id");
+    const contact = await table("chatbot_contacts").select("phone").eq("id", cell(conversation, "contact_id")).maybeSingle();
+    const phone = cell(contact.data, "phone");
+    const connection = await table("chatbot_connections").select("instance_name, status").eq("id", cell(conversation, "connection_id")).maybeSingle();
+    if (!phone || cell(connection.data, "status") !== "connected") return;
+    const text = ratingMessage(cell(settings.data, "chatbot_rating_prompt"));
+    const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection.data, "instance_name"))}`, "POST", { number: phone, text });
+    const saved = await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text,
+        direction: "out",
+        status: "sent",
+        external_id: readMessageId(sent) || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (saved.error) return;
+    await table("chatbot_conversations")
+      .update({ rating_pending: true })
+      .eq("id", conversationId)
+      .eq("organization_id", organizationId)
+      .select("id")
+      .maybeSingle();
+  } catch {
+    return;
+  }
+}
+
+async function acceptRatingReply(organizationId: string, conversationId: string, contactId: string, text: string) {
+  const current = await table("chatbot_conversations").select("rating_pending").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error || current.data?.["rating_pending"] !== true) return false;
+  const score = ratingScore(text);
+  if (!score) {
+    await table("chatbot_conversations").update({ rating_pending: false }).eq("id", conversationId).eq("organization_id", organizationId);
+    return false;
+  }
+  const saved = await table("chatbot_ratings")
+    .insert({ organization_id: organizationId, conversation_id: conversationId, contact_id: contactId, score })
+    .select("id")
+    .maybeSingle();
+  if (saved.error) return false;
+  await table("chatbot_conversations").update({ rating_pending: false }).eq("id", conversationId).eq("organization_id", organizationId);
+  return true;
 }
 
 export async function chatbotTransferTargets(userId: string, conversationId: string) {
@@ -1073,13 +1148,52 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     return;
   }
   if (!inserted) return;
+  const scored = content.mediaKind ? false : await acceptRatingReply(organizationId, conversationId, contactId, text);
   await table("chatbot_conversations")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", conversationId);
-  await table("chatbot_conversations")
+  if (scored) {
+    await thankForRating(connection, organizationId, conversationId, contactId);
+    return;
+  }
+  await returnClosedToQueue(conversationId);
+}
+
+async function thankForRating(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string) {
+  try {
+    if (cell(connection, "status") !== "connected") return;
+    const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    const phone = cell(contact.data, "phone");
+    if (!phone) return;
+    const text = "Obrigado pela sua avaliação.";
+    const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
+    await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text,
+        direction: "out",
+        status: "sent",
+        external_id: readMessageId(sent) || null,
+      })
+      .select("id")
+      .maybeSingle();
+  } catch {
+    return;
+  }
+}
+
+async function returnClosedToQueue(conversationId: string) {
+  const stamped = new Date().toISOString();
+  const reopened = await (table("chatbot_conversations")
+    .update({ status: "queue", queued_at: stamped })
+    .eq("id", conversationId)
+    .eq("status", "closed") as unknown as Promise<{ error: DbError | null }>);
+  if (!reopened.error || !/queued_at/i.test(reopened.error.message)) return;
+  await (table("chatbot_conversations")
     .update({ status: "queue" })
     .eq("id", conversationId)
-    .eq("status", "closed");
+    .eq("status", "closed") as unknown as Promise<{ error: DbError | null }>);
 }
 
 async function ownedConnection(organizationId: string, connectionId: string) {
@@ -1807,6 +1921,200 @@ export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBo
   };
 }
 
+export async function listChatbotQueueAlerts(userId: string) {
+  const { organizationId, admin } = await membership(userId);
+  const settings = await table("organizations").select("chatbot_queue_minutes").eq("id", organizationId).maybeSingle();
+  const minutes = settings.error
+    ? defaultQueueMinutes
+    : queueMinutes(settings.data?.["chatbot_queue_minutes"]) ?? defaultQueueMinutes;
+  if (settings.error && !/chatbot_queue_minutes|schema cache|does not exist/i.test(settings.error.message)) {
+    fail(schemaMessage(settings.error.message));
+  }
+  if (!admin) return { minutes, offline: false, leads: [] as { conversationId: string; contactId: string; name: string; waitingMinutes: number }[] };
+  const listed = await rowsOrMissing(
+    table("chatbot_conversations")
+      .select("id, contact_id, created_at, queued_at")
+      .eq("organization_id", organizationId)
+      .eq("status", "queue")
+      .is("assignee_id", null),
+  );
+  const conversations = listed.missing
+    ? await rows(
+        table("chatbot_conversations")
+          .select("id, contact_id, created_at")
+          .eq("organization_id", organizationId)
+          .eq("status", "queue")
+          .is("assignee_id", null),
+      )
+    : listed.rows;
+  const contactIds = [...new Set(conversations.map((row) => cell(row, "contact_id")).filter(Boolean))];
+  const contacts = contactIds.length
+    ? await rows(table("chatbot_contacts").select("id, name").eq("organization_id", organizationId).in("id", contactIds))
+    : [];
+  const names = new Map(contacts.map((row) => [cell(row, "id"), cell(row, "name")]));
+  const leads = overdueQueue(
+    conversations.map((row) => ({
+      conversationId: cell(row, "id"),
+      contactId: cell(row, "contact_id"),
+      name: names.get(cell(row, "contact_id")) || "Contato",
+      since: cell(row, "queued_at") || cell(row, "created_at"),
+    })),
+    minutes,
+  ).map((lead) => ({
+    conversationId: lead.conversationId,
+    contactId: lead.contactId,
+    name: lead.name,
+    waitingMinutes: lead.waitingMinutes,
+  }));
+  return { minutes, leads, offline: await companyAttendantsOffline(organizationId) };
+}
+
+const attendantOnlineMs = 2 * 60 * 1000;
+
+async function touchPresence(organizationId: string, userId: string) {
+  const now = new Date().toISOString();
+  const updated = await table("chatbot_presence")
+    .update({ organization_id: organizationId, seen_at: now })
+    .eq("user_id", userId)
+    .select("user_id")
+    .maybeSingle();
+  if (updated.error) return;
+  if (updated.data) return;
+  await table("chatbot_presence")
+    .insert({ user_id: userId, organization_id: organizationId, seen_at: now })
+    .select("user_id")
+    .maybeSingle();
+}
+
+async function companyAttendantsOffline(organizationId: string) {
+  const settings = await table("organizations").select("chatbot_offline_alert").eq("id", organizationId).maybeSingle();
+  if (settings.error || settings.data?.["chatbot_offline_alert"] === false) return false;
+  const connections = await rowsOrMissing(table("chatbot_connections").select("status").eq("organization_id", organizationId));
+  if (!connections.rows.some((row) => cell(row, "status") === "connected")) return false;
+  const members = await rowsOrMissing(table("chatbot_team_members").select("user_id").eq("organization_id", organizationId));
+  const attendants = [...new Set(members.rows.map((row) => cell(row, "user_id")).filter(Boolean))];
+  if (!attendants.length || members.missing) return false;
+  const presence = await rowsOrMissing(table("chatbot_presence").select("user_id, seen_at").eq("organization_id", organizationId));
+  if (presence.missing) return false;
+  const fresh = Date.now() - attendantOnlineMs;
+  const online = new Set(
+    presence.rows
+      .filter((row) => {
+        const seen = Date.parse(cell(row, "seen_at"));
+        return Number.isFinite(seen) && seen >= fresh;
+      })
+      .map((row) => cell(row, "user_id")),
+  );
+  return attendants.every((id) => !online.has(id));
+}
+
+export async function chatbotNoticeTick(userId: string) {
+  const { organizationId } = await membership(userId);
+  await touchPresence(organizationId, userId);
+  const settings = await table("organizations").select("chatbot_sound_enabled").eq("id", organizationId).maybeSingle();
+  const sound = Boolean(settings.error || settings.data?.["chatbot_sound_enabled"] !== false);
+  const messages = await rowsOrMissing(
+    table("chatbot_messages").select("id").eq("organization_id", organizationId).eq("direction", "in").order("created_at", { ascending: false }).limit(20),
+  );
+  const queues = await rowsOrMissing(
+    table("chatbot_conversations").select("id").eq("organization_id", organizationId).eq("status", "queue").is("assignee_id", null),
+  );
+  return {
+    sound,
+    messageIds: messages.rows.map((row) => cell(row, "id")).filter(Boolean),
+    queueIds: queues.rows.map((row) => cell(row, "id")).filter(Boolean),
+  };
+}
+
+export async function chatbotNoticeSettings(userId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const settings = await table("organizations").select("chatbot_sound_enabled, chatbot_offline_alert").eq("id", organizationId).maybeSingle();
+  if (settings.error) return { sound: true, offlineAlert: true };
+  return {
+    sound: settings.data?.["chatbot_sound_enabled"] !== false,
+    offlineAlert: settings.data?.["chatbot_offline_alert"] !== false,
+  };
+}
+
+export async function chatbotAccessProfiles(userId: string) {
+  const { organizationId } = await membership(userId, ["team", "settings"]);
+  const settings = await table("organizations").select("chatbot_access_profiles").eq("id", organizationId).maybeSingle();
+  if (settings.error && !/chatbot_access_profiles|schema cache|does not exist/i.test(settings.error.message)) fail(schemaMessage(settings.error.message));
+  return chatbotProfilesFromStorage(settings.data?.["chatbot_access_profiles"]);
+}
+
+export async function saveChatbotAccessProfiles(userId: string, input: ChatbotProfiles) {
+  const profiles = chatbotProfilesFromStorage(input);
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode alterar os perfis.");
+  const updated = await table("organizations")
+    .update({ chatbot_access_profiles: profiles as unknown as Json })
+    .eq("id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return profiles;
+}
+
+export async function saveChatbotNotice(userId: string, input: { sound: boolean; offlineAlert: boolean }) {
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode alterar as notificações.");
+  const updated = await table("organizations")
+    .update({ chatbot_sound_enabled: input.sound, chatbot_offline_alert: input.offlineAlert })
+    .eq("id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return { sound: input.sound, offlineAlert: input.offlineAlert };
+}
+
+export async function saveChatbotQueueMinutes(userId: string, minutesInput: number) {
+  const minutes = queueMinutes(minutesInput);
+  if (!minutes) fail("Informe o tempo máximo na fila em minutos.");
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode definir o tempo da fila.");
+  const updated = await table("organizations")
+    .update({ chatbot_queue_minutes: minutes })
+    .eq("id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return { minutes };
+}
+
+export async function chatbotAttendanceSettings(userId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const minutesRow = await table("organizations").select("chatbot_queue_minutes").eq("id", organizationId).maybeSingle();
+  const ratingRow = await table("organizations").select("chatbot_rating_enabled, chatbot_rating_prompt").eq("id", organizationId).maybeSingle();
+  if (minutesRow.error && !/chatbot_queue_minutes|schema cache|does not exist/i.test(minutesRow.error.message)) fail(schemaMessage(minutesRow.error.message));
+  const minutes = minutesRow.error ? defaultQueueMinutes : queueMinutes(minutesRow.data?.["chatbot_queue_minutes"]) ?? defaultQueueMinutes;
+  const prompt = ratingPrompt(ratingRow.data?.["chatbot_rating_prompt"]) || defaultRatingPrompt;
+  return {
+    minutes,
+    ratingEnabled: !ratingRow.error && ratingRow.data?.["chatbot_rating_enabled"] === true,
+    ratingPrompt: prompt,
+  };
+}
+
+export async function saveChatbotAttendance(userId: string, input: { minutes: number; ratingEnabled: boolean; ratingPrompt: string }) {
+  const minutes = queueMinutes(input.minutes);
+  if (!minutes) fail("Informe o tempo máximo na fila em minutos.");
+  const prompt = ratingPrompt(input.ratingPrompt);
+  if (input.ratingEnabled && !prompt) fail("Escreva o texto da avaliação.");
+  const saved = await saveChatbotQueueMinutes(userId, minutes);
+  const { organizationId } = await membership(userId, "settings");
+  const updated = await table("organizations")
+    .update({ chatbot_rating_enabled: input.ratingEnabled, chatbot_rating_prompt: prompt || defaultRatingPrompt })
+    .eq("id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) {
+    if (input.ratingEnabled) fail(schemaMessage(updated.error.message));
+    return { ...saved, ratingEnabled: false, ratingPrompt: defaultRatingPrompt };
+  }
+  return { minutes: saved.minutes, ratingEnabled: input.ratingEnabled, ratingPrompt: prompt || defaultRatingPrompt };
+}
+
 export async function callChatbotContact(userId: string, contactId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
   await ownedContact(organizationId, contactId);
@@ -1960,7 +2268,7 @@ export async function deleteChatbotTag(userId: string, tagId: string) {
 }
 
 export async function listChatbotProducts(userId: string): Promise<ChatbotCatalogItem[]> {
-  const { organizationId } = await membership(userId, "products");
+  const { organizationId } = await membership(userId, "settings");
   const products = await rows(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true }));
   return products.map((row) => ({ id: cell(row, "id"), name: cell(row, "name") }));
 }
@@ -1968,7 +2276,7 @@ export async function listChatbotProducts(userId: string): Promise<ChatbotCatalo
 export async function saveChatbotProduct(userId: string, name: string) {
   const clean = catalogName(name, 80);
   if (!clean) fail("Informe o produto ou serviço.");
-  const { organizationId } = await membership(userId, "products");
+  const { organizationId } = await membership(userId, "settings");
   const inserted = await table("chatbot_products")
     .insert({ organization_id: organizationId, name: clean })
     .select("id")
@@ -1980,7 +2288,7 @@ export async function saveChatbotProduct(userId: string, name: string) {
 }
 
 export async function deleteChatbotProduct(userId: string, productId: string) {
-  const { organizationId } = await membership(userId, "products");
+  const { organizationId } = await membership(userId, "settings");
   const current = await table("chatbot_products").select("id").eq("id", productId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) fail(schemaMessage(current.error.message));
   if (!current.data) fail("Esse produto não pertence à sua empresa.");
@@ -2046,13 +2354,15 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 export async function chatbotOverview(userId: string): Promise<ChatbotOverview> {
   const { organizationId, admin } = await membership(userId, "overview");
   await listChatbotStages(userId);
-  const [conversations, contacts] = await Promise.all([
+  const [conversations, contacts, ratings] = await Promise.all([
     rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count").eq("organization_id", organizationId)),
     rows(table("chatbot_contacts").select("negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_ratings").select("score").eq("organization_id", organizationId)),
   ]);
   return overviewMetrics({
     userId,
     admin,
+    scores: ratings.rows.map((row) => Number(row["score"])).filter((score) => Number.isInteger(score)),
     conversations: conversations.map((row) => ({
       contactId: cell(row, "contact_id"),
       assigneeId: cell(row, "assignee_id"),

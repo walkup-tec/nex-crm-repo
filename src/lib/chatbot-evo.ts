@@ -515,11 +515,14 @@ export type ChatbotOverview = {
   negotiatingCents: number;
   wonCents: number;
   clients: number;
+  ratingAverage: number | null;
+  ratingCount: number;
 };
 
 export function overviewMetrics(input: {
   conversations: { contactId: string; assigneeId: string; finishedCount: number }[];
   contacts: { negotiatedCents: number | null; stage: string; ownerId: string }[];
+  scores?: number[];
   userId: string;
   admin: boolean;
 }): ChatbotOverview {
@@ -530,6 +533,7 @@ export function overviewMetrics(input: {
   const deals = input.contacts.filter((item) => item.negotiatedCents != null);
   const won = deals.filter((item) => protectedKanbanStage(item.stage));
   const clients = input.contacts.filter((item) => clientVisibleTo(item.ownerId, input.userId, input.admin));
+  const scores = (input.scores ?? []).filter((score) => Number.isInteger(score) && score >= 1 && score <= 5);
   return {
     received: received.size,
     attending: attending.size,
@@ -538,6 +542,8 @@ export function overviewMetrics(input: {
     negotiatingCents: deals.reduce((sum, item) => sum + (item.negotiatedCents ?? 0), 0),
     wonCents: won.reduce((sum, item) => sum + (item.negotiatedCents ?? 0), 0),
     clients: clients.length,
+    ratingAverage: ratingAverage(scores),
+    ratingCount: scores.length,
   };
 }
 
@@ -686,6 +692,93 @@ export function filterChatbotClients(clients: ChatbotClientRow[], filters: Clien
 
 export type ChatbotTag = { id: string; name: string; color: string };
 export type ChatbotCatalogItem = { id: string; name: string };
+
+export const defaultRatingPrompt = "Seu atendimento foi encerrado. Como você avalia?";
+
+export const ratingChoices = [
+  { score: 1, label: "Péssimo" },
+  { score: 2, label: "Ruim" },
+  { score: 3, label: "Regular" },
+  { score: 4, label: "Bom" },
+  { score: 5, label: "Excelente" },
+] as const;
+
+export function ratingPrompt(value: unknown) {
+  const clean = String(value ?? "")
+    .trim()
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+  if (clean.length < 2 || clean.length > 300) return "";
+  return clean;
+}
+
+export function ratingMessage(prompt: string) {
+  const intro = ratingPrompt(prompt) || defaultRatingPrompt;
+  const scale = ratingChoices.map((item) => `${item.score} — ${item.label}`).join("\n");
+  return `${intro}\n\nResponda com o número da nota:\n${scale}`;
+}
+
+export function ratingScore(text: string) {
+  const clean = text.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
+  if (!clean || clean.length > 48) return null;
+  for (const item of ratingChoices) {
+    const label = item.label.toLocaleLowerCase("pt-BR");
+    const score = String(item.score);
+    if (clean === score || clean === label || clean === `nota ${score}`) return item.score;
+    if (clean.startsWith(`${score} `) || clean.startsWith(`${score}—`) || clean.startsWith(`${score}-`) || clean.startsWith(`${score}.`)) return item.score;
+  }
+  return null;
+}
+
+export function ratingAverage(scores: number[]) {
+  const valid = scores.filter((score) => Number.isInteger(score) && score >= 1 && score <= 5);
+  if (!valid.length) return null;
+  return Math.round((valid.reduce((sum, score) => sum + score, 0) / valid.length) * 10) / 10;
+}
+
+export function ratingAverageLabel(average: number | null) {
+  if (average == null) return "—";
+  return average.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+export const defaultQueueMinutes = 15;
+
+export function queueMinutes(value: unknown) {
+  const minutes = typeof value === "number" ? value : Number(String(value ?? "").trim());
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 480) return null;
+  return minutes;
+}
+
+export function waitingMinutes(since: string, now = Date.now()) {
+  const start = Date.parse(since);
+  if (!Number.isFinite(start)) return 0;
+  return Math.max(0, Math.floor((now - start) / 60_000));
+}
+
+export function noticeCue(
+  previous: { messages: string[]; queues: string[] } | null,
+  next: { messages: string[]; queues: string[] },
+) {
+  if (!previous) return { play: false, messages: next.messages.filter(Boolean).slice(-80), queues: next.queues.filter(Boolean) };
+  const knownMessages = new Set(previous.messages);
+  const knownQueues = new Set(previous.queues);
+  const messages = next.messages.filter(Boolean);
+  const queues = next.queues.filter(Boolean);
+  const play = messages.some((id) => !knownMessages.has(id)) || queues.some((id) => !knownQueues.has(id));
+  return {
+    play,
+    messages: [...new Set([...previous.messages, ...messages])].slice(-80),
+    queues,
+  };
+}
+
+export function overdueQueue<T extends { since: string }>(rows: T[], limitMinutes: number, now = Date.now()) {
+  const limit = queueMinutes(limitMinutes) ?? defaultQueueMinutes;
+  return rows
+    .map((row) => ({ ...row, waitingMinutes: waitingMinutes(row.since, now) }))
+    .filter((row) => row.waitingMinutes >= limit)
+    .sort((left, right) => right.waitingMinutes - left.waitingMinutes);
+}
 
 function findString(value: unknown, keys: string[]): string {
   if (!value || typeof value !== "object") return "";

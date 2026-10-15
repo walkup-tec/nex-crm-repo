@@ -237,6 +237,67 @@ export function whatsappJidPhone(jid: string) {
   return digits;
 }
 
+export function whatsappGroupJid(value: string) {
+  const jid = value.trim().toLowerCase();
+  if (!jid.endsWith("@g.us")) return "";
+  const head = jid.slice(0, -"@g.us".length);
+  if (!/^\d{10,24}$/.test(head)) return "";
+  return `${head}@g.us`;
+}
+
+export function whatsappGroupLabel(jid: string) {
+  const head = whatsappGroupJid(jid).split("@")[0] ?? "";
+  const tail = head.slice(-4);
+  return tail ? `Grupo ${tail}` : "Grupo";
+}
+
+export function sameChatbotContact(left: string, right: string) {
+  const leftGroup = whatsappGroupJid(left);
+  const rightGroup = whatsappGroupJid(right);
+  if (leftGroup || rightGroup) return leftGroup !== "" && leftGroup === rightGroup;
+  return left === right || sameWhatsappAccount(left, right);
+}
+
+export function evolutionConversationPhone(key: Record<string, unknown>, known: Record<string, string>) {
+  const remote = key["remoteJid"];
+  if (typeof remote === "string") {
+    const group = whatsappGroupJid(remote);
+    if (group) return group;
+  }
+  return resolveIncomingPhone(key, known) || evolutionContactPhone(key);
+}
+
+export function evolutionGroupSubject(payload: unknown) {
+  return catalogName(readGroupSubject(payload, 0), 80);
+}
+
+function readGroupSubject(value: unknown, depth: number): string {
+  if (!value || typeof value !== "object" || depth > 3) return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const subject = readGroupSubject(item, depth + 1);
+      if (subject) return subject;
+    }
+    return "";
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record["subject"] === "string" && record["subject"].trim()) return record["subject"];
+  for (const key of ["group", "data", "groupMetadata"]) {
+    const subject = readGroupSubject(record[key], depth + 1);
+    if (subject) return subject;
+  }
+  return "";
+}
+
+export function groupInboundText(sender: string, text: string) {
+  const name = catalogName(sender, 80);
+  const body = text.trim();
+  if (!name) return body;
+  if (!body) return name;
+  if (body === name || body.startsWith(`${name}: `)) return body;
+  return `${name}: ${body}`;
+}
+
 export function evolutionConnectionStatus(state: string): ChatbotConnectionStatus {
   const value = state.toLowerCase();
   if (value === "open") return "connected";
@@ -1014,6 +1075,7 @@ export type ClientListFilters = {
 };
 
 export function clientPhoneLabel(phone: string) {
+  if (whatsappGroupJid(phone)) return "Grupo";
   return whatsappMask(phone) || phone;
 }
 

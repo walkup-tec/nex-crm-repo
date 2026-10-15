@@ -50,6 +50,13 @@ import {
   evolutionNumberInUse,
   whatsappDeviceRemoved,
   whatsappJidPhone,
+  whatsappGroupJid,
+  whatsappGroupLabel,
+  sameChatbotContact,
+  evolutionConversationPhone,
+  evolutionGroupSubject,
+  groupInboundText,
+  clientPhoneLabel,
   whatsappMask,
   catalogName,
   quickReplyText,
@@ -502,6 +509,27 @@ assert.equal(attendancePhone("11999999999"), "5511999999999");
 assert.equal(attendancePhone("123"), "");
 assert.equal(whatsappJidPhone("5511999999999@s.whatsapp.net"), "5511999999999");
 assert.equal(whatsappJidPhone("120363@g.us"), "");
+assert.equal(whatsappGroupJid("120363@g.us"), "");
+assert.equal(whatsappGroupJid("status@broadcast"), "");
+const grupo = "120363025246125269@g.us";
+assert.equal(whatsappGroupJid(grupo), grupo);
+assert.equal(whatsappGroupLabel(grupo), "Grupo 5269");
+assert.equal(sameChatbotContact(grupo, "5511999999999"), false);
+assert.equal(sameChatbotContact(grupo, grupo), true);
+assert.equal(sameChatbotContact("5511999999999", "5511999999999"), true);
+assert.equal(
+  evolutionConversationPhone({ remoteJid: grupo, participant: "5511999999999@s.whatsapp.net" }, {}),
+  grupo,
+);
+assert.equal(evolutionConversationPhone({ remoteJid: "5511999999999@s.whatsapp.net" }, {}), "5511999999999");
+assert.equal(evolutionGroupSubject({ subject: "Equipe Comercial" }), "Equipe Comercial");
+assert.equal(evolutionGroupSubject({ data: { subject: "Vendas" } }), "Vendas");
+assert.equal(evolutionGroupSubject({}), "");
+assert.equal(groupInboundText("Maria", "oi"), "Maria: oi");
+assert.equal(groupInboundText("Maria", "Maria: oi"), "Maria: oi");
+assert.equal(groupInboundText("", "oi"), "oi");
+assert.equal(clientPhoneLabel(grupo), "Grupo");
+assert.equal(clientPhoneLabel("5511999999999"), "(11) 99999-9999");
 assert.equal(evolutionConnectionStatus("open"), "connected");
 assert.equal(evolutionConnectionStatus("close"), "disconnected");
 assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");

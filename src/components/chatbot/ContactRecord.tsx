@@ -13,7 +13,7 @@ import {
   setChatbotContactTagsFn,
 } from "@/lib/chatbot.functions";
 import { applyMask } from "@/lib/masks";
-import { messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, whatsappMask, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+import { clientPhoneLabel, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
 function SavedMediaName({
   file,
@@ -270,7 +270,7 @@ export function ContactRecord({
           </section>
           <section className="contact-section">
             <h3>WhatsApp</h3>
-            <p className="contact-phone">{whatsappMask(profile.phone) || profile.phone}</p>
+            <p className="contact-phone">{clientPhoneLabel(profile.phone) || profile.phone}</p>
           </section>
           <section className="contact-section">
             <h3>Produtos e serviços</h3>

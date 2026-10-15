@@ -18,9 +18,13 @@ import {
   evolutionInstanceClosed,
   evolutionInstanceNameOf,
   evolutionNumberInUse,
-  evolutionContactPhone,
+  evolutionConversationPhone,
+  evolutionGroupSubject,
+  groupInboundText,
   learnLidPhones,
-  resolveIncomingPhone,
+  sameChatbotContact,
+  whatsappGroupJid,
+  whatsappGroupLabel,
   evolutionIncomingMessages,
   evolutionMediaFile,
   evolutionMessageContent,
@@ -986,7 +990,7 @@ async function refreshContactAvatar(instanceName: string, organizationId: string
 async function findContactByPhone(organizationId: string, phone: string) {
   try {
     const listed = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
-    return listed.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone)) ?? null;
+    return listed.find((row) => sameChatbotContact(cell(row, "phone"), phone)) ?? null;
   } catch {
     return null;
   }
@@ -1007,7 +1011,25 @@ function rememberLidPhones(items: Record<string, unknown>[]) {
 }
 
 function incomingPhone(key: Record<string, unknown>, knownLids: Record<string, string>) {
-  return resolveIncomingPhone(key, knownLids) || evolutionContactPhone(key);
+  return evolutionConversationPhone(key, knownLids);
+}
+
+const groupSubjects = new Map<string, string>();
+
+async function lookupGroupSubject(connection: Record<string, unknown>, groupJid: string) {
+  const cached = groupSubjects.get(groupJid);
+  if (cached !== undefined) return cached;
+  const instanceName = cell(connection, "instance_name");
+  if (!instanceName) return "";
+  try {
+    const body = await evo(`/group/findGroupInfos/${encodeURIComponent(instanceName)}`, "POST", { groupJid }, 8000);
+    const subject = evolutionGroupSubject(body);
+    groupSubjects.set(groupJid, subject);
+    return subject;
+  } catch {
+    groupSubjects.set(groupJid, "");
+    return "";
+  }
 }
 
 async function refreshMessageAvatar(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}) {
@@ -1100,11 +1122,11 @@ async function refreshWhatsappName(organizationId: string, contactId: string, ph
   await table("chatbot_contacts").update({ name: next }).eq("id", contactId).eq("organization_id", organizationId);
 }
 
-async function contactIdForMessage(organizationId: string, phone: string, name: string) {
+async function contactIdForMessage(organizationId: string, phone: string, name: string, rename = true) {
   const known = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
-  const found = known.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone));
+  const found = known.find((row) => sameChatbotContact(cell(row, "phone"), phone));
   if (found) {
-    await refreshWhatsappName(organizationId, cell(found, "id"), phone, name);
+    if (rename) await refreshWhatsappName(organizationId, cell(found, "id"), phone, name);
     return cell(found, "id");
   }
   const created = await table("chatbot_contacts")
@@ -1114,7 +1136,7 @@ async function contactIdForMessage(organizationId: string, phone: string, name: 
   if (created.data) return cell(created.data, "id");
   if (!duplicate(created.error)) return "";
   const again = await rows(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
-  const retry = again.find((row) => cell(row, "phone") === phone || sameWhatsappAccount(cell(row, "phone"), phone));
+  const retry = again.find((row) => sameChatbotContact(cell(row, "phone"), phone));
   return cell(retry, "id");
 }
 
@@ -1129,8 +1151,12 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   const text = content.mediaKind ? content.text : evolutionMessageText(record["message"]);
   if (!phone || !externalId || (!text && !content.mediaKind)) return;
   const organizationId = cell(connection, "organization_id");
-  const name = cell(record, "pushName") || phone;
-  const contactId = await contactIdForMessage(organizationId, phone, name);
+  const group = whatsappGroupJid(phone);
+  const sender = cell(record, "pushName");
+  const subject = group ? await lookupGroupSubject(connection, phone) : "";
+  const name = group ? subject || whatsappGroupLabel(phone) : sender || phone;
+  const contactId = await contactIdForMessage(organizationId, phone, name, !group || Boolean(subject));
+  const storedText = group ? groupInboundText(sender, text) : text;
   if (!contactId) return;
   const botsDisabled = await contactBotsDisabled(organizationId, contactId);
   const existingConversation = await table("chatbot_conversations")
@@ -1166,7 +1192,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   const messageRow = {
     organization_id: organizationId,
     conversation_id: conversationId,
-    text,
+    text: storedText,
     direction: "in",
     status: "sent",
     external_id: externalId,
@@ -1179,13 +1205,13 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   if (saved.error && duplicate(saved.error)) {
     if (content.mediaKind) {
       await table("chatbot_messages")
-        .update({ media_kind: content.mediaKind, media_mime: content.mediaMime, text })
+        .update({ media_kind: content.mediaKind, media_mime: content.mediaMime, text: storedText })
         .eq("conversation_id", conversationId)
         .eq("external_id", externalId);
     }
   } else if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
     const retry = await table("chatbot_messages")
-      .insert({ ...messageRow, text: text || (content.mediaKind === "video" ? "[vídeo]" : content.mediaKind === "audio" ? "[áudio]" : "[imagem]") })
+      .insert({ ...messageRow, text: storedText || (content.mediaKind === "video" ? "[vídeo]" : content.mediaKind === "audio" ? "[áudio]" : "[imagem]") })
       .select("id")
       .maybeSingle();
     if (retry.error && !duplicate(retry.error)) return;

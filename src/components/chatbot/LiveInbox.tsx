@@ -18,7 +18,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -619,7 +619,7 @@ export function LiveInbox() {
         <ContactAvatar name={person?.name ?? ""} avatarUrl={person?.avatarUrl ?? ""} />
         <div className="conversation-main">
           <strong>{person?.name}</strong>
-          <p>{whatsappMask(person?.phone ?? "") || person?.phone}</p>
+          <p>{clientPhoneLabel(person?.phone ?? "") || person?.phone}</p>
           <div className="conversation-tags">
             {channel ? <span className="status-pill">{channel}</span> : null}
             <span className="status-pill">{labelFor(item.id)}</span>

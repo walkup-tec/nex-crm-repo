@@ -220,12 +220,6 @@ export function Connections() {
 
   return (
     <main className="page">
-      <div className="page-heading">
-        <div>
-          <h1>Conexão</h1>
-          <p>Informe o nome e o número. O QR Code aparece aqui para concluir no WhatsApp.</p>
-        </div>
-      </div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <form
         className="modal-form mb-5 max-w-xl"

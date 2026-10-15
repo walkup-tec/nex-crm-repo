@@ -4,8 +4,39 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { callChatbotContactFn, listChatbotQueueAlertsFn } from "@/lib/chatbot.functions";
+import { applyClearedNotices, clearVisibleNotices, type ClearedNotices } from "@/lib/notice-clear";
 
 type QueueLead = { conversationId: string; contactId: string; name: string; waitingMinutes: number };
+
+const clearedQueueKey = "nex-cleared-queue";
+const clearedOfflineKey = "nex-cleared-offline";
+const clearedBalanceKey = "nex-cleared-balance";
+
+function storedNotices(): ClearedNotices {
+  try {
+    const raw = sessionStorage.getItem(clearedQueueKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return {
+      queue: Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [],
+      offline: sessionStorage.getItem(clearedOfflineKey) === "1",
+      balance: sessionStorage.getItem(clearedBalanceKey) === "1",
+    };
+  } catch {
+    return { queue: [], offline: false, balance: false };
+  }
+}
+
+function rememberNotices(cleared: ClearedNotices) {
+  try {
+    sessionStorage.setItem(clearedQueueKey, JSON.stringify(cleared.queue));
+    if (cleared.offline) sessionStorage.setItem(clearedOfflineKey, "1");
+    else sessionStorage.removeItem(clearedOfflineKey);
+    if (cleared.balance) sessionStorage.setItem(clearedBalanceKey, "1");
+    else sessionStorage.removeItem(clearedBalanceKey);
+  } catch {
+    /* the panel still clears until the next load */
+  }
+}
 
 function WhatsAppIcon() {
   return (
@@ -21,8 +52,10 @@ function WhatsAppIcon() {
 
 export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supervisor?: boolean }) {
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<QueueLead[]>([]);
-  const [offline, setOffline] = useState(false);
+  const [incoming, setIncoming] = useState<QueueLead[]>([]);
+  const [serverOffline, setServerOffline] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [cleared, setCleared] = useState<ClearedNotices>(storedNotices);
   const [open, setOpen] = useState(false);
   const [calling, setCalling] = useState("");
   const [failure, setFailure] = useState("");
@@ -33,8 +66,9 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
     async function load() {
       const result = await listChatbotQueueAlertsFn();
       if (!active || !result.ok) return;
-      setLeads(result.data.leads);
-      setOffline(result.data.offline === true);
+      setIncoming(result.data.leads);
+      setServerOffline(result.data.offline === true);
+      setLoaded(true);
     }
     void load();
     const timer = window.setInterval(() => void load(), 20000);
@@ -43,6 +77,21 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
       window.clearInterval(timer);
     };
   }, [supervisor]);
+
+  useEffect(() => {
+    setCleared((current) => {
+      const sourceLeads = loaded ? incoming : current.queue.map((id) => ({ conversationId: id }));
+      const sourceOffline = loaded ? serverOffline : current.offline;
+      const next = applyClearedNotices(sourceLeads, sourceOffline, low, current).cleared;
+      if (next.queue.join("\n") === current.queue.join("\n") && next.offline === current.offline && next.balance === current.balance) return current;
+      rememberNotices(next);
+      return next;
+    });
+  }, [incoming, serverOffline, low, loaded]);
+
+  const view = applyClearedNotices(incoming, serverOffline, low, cleared);
+  const leads = view.leads;
+  const offline = view.offline;
 
   async function call(contactId: string) {
     setCalling(contactId);
@@ -54,7 +103,7 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
       return;
     }
     sessionStorage.setItem("nex-kanban-conversation", result.data.conversationId);
-    setLeads((current) => current.filter((lead) => lead.contactId !== contactId));
+    setIncoming((current) => current.filter((lead) => lead.contactId !== contactId));
     window.dispatchEvent(new Event("nex-open-conversation"));
     setOpen(false);
     const path = window.location.pathname.replace(/\/$/, "");
@@ -62,9 +111,17 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
     else void navigate({ to: "/chatbot" });
   }
 
+  function clearAll() {
+    const next = clearVisibleNotices(leads.map((lead) => lead.conversationId), offline, view.low, cleared);
+    rememberNotices(next);
+    setCleared(next);
+    setOpen(false);
+  }
+
   const waiting = supervisor && leads.length > 0;
   const unavailable = supervisor && offline;
-  if (!low && !waiting && !unavailable) {
+  const showLow = view.low;
+  if (!showLow && !waiting && !unavailable) {
     return (
       <Button variant="ghost" size="icon" aria-label="Notificações">
         <Bell />
@@ -91,10 +148,16 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
+        <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
+          <p className="text-sm font-semibold">Notificações</p>
+          <Button type="button" variant="ghost" className="h-8 px-2 text-xs font-medium text-primary" onClick={clearAll}>
+            Limpar tudo
+          </Button>
+        </div>
         {unavailable ? (
           <div className={waiting ? "mb-4 border-b pb-4" : ""}>
             <p className="text-sm font-semibold">Nenhum atendente online</p>
-            <p className="mt-2 text-sm text-muted-foreground">Não há atendente com o chatbot aberto. O aviso permanece até alguém voltar.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Não há atendente com o chatbot aberto.</p>
           </div>
         ) : null}
         {waiting ? (
@@ -121,7 +184,7 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
             {failure ? <p className="text-xs text-destructive">{failure}</p> : null}
           </div>
         ) : null}
-        {low ? (
+        {showLow ? (
           <div className={waiting ? "mt-4 border-t pt-4" : ""}>
             <p className="text-sm font-semibold text-destructive">Saldo Meta baixo</p>
             <p className="mt-2 text-sm text-muted-foreground">

@@ -203,4 +203,5 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .kanban-column button.kanban-call{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:32px;min-height:32px;margin-top:8px;padding:0 10px;border:1px solid color-mix(in oklch,var(--stage,var(--primary)) 28%,var(--border));border-radius:6px;background:color-mix(in oklch,var(--stage,var(--primary)) 8%,var(--background));color:var(--foreground);font-size:12px;font-weight:600;line-height:1;white-space:nowrap}
 .chatbot-app .kanban-column button.kanban-call:hover{background:color-mix(in oklch,var(--stage,var(--primary)) 16%,var(--background));color:var(--foreground)}
 .chatbot-app .kanban-column button.kanban-call svg{width:18px;height:18px;flex:none}
+.chatbot-app .page-heading{justify-content:flex-end}
 

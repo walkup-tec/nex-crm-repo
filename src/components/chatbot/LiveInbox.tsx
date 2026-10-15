@@ -502,12 +502,6 @@ export function LiveInbox() {
 
   return (
     <main className="page">
-      <div className="page-heading">
-        <div>
-          <h1>Caixa de Entrada</h1>
-          <p>Mensagens reais da empresa, recebidas pela Evolution API.</p>
-        </div>
-      </div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <div className={`inbox-layout${selected ? " chat-selected" : ""}`}>
         <section className="conversation-list">

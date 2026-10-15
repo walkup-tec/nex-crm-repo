@@ -49,7 +49,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
   return (
     <main className="page">
       <PageHeading
-        title={reports ? "Relatórios" : "Visão Geral"}
+        title={reports ? "Relatórios" : "Dashboard Chatbot"}
         description={reports ? "Uma visão clara dos resultados da sua operação." : "Seu atendimento e sua operação comercial, em perspectiva."}
       >
         <select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Período">

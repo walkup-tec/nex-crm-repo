@@ -193,12 +193,6 @@ export function LiveTeams() {
 
   return (
     <main className="page">
-      <div className="page-heading">
-        <div>
-          <h1>Time</h1>
-          <p>Cada equipe atende somente o canal de WhatsApp escolhido na criação.</p>
-        </div>
-      </div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <section className="team-board">
         <article className="team-panel">

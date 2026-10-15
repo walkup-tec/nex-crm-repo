@@ -3,9 +3,9 @@ import { Overview } from "@/components/chatbot/Overview";
 import { ChatbotFrame } from "@/components/chatbot/frame";
 
 export const Route = createFileRoute("/_authenticated/chatbot/visao-geral")({
-  head: () => ({ meta: [{ title: "Visão Geral — Chatbot" }] }),
+  head: () => ({ meta: [{ title: "Dashboard Chatbot — Chatbot" }] }),
   component: () => (
-    <ChatbotFrame title="Visão Geral" subtitle="Indicadores do atendimento.">
+    <ChatbotFrame title="Dashboard Chatbot" subtitle="Indicadores do atendimento.">
       <Overview />
     </ChatbotFrame>
   ),

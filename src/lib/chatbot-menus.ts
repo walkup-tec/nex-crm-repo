@@ -1,6 +1,6 @@
 export const chatbotMenuItems = [
   { key: "inbox", path: "/chatbot", label: "Caixa de Entrada" },
-  { key: "overview", path: "/chatbot/visao-geral", label: "Visão Geral" },
+  { key: "overview", path: "/chatbot/visao-geral", label: "Dashboard Chatbot" },
   { key: "kanban", path: "/chatbot/kanban", label: "Kanban" },
   { key: "clients", path: "/chatbot/clientes", label: "Clientes" },
   { key: "schedules", path: "/chatbot/agendamentos", label: "Agendamentos" },

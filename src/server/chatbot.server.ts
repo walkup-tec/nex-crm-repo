@@ -1,10 +1,11 @@
+import { documentDigits, rgDigits } from "@/lib/masks";
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { chooseFlow, outsideBusinessHours, stepFlow, type FlowAction, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { chooseFlow, outsideBusinessHours, stepFlow, type CrmSaveField, type FlowAction, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -149,6 +150,9 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_flows|chatbot_flow_runs|bot_note/i.test(message)) {
     return "A migração dos bots ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_client_document|chatbot_client_rg|'document'|'rg'/i.test(message)) {
+    return "A migração dos campos de cliente ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_tags|chatbot_products|chatbot_contact_tags|chatbot_contact_products|name_edited/i.test(message)) {
     return "A migração do cadastro do contato ainda não foi aplicada no Supabase.";
@@ -1843,11 +1847,24 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
   const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
   const listedStages = await listChatbotStages(userId);
   const stageRow = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  const dealRow = await table("chatbot_contacts").select("negotiated_cents, client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const identity = await contactIdentity(organizationId, contactId);
+  const dealRow = await table("chatbot_contacts").select("negotiated_cents, client_owner_id, bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   let dealReady = true;
   let negotiated: number | null = null;
   let clientOwnerId = "";
-  if (dealRow.error) {
+  let note = "";
+  if (dealRow.error && /bot_note/i.test(dealRow.error.message)) {
+    const again = await table("chatbot_contacts").select("negotiated_cents, client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    if (again.error) {
+      if (/negotiated_cents|client_owner_id|schema cache|does not exist|PGRST205/i.test(again.error.message)) dealReady = false;
+      else fail(schemaMessage(again.error.message));
+    } else {
+      const raw = again.data?.["negotiated_cents"];
+      const amount = raw == null || raw === "" ? null : Number(raw);
+      negotiated = amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null;
+      clientOwnerId = cell(again.data, "client_owner_id");
+    }
+  } else if (dealRow.error) {
     if (/negotiated_cents|client_owner_id|schema cache|does not exist|PGRST205/i.test(dealRow.error.message)) dealReady = false;
     else fail(schemaMessage(dealRow.error.message));
   } else {
@@ -1855,6 +1872,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     const amount = raw == null || raw === "" ? null : Number(raw);
     negotiated = amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null;
     clientOwnerId = cell(dealRow.data, "client_owner_id");
+    note = cell(dealRow.data, "bot_note");
   }
   let stageReady = listedStages.ready;
   let stage = "";
@@ -1900,7 +1918,78 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     dealReady,
     negotiatedCents: dealReady ? negotiated : null,
     clientOwnerId: dealReady ? clientOwnerId : "",
+    note,
+    document: identity.document,
+    rg: identity.rg,
+    showDocument: identity.showDocument,
+    showRg: identity.showRg,
   };
+}
+
+async function contactIdentity(organizationId: string, contactId: string) {
+  const [identity, flags] = await Promise.all([
+    table("chatbot_contacts").select("document, rg").eq("id", contactId).eq("organization_id", organizationId).maybeSingle(),
+    table("organizations").select("chatbot_client_document, chatbot_client_rg").eq("id", organizationId).maybeSingle(),
+  ]);
+  if (identity.error && !/document|rg|schema cache|does not exist|PGRST205/i.test(identity.error.message)) fail(schemaMessage(identity.error.message));
+  if (flags.error && !/chatbot_client_document|chatbot_client_rg|schema cache|does not exist|PGRST205/i.test(flags.error.message)) fail(schemaMessage(flags.error.message));
+  const columnsReady = !identity.error;
+  const flagsReady = !flags.error;
+  return {
+    document: columnsReady ? cell(identity.data, "document") : "",
+    rg: columnsReady ? cell(identity.data, "rg") : "",
+    showDocument: flagsReady && flags.data?.["chatbot_client_document"] === true,
+    showRg: flagsReady && flags.data?.["chatbot_client_rg"] === true,
+  };
+}
+
+export async function chatbotClientFieldSettings(userId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const settings = await table("organizations").select("chatbot_client_document, chatbot_client_rg").eq("id", organizationId).maybeSingle();
+  if (settings.error) {
+    if (/chatbot_client_document|chatbot_client_rg|schema cache|does not exist|PGRST205/i.test(settings.error.message)) {
+      return { document: false, rg: false };
+    }
+    fail(schemaMessage(settings.error.message));
+  }
+  return {
+    document: settings.data?.["chatbot_client_document"] === true,
+    rg: settings.data?.["chatbot_client_rg"] === true,
+  };
+}
+
+export async function saveChatbotClientFields(userId: string, input: { document: boolean; rg: boolean }) {
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode alterar os campos do cliente.");
+  const updated = await table("organizations")
+    .update({ chatbot_client_document: input.document, chatbot_client_rg: input.rg })
+    .eq("id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return { document: input.document, rg: input.rg };
+}
+
+export async function setChatbotContactIdentity(userId: string, contactId: string, field: "document" | "rg", value: string) {
+  const { organizationId } = await membership(userId, "inbox");
+  await ownedContact(organizationId, contactId);
+  const flag = field === "document" ? "chatbot_client_document" : "chatbot_client_rg";
+  const settings = await table("organizations").select(flag).eq("id", organizationId).maybeSingle();
+  if (settings.error) fail(schemaMessage(settings.error.message));
+  if (settings.data?.[flag] !== true) fail("Ative esse campo em Configurações, no menu Clientes.");
+  const stored = value.trim() ? (field === "document" ? documentDigits(value) : rgDigits(value)) : "";
+  if (value.trim() && !stored) {
+    fail(field === "document" ? "Informe um CPF com 11 dígitos ou um CNPJ com 14." : "Informe um RG com pelo menos 7 dígitos.");
+  }
+  const updated = await table("chatbot_contacts")
+    .update({ [field]: stored })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { value: stored };
 }
 
 export async function setChatbotContactDeal(userId: string, contactId: string, cents: number | null) {
@@ -2566,6 +2655,43 @@ async function addFlowTag(organizationId: string, contactId: string, name: strin
   if (linked.error && !duplicate(linked.error)) return;
 }
 
+async function saveFlowPhone(organizationId: string, contactId: string, text: string) {
+  const next = attendancePhone(text);
+  if (!next) return;
+  const current = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error) return;
+  const phone = cell(current.data, "phone");
+  if (whatsappGroupJid(phone) || sameWhatsappAccount(phone, next)) return;
+  const known = await rowsOrMissing(table("chatbot_contacts").select("id, phone").eq("organization_id", organizationId));
+  if (known.missing) return;
+  if (known.rows.some((row) => cell(row, "id") !== contactId && sameChatbotContact(cell(row, "phone"), next))) return;
+  await table("chatbot_contacts").update({ phone: next }).eq("id", contactId).eq("organization_id", organizationId);
+}
+
+async function saveFlowDocument(organizationId: string, contactId: string, field: "document" | "rg", text: string) {
+  const stored = field === "document" ? documentDigits(text) : rgDigits(text);
+  if (!stored) return;
+  await table("chatbot_contacts").update({ [field]: stored }).eq("id", contactId).eq("organization_id", organizationId);
+}
+
+async function saveFlowAnswer(organizationId: string, contactId: string, field: CrmSaveField, text: string) {
+  if (field === "name") {
+    const name = catalogName(text, 80);
+    if (!name) return;
+    await table("chatbot_contacts").update({ name, name_edited: true }).eq("id", contactId).eq("organization_id", organizationId);
+    return;
+  }
+  if (field === "phone") {
+    await saveFlowPhone(organizationId, contactId, text);
+    return;
+  }
+  if (field === "document" || field === "rg") {
+    await saveFlowDocument(organizationId, contactId, field, text);
+    return;
+  }
+  await appendFlowNote(organizationId, contactId, text);
+}
+
 async function appendFlowNote(organizationId: string, contactId: string, text: string) {
   const current = await table("chatbot_contacts").select("bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) return;
@@ -2593,7 +2719,7 @@ async function applyFlowActions(connection: Record<string, unknown>, organizatio
   for (const action of actions) {
     if (action.type === "send") await sendFlowText(connection, organizationId, conversationId, contactId, action.text);
     if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
-    if (action.type === "note") await appendFlowNote(organizationId, contactId, action.text);
+    if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
     if (action.type === "deal") await createFlowDeal(organizationId, contactId, action.text);
     if (action.type === "queue") {
       await table("chatbot_conversations")

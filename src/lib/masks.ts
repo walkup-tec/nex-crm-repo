@@ -1,4 +1,4 @@
-export type MaskKind = "doc" | "phone" | "money" | "percent" | "date" | "day";
+export type MaskKind = "doc" | "phone" | "money" | "percent" | "date" | "day" | "rg";
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
@@ -30,5 +30,32 @@ export function applyMask(kind: MaskKind, value: string): string {
       const n = Math.min(Number(d.slice(0, 2)) || 0, 28);
       return d ? String(n || "") : "";
     }
+    case "rg":
+      return rgMask(value);
   }
+}
+
+function rgMask(value: string) {
+  const raw = value.toUpperCase().replace(/[^0-9X]/g, "");
+  const marked = raw.includes("X");
+  const numbers = raw.replace(/X/g, "").slice(0, marked ? 8 : 9);
+  const core = marked ? `${numbers}X` : numbers;
+  if (core.length <= 2) return core;
+  if (core.length <= 5) return `${core.slice(0, 2)}.${core.slice(2)}`;
+  if (core.length <= 8) return `${core.slice(0, 2)}.${core.slice(2, 5)}.${core.slice(5)}`;
+  return `${core.slice(0, 2)}.${core.slice(2, 5)}.${core.slice(5, 8)}-${core.slice(8)}`;
+}
+
+export function documentDigits(value: string) {
+  const digitsOnly = value.replace(/\D/g, "").slice(0, 14);
+  if (digitsOnly.length !== 11 && digitsOnly.length !== 14) return "";
+  return digitsOnly;
+}
+
+export function rgDigits(value: string) {
+  const raw = value.toUpperCase().replace(/[^0-9X]/g, "");
+  const marked = raw.includes("X");
+  const numbers = raw.replace(/X/g, "").slice(0, marked ? 8 : 9);
+  if (numbers.length < 7) return "";
+  return marked ? `${numbers}X` : numbers;
 }

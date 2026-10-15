@@ -8,11 +8,12 @@ import {
   renameChatbotContactFileFn,
   renameChatbotContactFn,
   setChatbotContactDealFn,
+  setChatbotContactIdentityFn,
   setChatbotContactProductsFn,
   setChatbotContactStageFn,
   setChatbotContactTagsFn,
 } from "@/lib/chatbot.functions";
-import { applyMask } from "@/lib/masks";
+import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { clientPhoneLabel, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
 function SavedMediaName({
@@ -107,11 +108,15 @@ export function ContactRecord({
   const [savingName, setSavingName] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
   const [deal, setDeal] = useState("");
+  const [documentDraft, setDocumentDraft] = useState("");
+  const [rgDraft, setRgDraft] = useState("");
   const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
     setEditing(false);
     setProfile(null);
+    setDocumentDraft("");
+    setRgDraft("");
     setError("");
     if (!contactId) return;
     let active = true;
@@ -123,6 +128,8 @@ export function ContactRecord({
       }
       setProfile(result.data);
       setDraft(result.data.name);
+      setDocumentDraft(applyMask("doc", result.data.document));
+      setRgDraft(applyMask("rg", result.data.rg));
       setDeal(negotiatedLabel(result.data.negotiatedCents));
     });
     return () => {
@@ -149,6 +156,34 @@ export function ContactRecord({
     setProfile({ ...profile, name: result.data.name });
     setDraft(result.data.name);
     onRenamed(profile.id, result.data.name);
+  }
+
+  async function saveIdentity(field: "document" | "rg") {
+    if (!profile) return;
+    const draft = field === "document" ? documentDraft : rgDraft;
+    const stored = draft.trim() ? (field === "document" ? documentDigits(draft) : rgDigits(draft)) : "";
+    const current = field === "document" ? profile.document : profile.rg;
+    if (draft.trim() && !stored) {
+      setError(field === "document" ? "Informe um CPF com 11 dígitos ou um CNPJ com 14." : "Informe um RG com pelo menos 7 dígitos.");
+      return;
+    }
+    if (stored === current) {
+      setError("");
+      return;
+    }
+    const result = await setChatbotContactIdentityFn({ data: { contactId: profile.id, field, value: draft } });
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    if (field === "document") {
+      setProfile({ ...profile, document: result.data.value });
+      setDocumentDraft(applyMask("doc", result.data.value));
+      return;
+    }
+    setProfile({ ...profile, rg: result.data.value });
+    setRgDraft(applyMask("rg", result.data.value));
   }
 
   async function saveDeal() {
@@ -271,6 +306,37 @@ export function ContactRecord({
           <section className="contact-section">
             <h3>WhatsApp</h3>
             <p className="contact-phone">{clientPhoneLabel(profile.phone) || profile.phone}</p>
+          </section>
+          {profile.showDocument ? (
+            <section className="contact-section">
+              <h3>CPF/CNPJ</h3>
+              <input
+                className="contact-deal"
+                inputMode="numeric"
+                aria-label="CPF ou CNPJ"
+                placeholder="000.000.000-00"
+                value={documentDraft}
+                onChange={(event) => setDocumentDraft(applyMask("doc", event.target.value))}
+                onBlur={() => void saveIdentity("document")}
+              />
+            </section>
+          ) : null}
+          {profile.showRg ? (
+            <section className="contact-section">
+              <h3>RG</h3>
+              <input
+                className="contact-deal"
+                aria-label="RG"
+                placeholder="00.000.000-0"
+                value={rgDraft}
+                onChange={(event) => setRgDraft(applyMask("rg", event.target.value))}
+                onBlur={() => void saveIdentity("rg")}
+              />
+            </section>
+          ) : null}
+          <section className="contact-section">
+            <h3>Observação</h3>
+            {profile.note ? <p className="contact-note">{profile.note}</p> : <p>Sem observação</p>}
           </section>
           <section className="contact-section">
             <h3>Produtos e serviços</h3>

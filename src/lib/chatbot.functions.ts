@@ -250,6 +250,36 @@ export const chatbotContactProfileFn = createServerFn({ method: "POST" })
     return guard(() => chatbotContactProfile(context.userId, data.contactId));
   });
 
+export const chatbotClientFieldSettingsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotClientFieldSettings } = await import("@/server/chatbot.server");
+    return guard(() => chatbotClientFieldSettings(context.userId));
+  });
+
+export const saveChatbotClientFieldsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { document: boolean; rg: boolean }) => ({
+    document: data.document === true,
+    rg: data.rg === true,
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotClientFields } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotClientFields(context.userId, data));
+  });
+
+export const setChatbotContactIdentityFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; field: "document" | "rg"; value: string }) => ({
+    contactId: data.contactId,
+    field: data.field === "rg" ? "rg" as const : "document" as const,
+    value: String(data.value ?? ""),
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactIdentity } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactIdentity(context.userId, data.contactId, data.field, data.value));
+  });
+
 export const setChatbotContactDealFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; cents: number | null }) => ({

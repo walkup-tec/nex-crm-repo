@@ -1038,6 +1038,11 @@ export type ChatbotContactProfile = {
   dealReady: boolean;
   negotiatedCents: number | null;
   clientOwnerId: string;
+  note: string;
+  document: string;
+  rg: string;
+  showDocument: boolean;
+  showRg: boolean;
 };
 
 export type ChatbotClientRow = {

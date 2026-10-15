@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chooseFlow, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, crmSaveField, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
   nodes: [
@@ -29,11 +30,42 @@ assert.deepEqual(started.actions.map((item) => item.type), ["send", "send"]);
 assert.equal(started.run?.status, "waiting");
 
 const answered = stepFlow(flow, started.run, { text: "Marcelo", at: noon + 1000, outsideHours: false });
+assert.equal(crmSaveField(""), "note");
+assert.equal(crmSaveField("name"), "name");
+assert.equal(crmSaveField("phone"), "phone");
+assert.equal(crmSaveField("document"), "document");
+assert.equal(crmSaveField("rg"), "rg");
+assert.equal(crmSaveField("deal"), "note");
+assert.equal(crmSaveField("outro"), "note");
+assert.equal(applyMask("doc", "12345678901"), "123.456.789-01");
+assert.equal(applyMask("doc", "12345678000199"), "12.345.678/0001-99");
+assert.equal(applyMask("phone", "11999998888"), "(11) 99999-8888");
+assert.equal(applyMask("rg", "123456789"), "12.345.678-9");
+assert.equal(applyMask("rg", "12345678x"), "12.345.678-X");
+assert.equal(documentDigits("123.456.789-01"), "12345678901");
+assert.equal(documentDigits("123"), "");
+assert.equal(rgDigits("12.345.678-9"), "123456789");
+assert.equal(rgDigits("12.345.678-X"), "12345678X");
+assert.equal(rgDigits("123"), "");
 assert.deepEqual(answered.actions, [
-  { type: "note", text: "Marcelo" },
+  { type: "save", field: "note", text: "Marcelo" },
   { type: "pause" },
 ]);
 assert.equal(answered.run?.status, "done");
+const namedGraph: FlowGraph = {
+  nodes: [
+    { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+    { id: "q", label: "Fazer pergunta", kind: "Ação", content: "Qual seu nome?" },
+    { id: "n", label: "Salvar resposta no CRM", kind: "Ação", content: "name" },
+  ],
+  edges: [
+    { source: "t", target: "q" },
+    { source: "q", target: "n" },
+  ],
+};
+const asked = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, null, { text: "oi", at: noon, outsideHours: false });
+const savedName = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, asked.run, { text: "Marina", at: noon + 1000, outsideHours: false });
+assert.deepEqual(savedName.actions[0], { type: "save", field: "name", text: "Marina" });
 
 const again = stepFlow(flow, answered.run, { text: "de novo", at: noon + 2000, outsideHours: false });
 assert.deepEqual(again.actions, []);

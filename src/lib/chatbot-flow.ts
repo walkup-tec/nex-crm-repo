@@ -2,11 +2,31 @@ export type FlowNode = { id: string; label: string; kind: string; content: strin
 export type FlowEdge = { source: string; target: string };
 export type FlowGraph = { nodes: FlowNode[]; edges: FlowEdge[] };
 export type FlowRun = { flowId: string; nodeId: string; status: "waiting" | "delay" | "done"; waitUntil: number; lastAnswer: string };
+export const crmSaveFields = [
+  { id: "note", label: "Observação" },
+  { id: "name", label: "Nome" },
+  { id: "phone", label: "WhatsApp" },
+  { id: "document", label: "CPF/CNPJ" },
+  { id: "rg", label: "RG" },
+] as const;
+
+export type CrmSaveField = (typeof crmSaveFields)[number]["id"];
+
+export function crmSaveField(content: string): CrmSaveField {
+  const found = crmSaveFields.find((field) => field.id === content.trim());
+  return found?.id ?? "note";
+}
+
+export function crmSaveLabel(content: string) {
+  const id = crmSaveField(content);
+  return crmSaveFields.find((field) => field.id === id)?.label ?? "Observação";
+}
+
 export type FlowAction =
   | { type: "send"; text: string }
   | { type: "tag"; name: string }
   | { type: "deal"; text: string }
-  | { type: "note"; text: string }
+  | { type: "save"; field: CrmSaveField; text: string }
   | { type: "queue" }
   | { type: "pause" };
 export type FlowStep = { actions: FlowAction[]; run: FlowRun | null };
@@ -128,7 +148,7 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
       actions.push({ type: "send", text: content });
       return { actions, run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer } };
     }
-    if (node.label === "Salvar resposta no CRM" && lastAnswer) actions.push({ type: "note", text: lastAnswer });
+    if (node.label === "Salvar resposta no CRM" && lastAnswer) actions.push({ type: "save", field: crmSaveField(content), text: lastAnswer });
     if (node.label === "Adicionar etiqueta" && content) actions.push({ type: "tag", name: content });
     if (node.label === "Criar oportunidade" && content) actions.push({ type: "deal", text: content });
     if (node.label === "Encaminhar à fila") {

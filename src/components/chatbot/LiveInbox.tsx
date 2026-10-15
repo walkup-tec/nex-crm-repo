@@ -10,7 +10,9 @@ import {
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
   sendChatbotMessageFn,
+  startChatbotFlowFn,
   listChatbotQuickRepliesFn,
+  listChatbotFlowsFn,
   setChatbotContactBotsFn,
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
@@ -251,6 +253,8 @@ export function LiveInbox() {
   const [botsOpen, setBotsOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState<ChatbotQuickReply[]>([]);
   const [quickNote, setQuickNote] = useState("");
+  const [flows, setFlows] = useState<{ id: string; name: string }[]>([]);
+  const [botsNote, setBotsNote] = useState("");
   const [transferOpen, setTransferOpen] = useState(false);
   const [targets, setTargets] = useState<{ id: string; name: string }[]>([]);
   const [targetId, setTargetId] = useState("");
@@ -535,6 +539,34 @@ export function LiveInbox() {
     setQuickNote(result.data.length ? "" : "Nenhuma resposta rápida cadastrada.");
   }
 
+  async function openBots() {
+    setQuickOpen(false);
+    const next = !botsOpen;
+    setBotsOpen(next);
+    if (!next) return;
+    const result = await listChatbotFlowsFn();
+    if (!result.ok) {
+      setFlows([]);
+      setBotsNote(result.message);
+      return;
+    }
+    const active = result.data.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name }));
+    setFlows(active);
+    setBotsNote(active.length ? "" : "Nenhum bot ativo.");
+  }
+
+  async function startBot(flowId: string) {
+    if (!selected || sending.current) return;
+    sending.current = true;
+    setBotsOpen(false);
+    setPending(true);
+    const result = await startChatbotFlowFn({ data: { conversationId: selected, flowId } });
+    sending.current = false;
+    setPending(false);
+    setMessage(result.ok ? "Bot iniciado nesta conversa." : result.message);
+    if (result.ok) await load();
+  }
+
   async function send(text = draft) {
     const clean = text.trim();
     if (!selected || !clean || sending.current) return;
@@ -752,7 +784,12 @@ export function LiveInbox() {
                 ) : null}
                 {botsOpen ? (
                   <div className="composer-menu" role="listbox" aria-label="Bots">
-                    <p>Nenhum bot disponível para iniciar neste contato.</p>
+                    {botsNote ? <p>{botsNote}</p> : null}
+                    {flows.map((item) => (
+                      <button key={item.id} type="button" role="option" disabled={pending} onClick={() => void startBot(item.id)}>
+                        {item.name}
+                      </button>
+                    ))}
                   </div>
                 ) : null}
                 <footer className="composer-actions">
@@ -760,7 +797,7 @@ export function LiveInbox() {
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>
                       Respostas rápidas
                     </Button>
-                    <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={botsOpen} onClick={() => { setQuickOpen(false); setBotsOpen((open) => !open); }}>
+                    <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={botsOpen} onClick={() => void openBots()}>
                       Bots
                     </Button>
                   </div>

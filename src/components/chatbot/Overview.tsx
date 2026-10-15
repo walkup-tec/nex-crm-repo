@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, Star, TrendingUp, Users } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
@@ -19,6 +19,16 @@ function stageFill(name: string, index: number) {
 }
 
 const clearedFilters: OverviewFilters = { period: { mode: "total" }, attendantId: "", channelId: "" };
+
+function axisTop(max: number) {
+  const top = Number.isFinite(max) ? max : 0;
+  return Math.max(1, Math.ceil(top * 1.25));
+}
+
+function countLabel(value: unknown) {
+  const amount = Number(value);
+  return amount > 0 ? String(amount) : "";
+}
 
 const emptyBoard: OverviewBoard = {
   stages: [],
@@ -174,7 +184,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart layout="vertical" data={view.agents} margin={{ top: 8, right: 16, left: 8, bottom: 0 }} barGap={4} barCategoryGap={16}>
                 <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis type="number" allowDecimals={false} domain={[0, (max: number) => Math.max(max, 1)]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                <XAxis type="number" allowDecimals={false} domain={[0, axisTop]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
                 <Tooltip
                   cursor={{ fill: "var(--muted)", fillOpacity: 0.35 }}
@@ -192,8 +202,12 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="total" name="Atendimento" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={12} />
-                <Bar dataKey="success" name="sucesso" fill="var(--success)" radius={[0, 4, 4, 0]} barSize={12} />
+                <Bar dataKey="total" name="Atendimento" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={12}>
+                  <LabelList dataKey="total" position="right" fill="var(--foreground)" fontSize={11} formatter={countLabel} />
+                </Bar>
+                <Bar dataKey="success" name="sucesso" fill="var(--success)" radius={[0, 4, 4, 0]} barSize={12}>
+                  <LabelList dataKey="success" position="right" fill="var(--foreground)" fontSize={11} formatter={countLabel} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -220,7 +234,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                 <XAxis
                   type="number"
                   allowDecimals={false}
-                  domain={[0, (max: number) => Math.max(max, 1)]}
+                  domain={[0, axisTop]}
                   tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   tickFormatter={(value) => (rankingMode === "monetario" ? negotiatedLabel(Number(value)) : String(value))}
                   axisLine={false}
@@ -246,7 +260,19 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                   fill={rankingMode === "vendas" ? "var(--success)" : "var(--primary)"}
                   radius={[0, 4, 4, 0]}
                   barSize={14}
-                />
+                >
+                  <LabelList
+                    dataKey={rankingMode === "vendas" ? "success" : "wonCents"}
+                    position="right"
+                    fill="var(--foreground)"
+                    fontSize={11}
+                    formatter={(value: unknown) => {
+                      const amount = Number(value);
+                      if (!amount) return "";
+                      return rankingMode === "vendas" ? String(amount) : negotiatedLabel(amount);
+                    }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

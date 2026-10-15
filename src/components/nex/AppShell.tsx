@@ -27,7 +27,7 @@ function MetaMark({ className }: { className?: string }) {
 }
 
 const clientNav = [
-  ["/dashboard", "Dashboard Anúncios", Gauge],
+  ["/dashboard", "Anúncios", Gauge],
   ["/campanhas", "Campanhas", BarChart3],
   ["/creditos-meta", "Créditos Meta", WalletCards],
   ["/criativos", "Criativos", FileImage],
@@ -35,7 +35,7 @@ const clientNav = [
   ["/usuarios", "Usuários", Users],
   ["/minha-conta", "Minha conta", Settings],
   ["/chatbot", "Caixa de Entrada", MessageSquare],
-  ["/chatbot/visao-geral", "Dashboard Chatbot", LayoutDashboard],
+  ["/chatbot/visao-geral", "Chatbot", Bot],
   ["/chatbot/kanban", "Kanban", Columns3],
   ["/chatbot/clientes", "Clientes", Users],
   ["/chatbot/agendamentos", "Agendamentos", CalendarDays],
@@ -47,6 +47,11 @@ const clientNav = [
 
 const clientSections = [
   {
+    label: "Dashboards",
+    icon: LayoutDashboard,
+    paths: ["/dashboard", "/chatbot/visao-geral"],
+  },
+  {
     label: "META Ads",
     icon: MetaMark,
     paths: ["/campanhas", "/creditos-meta", "/criativos"],
@@ -54,7 +59,7 @@ const clientSections = [
   {
     label: "Chatbot",
     icon: Bot,
-    paths: ["/chatbot", "/chatbot/visao-geral", "/chatbot/kanban", "/chatbot/clientes", "/chatbot/agendamentos", "/chatbot/automacoes", "/chatbot/equipes", "/chatbot/whatsapps", "/chatbot/configuracoes"],
+    paths: ["/chatbot", "/chatbot/kanban", "/chatbot/clientes", "/chatbot/agendamentos", "/chatbot/automacoes", "/chatbot/equipes", "/chatbot/whatsapps", "/chatbot/configuracoes"],
   },
   {
     label: "Configurações",
@@ -150,44 +155,45 @@ function Nav({
     );
   }
   const items = clientItems(showClients);
-  const overview = items.find((item) => item[0] === "/dashboard");
   const clients = items.find((item) => item[0] === "/master/clientes");
+  const [dashboards, ...sections] = clientSections;
+  const sectionBlock = (section: (typeof clientSections)[number]) => {
+    const paths = section.paths.filter((to) => allowed(to));
+    if (!paths.length) return null;
+    const SectionIcon = section.icon;
+    return (
+      <Collapsible key={section.label} defaultOpen>
+        <div
+          role="group"
+          aria-label={section.label}
+          className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
+        >
+          <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground hover:bg-sidebar-accent/60 data-[state=open]:mb-1">
+            <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
+            <span className="flex-1">{section.label}</span>
+            <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {paths.map((to) => {
+              const item = clientNav.find((entry) => entry[0] === to);
+              return item ? link(item[0], item[1], item[2], true) : null;
+            })}
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
+    );
+  };
   return (
-    <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto" aria-label="Menu principal">
-      {overview && allowed(overview[0]) ? link(overview[0], overview[1], overview[2]) : null}
+    <nav className="mt-8 min-h-0 flex-1 space-y-1 overflow-y-auto" aria-label="Menu principal">
+      {sectionBlock(dashboards)}
       {clients ? link(clients[0], clients[1], clients[2]) : null}
-      {clientSections.map((section) => {
-        const paths = section.paths.filter((to) => allowed(to));
-        if (!paths.length) return null;
-        const SectionIcon = section.icon;
-        return (
-          <Collapsible key={section.label} defaultOpen>
-            <div
-              role="group"
-              aria-label={section.label}
-              className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
-            >
-              <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground hover:bg-sidebar-accent/60 data-[state=open]:mb-1">
-                <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
-                <span className="flex-1">{section.label}</span>
-                <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" />
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                {paths.map((to) => {
-                  const item = clientNav.find((entry) => entry[0] === to);
-                  return item ? link(item[0], item[1], item[2], true) : null;
-                })}
-              </CollapsibleContent>
-            </div>
-          </Collapsible>
-        );
-      })}
+      {sections.map((section) => sectionBlock(section))}
     </nav>
   );
 }
 export function AppShell({ children, title, subtitle, master = false, demoPath, onDemoNavigate, live = false, notes = true }: { children: React.ReactNode; title: string; subtitle: string; master?: boolean; demoPath?: string | undefined; onDemoNavigate?: ((to: string) => void) | undefined; live?: boolean; notes?: boolean }) {
  const navigate = useNavigate(); const [syncing,setSyncing]=useState(false); const sync=()=>{setSyncing(true);setTimeout(()=>setSyncing(false),1200)}; const signOut=async()=>{await supabase.auth.signOut();navigate({to:"/auth"})}; const userName = useSignedInName(); const session = useRouteContext({ strict: false }) as { master?: boolean; role?: string; permissions?: UserPermissions | null; chatbotMenus?: ChatbotMenuMap | null } | undefined; const showClients = !master && !onDemoNavigate && session?.master === true; const restricted = !master && !onDemoNavigate && session?.role === "client_user" ? session.permissions ?? noClientPermissions : null; const menus = restricted ? session?.chatbotMenus ?? allChatbotMenus(false) : null; const lowBalance = useLowBalance(live && !master && !onDemoNavigate && (!restricted || restricted.balance || restricted.credit));
- const shell = <div className="min-h-screen bg-background text-foreground"><aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden border-r bg-sidebar p-5 lg:flex lg:flex-col"><Brand/><div className="mt-8 mb-3 flex items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground">{master?<><ShieldCheck className="size-3"/>Ambiente Master</>:"Área do cliente"}</div><Nav master={master} demoPath={demoPath} onDemoNavigate={onDemoNavigate} lowBalance={lowBalance} showClients={showClients} restricted={restricted} menus={menus}/></aside><div className="lg:pl-64"><header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur-md sm:px-6"><div className="flex items-center gap-3"><Sheet><SheetTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden" aria-label="Abrir menu"><Menu/></Button></SheetTrigger><SheetContent side="left" className="w-72"><Brand/><div className="mt-8 max-h-[calc(100dvh-8rem)] overflow-y-auto"><Nav master={master} demoPath={demoPath} onDemoNavigate={onDemoNavigate} lowBalance={lowBalance} showClients={showClients} restricted={restricted} menus={menus}/></div></SheetContent></Sheet><div className="lg:hidden"><Brand compact/></div>{!live&&<div className="hidden sm:block"><p className="text-sm font-semibold">Vértice Crédito</p><p className="text-xs text-muted-foreground">Conta Meta principal</p></div>}</div><div className="flex items-center gap-1"><LowBalanceBell low={lowBalance} supervisor={live && !master && !onDemoNavigate && !restricted}/><ThemeToggle/><div className="mx-2 hidden h-6 w-px bg-border sm:block"/>{userName ? <p className="hidden max-w-48 truncate px-2 text-sm font-medium sm:block" title={`Olá ${userName}!`}>Olá {userName}!</p> : null}<Button variant="ghost" onClick={signOut} className="hidden sm:flex"><LogOut/>Sair</Button>{!live&&<div className="grid size-9 place-items-center rounded-full bg-secondary text-xs font-bold">MC</div>}</div></header><main className="px-4 py-6 sm:px-6 lg:px-8"><div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div>{notes?<div className="mb-2 flex items-center gap-2">{!live&&<span className="rounded-md bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">Demonstração</span>}{master&&<span className="text-xs text-muted-foreground">Acesso global protegido</span>}</div>:null}<h1 className="font-display text-2xl font-bold sm:text-3xl">{title}</h1><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div>{title==="Dashboard Anúncios"&&!live&&<div className="flex items-center gap-2"><Button variant="outline" className="flex-1 sm:flex-none">Últimos 30 dias<ChevronDown/></Button><Button onClick={sync} disabled={syncing} className="flex-1 sm:flex-none"><RefreshCw className={syncing?"animate-spin":""}/>{syncing?"Sincronizando":"Atualizar dados"}</Button></div>}</div>{children}</main></div></div>;
+ const shell = <div className="min-h-screen bg-background text-foreground"><aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden border-r bg-sidebar p-5 lg:flex lg:flex-col"><Brand/>{master?<div className="mt-8 mb-3 flex items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground"><ShieldCheck className="size-3"/>Ambiente Master</div>:null}<Nav master={master} demoPath={demoPath} onDemoNavigate={onDemoNavigate} lowBalance={lowBalance} showClients={showClients} restricted={restricted} menus={menus}/></aside><div className="lg:pl-64"><header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur-md sm:px-6"><div className="flex items-center gap-3"><Sheet><SheetTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden" aria-label="Abrir menu"><Menu/></Button></SheetTrigger><SheetContent side="left" className="w-72"><Brand/><div className="mt-8 max-h-[calc(100dvh-8rem)] overflow-y-auto"><Nav master={master} demoPath={demoPath} onDemoNavigate={onDemoNavigate} lowBalance={lowBalance} showClients={showClients} restricted={restricted} menus={menus}/></div></SheetContent></Sheet><div className="lg:hidden"><Brand compact/></div>{!live&&<div className="hidden sm:block"><p className="text-sm font-semibold">Vértice Crédito</p><p className="text-xs text-muted-foreground">Conta Meta principal</p></div>}</div><div className="flex items-center gap-1"><LowBalanceBell low={lowBalance} supervisor={live && !master && !onDemoNavigate && !restricted}/><ThemeToggle/><div className="mx-2 hidden h-6 w-px bg-border sm:block"/>{userName ? <p className="hidden max-w-48 truncate px-2 text-sm font-medium sm:block" title={`Olá ${userName}!`}>Olá {userName}!</p> : null}<Button variant="ghost" onClick={signOut} className="hidden sm:flex"><LogOut/>Sair</Button>{!live&&<div className="grid size-9 place-items-center rounded-full bg-secondary text-xs font-bold">MC</div>}</div></header><main className="px-4 py-6 sm:px-6 lg:px-8"><div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div>{notes?<div className="mb-2 flex items-center gap-2">{!live&&<span className="rounded-md bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">Demonstração</span>}{master&&<span className="text-xs text-muted-foreground">Acesso global protegido</span>}</div>:null}<h1 className="font-display text-2xl font-bold sm:text-3xl">{title}</h1><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div>{title==="Dashboard Anúncios"&&!live&&<div className="flex items-center gap-2"><Button variant="outline" className="flex-1 sm:flex-none">Últimos 30 dias<ChevronDown/></Button><Button onClick={sync} disabled={syncing} className="flex-1 sm:flex-none"><RefreshCw className={syncing?"animate-spin":""}/>{syncing?"Sincronizando":"Atualizar dados"}</Button></div>}</div>{children}</main></div></div>;
  if (master || onDemoNavigate) return shell;
  return <OverdueAccess>{shell}</OverdueAccess>;
 }

@@ -682,12 +682,15 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
     contacts,
   });
   const visibleContacts = new Set(inChannelAndPeriod.map((item) => item.contactId).filter(Boolean));
+  const successOwner = new Map(source.contacts.flatMap((contact) => {
+    if (!protectedKanbanStage(contact.stage) || !visibleContacts.has(contact.id)) return [];
+    const owner = contact.stageSetBy || soleAttendant(contact.id, inChannelAndPeriod);
+    return owner ? [[contact.id, owner] as const] : [];
+  }));
   const agents = source.attendants
     .filter((person) => !filters.attendantId || person.id === filters.attendantId)
     .map((person) => {
-      const won = source.contacts.filter(
-        (contact) => contact.stageSetBy === person.id && protectedKanbanStage(contact.stage) && visibleContacts.has(contact.id),
-      );
+      const won = source.contacts.filter((contact) => successOwner.get(contact.id) === person.id);
       return {
         id: person.id,
         name: person.name,
@@ -698,6 +701,17 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
       };
     });
   return { ...metrics, agents, ...attendanceShares(source, matched) };
+}
+
+function soleAttendant(contactId: string, conversations: { contactId: string; assigneeId: string; assumedBy?: string }[]) {
+  const ids = new Set<string>();
+  for (const item of conversations) {
+    if (item.contactId !== contactId) continue;
+    const attendant = item.assumedBy || item.assigneeId;
+    if (attendant) ids.add(attendant);
+  }
+  if (ids.size !== 1) return "";
+  return [...ids][0] ?? "";
 }
 
 export type OverviewShare = { name: string; count: number };

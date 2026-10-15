@@ -495,6 +495,35 @@ export const deleteChatbotQuickReplyFn = createServerFn({ method: "POST" })
     return guard(() => deleteChatbotQuickReply(context.userId, data.replyId));
   });
 
+export const listChatbotFlowsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotFlows } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotFlows(context.userId));
+  });
+
+export const saveChatbotFlowFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string; name: string; active: boolean; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number }[]; edges: { id: string; source: string; target: string }[] }) => ({
+    id: typeof data.id === "string" ? data.id : "",
+    name: data.name,
+    active: data.active === true,
+    nodes: Array.isArray(data.nodes) ? data.nodes.slice(0, 80) : [],
+    edges: Array.isArray(data.edges) ? data.edges.slice(0, 120) : [],
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotFlow } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotFlow(context.userId, data));
+  });
+
+export const startChatbotFlowFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string; flowId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { startChatbotFlow } = await import("@/server/chatbot.server");
+    return guard(() => startChatbotFlow(context.userId, data.conversationId, data.flowId));
+  });
+
 export const listChatbotProductsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

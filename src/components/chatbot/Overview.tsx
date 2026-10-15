@@ -123,6 +123,10 @@ export function Overview({ reports = false }: { reports?: boolean }) {
     () => (previousPeriod ? applyOverviewFilters(board, { ...filters, period: previousPeriod }) : null),
     [board, filters, previousPeriod],
   );
+  const performance = useMemo(
+    () => [...view.agents].sort((left, right) => right.total - left.total || left.name.localeCompare(right.name, "pt-BR")),
+    [view.agents],
+  );
   const ranking = useMemo(
     () => [...view.agents].sort((left, right) => (rankingMode === "vendas" ? right.success - left.success : right.wonCents - left.wonCents) || left.name.localeCompare(right.name, "pt-BR")),
     [rankingMode, view.agents],
@@ -299,10 +303,10 @@ export function Overview({ reports = false }: { reports?: boolean }) {
       </div>
       <section className="chart-panel mt-5">
         <h2>Desempenho por atendente</h2>
-        {view.agents.length ? (
-          <div className="mt-5" style={{ height: Math.max(220, view.agents.length * 64) }}>
+        {performance.length ? (
+          <div className="mt-5" style={{ height: Math.max(220, performance.length * 64) }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart layout="vertical" data={view.agents} margin={{ top: 8, right: 16, left: 8, bottom: 0 }} barGap={4} barCategoryGap={16}>
+              <BarChart layout="vertical" data={performance} margin={{ top: 8, right: 16, left: 8, bottom: 0 }} barGap={4} barCategoryGap={16}>
                 <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" allowDecimals={false} domain={[0, axisTop]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
@@ -360,7 +364,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                   axisLine={false}
                   tickLine={false}
                 />
-                <YAxis type="category" dataKey="name" width={128} reversed tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
                 <Tooltip
                   cursor={{ fill: "var(--muted)", fillOpacity: 0.35 }}
                   content={({ active, payload, label }) => {

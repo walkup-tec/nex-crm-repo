@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, Star, TrendingUp, Users } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, BarChart3, Info } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
-import { applyOverviewFilters, attendanceSeries, negotiatedLabel, ratingAverageLabel, type OverviewBoard, type OverviewFilters } from "@/lib/chatbot-evo";
+import { applyOverviewFilters, attendanceSeries, negotiatedLabel, percentAgainstPrevious, previousOverviewPeriod, ratingAverageLabel, type OverviewBoard, type OverviewFilters, type OverviewTrends } from "@/lib/chatbot-evo";
 import { JourneyFunnel } from "@/components/nex/StageFunnel";
 import { SharePie } from "./SharePie";
 import { PageHeading } from "./common";
@@ -28,6 +28,66 @@ function axisTop(max: number) {
 function countLabel(value: unknown) {
   const amount = Number(value);
   return amount > 0 ? String(amount) : "";
+}
+
+function smoothSparkline(values: Array<number | null>) {
+  const series = values.filter((value): value is number => value != null && Number.isFinite(value));
+  const points = (series.length > 1 ? series : [series[0] ?? 0, series[0] ?? 0]).map((value) => value);
+  const width = 120;
+  const height = 36;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const step = width / (points.length - 1);
+  const coords = points.map((value, index) => ({
+    x: index * step,
+    y: 4 + (1 - (value - min) / span) * (height - 10),
+  }));
+  let line = `M ${coords[0]?.x ?? 0} ${coords[0]?.y ?? height / 2}`;
+  for (let index = 0; index < coords.length - 1; index += 1) {
+    const previous = coords[index - 1] ?? coords[index];
+    const current = coords[index];
+    const next = coords[index + 1];
+    const following = coords[index + 2] ?? next;
+    if (!current || !next) continue;
+    const controlStartX = current.x + (next.x - (previous?.x ?? current.x)) / 6;
+    const controlStartY = current.y + (next.y - (previous?.y ?? current.y)) / 6;
+    const controlEndX = next.x - ((following?.x ?? next.x) - current.x) / 6;
+    const controlEndY = next.y - ((following?.y ?? next.y) - current.y) / 6;
+    line += ` C ${controlStartX} ${controlStartY}, ${controlEndX} ${controlEndY}, ${next.x} ${next.y}`;
+  }
+  const last = coords[coords.length - 1] ?? coords[0];
+  return { line, area: `${line} L ${last?.x ?? width} ${height} L 0 ${height} Z` };
+}
+
+function Sparkline({ values }: { values: Array<number | null> }) {
+  const id = useId().replace(/:/g, "");
+  const { line, area } = smoothSparkline(values);
+  return (
+    <svg className="metric-spark" viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.42" />
+          <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${id})`} />
+      <path d={line} fill="none" stroke="var(--primary)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function PeriodDelta({ bounded, percent }: { bounded: boolean; percent: number | null }) {
+  if (!bounded) return <p className="metric-delta flat"><span>Todo o período</span></p>;
+  if (percent == null) return <p className="metric-delta flat"><span>Sem base no período anterior</span></p>;
+  const direction = percent > 0 ? "up" : percent < 0 ? "down" : "flat";
+  return (
+    <p className={`metric-delta ${direction}`}>
+      {percent > 0 ? <ArrowUp /> : percent < 0 ? <ArrowDown /> : null}
+      <b>{percent > 0 ? `+${percent}%` : `${percent}%`}</b>
+      <span>vs. período anterior</span>
+    </p>
+  );
 }
 
 const emptyBoard: OverviewBoard = {
@@ -58,22 +118,78 @@ export function Overview({ reports = false }: { reports?: boolean }) {
   }, []);
 
   const view = useMemo(() => applyOverviewFilters(board, filters), [board, filters]);
+  const previousPeriod = useMemo(() => previousOverviewPeriod(filters.period), [filters.period]);
+  const previousView = useMemo(
+    () => (previousPeriod ? applyOverviewFilters(board, { ...filters, period: previousPeriod }) : null),
+    [board, filters, previousPeriod],
+  );
   const ranking = useMemo(
     () => [...view.agents].sort((left, right) => (rankingMode === "vendas" ? right.success - left.success : right.wonCents - left.wonCents) || left.name.localeCompare(right.name, "pt-BR")),
     [rankingMode, view.agents],
   );
   const series = useMemo(() => attendanceSeries(view.days, filters.period), [view.days, filters.period]);
 
-  const metrics = [
-    ["Atendimentos recebidos", String(view.received), MessageSquare],
-    ["Em atendimento", String(view.attending), Users],
-    ["Encerrados", String(view.finished), CheckCheck],
-    ["Oportunidades abertas", String(view.openDeals), BriefcaseBusiness],
-    ["Valor em negociação", negotiatedLabel(view.negotiatingCents), TrendingUp],
-    ["Valor ganho", negotiatedLabel(view.wonCents), TrendingUp],
-    ["Clientes cadastrados", String(view.clients), Users, ""],
-    ["Nota média", ratingAverageLabel(view.ratingAverage), Star, view.ratingCount ? `${view.ratingCount} ${view.ratingCount === 1 ? "avaliação" : "avaliações"}` : "Sem avaliações"],
-  ] as const;
+  const emptyTrends: OverviewTrends = { received: [], attending: [], finished: [], openDeals: [], negotiatingCents: [], wonCents: [], clients: [], rating: [] };
+  const trends = view.trends ?? emptyTrends;
+  const cards = [
+    {
+      label: "Atendimentos recebidos",
+      info: "Contatos que entraram em contato no período filtrado.",
+      value: String(view.received),
+      percent: previousView ? percentAgainstPrevious(view.received, previousView.received) : null,
+      series: trends.received,
+    },
+    {
+      label: "Em atendimento",
+      info: "Contatos que estão com um atendente entre os atendimentos do período.",
+      value: String(view.attending),
+      percent: previousView ? percentAgainstPrevious(view.attending, previousView.attending) : null,
+      series: trends.attending,
+    },
+    {
+      label: "Encerrados",
+      info: "Soma dos atendimentos finalizados no período.",
+      value: String(view.finished),
+      percent: previousView ? percentAgainstPrevious(view.finished, previousView.finished) : null,
+      series: trends.finished,
+    },
+    {
+      label: "Oportunidades abertas",
+      info: "Contatos com valor negociado no período.",
+      value: String(view.openDeals),
+      percent: previousView ? percentAgainstPrevious(view.openDeals, previousView.openDeals) : null,
+      series: trends.openDeals,
+    },
+    {
+      label: "Valor em negociação",
+      info: "Soma dos valores negociados no período.",
+      value: negotiatedLabel(view.negotiatingCents),
+      percent: previousView ? percentAgainstPrevious(view.negotiatingCents, previousView.negotiatingCents) : null,
+      series: trends.negotiatingCents,
+    },
+    {
+      label: "Valor ganho",
+      info: "Soma dos valores dos contatos na etapa Sucesso no período.",
+      value: negotiatedLabel(view.wonCents),
+      percent: previousView ? percentAgainstPrevious(view.wonCents, previousView.wonCents) : null,
+      series: trends.wonCents,
+    },
+    {
+      label: "Clientes cadastrados",
+      info: "Clientes visíveis na tela Clientes, dentro do filtro.",
+      value: String(view.clients),
+      percent: previousView ? percentAgainstPrevious(view.clients, previousView.clients) : null,
+      series: trends.clients,
+    },
+    {
+      label: "Nota média",
+      info: "Média das avaliações recebidas no período.",
+      value: ratingAverageLabel(view.ratingAverage),
+      hint: view.ratingCount ? `${view.ratingCount} ${view.ratingCount === 1 ? "avaliação" : "avaliações"}` : "Sem avaliações",
+      percent: previousView && view.ratingAverage != null && previousView.ratingAverage != null ? percentAgainstPrevious(view.ratingAverage, previousView.ratingAverage) : null,
+      series: trends.rating,
+    },
+  ];
 
   return (
     <main className="page">
@@ -114,15 +230,19 @@ export function Overview({ reports = false }: { reports?: boolean }) {
       </div>
       {message ? <p className="info-note mb-5">{message}</p> : null}
       <div className="stats-strip">
-        {metrics.map(([label, value, Icon, hint]) => (
-          <div className="metric" key={label}>
+        {cards.map((card) => (
+          <article className="metric metric-rich" key={card.label}>
             <div className="metric-top">
-              <span>{label}</span>
-              <Icon />
+              <span>{card.label}</span>
+              <button type="button" className="metric-info" title={card.info} aria-label={card.info}>
+                <Info />
+              </button>
             </div>
-            <strong className="text-lg">{value}</strong>
-            {hint ? <small>{hint}</small> : null}
-          </div>
+            <strong>{card.value}</strong>
+            {"hint" in card && card.hint ? <small>{card.hint}</small> : null}
+            <PeriodDelta bounded={previousView != null} percent={card.percent} />
+            <Sparkline values={card.series} />
+          </article>
         ))}
       </div>
       <section className="chart-panel">

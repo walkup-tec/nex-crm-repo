@@ -251,4 +251,20 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .share-legend strong{color:var(--foreground);font-size:12px;font-weight:650;font-variant-numeric:tabular-nums}
 .chatbot-app .share-legend em{color:var(--muted-foreground);font-size:11px;font-style:normal;font-variant-numeric:tabular-nums}
 @media(max-width:900px){.chatbot-app .overview-split{grid-template-columns:1fr}.chatbot-app .overview-funnel{height:auto;min-height:0;overflow:visible}.chatbot-app .overview-funnel-fit{display:block}.chatbot-app .overview-funnel-fit>ol{display:block;height:auto}.chatbot-app .overview-funnel-fit>ol>li{min-height:0}.chatbot-app .overview-funnel-fit>ol>li>div:first-child{height:auto}.chatbot-app .overview-funnel-fit svg{height:auto;width:100%}}
+.chatbot-app .metric-rich{display:flex;flex-direction:column;min-height:168px;padding:16px 16px 0;overflow:hidden}
+.chatbot-app .metric-rich .metric-top{align-items:flex-start;gap:8px;color:var(--foreground);font-size:13px;font-weight:600;line-height:1.3}
+.chatbot-app .metric-rich .metric-top span{min-width:0}
+.chatbot-app .metric-info{display:inline-flex;flex:none;align-items:center;justify-content:center;width:16px;height:16px;margin-top:1px;padding:0;border:0;background:transparent;color:var(--muted-foreground);cursor:help}
+.chatbot-app .metric-rich .metric-info svg{width:14px;height:14px;color:var(--muted-foreground)}
+.chatbot-app .metric-rich strong{margin-top:14px;font-size:32px;line-height:1;letter-spacing:-.03em}
+.chatbot-app .metric-rich small{margin-top:8px}
+.chatbot-app .metric-delta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:10px 0 0;font-size:12px;font-weight:650;line-height:1.2}
+.chatbot-app .metric-delta svg{width:14px;height:14px;flex:none}
+.chatbot-app .metric-delta b{font-weight:700}
+.chatbot-app .metric-delta span{color:var(--muted-foreground);font-size:12px;font-weight:500}
+.chatbot-app .metric-delta.up{color:var(--success)}
+.chatbot-app .metric-delta.down{color:var(--destructive)}
+.chatbot-app .metric-delta.flat{color:var(--muted-foreground)}
+.chatbot-app .metric-spark{display:block;width:calc(100% + 32px);height:48px;margin:auto -16px 0}
+@media(max-width:600px){.chatbot-app .metric-rich{min-height:148px;padding:13px 13px 0}.chatbot-app .metric-rich strong{font-size:26px}.chatbot-app .metric-delta{font-size:11px}.chatbot-app .metric-spark{width:calc(100% + 26px);margin-left:-13px;margin-right:-13px}}
 

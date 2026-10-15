@@ -650,6 +650,34 @@ function dayInPeriod(value: string, period: OverviewPeriod, timeZone = attendanc
   return day >= period.since && day <= period.until;
 }
 
+export function previousOverviewPeriod(period: OverviewPeriod): OverviewPeriod | null {
+  if (period.mode !== "custom") return null;
+  const start = parseDay(period.since);
+  if (!start || period.since > period.until) return null;
+  let length = 0;
+  for (let cursor = start; dayKey(cursor) <= period.until && length < 400; cursor = addUtcDays(cursor, 1)) length += 1;
+  if (!length) return null;
+  const previousEnd = addUtcDays(start, -1);
+  const previousStart = addUtcDays(previousEnd, -(length - 1));
+  return { mode: "custom", since: dayKey(previousStart), until: dayKey(previousEnd) };
+}
+
+export function percentAgainstPrevious(current: number, previous: number) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return current === 0 ? 0 : null;
+  return Math.round(((current - previous) / Math.abs(previous)) * 100);
+}
+
+export type OverviewTrends = {
+  received: number[];
+  attending: number[];
+  finished: number[];
+  openDeals: number[];
+  negotiatingCents: number[];
+  wonCents: number[];
+  clients: number[];
+  rating: Array<number | null>;
+};
+
 export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFilters) {
   const narrowed = filters.period.mode === "custom" || filters.attendantId !== "" || filters.channelId !== "";
   const inChannelAndPeriod = source.conversations.filter(
@@ -659,15 +687,14 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
   const contactIds = new Set(matched.map((item) => item.contactId).filter(Boolean));
   const contacts = narrowed ? source.contacts.filter((item) => contactIds.has(item.id)) : source.contacts;
   const conversationsById = new Map(source.conversations.map((item) => [item.id, item]));
-  const scores = source.ratings
-    .filter((rating) => {
-      const conversation = conversationsById.get(rating.conversationId);
-      if (filters.channelId && conversation?.connectionId !== filters.channelId) return false;
-      if (filters.attendantId && conversation?.assigneeId !== filters.attendantId) return false;
-      if ((filters.channelId || filters.attendantId) && !conversation) return false;
-      return dayInPeriod(rating.createdAt, filters.period);
-    })
-    .map((rating) => rating.score);
+  const rated = source.ratings.filter((rating) => {
+    const conversation = conversationsById.get(rating.conversationId);
+    if (filters.channelId && conversation?.connectionId !== filters.channelId) return false;
+    if (filters.attendantId && conversation?.assigneeId !== filters.attendantId) return false;
+    if ((filters.channelId || filters.attendantId) && !conversation) return false;
+    return dayInPeriod(rating.createdAt, filters.period);
+  });
+  const scores = rated.map((rating) => rating.score);
   const metrics = overviewMetrics({
     userId: source.userId,
     admin: source.admin,
@@ -695,12 +722,133 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
         id: person.id,
         name: person.name,
         team: person.team || "Sem equipe",
-        total: inChannelAndPeriod.filter((item) => (item.assumedBy || item.assigneeId) === person.id).length,
+        total: attendanceTotal(person.id, inChannelAndPeriod),
         success: won.length,
         wonCents: won.reduce((sum, contact) => sum + (contact.negotiatedCents ?? 0), 0),
       };
     });
-  return { ...metrics, agents, ...attendanceShares(source, matched) };
+  return {
+    ...metrics,
+    agents,
+    trends: cardTrends({
+      period: filters.period,
+      conversations: matched,
+      contacts,
+      ratings: rated,
+      userId: source.userId,
+      admin: source.admin,
+    }),
+    ...attendanceShares(source, matched),
+  };
+}
+
+function conversationDay(value: string) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+  return dayKey(zonedDay(new Date(parsed), attendanceTimeZone));
+}
+
+function addAmount(target: Map<string, number>, day: string, amount: number) {
+  if (!day || !Number.isFinite(amount) || amount === 0) return;
+  target.set(day, (target.get(day) ?? 0) + amount);
+}
+
+function eachPeriodDay(period: OverviewPeriod, earliest: string, now = new Date()) {
+  const today = dayKey(zonedDay(now, attendanceTimeZone));
+  const startKey = period.mode === "custom" ? period.since : earliest || today;
+  const endKey = period.mode === "custom" ? period.until : today;
+  const start = parseDay(startKey);
+  if (!start || startKey > endKey) return [];
+  const days: string[] = [];
+  for (let cursor = start; dayKey(cursor) <= endKey && days.length < 400; cursor = addUtcDays(cursor, 1)) days.push(dayKey(cursor));
+  return days;
+}
+
+function readDaily(days: string[], amounts: Map<string, number>) {
+  return days.map((day) => amounts.get(day) ?? 0);
+}
+
+function cardTrends(input: {
+  period: OverviewPeriod;
+  conversations: { contactId: string; assigneeId: string; finishedCount: number; createdAt: string }[];
+  contacts: { id: string; negotiatedCents: number | null; stage: string; ownerId: string }[];
+  ratings: { score: number; createdAt: string }[];
+  userId: string;
+  admin: boolean;
+  now?: Date;
+}): OverviewTrends {
+  const firstDay = new Map<string, string>();
+  const assignedDay = new Map<string, string>();
+  const finished = new Map<string, number>();
+  let earliest = "";
+  for (const item of input.conversations) {
+    const day = conversationDay(item.createdAt);
+    if (!day) continue;
+    if (!earliest || day < earliest) earliest = day;
+    addAmount(finished, day, Math.max(0, item.finishedCount));
+    if (!item.contactId) continue;
+    const known = firstDay.get(item.contactId);
+    if (!known || day < known) firstDay.set(item.contactId, day);
+    if (!item.assigneeId) continue;
+    const assigned = assignedDay.get(item.contactId);
+    if (!assigned || day < assigned) assignedDay.set(item.contactId, day);
+  }
+  const received = new Map<string, number>();
+  const attending = new Map<string, number>();
+  for (const day of firstDay.values()) addAmount(received, day, 1);
+  for (const day of assignedDay.values()) addAmount(attending, day, 1);
+  const openDeals = new Map<string, number>();
+  const negotiatingCents = new Map<string, number>();
+  const wonCents = new Map<string, number>();
+  const clients = new Map<string, number>();
+  for (const contact of input.contacts) {
+    const day = firstDay.get(contact.id) ?? "";
+    if (contact.negotiatedCents != null) {
+      addAmount(openDeals, day, 1);
+      addAmount(negotiatingCents, day, contact.negotiatedCents);
+      if (protectedKanbanStage(contact.stage)) addAmount(wonCents, day, contact.negotiatedCents);
+    }
+    if (clientVisibleTo(contact.ownerId, input.userId, input.admin)) addAmount(clients, day, 1);
+  }
+  const ratingBuckets = new Map<string, number[]>();
+  for (const rating of input.ratings) {
+    const day = conversationDay(rating.createdAt);
+    if (!day || !Number.isFinite(rating.score)) continue;
+    if (!earliest || day < earliest) earliest = day;
+    ratingBuckets.set(day, [...(ratingBuckets.get(day) ?? []), rating.score]);
+  }
+  const days = eachPeriodDay(input.period, earliest, input.now);
+  let carried: number | null = null;
+  const rating = days.map((day) => {
+    const scores = ratingBuckets.get(day);
+    if (!scores?.length) return carried;
+    carried = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+    return carried;
+  });
+  const firstRating = rating.find((value) => value != null) ?? null;
+  return {
+    received: readDaily(days, received),
+    attending: readDaily(days, attending),
+    finished: readDaily(days, finished),
+    openDeals: readDaily(days, openDeals),
+    negotiatingCents: readDaily(days, negotiatingCents),
+    wonCents: readDaily(days, wonCents),
+    clients: readDaily(days, clients),
+    rating: rating.map((value) => value ?? firstRating),
+  };
+}
+
+function attendanceTotal(
+  personId: string,
+  conversations: { contactId: string; assigneeId: string; assumedBy?: string; finishedCount: number }[],
+) {
+  const attending = new Set(
+    conversations.filter((item) => item.assigneeId === personId && item.contactId).map((item) => item.contactId),
+  );
+  const finished = conversations
+    .filter((item) => (item.assumedBy || item.assigneeId) === personId)
+    .reduce((sum, item) => sum + Math.max(0, item.finishedCount), 0);
+  return attending.size + finished;
 }
 
 function soleAttendant(contactId: string, conversations: { contactId: string; assigneeId: string; assumedBy?: string }[]) {

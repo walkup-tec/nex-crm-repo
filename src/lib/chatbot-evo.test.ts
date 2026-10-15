@@ -32,6 +32,8 @@ import {
   clientVisibleTo,
   applyOverviewFilters,
   attendanceSeries,
+  percentAgainstPrevious,
+  previousOverviewPeriod,
   dailyAttendanceCounts,
   overviewMetrics,
   stageDistribution,
@@ -168,6 +170,44 @@ assert.deepEqual(
 assert.equal(attendanceSeries([], { mode: "custom", since: "2026-10-15", until: "2026-10-15" }, new Date("2026-10-15T15:00:00.000Z")).length, 1);
 assert.equal(attendanceSeries([], { mode: "custom", since: "2026-09-16", until: "2026-10-15" }, new Date("2026-10-15T15:00:00.000Z")).length, 30);
 assert.equal(attendanceSeries([], { mode: "custom", since: "2026-10-01", until: "2026-10-15" }, new Date("2026-10-15T15:00:00.000Z"))[0]?.label, "01/10");
+assert.deepEqual(previousOverviewPeriod({ mode: "custom", since: "2026-10-01", until: "2026-10-15" }), { mode: "custom", since: "2026-09-16", until: "2026-09-30" });
+assert.equal(previousOverviewPeriod({ mode: "total" }), null);
+assert.equal(percentAgainstPrevious(23, 17), 35);
+assert.equal(percentAgainstPrevious(2, 4), -50);
+assert.equal(percentAgainstPrevious(5, 0), null);
+assert.equal(percentAgainstPrevious(0, 0), 0);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: ["Proposta", "Sucesso"],
+      attendants: [],
+      channels: [{ id: "w1", name: "Principal" }],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-14T15:00:00.000Z" },
+        { id: "a2", contactId: "c1", connectionId: "w1", assigneeId: "", finishedCount: 1, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "bia", finishedCount: 2, createdAt: "2026-10-15T18:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: 10000, stage: "Proposta", ownerId: "ana" },
+        { id: "c2", negotiatedCents: 25000, stage: "Sucesso", ownerId: "bia" },
+      ],
+      ratings: [{ conversationId: "b1", score: 4, createdAt: "2026-10-15T19:00:00.000Z" }],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "custom", since: "2026-10-14", until: "2026-10-15" }, attendantId: "", channelId: "" },
+  ).trends,
+  {
+    received: [1, 1],
+    attending: [1, 1],
+    finished: [0, 3],
+    openDeals: [1, 1],
+    negotiatingCents: [10000, 25000],
+    wonCents: [0, 25000],
+    clients: [1, 1],
+    rating: [4, 4],
+  },
+);
 assert.equal(
   applyOverviewFilters(
     {
@@ -246,8 +286,8 @@ assert.deepEqual(
     { period: { mode: "total" }, attendantId: "", channelId: "" },
   ).agents.map((agent) => ({ name: agent.name, total: agent.total, success: agent.success })),
   [
-    { name: "Ana", total: 1, success: 0 },
-    { name: "Bia", total: 2, success: 1 },
+    { name: "Ana", total: 2, success: 0 },
+    { name: "Bia", total: 3, success: 1 },
   ],
 );
 assert.deepEqual(
@@ -276,8 +316,35 @@ assert.deepEqual(
     { period: { mode: "total" }, attendantId: "", channelId: "" },
   ).agents.map((agent) => ({ name: agent.name, total: agent.total, success: agent.success })),
   [
-    { name: "Ana", total: 1, success: 1 },
+    { name: "Ana", total: 2, success: 1 },
     { name: "Bia", total: 2, success: 1 },
+  ],
+);
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: [],
+      attendants: [
+        { id: "ana", name: "Ana", team: "" },
+        { id: "bia", name: "Bia", team: "" },
+      ],
+      channels: [{ id: "w1", name: "Principal" }],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "a2", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T16:00:00.000Z" },
+        { id: "a3", contactId: "c3", connectionId: "w1", assigneeId: "", assumedBy: "ana", finishedCount: 2, createdAt: "2026-10-15T17:00:00.000Z" },
+        { id: "b1", contactId: "c2", connectionId: "w1", assigneeId: "", assumedBy: "bia", finishedCount: 1, createdAt: "2026-09-01T15:00:00.000Z" },
+      ],
+      contacts: [],
+      ratings: [],
+      userId: "ana",
+      admin: true,
+    },
+    { period: { mode: "custom", since: "2026-10-15", until: "2026-10-15" }, attendantId: "", channelId: "" },
+  ).agents.map((agent) => ({ name: agent.name, total: agent.total })),
+  [
+    { name: "Ana", total: 3 },
+    { name: "Bia", total: 0 },
   ],
 );
 assert.deepEqual(

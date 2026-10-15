@@ -2481,9 +2481,9 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 
 export async function chatbotOverview(userId: string): Promise<ChatbotOverview> {
   const { organizationId, admin } = await membership(userId, "overview");
-  await listChatbotStages(userId);
+  const listedStages = await listChatbotStages(userId);
   const [conversations, contacts, ratings] = await Promise.all([
-    rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count").eq("organization_id", organizationId)),
+    rows(table("chatbot_conversations").select("contact_id, assignee_id, finished_count, created_at").eq("organization_id", organizationId)),
     rows(table("chatbot_contacts").select("negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId)),
     rowsOrMissing(table("chatbot_ratings").select("score").eq("organization_id", organizationId)),
   ]);
@@ -2495,6 +2495,7 @@ export async function chatbotOverview(userId: string): Promise<ChatbotOverview> 
       contactId: cell(row, "contact_id"),
       assigneeId: cell(row, "assignee_id"),
       finishedCount: Number(row["finished_count"]) || 0,
+      createdAt: cell(row, "created_at"),
     })),
     contacts: contacts.map((row) => {
       const raw = row["negotiated_cents"];
@@ -2505,6 +2506,7 @@ export async function chatbotOverview(userId: string): Promise<ChatbotOverview> 
         ownerId: cell(row, "client_owner_id"),
       };
     }),
+    stages: listedStages.stages.map((item) => item.name),
   });
 }
 

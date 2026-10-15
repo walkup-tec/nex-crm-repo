@@ -29,7 +29,10 @@ import {
   negotiatedCents,
   negotiatedLabel,
   clientVisibleTo,
+  attendanceSeries,
+  dailyAttendanceCounts,
   overviewMetrics,
+  stageDistribution,
   protectedKanbanStage,
   withWonKanbanStage,
   inboxOrder,
@@ -114,7 +117,7 @@ assert.deepEqual(
     userId: "ana",
     admin: false,
   }),
-  { received: 2, attending: 1, finished: 3, openDeals: 2, negotiatingCents: 35000, wonCents: 25000, clients: 1, ratingAverage: null, ratingCount: 0 },
+  { received: 2, attending: 1, finished: 3, openDeals: 2, negotiatingCents: 35000, wonCents: 25000, clients: 1, ratingAverage: null, ratingCount: 0, stages: [], days: [] },
 );
 assert.equal(
   overviewMetrics({
@@ -126,6 +129,41 @@ assert.equal(
   }).ratingAverage,
   4.3,
 );
+assert.deepEqual(
+  stageDistribution(["Atendimento", "Sucesso", "Perdido"], [
+    { stage: "Atendimento" },
+    { stage: "Atendimento" },
+    { stage: "Perdido" },
+    { stage: "" },
+    { stage: "sucesso" },
+  ]),
+  [
+    { name: "Atendimento", count: 2 },
+    { name: "Sucesso", count: 0 },
+    { name: "Perdido", count: 1 },
+  ],
+);
+assert.deepEqual(
+  dailyAttendanceCounts(["2026-10-15T02:30:00.000Z", "2026-10-15T15:00:00.000Z", "2026-10-15T18:00:00.000Z", ""]),
+  [
+    { day: "2026-10-14", count: 1 },
+    { day: "2026-10-15", count: 2 },
+  ],
+);
+assert.deepEqual(
+  attendanceSeries(
+    [{ day: "2026-10-14", count: 1 }, { day: "2026-10-15", count: 2 }, { day: "2026-09-01", count: 9 }],
+    "Últimos 7 dias",
+    new Date("2026-10-15T15:00:00.000Z"),
+  ).filter((point) => point.count > 0),
+  [
+    { label: "14/10", count: 1 },
+    { label: "15/10", count: 2 },
+  ],
+);
+assert.equal(attendanceSeries([], "Hoje", new Date("2026-10-15T15:00:00.000Z")).length, 1);
+assert.equal(attendanceSeries([], "Últimos 30 dias", new Date("2026-10-15T15:00:00.000Z")).length, 30);
+assert.equal(attendanceSeries([], "Este mês", new Date("2026-10-15T15:00:00.000Z"))[0]?.label, "01/10");
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "Em fila");
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");

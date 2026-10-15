@@ -517,12 +517,22 @@ export type ChatbotOverview = {
   clients: number;
   ratingAverage: number | null;
   ratingCount: number;
+  stages: { name: string; count: number }[];
+  days: { day: string; count: number }[];
 };
 
+export function stageDistribution(stages: string[], contacts: { stage: string }[]) {
+  return stages.map((name) => ({
+    name,
+    count: contacts.filter((item) => item.stage === name).length,
+  }));
+}
+
 export function overviewMetrics(input: {
-  conversations: { contactId: string; assigneeId: string; finishedCount: number }[];
+  conversations: { contactId: string; assigneeId: string; finishedCount: number; createdAt?: string }[];
   contacts: { negotiatedCents: number | null; stage: string; ownerId: string }[];
   scores?: number[];
+  stages?: string[];
   userId: string;
   admin: boolean;
 }): ChatbotOverview {
@@ -544,7 +554,57 @@ export function overviewMetrics(input: {
     clients: clients.length,
     ratingAverage: ratingAverage(scores),
     ratingCount: scores.length,
+    stages: stageDistribution(input.stages ?? [], input.contacts),
+    days: dailyAttendanceCounts(input.conversations.map((item) => item.createdAt ?? "")),
   };
+}
+
+const attendanceTimeZone = "America/Sao_Paulo";
+
+function zonedDay(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const read = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return { year: read("year"), month: read("month"), day: read("day") };
+}
+
+function dayKey(day: { year: number; month: number; day: number }) {
+  return `${day.year}-${String(day.month).padStart(2, "0")}-${String(day.day).padStart(2, "0")}`;
+}
+
+function addUtcDays(day: { year: number; month: number; day: number }, amount: number) {
+  const next = new Date(Date.UTC(day.year, day.month - 1, day.day + amount));
+  return { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, day: next.getUTCDate() };
+}
+
+export function dailyAttendanceCounts(createdAts: string[], timeZone = attendanceTimeZone) {
+  const counts = new Map<string, number>();
+  for (const value of createdAts) {
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) continue;
+    const day = dayKey(zonedDay(new Date(parsed), timeZone));
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([day, count]) => ({ day, count }));
+}
+
+export function attendanceSeries(counts: { day: string; count: number }[], period: string, now = new Date(), timeZone = attendanceTimeZone) {
+  const today = zonedDay(now, timeZone);
+  const start = period === "Hoje"
+    ? today
+    : period === "Últimos 7 dias"
+      ? addUtcDays(today, -6)
+      : period === "Este mês"
+        ? { ...today, day: 1 }
+        : addUtcDays(today, -29);
+  const byDay = new Map(counts.map((item) => [item.day, item.count]));
+  const points: { label: string; count: number }[] = [];
+  for (let cursor = start; dayKey(cursor) <= dayKey(today) && points.length < 62; cursor = addUtcDays(cursor, 1)) {
+    points.push({
+      label: `${String(cursor.day).padStart(2, "0")}/${String(cursor.month).padStart(2, "0")}`,
+      count: byDay.get(dayKey(cursor)) ?? 0,
+    });
+  }
+  return points;
 }
 
 export function kanbanStageName(value: string) {

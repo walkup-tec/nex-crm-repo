@@ -1,10 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, BriefcaseBusiness, CheckCheck, MessageSquare, SlidersHorizontal, Star, TrendingUp, Users } from "lucide-react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
-import { negotiatedLabel, ratingAverageLabel, type ChatbotOverview } from "@/lib/chatbot-evo";
+import { attendanceSeries, negotiatedLabel, ratingAverageLabel, type ChatbotOverview } from "@/lib/chatbot-evo";
+import { JourneyFunnel } from "@/components/nex/StageFunnel";
 import { useWorkspace } from "@/lib/chatbot/store";
 import { Field, Modal, PageHeading } from "./common";
+
+const stagePalette = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)"];
+
+function stageFill(name: string, index: number) {
+  const key = name.trim().toLocaleLowerCase("pt-BR");
+  if (key === "sucesso") return "var(--success)";
+  if (key === "perdido") return "var(--destructive)";
+  return stagePalette[index % stagePalette.length];
+}
 
 const emptyOverview: ChatbotOverview = {
   received: 0,
@@ -16,6 +27,8 @@ const emptyOverview: ChatbotOverview = {
   clients: 0,
   ratingAverage: null,
   ratingCount: 0,
+  stages: [],
+  days: [],
 };
 
 export function Overview({ reports = false }: { reports?: boolean }) {
@@ -34,6 +47,8 @@ export function Overview({ reports = false }: { reports?: boolean }) {
       setOverview(result.data);
     });
   }, []);
+
+  const series = useMemo(() => attendanceSeries(overview.days, period), [overview.days, period]);
 
   const metrics = [
     ["Atendimentos recebidos", String(overview.received), MessageSquare],
@@ -79,18 +94,49 @@ export function Overview({ reports = false }: { reports?: boolean }) {
       <div className="chart-grid">
         <section className="chart-panel">
           <h2>Volume de atendimentos</h2>
-          <div className="chart-empty">{overview.received ? `${overview.received} contatos receberam atendimento` : "Ainda não há dados para este período"}</div>
+          <div className="mt-5 h-[250px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={24} />
+                <YAxis allowDecimals={false} domain={[0, (max: number) => Math.max(max, 1)]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={32} />
+                <Tooltip
+                  cursor={{ stroke: "var(--border)" }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const count = Number(payload[0]?.value ?? 0);
+                    return (
+                      <div className="rounded-md border bg-card px-3 py-2 text-xs">
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-semibold">{count} {count === 1 ? "atendimento" : "atendimentos"}</p>
+                      </div>
+                    );
+                  }}
+                />
+                <Line type="monotone" dataKey="count" stroke="var(--primary)" strokeWidth={2} dot={series.length <= 1 ? { r: 3, strokeWidth: 0, fill: "var(--primary)" } : false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </section>
         <section className="chart-panel">
           <h2>Distribuição por etapa</h2>
-          <div className="mt-7 space-y-5">
-            {data.stages.map((stage) => (
-              <div className="flex justify-between text-xs" key={stage}>
-                <span className="text-muted-foreground">{stage}</span>
-                <strong>{data.opportunities.filter((item) => item.stage === stage).length}</strong>
-              </div>
-            ))}
-          </div>
+          {overview.stages.length ? (
+            <div className="mt-5">
+              <JourneyFunnel
+                compact
+                floor={0.2}
+                label="Funil das etapas do atendimento"
+                fills={overview.stages.map((stage, index) => stageFill(stage.name, index))}
+                stages={overview.stages.map((stage) => ({
+                  label: stage.name,
+                  value: String(stage.count),
+                  amount: stage.count,
+                }))}
+              />
+            </div>
+          ) : (
+            <div className="chart-empty">Ainda não há etapas para exibir</div>
+          )}
         </section>
       </div>
       <section className="chart-panel mt-5">

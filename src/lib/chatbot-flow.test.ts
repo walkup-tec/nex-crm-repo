@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, crmSaveField, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, crmSaveField, flowMedia, flowMediaLabel, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -98,3 +98,29 @@ const closed: SavedFlow = {
 };
 assert.equal(chooseFlow([flow, closed], { text: "oi", outsideHours: true, run: null })?.id, "closed");
 assert.equal(chooseFlow([flow, closed], { text: "oi", outsideHours: false, run: null })?.id, "flow");
+
+const photo = { kind: "image" as const, name: "foto.jpg", mime: "image/jpeg", path: "11111111-1111-4111-8111-111111111111/flows/22222222-2222-4222-8222-222222222222.jpg" };
+const mediaFlow: SavedFlow = {
+  id: "midia",
+  name: "Mídia",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      { id: "s", label: "Enviar mensagem", kind: "Ação", content: "Veja o material", media: photo },
+      { id: "a", label: "Enviar mensagem", kind: "Ação", content: "", media: { ...photo, kind: "audio", mime: "audio/ogg", name: "recado.ogg", path: photo.path.replace(".jpg", ".ogg") } },
+    ],
+    edges: [
+      { source: "t", target: "s" },
+      { source: "s", target: "a" },
+    ],
+  },
+};
+const sentMedia = stepFlow(mediaFlow, null, { text: "oi", at: noon, outsideHours: false });
+assert.equal(sentMedia.actions[0]?.type, "send");
+assert.equal(sentMedia.actions[0]?.type === "send" ? sentMedia.actions[0].media?.kind : "", "image");
+assert.equal(sentMedia.actions[0]?.type === "send" ? sentMedia.actions[0].text : "", "Veja o material");
+assert.equal(sentMedia.actions[1]?.type === "send" ? sentMedia.actions[1].media?.kind : "", "audio");
+assert.equal(flowMedia(photo)?.kind, "image");
+assert.equal(flowMedia({ ...photo, path: "../segredo.jpg" }), null);
+assert.equal(flowMediaLabel("video"), "Vídeo");
+assert.equal(flowMediaLabel("audio"), "Áudio");

@@ -1,4 +1,43 @@
-export type FlowNode = { id: string; label: string; kind: string; content: string };
+export type FlowMediaKind = "image" | "video" | "audio";
+export type FlowMedia = { kind: FlowMediaKind; name: string; mime: string; path: string };
+export type FlowNode = { id: string; label: string; kind: string; content: string; media?: FlowMedia };
+
+const flowMediaMimes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/3gpp",
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/webm",
+  "audio/aac",
+  "audio/opus",
+  "audio/wav",
+]);
+
+export function flowMedia(value: unknown): FlowMedia | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const kind = row["kind"];
+  const name = typeof row["name"] === "string" ? row["name"].replace(/[^\w.\- ()]+/g, "").trim().slice(0, 80) : "";
+  const mime = typeof row["mime"] === "string" ? row["mime"].split(";")[0]?.trim().toLowerCase() ?? "" : "";
+  const path = typeof row["path"] === "string" ? row["path"].trim() : "";
+  if (kind !== "image" && kind !== "video" && kind !== "audio") return null;
+  if (!name || !flowMediaMimes.has(mime) || !mime.startsWith(`${kind}/`)) return null;
+  if (!/^[0-9a-f-]{36}\/flows\/[0-9a-f-]{36}\.[a-z0-9]+$/i.test(path)) return null;
+  return { kind, name, mime, path };
+}
+
+export function flowMediaLabel(kind: FlowMediaKind) {
+  if (kind === "video") return "Vídeo";
+  if (kind === "audio") return "Áudio";
+  return "Imagem";
+}
 export type FlowEdge = { source: string; target: string };
 export type FlowGraph = { nodes: FlowNode[]; edges: FlowEdge[] };
 export type FlowRun = { flowId: string; nodeId: string; status: "waiting" | "delay" | "done"; waitUntil: number; lastAnswer: string };
@@ -23,7 +62,7 @@ export function crmSaveLabel(content: string) {
 }
 
 export type FlowAction =
-  | { type: "send"; text: string }
+  | { type: "send"; text: string; media?: FlowMedia }
   | { type: "tag"; name: string }
   | { type: "deal"; text: string }
   | { type: "save"; field: CrmSaveField; text: string }
@@ -143,7 +182,10 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
     const node = nodeById(flow.graph, id);
     if (!node) continue;
     const content = node.content.trim();
-    if (node.label === "Enviar mensagem" && content) actions.push({ type: "send", text: content });
+    if (node.label === "Enviar mensagem") {
+      const media = flowMedia(node.media);
+      if (content || media) actions.push(media ? { type: "send", text: content, media } : { type: "send", text: content });
+    }
     if (node.label === "Fazer pergunta" && content) {
       actions.push({ type: "send", text: content });
       return { actions, run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer } };

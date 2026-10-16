@@ -184,6 +184,14 @@ export function chatbotInstanceName(organizationId: string) {
   return `nex${org}${stamp}`.slice(0, 40);
 }
 
+export function droppedChannels<T extends { status: string }>(channels: T[]) {
+  return channels.filter((channel) => channel.status === "disconnected" || channel.status === "error");
+}
+
+export function channelsAllConnected(channels: { status: string }[]) {
+  return channels.length > 0 && channels.every((channel) => channel.status === "connected");
+}
+
 export function whatsappMask(value: string) {
   const raw = value.replace(/\D/g, "");
   let digits = raw.startsWith("55") && raw.length > 11 ? raw.slice(2) : raw;

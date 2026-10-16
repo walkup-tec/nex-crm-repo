@@ -25,6 +25,13 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
   }
 }
 
+export const listChatbotChannelsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listChatbotChannels } = await import("@/server/chatbot.server");
+    return guard(() => listChatbotChannels(context.userId));
+  });
+
 export const chatbotSnapshotFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Result<ChatbotSnapshot>> => {
@@ -545,7 +552,7 @@ export const listChatbotFlowsFn = createServerFn({ method: "POST" })
 
 export const saveChatbotFlowFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { id: string; name: string; active: boolean; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number }[]; edges: { id: string; source: string; target: string }[] }) => ({
+  .validator((data: { id: string; name: string; active: boolean; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number; media?: { kind: string; name: string; mime: string; path: string } }[]; edges: { id: string; source: string; target: string }[] }) => ({
     id: typeof data.id === "string" ? data.id : "",
     name: data.name,
     active: data.active === true,
@@ -555,6 +562,18 @@ export const saveChatbotFlowFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { saveChatbotFlow } = await import("@/server/chatbot.server");
     return guard(() => saveChatbotFlow(context.userId, data));
+  });
+
+export const saveChatbotFlowMediaFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name: string; mime: string; base64: string }) => ({
+    name: typeof data.name === "string" ? data.name.slice(0, 120) : "",
+    mime: typeof data.mime === "string" ? data.mime.slice(0, 80) : "",
+    base64: typeof data.base64 === "string" ? data.base64 : "",
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotFlowMedia } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotFlowMedia(context.userId, data));
   });
 
 export const startChatbotFlowFn = createServerFn({ method: "POST" })

@@ -9,6 +9,8 @@ import {
   learnLidPhones,
   resolveIncomingPhone,
   composerSendsOnEnter,
+  channelsAllConnected,
+  droppedChannels,
   shouldSyncEvolution,
   pendingOutgoing,
   messageClock,
@@ -561,7 +563,10 @@ assert.equal(resolveIncomingPhone({ remoteJid: marceloLid }, {}), "");
 assert.equal(evolutionContactPhone({ remoteJid: marceloLid }), "");
 assert.equal(evolutionContactIdentity({ remoteJid: marceloPhone, remoteJidAlt: marceloLid }).lid, marceloLid);
 assert.equal(evolutionMessageText("segunda mensagem"), "segunda mensagem");
-assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: false, text: "Bom dia" }), true);
+assert.equal(channelsAllConnected([{ status: "connected" }, { status: "connected" }]), true);
+assert.equal(channelsAllConnected([{ status: "connected" }, { status: "disconnected" }]), false);
+assert.equal(channelsAllConnected([]), false);
+assert.equal(droppedChannels([{ status: "connected" }, { status: "disconnected" }, { status: "error" }, { status: "qr" }]).length, 2);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "NumpadEnter", shiftKey: false, pending: false, text: "Bom dia" }), true);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: true, pending: false, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: true, text: "Bom dia" }), false);

@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { chooseFlow, outsideBusinessHours, stepFlow, type CrmSaveField, type FlowAction, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { chooseFlow, flowMedia, outsideBusinessHours, stepFlow, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -503,6 +503,25 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
   return { status: next, qrCode, error: lastError };
+}
+
+export async function listChatbotChannels(userId: string) {
+  const { organizationId } = await membership(userId);
+  const loaded = await rows(
+    table("chatbot_connections")
+      .select("id, display_name, phone, status, instance_name")
+      .eq("organization_id", organizationId)
+      .order("display_name", { ascending: true }),
+  );
+  return Promise.all(
+    loaded.map(async (row) => {
+      const stored = cell(row, "status");
+      const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(cell(row, "instance_name"))}`, "GET").catch(() => null);
+      const observed = evolutionConnectionStatus(readState(stateBody));
+      const status = observed === "connected" ? "connected" : observed === "disconnected" ? "disconnected" : stored;
+      return { id: cell(row, "id"), name: cell(row, "display_name"), phone: cell(row, "phone"), status };
+    }),
+  );
 }
 
 export async function deleteChatbotConnection(userId: string, connectionId: string) {
@@ -2561,8 +2580,11 @@ function assertRunnableFlow(graph: ReturnType<typeof editorGraph>) {
   if (!triggers.length || !actions.length) fail("Adicione pelo menos um gatilho e uma ação.");
   const incoming = new Set(graph.edges.map((edge) => edge.target));
   if (graph.nodes.some((node) => node.kind !== "Gatilho" && !incoming.has(node.id))) fail("Ligue cada bloco ao gatilho antes de gravar.");
-  if (graph.nodes.some((node) => (node.label === "Enviar mensagem" || node.label === "Fazer pergunta") && !node.content.trim())) {
-    fail("Escreva o texto dos blocos de mensagem e pergunta.");
+  if (graph.nodes.some((node) => node.label === "Fazer pergunta" && !node.content.trim())) {
+    fail("Escreva o texto dos blocos de pergunta.");
+  }
+  if (graph.nodes.some((node) => node.label === "Enviar mensagem" && !node.content.trim() && !flowMedia(node.media))) {
+    fail("Escreva o texto ou anexe imagem, áudio ou vídeo nos blocos de mensagem.");
   }
 }
 
@@ -2576,7 +2598,8 @@ function flowGraph(value: unknown) {
       const id = cell(row, "id");
       const label = cell(row, "label");
       if (!id || !label) return [];
-      return [{ id, label, kind: cell(row, "kind"), content: cell(row, "content").slice(0, 1000) }];
+      const media = flowMedia(row["media"]);
+      return [{ id, label, kind: cell(row, "kind"), content: cell(row, "content").slice(0, 1000), ...(media ? { media } : {}) }];
     }),
     edges: edges.slice(0, 120).flatMap((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
@@ -2598,7 +2621,8 @@ function editorGraph(value: unknown) {
       const id = cell(row, "id");
       const label = cell(row, "label");
       if (!id || !label) return [];
-      return [{ id, label, kind: cell(row, "kind") || "Ação", content: cell(row, "content").slice(0, 1000), x: Number(row["x"]) || 0, y: Number(row["y"]) || 0 }];
+      const media = flowMedia(row["media"]);
+      return [{ id, label, kind: cell(row, "kind") || "Ação", content: cell(row, "content").slice(0, 1000), x: Number(row["x"]) || 0, y: Number(row["y"]) || 0, ...(media ? { media } : {}) }];
     }),
     edges: edges.slice(0, 120).flatMap((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
@@ -2632,22 +2656,99 @@ async function loadActiveFlows(organizationId: string): Promise<SavedFlow[]> {
 }
 
 async function sendFlowText(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
-  if (cell(connection, "status") !== "connected") return;
+  if (!text || cell(connection, "status") !== "connected") return;
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
   if (!phone) return;
   const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
-  await table("chatbot_messages")
-    .insert({
-      organization_id: organizationId,
-      conversation_id: conversationId,
-      text,
-      direction: "out",
-      status: "sent",
-      external_id: readMessageId(sent) || null,
-    })
+  await insertFlowMessage(organizationId, conversationId, text, readMessageId(sent));
+}
+
+async function insertFlowMessage(organizationId: string, conversationId: string, text: string, externalId: string, media?: { kind: FlowMedia["kind"]; mime: string }) {
+  const row = {
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    text,
+    direction: "out",
+    status: "sent",
+    external_id: externalId || null,
+  };
+  const saved = await table("chatbot_messages")
+    .insert(media ? { ...row, media_kind: media.kind, media_mime: media.mime } : row)
     .select("id")
     .maybeSingle();
+  if (saved.error && media && /media_kind|media_mime/i.test(saved.error.message)) {
+    await table("chatbot_messages").insert(row).select("id").maybeSingle();
+  }
+}
+
+function flowMediaExtension(mime: string, kind: FlowMedia["kind"]) {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/gif") return "gif";
+  if (mime === "video/webm" || mime === "audio/webm") return "webm";
+  if (mime === "video/quicktime") return "mov";
+  if (mime === "video/3gpp") return "3gp";
+  if (mime === "audio/mpeg") return "mp3";
+  if (mime === "audio/mp4") return "m4a";
+  if (mime === "audio/aac") return "aac";
+  if (mime === "audio/opus") return "opus";
+  if (mime === "audio/wav") return "wav";
+  if (kind === "video") return "mp4";
+  if (kind === "audio") return "ogg";
+  return "jpg";
+}
+
+function flowMediaMime(name: string, mime: string) {
+  const clean = mime.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (mediaMimeTypes.includes(clean)) return clean;
+  const extension = name.split(".").pop()?.toLowerCase() ?? "";
+  const fromName: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    "3gp": "video/3gpp",
+    webm: "video/webm",
+    mp3: "audio/mpeg",
+    ogg: "audio/ogg",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    opus: "audio/opus",
+    wav: "audio/wav",
+  };
+  return fromName[extension] ?? "";
+}
+
+async function sendFlowMedia(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, media: FlowMedia) {
+  if (cell(connection, "status") !== "connected") return;
+  if (!media.path.startsWith(`${organizationId}/flows/`)) return;
+  const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const phone = cell(contact.data, "phone");
+  if (!phone) return;
+  const downloaded = await supabaseAdmin.storage.from(mediaBucket).download(media.path);
+  if (downloaded.error || !downloaded.data) return;
+  const base64 = Buffer.from(await downloaded.data.arrayBuffer()).toString("base64");
+  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  if (media.kind === "audio") {
+    const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", { number: phone, audio: base64, encoding: true }, 60000);
+    await insertFlowMessage(organizationId, conversationId, "[áudio]", readMessageId(sent), { kind: "audio", mime: media.mime });
+    if (text) await sendFlowText(connection, organizationId, conversationId, contactId, text);
+    return;
+  }
+  const sent = await evo(
+    `/message/sendMedia/${instance}`,
+    "POST",
+    { number: phone, mediatype: media.kind, mimetype: media.mime, caption: text, media: base64, fileName: media.name },
+    60000,
+  );
+  await insertFlowMessage(organizationId, conversationId, text || (media.kind === "video" ? "[vídeo]" : "[imagem]"), readMessageId(sent), {
+    kind: media.kind,
+    mime: media.mime,
+  });
 }
 
 async function addFlowTag(organizationId: string, contactId: string, name: string) {
@@ -2738,7 +2839,10 @@ async function createFlowDeal(organizationId: string, contactId: string, text: s
 
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {
   for (const action of actions) {
-    if (action.type === "send") await sendFlowText(connection, organizationId, conversationId, contactId, action.text);
+    if (action.type === "send") {
+      if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, action.text, action.media);
+      else await sendFlowText(connection, organizationId, conversationId, contactId, action.text);
+    }
     if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
     if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
     if (action.type === "deal") await createFlowDeal(organizationId, contactId, action.text);
@@ -2836,6 +2940,26 @@ export async function listChatbotFlows(userId: string) {
     const graph = editorGraph(row["graph"]);
     return { id: cell(row, "id"), name: cell(row, "name"), active: row["active"] === true, nodes: graph.nodes, edges: graph.edges };
   });
+}
+
+export async function saveChatbotFlowMedia(userId: string, input: { name: string; mime: string; base64: string }) {
+  const mime = flowMediaMime(input.name, input.mime);
+  const kind = mime.startsWith("image/") ? "image" : mime.startsWith("video/") ? "video" : mime.startsWith("audio/") ? "audio" : "";
+  if (!kind || !mediaMimeTypes.includes(mime)) fail("Envie uma imagem, um áudio ou um vídeo.");
+  const bytes = Buffer.from(input.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+  if (!bytes.length) fail("Não foi possível ler o arquivo.");
+  if (bytes.length > 16 * 1024 * 1024) fail("A mídia pode ter no máximo 16 MB.");
+  const { organizationId } = await membership(userId, "settings");
+  await ensureMediaBucket();
+  const extension = flowMediaExtension(mime, kind);
+  const id = crypto.randomUUID();
+  const path = `${organizationId}/flows/${id}.${extension}`;
+  const name = input.name.replace(/[^\w.\- ()]+/g, "").trim().slice(0, 80) || `midia.${extension}`;
+  const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(path, bytes, { contentType: mime, upsert: false });
+  if (uploaded.error) fail("Não foi possível guardar a mídia do bot.");
+  const media = flowMedia({ kind, name, mime, path });
+  if (!media) fail("Não foi possível guardar a mídia do bot.");
+  return media;
 }
 
 export async function saveChatbotFlow(

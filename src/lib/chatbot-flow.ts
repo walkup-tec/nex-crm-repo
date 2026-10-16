@@ -110,6 +110,40 @@ export function flowMenuOptions(value: unknown): FlowMenuOption[] {
 export function nextMenuOptionId(options: { id: string }[] | undefined) {
   return (["1", "2", "3"] as const).find((id) => !options?.some((option) => option.id === id));
 }
+
+export function cloneFlowSelection<TNode extends { id: string; x: number; y: number }, TEdge extends { id: string; source: string; target: string }>(
+  nodes: TNode[],
+  edges: TEdge[],
+  selectedIds: string[],
+  nextId: () => string,
+  offset = 48,
+) {
+  const picked = new Set(selectedIds);
+  const ids = new Map<string, string>();
+  const clones = nodes.flatMap((node) => {
+    if (!picked.has(node.id)) return [];
+    const id = nextId();
+    ids.set(node.id, id);
+    return [{ ...node, id, x: node.x + offset, y: node.y + offset }];
+  });
+  const links = edges.flatMap((edge) => {
+    const source = ids.get(edge.source);
+    const target = ids.get(edge.target);
+    if (!source || !target) return [];
+    return [{ ...edge, id: nextId(), source, target }];
+  });
+  return { nodes: clones, edges: links };
+}
+
+export function flowDropPosition(point: { x: number; y: number }, existing: { x: number; y: number }[]) {
+  let x = point.x;
+  let y = point.y;
+  for (let step = 0; step < 12 && existing.some((node) => Math.abs(node.x - x) < 24 && Math.abs(node.y - y) < 24); step += 1) {
+    x += 28;
+    y += 28;
+  }
+  return { x, y };
+}
 export type FlowGraph = { nodes: FlowNode[]; edges: FlowEdge[] };
 export type FlowRun = { flowId: string; nodeId: string; status: "waiting" | "delay" | "done"; waitUntil: number; lastAnswer: string };
 export const crmSaveFields = [

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, clientFlowVariableTokens, crmSaveField, fillFlowVariables, flowMedia, flowMediaLabel, flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, clientFlowVariableTokens, cloneFlowSelection, crmSaveField, fillFlowVariables, flowDropPosition, flowMedia, flowMediaLabel, flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -193,6 +193,16 @@ assert.equal(support.actions[0]?.type === "send" ? support.actions[0].text : "",
 const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
 assert.equal(ignored.run?.nodeId, "menu");
 assert.equal(ignored.actions.length, 0);
+const duplicated = cloneFlowSelection(
+  [{ id: "a", x: 10, y: 20 }, { id: "b", x: 40, y: 20 }, { id: "c", x: 80, y: 20 }],
+  [{ id: "ab", source: "a", target: "b", sourceHandle: "1" as const }, { id: "bc", source: "b", target: "c" }],
+  ["a", "b"],
+  (() => { let n = 0; return () => `n${(n += 1)}`; })(),
+);
+assert.deepEqual(duplicated.nodes.map((node) => [node.id, node.x, node.y]), [["n1", 58, 68], ["n2", 88, 68]]);
+assert.deepEqual(duplicated.edges, [{ id: "n3", source: "n1", target: "n2", sourceHandle: "1" }]);
+assert.deepEqual(flowDropPosition({ x: 10, y: 20 }, [{ x: 10, y: 20 }]), { x: 38, y: 48 });
+assert.deepEqual(flowDropPosition({ x: 200, y: 80 }, []), { x: 200, y: 80 });
 assert.equal(flowMenuOptions([{ id: "1", label: "  Vendas  " }, { id: "4", label: "Fora" }]).map((option) => option.label).join(","), "Vendas");
 assert.deepEqual(waitSetting("5"), { amount: 5, unit: "minutos" });
 assert.deepEqual(waitSetting("30 segundos"), { amount: 30, unit: "segundos" });

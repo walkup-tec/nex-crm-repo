@@ -2936,7 +2936,7 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
   const instance = encodeURIComponent(instanceName);
   const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
   await showBotPresence(instanceName, phone, text);
-  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
+  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "\u200b", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
   if (!sent || isGhostButtonResponse(sent)) {
     await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
     return;

@@ -19,6 +19,9 @@
 .chatbot-app .flow-menu-options{display:grid;gap:10px;margin-top:12px}
 .chatbot-app .flow-menu-options button{width:auto;height:28px;font-size:10px}
 .chatbot-app .flow-node-exits{position:absolute;right:14px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:16px;margin:0;font-size:10px;font-weight:700;color:var(--primary)}
+.chatbot-app .flow-node-menu .flow-node-exits{pointer-events:none}
+.chatbot-app .flow-node-exit{position:relative;display:flex;align-items:center;justify-content:flex-end;min-height:24px;pointer-events:none}
+.chatbot-app .flow-node-menu .flow-node-exit .react-flow__handle{pointer-events:all;z-index:3;width:12px!important;height:12px!important;right:-30px;top:50%;transform:translateY(-50%)}
 .chatbot-app .flow-node-exits span{width:auto;text-align:right}
 .chatbot-app .react-flow__edge-text{fill:var(--primary)!important;font-size:11px;font-weight:700}
 .chatbot-app .flow-edge-tools{position:absolute;display:flex;align-items:center;gap:4px;pointer-events:all}

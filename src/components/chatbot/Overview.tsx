@@ -309,7 +309,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
               <BarChart layout="vertical" data={performance} margin={{ top: 8, right: 16, left: 8, bottom: 0 }} barGap={4} barCategoryGap={16}>
                 <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" allowDecimals={false} domain={[0, axisTop]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" width={128} reversed tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
                 <Tooltip
                   cursor={{ fill: "var(--muted)", fillOpacity: 0.35 }}
                   content={({ active, payload, label }) => {
@@ -364,7 +364,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                   axisLine={false}
                   tickLine={false}
                 />
-                <YAxis type="category" dataKey="name" width={128} reversed tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: "var(--foreground)" }} axisLine={false} tickLine={false} />
                 <Tooltip
                   cursor={{ fill: "var(--muted)", fillOpacity: 0.35 }}
                   content={({ active, payload, label }) => {

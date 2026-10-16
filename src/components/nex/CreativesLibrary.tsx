@@ -1320,6 +1320,7 @@ function LibraryCard({
     <Card
       className={cn(
         "overflow-hidden",
+        !file && "bg-transparent shadow-none",
         selected && "border-primary ring-1 ring-primary",
         dropActive && "border-primary bg-primary/5 ring-2 ring-primary",
       )}
@@ -1332,7 +1333,7 @@ function LibraryCard({
         draggable={Boolean(onDragItemStart)}
         onDragStart={onDragItemStart}
         className={cn(
-          "relative grid aspect-video w-full place-items-center",
+          "relative grid aspect-video w-full place-items-center appearance-none bg-transparent",
           file && "bg-secondary/70",
           onDragItemStart && "cursor-grab active:cursor-grabbing",
         )}
@@ -1353,7 +1354,7 @@ function LibraryCard({
             draggable={Boolean(onDragItemStart)}
             onDragStart={onDragItemStart}
             className={cn(
-              "min-w-0 flex-1 text-left",
+              "min-w-0 flex-1 appearance-none bg-transparent text-left",
               onDragItemStart && "cursor-grab active:cursor-grabbing",
             )}
             onClick={onOpen}

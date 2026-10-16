@@ -238,3 +238,27 @@ const waited = stepFlow(waitFlow, null, { text: "oi", at: noon, outsideHours: fa
 assert.equal(waited.run?.status, "delay");
 assert.equal(waited.run?.waitUntil, noon + 45_000);
 assert.equal(previewFlowTurns(waitFlow.graph, ["oi"], false, noon).turns.find((turn) => turn.from === "bot")?.text, "Aguarda 45 s antes de continuar.");
+const catalogFlow: SavedFlow = {
+  id: "catalogo",
+  name: "Catálogo",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      { id: "tag", label: "Adicionar etiqueta", kind: "Ação", content: "Cliente" },
+      { id: "board", label: "Kanban", kind: "Ação", content: "Qualificação" },
+    ],
+    edges: [
+      { source: "t", target: "tag" },
+      { source: "tag", target: "board" },
+    ],
+  },
+};
+const catalogStep = stepFlow(catalogFlow, null, { text: "oi", at: noon, outsideHours: false });
+assert.deepEqual(catalogStep.actions[0], { type: "tag", name: "Cliente" });
+assert.deepEqual(catalogStep.actions[1], { type: "stage", name: "Qualificação" });
+const legacyBoard = stepFlow(
+  { ...catalogFlow, graph: { ...catalogFlow.graph, nodes: catalogFlow.graph.nodes.map((node) => (node.id === "board" ? { ...node, label: "Criar oportunidade" } : node)) } },
+  null,
+  { text: "oi", at: noon, outsideHours: false },
+);
+assert.equal(legacyBoard.actions[1]?.type, "stage");

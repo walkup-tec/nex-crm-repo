@@ -91,6 +91,10 @@ export function attendanceMark(input: { assigneeName: string; botPaused: boolean
   return "";
 }
 
+export function waitingForHuman(input: { assigneeName: string; botPaused: boolean; closed: boolean }) {
+  return !input.closed && !input.assigneeName.trim() && input.botPaused;
+}
+
 export function inboxVisible(input: { assigneeId: string; userId: string; admin: boolean }) {
   if (!input.assigneeId) return true;
   return input.assigneeId === input.userId || input.admin;

@@ -18,7 +18,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -620,12 +620,13 @@ export function LiveInbox() {
     const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
     const unread = item.unreadCount > 99 ? "99+" : String(item.unreadCount);
     const mark = markFor(item.id);
+    const pending = waitingForHuman({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
     return (
       <div
         key={item.id}
         role="button"
         tabIndex={0}
-        className={`conversation-row${item.pinned ? " pinned" : ""}${item.id === selected ? " selected" : ""}${item.unreadCount ? " unread" : ""}`}
+        className={`conversation-row${item.pinned ? " pinned" : ""}${item.id === selected ? " selected" : ""}${item.unreadCount ? " unread" : ""}${pending ? " waiting-human" : ""}`}
         onClick={() => openConversation(item.id)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -640,7 +641,7 @@ export function LiveInbox() {
           <p>{clientPhoneLabel(person?.phone ?? "") || person?.phone}</p>
           <div className="conversation-tags">
             {channel ? <span className="status-pill">{channel}</span> : null}
-            <span className="status-pill">{labelFor(item.id)}</span>
+            <span className={`status-pill${pending ? " waiting" : ""}`}>{labelFor(item.id)}</span>
           </div>
         </div>
         <div className="conversation-side">

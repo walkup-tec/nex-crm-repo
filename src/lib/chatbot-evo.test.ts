@@ -29,6 +29,7 @@ import {
   tintQrPixel,
   attendanceLabel,
   attendanceMark,
+  waitingForHuman,
   keepAttendanceBotsPaused,
   headerAttendant,
   negotiatedCents,
@@ -488,6 +489,10 @@ assert.equal(attendanceMark({ assigneeName: "", botPaused: true, botSpoke: false
 assert.equal(attendanceMark({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "human");
 assert.equal(attendanceMark({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "");
 assert.equal(attendanceMark({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: true }), "");
+assert.equal(waitingForHuman({ assigneeName: "", botPaused: true, closed: false }), true);
+assert.equal(waitingForHuman({ assigneeName: "", botPaused: false, closed: false }), false);
+assert.equal(waitingForHuman({ assigneeName: "Marina Costa", botPaused: true, closed: false }), false);
+assert.equal(waitingForHuman({ assigneeName: "", botPaused: true, closed: true }), false);
 assert.equal(keepAttendanceBotsPaused(true, false), true);
 assert.equal(keepAttendanceBotsPaused(true, true), true);
 assert.equal(keepAttendanceBotsPaused(false, true), true);

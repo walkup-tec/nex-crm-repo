@@ -195,7 +195,7 @@ export type FlowAction =
   | { type: "send"; text: string; media?: FlowMedia }
   | { type: "menu"; text: string; options: FlowMenuOption[] }
   | { type: "tag"; name: string }
-  | { type: "deal"; text: string }
+  | { type: "stage"; name: string }
   | { type: "save"; field: CrmSaveField; text: string }
   | { type: "queue" }
   | { type: "pause" };
@@ -390,7 +390,7 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
     }
     if (node.label === "Salvar resposta no CRM" && lastAnswer) actions.push({ type: "save", field: crmSaveField(content), text: lastAnswer });
     if (node.label === "Adicionar etiqueta" && content) actions.push({ type: "tag", name: content });
-    if (node.label === "Criar oportunidade" && content) actions.push({ type: "deal", text: content });
+    if ((node.label === "Kanban" || node.label === "Criar oportunidade") && content) actions.push({ type: "stage", name: content });
     if (node.label === "Encaminhar à fila") {
       actions.push({ type: "queue" });
       return { actions, run: doneRun(flow.id, node.id, lastAnswer) };
@@ -436,7 +436,7 @@ function describeFlowAction(action: FlowAction) {
     return text || media;
   }
   if (action.type === "tag") return `Etiqueta adicionada: ${action.name}`;
-  if (action.type === "deal") return `Oportunidade criada: ${action.text}`;
+  if (action.type === "stage") return `Contato colocado na etapa ${action.name}.`;
   if (action.type === "save") return `Resposta salva em ${crmSaveLabel(action.field)}: ${action.text}`;
   if (action.type === "queue") return "Conversa enviada para a fila de atendimento do Chatbot.";
   return "";

@@ -45,7 +45,6 @@ import {
   clientPhoneLabel,
   catalogName,
   quickReplyText,
-  negotiatedCents,
   defaultKanbanStages,
   kanbanStageName,
   keepWhatsappName,
@@ -2312,7 +2311,7 @@ export async function chatbotNoticeTick(userId: string) {
     : { rows: [] as Record<string, unknown>[], missing: false };
   const closedIds = states.rows.filter((row) => cell(row, "status") === "closed").map((row) => cell(row, "id"));
   const queues = await rowsOrMissing(
-    table("chatbot_conversations").select("id").eq("organization_id", organizationId).eq("status", "queue").is("assignee_id", null),
+    table("chatbot_conversations").select("id").eq("organization_id", organizationId).eq("status", "queue").eq("bot_paused", true).is("assignee_id", null),
   );
   return {
     sound,
@@ -2639,6 +2638,10 @@ function assertRunnableFlow(graph: ReturnType<typeof editorGraph>) {
   if (graph.nodes.some((node) => node.label === "Menu" && (!node.content.trim() || !flowMenuOptions(node.options).length))) {
     fail("Escreva o texto do menu e pelo menos uma opção.");
   }
+  if (graph.nodes.some((node) => node.label === "Adicionar etiqueta" && !node.content.trim())) fail("Escolha a etiqueta do bloco.");
+  if (graph.nodes.some((node) => (node.label === "Kanban" || node.label === "Criar oportunidade") && !node.content.trim())) {
+    fail("Escolha a etapa do kanban.");
+  }
 }
 
 function flowGraph(value: unknown) {
@@ -2835,16 +2838,7 @@ async function addFlowTag(organizationId: string, contactId: string, name: strin
   const clean = catalogName(name, 32);
   if (!clean) return;
   const existing = await table("chatbot_tags").select("id").eq("organization_id", organizationId).eq("name", clean).maybeSingle();
-  let tagId = cell(existing.data, "id");
-  if (!tagId) {
-    const inserted = await table("chatbot_tags").insert({ organization_id: organizationId, name: clean, color: "#6f02fd" }).select("id").maybeSingle();
-    if (duplicate(inserted.error)) {
-      const again = await table("chatbot_tags").select("id").eq("organization_id", organizationId).eq("name", clean).maybeSingle();
-      tagId = cell(again.data, "id");
-    } else {
-      tagId = cell(inserted.data, "id");
-    }
-  }
+  const tagId = cell(existing.data, "id");
   if (!tagId) return;
   const linked = await table("chatbot_contact_tags")
     .insert({ contact_id: contactId, tag_id: tagId, organization_id: organizationId })
@@ -2901,20 +2895,12 @@ function contactNoteText(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
-async function createFlowDeal(organizationId: string, contactId: string, text: string) {
-  const cents = negotiatedCents(text);
-  if (cents != null) {
-    await table("chatbot_contacts").update({ negotiated_cents: cents }).eq("id", contactId).eq("organization_id", organizationId);
-  }
-  const contact = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  if (!cell(contact.data, "stage_name")) {
-    const stages = await rowsOrMissing(
-      table("chatbot_stages").select("name, position").eq("organization_id", organizationId).order("position", { ascending: true }).limit(1),
-    );
-    const stage = cell(stages.rows[0], "name");
-    if (stage) await table("chatbot_contacts").update({ stage_name: stage }).eq("id", contactId).eq("organization_id", organizationId);
-  }
-  await appendFlowNote(organizationId, contactId, `Oportunidade: ${text}`);
+async function assignFlowStage(organizationId: string, contactId: string, name: string) {
+  const clean = name.trim().slice(0, 40);
+  if (clean.length < 2) return;
+  const stages = await rowsOrMissing(table("chatbot_stages").select("name").eq("organization_id", organizationId));
+  if (!stages.missing && !stages.rows.some((row) => cell(row, "name") === clean)) return;
+  await table("chatbot_contacts").update({ stage_name: clean }).eq("id", contactId).eq("organization_id", organizationId);
 }
 
 async function flowVariableValues(organizationId: string, contactId: string) {
@@ -2958,7 +2944,7 @@ async function applyFlowActions(connection: Record<string, unknown>, organizatio
     if (action.type === "menu") await sendFlowMenu(connection, organizationId, conversationId, contactId, fillFlowVariables(action.text, values), action.options);
     if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
     if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
-    if (action.type === "deal") await createFlowDeal(organizationId, contactId, action.text);
+    if (action.type === "stage") await assignFlowStage(organizationId, contactId, action.name);
     if (action.type === "queue") {
       const patch: Record<string, unknown> = {
         status: "queue",

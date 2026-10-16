@@ -1266,7 +1266,7 @@ export function noticeCue(
   const knownQueues = new Set(previous.queues);
   const messages = next.messages.filter(Boolean);
   const queues = next.queues.filter(Boolean);
-  const play = messages.some((id) => !knownMessages.has(id)) || queues.some((id) => !knownQueues.has(id));
+  const play = queues.some((id) => !knownQueues.has(id));
   return {
     play,
     messages: [...new Set([...previous.messages, ...messages])].slice(-80),

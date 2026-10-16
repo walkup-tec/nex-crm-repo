@@ -1298,17 +1298,21 @@ async function returnClosedToQueue(organizationId: string, conversationId: strin
   const minutes = settings.error ? 15 : reactivationMinutes(settings.data?.["chatbot_reactivation_minutes"]);
   const reopen = !current.error && reactivatesClosedConversation(cell(current.data, "closed_at"), minutes, Date.now());
   const botsDisabled = await contactBotsDisabled(organizationId, cell(current.data, "contact_id"));
+  const resumeBot = !keepAttendanceBotsPaused(botsDisabled, reopen);
   const stamped = new Date().toISOString();
   const patch: Record<string, unknown> = {
     status: "queue",
     queued_at: stamped,
-    bot_paused: keepAttendanceBotsPaused(botsDisabled, reopen),
+    bot_paused: !resumeBot,
     closed_at: null,
     offline_notified_at: null,
   };
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const updated = await (table("chatbot_conversations").update(patch).eq("id", conversationId).eq("status", "closed").select("id").maybeSingle());
-    if (!updated.error) return;
+    if (!updated.error) {
+      if (resumeBot) await forgetFlowRun(organizationId, conversationId);
+      return;
+    }
     const missing = updated.error.message.match(/queued_at|bot_paused|closed_at|offline_notified_at/i);
     if (!missing) return;
     const key = missing[0].toLowerCase();
@@ -2673,6 +2677,10 @@ function editorGraph(value: unknown) {
   };
 }
 
+async function forgetFlowRun(organizationId: string, conversationId: string) {
+  await (table("chatbot_flow_runs").delete().eq("conversation_id", conversationId).eq("organization_id", organizationId) as unknown as Promise<unknown>).catch(() => undefined);
+}
+
 function readFlowRun(row: Record<string, unknown> | null | undefined): FlowRun | null {
   const status = cell(row, "status");
   if (status !== "waiting" && status !== "delay" && status !== "done") return null;
@@ -2911,7 +2919,7 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
   const instance = encodeURIComponent(instanceName);
   const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
   await showBotPresence(instanceName, phone, text);
-  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "Menu", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
+  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
   if (!sent || isGhostButtonResponse(sent)) {
     await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
     return;

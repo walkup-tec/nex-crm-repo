@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { nexDeployStatus } from "./lib/nex-deploy";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -44,9 +45,27 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+function deployProbeResponse(pathname: string): Response | null {
+  if (pathname !== "/health" && pathname !== "/ready") return null;
+  const status = nexDeployStatus();
+  const unavailable = pathname === "/health" ? status.shuttingDown : !status.ready;
+  return new Response(JSON.stringify(status), {
+    status: unavailable ? 503 : 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const pathname = new URL(request.url).pathname.replace(/\/+$/, "") || "/";
+      if (request.method === "GET" || request.method === "HEAD") {
+        const probe = deployProbeResponse(pathname);
+        if (probe) return request.method === "HEAD" ? new Response(null, { status: probe.status, headers: probe.headers }) : probe;
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

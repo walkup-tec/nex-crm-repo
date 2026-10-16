@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { NEX_DEPLOY_WATCH_SCRIPT, NEX_DEPLOY_WATCH_STYLE } from "../lib/nex-deploy-watch";
 
 function NotFoundComponent() {
   return (
@@ -118,6 +119,8 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
       <head>
+        <style dangerouslySetInnerHTML={{ __html: NEX_DEPLOY_WATCH_STYLE }} />
+        <script dangerouslySetInnerHTML={{ __html: NEX_DEPLOY_WATCH_SCRIPT }} />
         <HeadContent />
       </head>
       <body>

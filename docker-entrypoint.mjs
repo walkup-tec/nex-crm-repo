@@ -1,11 +1,37 @@
 import http from "node:http";
+import { randomUUID } from "node:crypto";
 
-const NEX_DEPLOY = "NEX-DEPLOY-K3M9";
+const NEX_DEPLOY = "NEX-DEPLOY-Q8N4";
+const SHUTDOWN_GRACE_MS = 20000;
+const servers = new Set();
+
+globalThis.__NEX_DEPLOY = NEX_DEPLOY;
+globalThis.__NEX_BOOT_ID = randomUUID();
+globalThis.__NEX_SHUTTING_DOWN = false;
 console.log(NEX_DEPLOY);
+
+function beginShutdown(signal) {
+  if (globalThis.__NEX_SHUTTING_DOWN) return;
+  globalThis.__NEX_SHUTTING_DOWN = true;
+  console.log(`[shutdown] ${signal} — Nex em atualização. O sistema segue respondendo e /health avisa a tela.`);
+  setTimeout(() => {
+    for (const server of servers) server.close(() => {});
+    setTimeout(() => process.exit(0), 1000).unref();
+  }, SHUTDOWN_GRACE_MS - 1000).unref();
+  setTimeout(() => {
+    console.warn("[shutdown] tempo esgotado — encerramento forçado.");
+    process.exit(1);
+  }, SHUTDOWN_GRACE_MS).unref();
+}
+
+process.once("SIGTERM", () => beginShutdown("SIGTERM"));
+process.once("SIGINT", () => beginShutdown("SIGINT"));
 
 const listen = http.Server.prototype.listen;
 
 http.Server.prototype.listen = function (options, ...args) {
+  servers.add(this);
+  this.once("close", () => servers.delete(this));
   if (options && typeof options === "object") {
     options.host = "0.0.0.0";
   }

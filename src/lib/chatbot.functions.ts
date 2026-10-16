@@ -280,6 +280,17 @@ export const setChatbotContactIdentityFn = createServerFn({ method: "POST" })
     return guard(() => setChatbotContactIdentity(context.userId, data.contactId, data.field, data.value));
   });
 
+export const setChatbotContactNoteFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; note: string }) => ({
+    contactId: data.contactId,
+    note: String(data.note ?? "").slice(0, 300),
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactNote } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactNote(context.userId, data.contactId, data.note));
+  });
+
 export const setChatbotContactDealFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; cents: number | null }) => ({

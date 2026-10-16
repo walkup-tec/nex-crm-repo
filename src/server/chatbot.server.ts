@@ -1994,6 +1994,21 @@ export async function setChatbotContactIdentity(userId: string, contactId: strin
   return { value: stored };
 }
 
+export async function setChatbotContactNote(userId: string, contactId: string, value: string) {
+  const note = contactNoteText(value);
+  const { organizationId } = await membership(userId, "inbox");
+  await ownedContact(organizationId, contactId);
+  const updated = await table("chatbot_contacts")
+    .update({ bot_note: note })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { note };
+}
+
 export async function setChatbotContactDeal(userId: string, contactId: string, cents: number | null) {
   if (cents != null && (!Number.isInteger(cents) || cents < 0 || cents > 9999999999999)) fail("Informe um valor negociado válido.");
   const { organizationId } = await membership(userId, "inbox");
@@ -2697,8 +2712,12 @@ async function saveFlowAnswer(organizationId: string, contactId: string, field: 
 async function appendFlowNote(organizationId: string, contactId: string, text: string) {
   const current = await table("chatbot_contacts").select("bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   if (current.error) return;
-  const next = [cell(current.data, "bot_note"), text].filter(Boolean).join("\n").slice(-4000);
+  const next = contactNoteText([cell(current.data, "bot_note"), text].filter(Boolean).join(" "));
   await table("chatbot_contacts").update({ bot_note: next }).eq("id", contactId).eq("organization_id", organizationId);
+}
+
+function contactNoteText(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
 async function createFlowDeal(organizationId: string, contactId: string, text: string) {

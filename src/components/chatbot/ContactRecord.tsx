@@ -10,6 +10,7 @@ import {
   renameChatbotContactFn,
   setChatbotContactDealFn,
   setChatbotContactIdentityFn,
+  setChatbotContactNoteFn,
   setChatbotContactProductsFn,
   setChatbotContactStageFn,
   setChatbotContactTagsFn,
@@ -123,6 +124,7 @@ export function ContactRecord({
   const [deal, setDeal] = useState("");
   const [documentDraft, setDocumentDraft] = useState("");
   const [rgDraft, setRgDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
   const [extraOpen, setExtraOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
@@ -132,6 +134,7 @@ export function ContactRecord({
     setProfile(null);
     setDocumentDraft("");
     setRgDraft("");
+    setNoteDraft("");
     setExtraOpen(false);
     setMediaOpen(false);
     setError("");
@@ -147,6 +150,7 @@ export function ContactRecord({
       setDraft(result.data.name);
       setDocumentDraft(applyMask("doc", result.data.document));
       setRgDraft(applyMask("rg", result.data.rg));
+      setNoteDraft(result.data.note.replace(/\s+/g, " ").trim().slice(0, 300));
       setDeal(negotiatedLabel(result.data.negotiatedCents));
     });
     return () => {
@@ -173,6 +177,21 @@ export function ContactRecord({
     setProfile({ ...profile, name: result.data.name });
     setDraft(result.data.name);
     onRenamed(profile.id, result.data.name);
+  }
+
+  async function saveNote() {
+    if (!profile) return;
+    const note = noteDraft.replace(/\s+/g, " ").trim().slice(0, 300);
+    const current = profile.note.replace(/\s+/g, " ").trim().slice(0, 300);
+    if (note === current) return;
+    const result = await setChatbotContactNoteFn({ data: { contactId: profile.id, note } });
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setNoteDraft(result.data.note);
+    setProfile({ ...profile, note: result.data.note });
   }
 
   async function saveIdentity(field: "document" | "rg") {
@@ -323,48 +342,18 @@ export function ContactRecord({
             <h3>WhatsApp</h3>
             <p className="contact-phone">{clientPhoneLabel(profile.phone) || profile.phone}</p>
           </section>
-          {profile.showDocument || profile.showRg ? (
-            <section className={`contact-section${extraOpen ? "" : " is-collapsed"}`}>
-              <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
-                <CollapsibleTrigger className="contact-extra">
-                  Outros dados
-                  <ChevronDown />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="contact-extra-body">
-                  {profile.showDocument ? (
-                    <label>
-                      CPF/CNPJ
-                      <input
-                        className="contact-deal"
-                        inputMode="numeric"
-                        aria-label="CPF ou CNPJ"
-                        placeholder="000.000.000-00"
-                        value={documentDraft}
-                        onChange={(event) => setDocumentDraft(applyMask("doc", event.target.value))}
-                        onBlur={() => void saveIdentity("document")}
-                      />
-                    </label>
-                  ) : null}
-                  {profile.showRg ? (
-                    <label>
-                      RG
-                      <input
-                        className="contact-deal"
-                        aria-label="RG"
-                        placeholder="00.000.000-0"
-                        value={rgDraft}
-                        onChange={(event) => setRgDraft(applyMask("rg", event.target.value))}
-                        onBlur={() => void saveIdentity("rg")}
-                      />
-                    </label>
-                  ) : null}
-                </CollapsibleContent>
-              </Collapsible>
-            </section>
-          ) : null}
           <section className="contact-section">
             <h3>Observação</h3>
-            {profile.note ? <p className="contact-note">{profile.note}</p> : <p>Sem observação</p>}
+            <input
+              className="contact-deal"
+              maxLength={300}
+              aria-label="Observação"
+              placeholder="Observação"
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value.slice(0, 300))}
+              onBlur={() => void saveNote()}
+            />
+            <p className="contact-note-count">{noteDraft.length}/300</p>
           </section>
           <section className="contact-section">
             <h3>Produtos e serviços</h3>
@@ -447,10 +436,55 @@ export function ContactRecord({
               <p>O valor negociado ainda não está disponível.</p>
             )}
           </section>
+          {profile.showDocument || profile.showRg ? (
+            <section className={`contact-section${extraOpen ? "" : " is-collapsed"}`}>
+              <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
+                <CollapsibleTrigger className="contact-extra">
+                  <span className="contact-extra-title">
+                    Outros dados
+                    {(profile.showDocument && profile.document) || (profile.showRg && profile.rg) ? <Check className="contact-extra-mark" aria-label="Preenchido" /> : null}
+                  </span>
+                  <ChevronDown />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="contact-extra-body">
+                  {profile.showDocument ? (
+                    <label>
+                      CPF/CNPJ
+                      <input
+                        className="contact-deal"
+                        inputMode="numeric"
+                        aria-label="CPF ou CNPJ"
+                        placeholder="000.000.000-00"
+                        value={documentDraft}
+                        onChange={(event) => setDocumentDraft(applyMask("doc", event.target.value))}
+                        onBlur={() => void saveIdentity("document")}
+                      />
+                    </label>
+                  ) : null}
+                  {profile.showRg ? (
+                    <label>
+                      RG
+                      <input
+                        className="contact-deal"
+                        aria-label="RG"
+                        placeholder="00.000.000-0"
+                        value={rgDraft}
+                        onChange={(event) => setRgDraft(applyMask("rg", event.target.value))}
+                        onBlur={() => void saveIdentity("rg")}
+                      />
+                    </label>
+                  ) : null}
+                </CollapsibleContent>
+              </Collapsible>
+            </section>
+          ) : null}
           <section className={`contact-section${mediaOpen ? "" : " is-collapsed"}`}>
             <Collapsible open={mediaOpen} onOpenChange={setMediaOpen}>
               <CollapsibleTrigger className="contact-extra">
-                Mídias salvas
+                <span className="contact-extra-title">
+                  Mídias salvas
+                  {profile.files.length ? <Check className="contact-extra-mark" aria-label="Preenchido" /> : null}
+                </span>
                 <ChevronDown />
               </CollapsibleTrigger>
               <CollapsibleContent className="contact-extra-body">

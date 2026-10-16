@@ -129,8 +129,10 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .contact-panel > .contact-section:first-of-type{border-top:0}
 .chatbot-app .contact-section.is-collapsed{padding-top:14px;padding-bottom:14px}
 .chatbot-app .contact-extra{display:flex;align-items:center;width:100%;margin:0;padding:0;border:0;background:transparent;font-family:var(--font-sans);font-size:10px;font-weight:700;color:var(--foreground);cursor:pointer}
-.chatbot-app .contact-extra svg{width:14px;height:14px;margin-left:auto;transition:transform .15s}
-.chatbot-app .contact-extra[data-state=closed] svg{transform:rotate(-90deg)}
+.chatbot-app .contact-extra-title{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.chatbot-app .contact-extra-mark{width:14px;height:14px;flex:none;color:var(--success)}
+.chatbot-app .contact-extra > svg{width:14px;height:14px;margin-left:auto;transition:transform .15s}
+.chatbot-app .contact-extra[data-state=closed] > svg{transform:rotate(-90deg)}
 .chatbot-app .contact-extra-body{display:grid;gap:14px;margin-top:16px}
 .chatbot-app .contact-section .contact-phone{font-size:12px;font-weight:600;color:var(--foreground)}
 .chatbot-app .contact-section a{color:#6F02FD;font-weight:700}
@@ -169,6 +171,7 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .chat-identity strong{font-size:13px;font-weight:600;color:var(--foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
 .chatbot-app .contact-deal{width:100%;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--background);padding:0 10px;font-size:13px}
 .chatbot-app .contact-note{white-space:pre-wrap;color:var(--foreground);font-size:12px}
+.chatbot-app .contact-section p.contact-note-count{margin:6px 0 0;text-align:right;line-height:1.2}
 .chatbot-app .contact-section:has(.contact-stage) h3{margin-bottom:8px}
 .chatbot-app select.contact-stage{height:32px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:12px;font-weight:500;line-height:32px;appearance:none}
 .chatbot-app select.contact-stage:focus{outline:none;border-color:#6F02FD}

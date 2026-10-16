@@ -208,10 +208,33 @@ function includesTerm(text: string, content: string) {
   return needles.some((needle) => haystack.includes(needle));
 }
 
-function waitMinutes(content: string) {
-  const value = Number(content.match(/\d+/)?.[0] ?? "1");
-  if (!Number.isFinite(value)) return 1;
-  return Math.min(1440, Math.max(1, Math.trunc(value)));
+export type WaitUnit = "segundos" | "minutos" | "horas";
+const waitLimits: Record<WaitUnit, number> = { segundos: 86400, minutos: 1440, horas: 24 };
+
+export function waitSetting(content: string): { amount: number; unit: WaitUnit } {
+  const clean = content.trim().toLocaleLowerCase("pt-BR");
+  const raw = Number(clean.match(/\d+/)?.[0] ?? "1");
+  const unit: WaitUnit = /hora|\d\s*h\b/.test(clean) ? "horas" : /seg|\d\s*s\b/.test(clean) ? "segundos" : "minutos";
+  const amount = Number.isFinite(raw) ? Math.min(waitLimits[unit], Math.max(1, Math.trunc(raw))) : 1;
+  return { amount, unit };
+}
+
+export function waitContent(amount: number, unit: WaitUnit) {
+  const setting = waitSetting(`${Number.isFinite(amount) ? amount : 1} ${unit}`);
+  return `${setting.amount} ${setting.unit}`;
+}
+
+export function waitMilliseconds(content: string) {
+  const setting = waitSetting(content);
+  if (setting.unit === "segundos") return setting.amount * 1000;
+  if (setting.unit === "horas") return setting.amount * 3_600_000;
+  return setting.amount * 60_000;
+}
+
+export function waitPreviewLabel(content: string) {
+  const setting = waitSetting(content);
+  const unit = setting.unit === "segundos" ? "s" : setting.unit === "horas" ? "h" : "min";
+  return `Aguarda ${setting.amount} ${unit} antes de continuar.`;
 }
 
 function outgoing(graph: FlowGraph, id: string) {
@@ -337,7 +360,7 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
     if (node.label === "Tempo de espera") {
       return {
         actions,
-        run: { flowId: flow.id, nodeId: node.id, status: "delay", waitUntil: input.at + waitMinutes(content) * 60_000, lastAnswer },
+        run: { flowId: flow.id, nodeId: node.id, status: "delay", waitUntil: input.at + waitMilliseconds(content), lastAnswer },
       };
     }
     if (node.label === "Condição se / senão") {
@@ -388,8 +411,8 @@ export function previewFlowTurns(graph: FlowGraph, messages: string[], outsideHo
     run = step.run;
     const lines = step.actions.map(describeFlowAction).filter(Boolean);
     if (run?.status === "delay") {
-      const minutes = Math.max(1, Math.round((run.waitUntil - at) / 60_000));
-      lines.push(`Aguarda ${minutes} min antes de continuar.`);
+      const waiting = nodeById(flow.graph, run.nodeId);
+      lines.push(waitPreviewLabel(waiting?.content ?? ""));
     }
     if (!lines.length) lines.push("O fluxo não enviou mensagem nesta etapa.");
     for (const line of lines) turns.push({ from: "bot", text: line });

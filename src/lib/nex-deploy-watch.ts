@@ -1,16 +1,16 @@
 export const NEX_DEPLOY_WATCH_STYLE = `
-#nex-deploy-overlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(16,6,40,.9);backdrop-filter:blur(6px)}
+#nex-deploy-overlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(4,18,28,.9);backdrop-filter:blur(6px)}
 #nex-deploy-overlay[hidden]{display:none!important}
-.nex-deploy-overlay-card{max-width:22rem;width:100%;padding:28px 24px 24px;border-radius:18px;border:1px solid rgba(111,2,253,.55);background:linear-gradient(165deg,#241043 0%,#14082a 100%);color:#f5f3ff;text-align:center;box-shadow:0 24px 48px rgba(16,6,40,.55);font-family:Manrope,system-ui,sans-serif;transition:border-color .35s ease,box-shadow .35s ease}
-.nex-deploy-overlay-card.is-stabilizing{border-color:#00eafd;box-shadow:0 24px 48px rgba(16,6,40,.55),0 0 32px rgba(0,234,253,.4)}
+.nex-deploy-overlay-card{max-width:22rem;width:100%;padding:28px 24px 24px;border-radius:18px;border:1px solid rgba(0,234,253,.45);background:linear-gradient(165deg,#0c2433 0%,#071820 100%);color:#f3fdff;text-align:center;box-shadow:0 24px 48px rgba(4,18,28,.55);font-family:Manrope,system-ui,sans-serif;transition:border-color .35s ease,box-shadow .35s ease}
+.nex-deploy-overlay-card.is-stabilizing{border-color:#00eafd;box-shadow:0 24px 48px rgba(4,18,28,.55),0 0 32px rgba(0,234,253,.4)}
 .nex-deploy-visual{margin-bottom:18px}
 .nex-deploy-spinner{width:56px;height:56px;margin:0 auto 16px;border-radius:50%;border:2px solid rgba(0,234,253,.28);border-top-color:#00eafd;animation:nex-deploy-orbit 1.2s linear infinite}
 .nex-deploy-progress-track{height:4px;border-radius:999px;background:rgba(0,234,253,.22);overflow:hidden;margin:0 auto;max-width:180px}
 .nex-deploy-progress-bar{height:100%;width:42%;border-radius:inherit;background:linear-gradient(90deg,#00b8d4,#00eafd,#7af6ff);background-size:200% 100%;animation:nex-deploy-progress-slide 1.35s ease-in-out infinite}
 .nex-deploy-overlay-card.is-stabilizing .nex-deploy-progress-bar{width:100%;animation:nex-deploy-progress-fill .9s ease-out forwards}
 .nex-deploy-overlay-card.is-complete .nex-deploy-spinner{border-top-color:#00eafd;animation:none}
-.nex-deploy-title{margin:0 0 12px;font-family:Sora,Manrope,sans-serif;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#b794ff}
-.nex-deploy-overlay-card p{margin:0 0 10px;color:#ddd6fe;line-height:1.55;font-size:.92rem}
+.nex-deploy-title{margin:0 0 12px;font-family:Sora,Manrope,sans-serif;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#00eafd}
+.nex-deploy-overlay-card p{margin:0 0 10px;color:#d7f6fb;line-height:1.55;font-size:.92rem}
 .nex-deploy-overlay-accent{margin-bottom:0!important;color:#00eafd!important;font-size:.88rem}
 @keyframes nex-deploy-orbit{to{transform:rotate(360deg)}}
 @keyframes nex-deploy-progress-slide{0%{transform:translateX(-120%);background-position:0% 50%}100%{transform:translateX(280%);background-position:100% 50%}}

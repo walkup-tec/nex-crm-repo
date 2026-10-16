@@ -1176,6 +1176,17 @@ export function ratingMessage(prompt: string) {
   return `${intro}\n\nResponda com o número da nota:\n${scale}`;
 }
 
+export const ratingThanksText = "Obrigado pela sua avaliação.";
+
+export function isRatingThanks(text: string) {
+  return text.trim() === ratingThanksText;
+}
+
+export function noticeMessageIds(messages: { id: string; conversationId: string }[], closedConversationIds: string[]) {
+  const closed = new Set(closedConversationIds);
+  return messages.filter((message) => message.id && !closed.has(message.conversationId)).map((message) => message.id);
+}
+
 export function ratingScore(text: string) {
   const clean = text.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
   if (!clean || clean.length > 48) return null;
@@ -1238,6 +1249,12 @@ export function waitingMinutes(since: string, now = Date.now()) {
   const start = Date.parse(since);
   if (!Number.isFinite(start)) return 0;
   return Math.max(0, Math.floor((now - start) / 60_000));
+}
+
+export function botPresenceCue(input: { text?: string; audio?: boolean }) {
+  if (input.audio) return { presence: "recording" as const, delay: 2800 };
+  const length = (input.text ?? "").trim().length;
+  return { presence: "composing" as const, delay: Math.min(5000, Math.max(1100, 700 + length * 35)) };
 }
 
 export function noticeCue(

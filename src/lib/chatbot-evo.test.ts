@@ -82,8 +82,11 @@ import {
   waitingMinutes,
   overdueQueue,
   noticeCue,
+  botPresenceCue,
   noticePlayer,
   ratingScore,
+  isRatingThanks,
+  noticeMessageIds,
   ratingAverage,
   ratingAverageLabel,
   ratingMessage,
@@ -710,6 +713,10 @@ assert.equal(ratingScore("4 — Bom"), 4);
 assert.equal(ratingScore("Excelente"), 5);
 assert.equal(ratingScore("nota 3"), 3);
 assert.equal(ratingScore("quero continuar o atendimento"), null);
+assert.equal(isRatingThanks("Obrigado pela sua avaliação."), true);
+assert.equal(isRatingThanks("Obrigado pela sua avaliação. "), true);
+assert.equal(isRatingThanks("5"), false);
+assert.deepEqual(noticeMessageIds([{ id: "nota", conversationId: "fechada" }, { id: "nova", conversationId: "aberta" }], ["fechada"]), ["nova"]);
 assert.equal(ratingScore("15"), null);
 assert.equal(ratingAverage([5, 4, 4]), 4.3);
 assert.equal(ratingAverage([]), null);
@@ -727,6 +734,11 @@ assert.equal(profileForMenus(allChatbotMenus(false), defaultChatbotProfiles()), 
 assert.equal(chatbotProfilesFromStorage({ attendant: { inbox: true } }).attendant.kanban, false);
 assert.equal(chatbotProfilesFromStorage(null).manager.inbox, true);
 assert.equal(chatbotProfileLabel("manager"), "Gerente");
+assert.equal(botPresenceCue({ audio: true }).presence, "recording");
+assert.equal(botPresenceCue({ audio: true }).delay, 2800);
+assert.equal(botPresenceCue({ text: "Oi" }).presence, "composing");
+assert.equal(botPresenceCue({ text: "Oi" }).delay, 1100);
+assert.equal(botPresenceCue({ text: "a".repeat(400) }).delay, 5000);
 assert.equal(noticeCue(null, { messages: ["m1"], queues: ["q1"] }).play, false);
 assert.equal(noticeCue({ messages: ["m1"], queues: ["q1"] }, { messages: ["m1", "m2"], queues: ["q1"] }).play, true);
 assert.equal(noticeCue({ messages: ["m1"], queues: ["q1"] }, { messages: ["m1"], queues: [] }).play, false);

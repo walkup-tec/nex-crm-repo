@@ -64,6 +64,10 @@ import {
   ratingMessage,
   ratingPrompt,
   ratingScore,
+  ratingThanksText,
+  isRatingThanks,
+  noticeMessageIds,
+  botPresenceCue,
   type ChatbotCatalogItem,
   type OverviewBoard,
   type ChatbotClientRow,
@@ -830,6 +834,7 @@ async function requestChatbotRating(organizationId: string, conversation: Record
     const connection = await table("chatbot_connections").select("instance_name, status").eq("id", cell(conversation, "connection_id")).maybeSingle();
     if (!phone || cell(connection.data, "status") !== "connected") return;
     const text = ratingMessage(cell(settings.data, "chatbot_rating_prompt"));
+    await showBotPresence(cell(connection.data, "instance_name"), phone, text);
     const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection.data, "instance_name"))}`, "POST", { number: phone, text });
     const saved = await table("chatbot_messages")
       .insert({
@@ -1172,6 +1177,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   const content = evolutionMessageContent(record);
   const text = content.mediaKind ? content.text : evolutionMessageText(record["message"]);
   if (!phone || !externalId || (!text && !content.mediaKind)) return;
+  if (isRatingThanks(text)) return;
   const organizationId = cell(connection, "organization_id");
   const group = whatsappGroupJid(phone);
   const sender = cell(record, "pushName");
@@ -1265,7 +1271,8 @@ async function thankForRating(connection: Record<string, unknown>, organizationI
     const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
     const phone = cell(contact.data, "phone");
     if (!phone) return;
-    const text = "Obrigado pela sua avaliação.";
+    const text = ratingThanksText;
+    await showBotPresence(cell(connection, "instance_name"), phone, text);
     const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
     await table("chatbot_messages")
       .insert({
@@ -1322,6 +1329,7 @@ async function noticeOfflineWaiting(connection: Record<string, unknown>, organiz
     const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
     const phone = cell(contact.data, "phone");
     if (!phone) return;
+    await showBotPresence(cell(connection, "instance_name"), phone, text);
     const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
     await table("chatbot_messages")
       .insert({
@@ -2277,14 +2285,22 @@ export async function chatbotNoticeTick(userId: string) {
   const settings = await table("organizations").select("chatbot_sound_enabled").eq("id", organizationId).maybeSingle();
   const sound = Boolean(settings.error || settings.data?.["chatbot_sound_enabled"] !== false);
   const messages = await rowsOrMissing(
-    table("chatbot_messages").select("id").eq("organization_id", organizationId).eq("direction", "in").order("created_at", { ascending: false }).limit(20),
+    table("chatbot_messages").select("id, conversation_id").eq("organization_id", organizationId).eq("direction", "in").order("created_at", { ascending: false }).limit(20),
   );
+  const conversationIds = [...new Set(messages.rows.map((row) => cell(row, "conversation_id")).filter(Boolean))];
+  const states = conversationIds.length
+    ? await rowsOrMissing(table("chatbot_conversations").select("id, status").eq("organization_id", organizationId).in("id", conversationIds))
+    : { rows: [] as Record<string, unknown>[], missing: false };
+  const closedIds = states.rows.filter((row) => cell(row, "status") === "closed").map((row) => cell(row, "id"));
   const queues = await rowsOrMissing(
     table("chatbot_conversations").select("id").eq("organization_id", organizationId).eq("status", "queue").is("assignee_id", null),
   );
   return {
     sound,
-    messageIds: messages.rows.map((row) => cell(row, "id")).filter(Boolean),
+    messageIds: noticeMessageIds(
+      messages.rows.map((row) => ({ id: cell(row, "id"), conversationId: cell(row, "conversation_id") })),
+      closedIds,
+    ),
     queueIds: queues.rows.map((row) => cell(row, "id")).filter(Boolean),
   };
 }
@@ -2678,11 +2694,22 @@ async function loadActiveFlows(organizationId: string): Promise<SavedFlow[]> {
   return loaded.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), launch: flowLaunch(row["graph"]), graph: flowGraph(row["graph"]) }));
 }
 
-async function sendFlowText(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
+async function showBotPresence(instanceName: string, number: string, text: string, audio = false) {
+  if (!instanceName || !number) return;
+  const cue = botPresenceCue({ text, audio });
+  try {
+    await evo(`/chat/sendPresence/${encodeURIComponent(instanceName)}`, "POST", { number, presence: cue.presence, delay: cue.delay }, cue.delay + 8000);
+  } catch {
+    return;
+  }
+}
+
+async function sendFlowText(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, skipPresence = false) {
   if (!text || cell(connection, "status") !== "connected") return;
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
   if (!phone) return;
+  if (!skipPresence) await showBotPresence(cell(connection, "instance_name"), phone, text);
   const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
   await insertFlowMessage(organizationId, conversationId, text, readMessageId(sent));
 }
@@ -2755,13 +2782,16 @@ async function sendFlowMedia(connection: Record<string, unknown>, organizationId
   const downloaded = await supabaseAdmin.storage.from(mediaBucket).download(media.path);
   if (downloaded.error || !downloaded.data) return;
   const base64 = Buffer.from(await downloaded.data.arrayBuffer()).toString("base64");
-  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  const instanceName = cell(connection, "instance_name");
+  const instance = encodeURIComponent(instanceName);
   if (media.kind === "audio") {
+    await showBotPresence(instanceName, phone, text, true);
     const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", { number: phone, audio: base64, encoding: true }, 60000);
     await insertFlowMessage(organizationId, conversationId, "[áudio]", readMessageId(sent), { kind: "audio", mime: media.mime });
     if (text) await sendFlowText(connection, organizationId, conversationId, contactId, text);
     return;
   }
+  await showBotPresence(instanceName, phone, text);
   const sent = await evo(
     `/message/sendMedia/${instance}`,
     "POST",
@@ -2877,11 +2907,13 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
   if (!phone) return;
-  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  const instanceName = cell(connection, "instance_name");
+  const instance = encodeURIComponent(instanceName);
   const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
+  await showBotPresence(instanceName, phone, text);
   const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "Menu", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
   if (!sent || isGhostButtonResponse(sent)) {
-    await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"));
+    await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
     return;
   }
   await insertFlowMessage(organizationId, conversationId, [text, ...options.map((option) => option.label)].join("\n"), readMessageId(sent));

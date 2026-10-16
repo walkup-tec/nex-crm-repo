@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, clientFlowVariableTokens, crmSaveField, fillFlowVariables, flowMedia, flowMediaLabel, flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, clientFlowVariableTokens, crmSaveField, fillFlowVariables, flowMedia, flowMediaLabel, flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -189,3 +189,24 @@ const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outs
 assert.equal(ignored.run?.nodeId, "menu");
 assert.equal(ignored.actions.length, 0);
 assert.equal(flowMenuOptions([{ id: "1", label: "  Vendas  " }, { id: "4", label: "Fora" }]).map((option) => option.label).join(","), "Vendas");
+assert.deepEqual(waitSetting("5"), { amount: 5, unit: "minutos" });
+assert.deepEqual(waitSetting("30 segundos"), { amount: 30, unit: "segundos" });
+assert.deepEqual(waitSetting("2 horas"), { amount: 2, unit: "horas" });
+assert.equal(waitMilliseconds("30 segundos"), 30_000);
+assert.equal(waitMilliseconds("2 horas"), 7_200_000);
+assert.equal(waitMilliseconds(""), 60_000);
+const waitFlow: SavedFlow = {
+  id: "espera",
+  name: "Espera",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      { id: "w", label: "Tempo de espera", kind: "Lógica", content: "45 segundos" },
+    ],
+    edges: [{ source: "t", target: "w" }],
+  },
+};
+const waited = stepFlow(waitFlow, null, { text: "oi", at: noon, outsideHours: false });
+assert.equal(waited.run?.status, "delay");
+assert.equal(waited.run?.waitUntil, noon + 45_000);
+assert.equal(previewFlowTurns(waitFlow.graph, ["oi"], false, noon).turns.find((turn) => turn.from === "bot")?.text, "Aguarda 45 s antes de continuar.");

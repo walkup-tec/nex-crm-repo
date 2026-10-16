@@ -38,7 +38,50 @@ export function flowMediaLabel(kind: FlowMediaKind) {
   if (kind === "audio") return "Áudio";
   return "Imagem";
 }
-export type FlowEdge = { source: string; target: string };
+export type FlowHoursHandle = "sim" | "nao";
+export type FlowEdge = { source: string; target: string; sourceHandle?: FlowHoursHandle };
+
+export const businessDayNames = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"] as const;
+export type BusinessDay = { open: boolean; start: string; end: string };
+export type BusinessHours = { timeZone: string; days: BusinessDay[] };
+
+export function defaultBusinessHours(): BusinessHours {
+  return {
+    timeZone: "America/Sao_Paulo",
+    days: businessDayNames.map((_, index) => ({ open: index < 5, start: "09:00", end: "18:00" })),
+  };
+}
+
+function clockMinutes(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+export function businessHours(value: unknown): BusinessHours {
+  const fallback = defaultBusinessHours();
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const days = Array.isArray(row["days"]) ? row["days"] : [];
+  const timeZone = typeof row["timeZone"] === "string" && row["timeZone"].trim() ? row["timeZone"].trim() : fallback.timeZone;
+  return {
+    timeZone,
+    days: fallback.days.map((day, index) => {
+      const item = days[index];
+      if (!item || typeof item !== "object") return day;
+      const record = item as Record<string, unknown>;
+      const start = typeof record["start"] === "string" && clockMinutes(record["start"]) != null ? record["start"] : day.start;
+      const end = typeof record["end"] === "string" && clockMinutes(record["end"]) != null ? record["end"] : day.end;
+      return { open: record["open"] === true, start, end };
+    }),
+  };
+}
+
+export function hoursHandle(value: unknown): FlowHoursHandle | undefined {
+  return value === "sim" || value === "nao" ? value : undefined;
+}
 export type FlowGraph = { nodes: FlowNode[]; edges: FlowEdge[] };
 export type FlowRun = { flowId: string; nodeId: string; status: "waiting" | "delay" | "done"; waitUntil: number; lastAnswer: string };
 export const crmSaveFields = [
@@ -73,9 +116,11 @@ export type SavedFlow = { id: string; name: string; graph: FlowGraph };
 
 const emptyStep: FlowStep = { actions: [], run: null };
 
-export function outsideBusinessHours(at: number, timeZone = "America/Sao_Paulo") {
+const weekdayIndex: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
+export function outsideBusinessHours(at: number, hours: BusinessHours = defaultBusinessHours()) {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
+    timeZone: hours.timeZone || "America/Sao_Paulo",
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
@@ -84,9 +129,13 @@ export function outsideBusinessHours(at: number, timeZone = "America/Sao_Paulo")
   const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
   const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
   const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-  if (weekday === "Sat" || weekday === "Sun") return true;
+  const day = hours.days[weekdayIndex[weekday] ?? -1];
+  if (!day?.open) return true;
+  const start = clockMinutes(day.start);
+  const end = clockMinutes(day.end);
+  if (start == null || end == null || end <= start) return true;
   const clock = hour * 60 + minute;
-  return clock < 9 * 60 || clock >= 18 * 60;
+  return clock < start || clock >= end;
 }
 
 function terms(content: string) {
@@ -133,23 +182,17 @@ export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHou
   );
   if (keyword && (!input.run || includesTerm(input.text, triggers(keyword.graph).find((node) => node.label === "Palavra-chave")?.content ?? ""))) return keyword;
   if (input.run?.status === "done") return null;
-  if (input.outsideHours) {
-    const closed = flows.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente"));
-    if (closed) return closed;
-  }
-  return flows.find((flow) => triggers(flow.graph).some((node) => node.label === "Mensagem recebida")) ?? null;
+  const received = flows.find((flow) => triggers(flow.graph).some((node) => node.label === "Mensagem recebida"));
+  if (received) return received;
+  return flows.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;
 }
 
-function startNode(graph: FlowGraph, input: { text: string; outsideHours: boolean; manual: boolean }) {
+function startNode(graph: FlowGraph, input: { text: string; manual: boolean }) {
   const roots = triggers(graph);
   if (input.manual) return roots[0];
   const keyword = roots.find((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content));
   if (keyword) return keyword;
-  if (input.outsideHours) {
-    const closed = roots.find((node) => node.label === "Fora do expediente");
-    if (closed) return closed;
-  }
-  return roots.find((node) => node.label === "Mensagem recebida");
+  return roots.find((node) => node.label === "Mensagem recebida") ?? roots.find((node) => node.label === "Fora do expediente");
 }
 
 export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: string; at: number; outsideHours: boolean; manual?: boolean }): FlowStep {
@@ -166,12 +209,25 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
     if (!keyword) return { actions: [], run };
     return walk(flow, outgoing(flow.graph, keyword.id), input.text.trim() || run.lastAnswer, input);
   }
-  const trigger = startNode(flow.graph, { text: input.text, outsideHours: input.outsideHours, manual });
+  const trigger = startNode(flow.graph, { text: input.text, manual });
   if (!trigger) return emptyStep;
+  if (trigger.label === "Fora do expediente") {
+    const target = hoursTarget(flow.graph, trigger.id, input.outsideHours);
+    return walk(flow, target ? [target] : [], "", input);
+  }
   return walk(flow, outgoing(flow.graph, trigger.id), "", input);
 }
 
-function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { text: string; at: number }): FlowStep {
+function hoursTarget(graph: FlowGraph, id: string, outside: boolean) {
+  const edges = graph.edges.filter((edge) => edge.source === id);
+  const handle = outside ? "sim" : "nao";
+  const tagged = edges.find((edge) => edge.sourceHandle === handle);
+  if (tagged) return tagged.target;
+  if (edges.some((edge) => edge.sourceHandle === "sim" || edge.sourceHandle === "nao")) return "";
+  return outside ? (edges[0]?.target ?? "") : (edges[1]?.target ?? "");
+}
+
+function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { text: string; at: number; outsideHours: boolean }): FlowStep {
   const actions: FlowAction[] = [];
   const pending = [...start];
   const seen = new Set<string>();
@@ -211,6 +267,11 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
       const next = outgoing(flow.graph, node.id);
       const matched = content ? includesTerm(lastAnswer || input.text, content) : Boolean((lastAnswer || input.text).trim());
       const target = matched ? next[0] : next[1];
+      if (target) pending.unshift(target);
+      continue;
+    }
+    if (node.label === "Fora do expediente") {
+      const target = hoursTarget(flow.graph, node.id, input.outsideHours);
       if (target) pending.unshift(target);
       continue;
     }

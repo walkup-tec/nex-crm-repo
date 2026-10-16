@@ -412,6 +412,24 @@ export const saveChatbotAutomationFn = createServerFn({ method: "POST" })
     return guard(() => saveChatbotAutomation(context.userId, data));
   });
 
+export const chatbotBusinessHoursFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { chatbotBusinessHoursSettings } = await import("@/server/chatbot.server");
+    return guard(() => chatbotBusinessHoursSettings(context.userId));
+  });
+
+export const saveChatbotBusinessHoursFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { timeZone?: string; days?: { open?: boolean; start?: string; end?: string }[] }) => ({
+    timeZone: String(data.timeZone ?? ""),
+    days: Array.isArray(data.days) ? data.days.slice(0, 7).map((day) => ({ open: day?.open === true, start: String(day?.start ?? ""), end: String(day?.end ?? "") })) : [],
+  }))
+  .handler(async ({ context, data }) => {
+    const { saveChatbotBusinessHours } = await import("@/server/chatbot.server");
+    return guard(() => saveChatbotBusinessHours(context.userId, { timeZone: data.timeZone, days: data.days }));
+  });
+
 export const chatbotAttendanceSettingsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

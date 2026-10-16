@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { chooseFlow, flowMedia, outsideBusinessHours, stepFlow, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { businessHours, chooseFlow, defaultBusinessHours, flowMedia, hoursHandle, outsideBusinessHours, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -147,6 +147,9 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_quick_replies/i.test(message)) {
     return "A migração das respostas rápidas ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_business_hours/i.test(message)) {
+    return "A migração do expediente ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_flows|chatbot_flow_runs|bot_note/i.test(message)) {
     return "A migração dos bots ainda não foi aplicada no Supabase.";
@@ -2365,6 +2368,22 @@ export async function saveChatbotAutomation(userId: string, input: { reactivatio
   return { reactivationMinutes: minutes, offlineMessageEnabled: input.offlineMessageEnabled, offlineMessage: text };
 }
 
+export async function chatbotBusinessHoursSettings(userId: string) {
+  const { organizationId } = await membership(userId, "settings");
+  const settings = await table("organizations").select("chatbot_business_hours").eq("id", organizationId).maybeSingle();
+  if (settings.error && !/chatbot_business_hours|schema cache|does not exist/i.test(settings.error.message)) fail(schemaMessage(settings.error.message));
+  return businessHours(settings.error ? null : settings.data?.["chatbot_business_hours"]);
+}
+
+export async function saveChatbotBusinessHours(userId: string, input: BusinessHours) {
+  const { organizationId, admin } = await membership(userId, "settings");
+  if (!admin) fail("Somente o administrador da empresa pode alterar o expediente.");
+  const hours = businessHours(input);
+  const updated = await table("organizations").update({ chatbot_business_hours: hours }).eq("id", organizationId).select("id").maybeSingle();
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  return hours;
+}
+
 export async function saveChatbotNotice(userId: string, input: { sound: boolean; offlineAlert: boolean }) {
   const { organizationId, admin } = await membership(userId, "settings");
   if (!admin) fail("Somente o administrador da empresa pode alterar as notificações.");
@@ -2600,7 +2619,8 @@ function flowGraph(value: unknown) {
       const source = cell(row, "source");
       const target = cell(row, "target");
       if (!source || !target) return [];
-      return [{ source, target }];
+      const handle = hoursHandle(row["sourceHandle"]);
+      return [{ source, target, ...(handle ? { sourceHandle: handle } : {}) }];
     }),
   };
 }
@@ -2623,7 +2643,8 @@ function editorGraph(value: unknown) {
       const source = cell(row, "source");
       const target = cell(row, "target");
       if (!source || !target) return [];
-      return [{ id: cell(row, "id") || `${source}-${target}`, source, target }];
+      const handle = hoursHandle(row["sourceHandle"]);
+      return [{ id: cell(row, "id") || `${source}-${target}`, source, target, ...(handle ? { sourceHandle: handle } : {}) }];
     }),
   };
 }
@@ -2870,13 +2891,20 @@ async function saveFlowRun(organizationId: string, conversationId: string, run: 
   await table("chatbot_flow_runs").insert(patch).select("conversation_id").maybeSingle();
 }
 
+async function organizationBusinessHours(organizationId: string) {
+  const settings = await table("organizations").select("chatbot_business_hours").eq("id", organizationId).maybeSingle();
+  if (settings.error) return defaultBusinessHours();
+  return businessHours(settings.data?.["chatbot_business_hours"]);
+}
+
 async function executeConversationFlow(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
   const flows = await loadActiveFlows(organizationId);
   if (!flows.length) return false;
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
   if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
   const run = readFlowRun(stored.data);
-  const outsideHours = outsideBusinessHours(Date.now());
+  const hours = await organizationBusinessHours(organizationId);
+  const outsideHours = outsideBusinessHours(Date.now(), hours);
   const chosen = chooseFlow(flows, { text, outsideHours, run, manualFlowId });
   if (!chosen) return { sent: false, owned: false };
   const step = stepFlow(chosen, manualFlowId ? null : run && run.flowId === chosen.id ? run : null, { text, at: Date.now(), outsideHours, manual: Boolean(manualFlowId) });

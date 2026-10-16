@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, crmSaveField, flowMedia, flowMediaLabel, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, crmSaveField, flowMedia, flowMediaLabel, businessHours, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -24,6 +24,20 @@ const night = Date.parse("2026-10-16T00:00:00.000Z");
 assert.equal(outsideBusinessHours(noon), false);
 assert.equal(outsideBusinessHours(night), true);
 assert.equal(outsideBusinessHours(Date.parse("2026-10-17T15:00:00.000Z")), true);
+const saturdayOpen = businessHours({
+  timeZone: "America/Sao_Paulo",
+  days: [
+    { open: true, start: "09:00", end: "18:00" },
+    { open: true, start: "09:00", end: "18:00" },
+    { open: true, start: "09:00", end: "18:00" },
+    { open: true, start: "09:00", end: "18:00" },
+    { open: true, start: "09:00", end: "18:00" },
+    { open: true, start: "10:00", end: "14:00" },
+    { open: false, start: "09:00", end: "18:00" },
+  ],
+});
+assert.equal(outsideBusinessHours(Date.parse("2026-10-17T15:00:00.000Z"), saturdayOpen), false);
+assert.equal(outsideBusinessHours(Date.parse("2026-10-17T18:00:00.000Z"), saturdayOpen), true);
 
 const started = stepFlow(flow, null, { text: "oi", at: noon, outsideHours: false });
 assert.deepEqual(started.actions.map((item) => item.type), ["send", "send"]);
@@ -85,19 +99,26 @@ assert.equal(chooseFlow([flow, keyword], { text: "qual o preço?", outsideHours:
 const priced = stepFlow(keyword, null, { text: "qual o preço?", at: noon, outsideHours: false });
 assert.equal(priced.actions[0]?.type, "send");
 
-const closed: SavedFlow = {
-  id: "closed",
-  name: "Fora",
+const hoursFlow: SavedFlow = {
+  id: "hours",
+  name: "Expediente",
   graph: {
     nodes: [
       { id: "h", label: "Fora do expediente", kind: "Gatilho", content: "" },
-      { id: "s", label: "Enviar mensagem", kind: "Ação", content: "Voltamos no horário comercial." },
+      { id: "yes", label: "Enviar mensagem", kind: "Ação", content: "Estamos fechados." },
+      { id: "no", label: "Enviar mensagem", kind: "Ação", content: "Estamos abertos." },
     ],
-    edges: [{ source: "h", target: "s" }],
+    edges: [
+      { source: "h", target: "yes", sourceHandle: "sim" },
+      { source: "h", target: "no", sourceHandle: "nao" },
+    ],
   },
 };
-assert.equal(chooseFlow([flow, closed], { text: "oi", outsideHours: true, run: null })?.id, "closed");
-assert.equal(chooseFlow([flow, closed], { text: "oi", outsideHours: false, run: null })?.id, "flow");
+assert.equal(chooseFlow([flow, hoursFlow], { text: "oi", outsideHours: true, run: null })?.id, "flow");
+const closedPath = stepFlow(hoursFlow, null, { text: "oi", at: night, outsideHours: true });
+assert.equal(closedPath.actions[0]?.type === "send" ? closedPath.actions[0].text : "", "Estamos fechados.");
+const openPath = stepFlow(hoursFlow, null, { text: "oi", at: noon, outsideHours: false });
+assert.equal(openPath.actions[0]?.type === "send" ? openPath.actions[0].text : "", "Estamos abertos.");
 
 const photo = { kind: "image" as const, name: "foto.jpg", mime: "image/jpeg", path: "11111111-1111-4111-8111-111111111111/flows/22222222-2222-4222-8222-222222222222.jpg" };
 const mediaFlow: SavedFlow = {

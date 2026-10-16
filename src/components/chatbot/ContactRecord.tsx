@@ -1,7 +1,8 @@
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   chatbotContactProfileFn,
   registerChatbotClientFn,
@@ -110,6 +111,7 @@ export function ContactRecord({
   const [deal, setDeal] = useState("");
   const [documentDraft, setDocumentDraft] = useState("");
   const [rgDraft, setRgDraft] = useState("");
+  const [extraOpen, setExtraOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
@@ -117,6 +119,7 @@ export function ContactRecord({
     setProfile(null);
     setDocumentDraft("");
     setRgDraft("");
+    setExtraOpen(false);
     setError("");
     if (!contactId) return;
     let active = true;
@@ -260,7 +263,6 @@ export function ContactRecord({
 
   return (
     <aside className="contact-panel" aria-label="Cadastro do contato">
-      <div className="contact-panel-title">Contato</div>
       {!contactId ? (
         <div className="contact-placeholder">
           <strong>Nenhum contato selecionado</strong>
@@ -307,31 +309,43 @@ export function ContactRecord({
             <h3>WhatsApp</h3>
             <p className="contact-phone">{clientPhoneLabel(profile.phone) || profile.phone}</p>
           </section>
-          {profile.showDocument ? (
-            <section className="contact-section">
-              <h3>CPF/CNPJ</h3>
-              <input
-                className="contact-deal"
-                inputMode="numeric"
-                aria-label="CPF ou CNPJ"
-                placeholder="000.000.000-00"
-                value={documentDraft}
-                onChange={(event) => setDocumentDraft(applyMask("doc", event.target.value))}
-                onBlur={() => void saveIdentity("document")}
-              />
-            </section>
-          ) : null}
-          {profile.showRg ? (
-            <section className="contact-section">
-              <h3>RG</h3>
-              <input
-                className="contact-deal"
-                aria-label="RG"
-                placeholder="00.000.000-0"
-                value={rgDraft}
-                onChange={(event) => setRgDraft(applyMask("rg", event.target.value))}
-                onBlur={() => void saveIdentity("rg")}
-              />
+          {profile.showDocument || profile.showRg ? (
+            <section className={`contact-section${extraOpen ? "" : " is-collapsed"}`}>
+              <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
+                <CollapsibleTrigger className="contact-extra">
+                  Outros dados
+                  <ChevronDown />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="contact-extra-body">
+                  {profile.showDocument ? (
+                    <label>
+                      CPF/CNPJ
+                      <input
+                        className="contact-deal"
+                        inputMode="numeric"
+                        aria-label="CPF ou CNPJ"
+                        placeholder="000.000.000-00"
+                        value={documentDraft}
+                        onChange={(event) => setDocumentDraft(applyMask("doc", event.target.value))}
+                        onBlur={() => void saveIdentity("document")}
+                      />
+                    </label>
+                  ) : null}
+                  {profile.showRg ? (
+                    <label>
+                      RG
+                      <input
+                        className="contact-deal"
+                        aria-label="RG"
+                        placeholder="00.000.000-0"
+                        value={rgDraft}
+                        onChange={(event) => setRgDraft(applyMask("rg", event.target.value))}
+                        onBlur={() => void saveIdentity("rg")}
+                      />
+                    </label>
+                  ) : null}
+                </CollapsibleContent>
+              </Collapsible>
             </section>
           ) : null}
           <section className="contact-section">

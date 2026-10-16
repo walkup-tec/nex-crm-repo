@@ -269,8 +269,10 @@ export function LiveInbox() {
   const inFlight = useRef(false);
   const loadAgain = useRef(false);
   const historyRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
   const sending = useRef(false);
+  const lastSent = useRef("");
   selectedRef.current = selected;
 
   async function load() {
@@ -569,20 +571,23 @@ export function LiveInbox() {
 
   async function send(text = draft) {
     const clean = text.trim();
-    if (!selected || !clean || sending.current) return;
+    if (!selected || !clean) return;
+    if (sending.current && lastSent.current === clean) return;
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
       conversationId: selected,
       text: clean,
       createdAt: new Date().toISOString(),
     };
+    lastSent.current = clean;
     setOutgoing((current) => [...current, preview]);
     setDraft("");
     sending.current = true;
-    setPending(true);
+    composerRef.current?.focus();
     const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
     sending.current = false;
-    setPending(false);
+    if (lastSent.current === clean) lastSent.current = "";
+    composerRef.current?.focus();
     if (!result.ok) {
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
       setDraft(clean);
@@ -749,8 +754,8 @@ export function LiveInbox() {
                 }}
               >
                 <textarea
+                  ref={composerRef}
                   value={draft}
-                  disabled={pending}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.nativeEvent.isComposing) return;

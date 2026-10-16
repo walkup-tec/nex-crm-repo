@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, crmSaveField, flowMedia, flowMediaLabel, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, clientFlowVariableTokens, crmSaveField, fillFlowVariables, flowMedia, flowMediaLabel, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -61,6 +61,10 @@ assert.equal(documentDigits("123"), "");
 assert.equal(rgDigits("12.345.678-9"), "123456789");
 assert.equal(rgDigits("12.345.678-X"), "12345678X");
 assert.equal(rgDigits("123"), "");
+assert.deepEqual(clientFlowVariableTokens({ document: false, rg: true }), ["Nome", "WhatsApp", "RG"]);
+assert.equal(insertFlowVariable("Olá", "Nome"), "Olá {{Nome}}");
+assert.equal(fillFlowVariables("Olá {{Nome}}, seu WhatsApp é {{whatsapp}}.", { Nome: "Ana", WhatsApp: "(11) 99999-8888" }), "Olá Ana, seu WhatsApp é (11) 99999-8888.");
+assert.equal(fillFlowVariables("Documento {{CPF/CNPJ}}", { Nome: "Ana" }), "Documento {{CPF/CNPJ}}");
 assert.deepEqual(answered.actions, [
   { type: "save", field: "note", text: "Marcelo" },
   { type: "pause" },

@@ -104,6 +104,26 @@ export function crmSaveLabel(content: string) {
   return crmSaveFields.find((field) => field.id === id)?.label ?? "Observação";
 }
 
+export function clientFlowVariableTokens(flags: { document: boolean; rg: boolean }) {
+  return ["Nome", "WhatsApp", ...(flags.document ? ["CPF/CNPJ"] : []), ...(flags.rg ? ["RG"] : [])];
+}
+
+export function insertFlowVariable(content: string, token: string) {
+  const piece = `{{${token}}}`;
+  if (!content) return piece;
+  return /\s$/.test(content) ? `${content}${piece}` : `${content} ${piece}`;
+}
+
+export function fillFlowVariables(text: string, values: Record<string, string>) {
+  const keys = Object.keys(values);
+  return text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (match, raw: string) => {
+    const name = raw.trim().toLocaleLowerCase("pt-BR");
+    const key = keys.find((item) => item.toLocaleLowerCase("pt-BR") === name);
+    if (!key) return match;
+    return values[key] ?? "";
+  });
+}
+
 export type FlowAction =
   | { type: "send"; text: string; media?: FlowMedia }
   | { type: "tag"; name: string }

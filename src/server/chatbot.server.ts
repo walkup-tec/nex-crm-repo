@@ -1,11 +1,11 @@
-import { documentDigits, rgDigits } from "@/lib/masks";
+import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, flowMedia, hoursHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowMedia, hoursHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -39,6 +39,7 @@ import {
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
+  clientPhoneLabel,
   catalogName,
   quickReplyText,
   negotiatedCents,
@@ -2852,11 +2853,25 @@ async function createFlowDeal(organizationId: string, contactId: string, text: s
   await appendFlowNote(organizationId, contactId, `Oportunidade: ${text}`);
 }
 
+async function flowVariableValues(organizationId: string, contactId: string) {
+  const contact = await table("chatbot_contacts").select("name, phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const phone = cell(contact.data, "phone");
+  const identity = await contactIdentity(organizationId, contactId).catch(() => null);
+  return {
+    Nome: cell(contact.data, "name"),
+    WhatsApp: clientPhoneLabel(phone),
+    "CPF/CNPJ": identity?.showDocument && identity.document ? applyMask("doc", identity.document) : "",
+    RG: identity?.showRg && identity.rg ? applyMask("rg", identity.rg) : "",
+  };
+}
+
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {
+  const values = actions.some((action) => action.type === "send") ? await flowVariableValues(organizationId, contactId) : {};
   for (const action of actions) {
     if (action.type === "send") {
-      if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, action.text, action.media);
-      else await sendFlowText(connection, organizationId, conversationId, contactId, action.text);
+      const text = fillFlowVariables(action.text, values);
+      if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, text, action.media);
+      else await sendFlowText(connection, organizationId, conversationId, contactId, text);
     }
     if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
     if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);

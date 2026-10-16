@@ -1847,6 +1847,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
   const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
   const listedStages = await listChatbotStages(userId);
   const stageRow = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const avatarRow = await table("chatbot_contacts").select("avatar_url").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const identity = await contactIdentity(organizationId, contactId);
   const dealRow = await table("chatbot_contacts").select("negotiated_cents, client_owner_id, bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   let dealReady = true;
@@ -1899,6 +1900,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     id: cell(contact, "id"),
     name: cell(contact, "name"),
     phone: cell(contact, "phone"),
+    avatarUrl: avatarRow.error ? "" : cell(avatarRow.data, "avatar_url"),
     catalogReady: !tags.missing && !products.missing && !tagLinks.missing && !productLinks.missing,
     stageReady,
     stage: stageReady ? stage : "",

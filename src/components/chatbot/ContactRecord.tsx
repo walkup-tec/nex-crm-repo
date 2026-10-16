@@ -93,6 +93,18 @@ function SavedMediaName({
   );
 }
 
+function ProfileAvatar({ name, avatarUrl }: { name: string; avatarUrl: string }) {
+  const [hidden, setHidden] = useState(false);
+  const initials = (name || "?").slice(0, 2).toUpperCase();
+  useEffect(() => setHidden(false), [avatarUrl]);
+  if (!avatarUrl || hidden) return <span className="avatar">{initials}</span>;
+  return (
+    <span className="avatar">
+      <img src={avatarUrl} alt="" onError={() => setHidden(true)} />
+    </span>
+  );
+}
+
 export function ContactRecord({
   contactId,
   tick,
@@ -275,8 +287,8 @@ export function ContactRecord({
       ) : (
         <>
           {error ? <p className="contact-error">{error}</p> : null}
-          <section className="contact-section">
-            <h3>Nome</h3>
+          <section className="contact-section contact-identity">
+            <ProfileAvatar name={profile.name} avatarUrl={profile.avatarUrl} />
             {editing ? (
               <div className="contact-name-edit">
                 <input

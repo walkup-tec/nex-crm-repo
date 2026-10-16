@@ -117,6 +117,8 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .internal-note time{display:block;margin-top:6px;text-align:right;font-size:10px;color:var(--muted-foreground)}
 .chatbot-app .note-count{margin:-8px 0 0;text-align:right;font-size:11px;color:var(--muted-foreground)}
 .chatbot-app .contact-panel{display:flex;flex-direction:column;min-height:0;overflow:auto;background:var(--card)}
+.chatbot-app .contact-identity{display:flex;align-items:center;gap:10px}
+.chatbot-app .contact-identity .contact-name,.chatbot-app .contact-identity .contact-name-edit{flex:1;min-width:0;width:auto}
 .chatbot-app .contact-name{display:block;width:100%;border:0;background:transparent;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:700;color:var(--foreground);cursor:pointer}
 .chatbot-app .contact-name-edit{display:flex;align-items:center;gap:6px}
 .chatbot-app .contact-name-edit input{height:34px;font-size:12px}

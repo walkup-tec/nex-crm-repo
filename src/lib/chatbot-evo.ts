@@ -1028,6 +1028,7 @@ export type ChatbotContactProfile = {
   id: string;
   name: string;
   phone: string;
+  avatarUrl: string;
   catalogReady: boolean;
   stageReady: boolean;
   stage: string;

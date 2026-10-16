@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, flowMedia, hoursHandle, outsideBusinessHours, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { businessHours, chooseFlow, defaultBusinessHours, flowMedia, hoursHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -2960,7 +2960,7 @@ export async function listChatbotFlows(userId: string) {
   );
   return loaded.map((row) => {
     const graph = editorGraph(row["graph"]);
-    return { id: cell(row, "id"), name: cell(row, "name"), active: row["active"] === true, nodes: graph.nodes, edges: graph.edges };
+    return { id: cell(row, "id"), name: cell(row, "name"), active: row["active"] === true, updatedAt: cell(row, "updated_at"), nodes: graph.nodes, edges: graph.edges };
   });
 }
 
@@ -3007,6 +3007,26 @@ export async function saveChatbotFlow(
   if (inserted.error) fail(schemaMessage(inserted.error.message));
   if (!inserted.data) fail("Não foi possível gravar o bot.");
   return { id: cell(inserted.data, "id"), active: inserted.data["active"] === true };
+}
+
+export async function validateChatbotFlow(userId: string, input: { name: string; nodes: unknown; edges: unknown }) {
+  await membership(userId, "settings");
+  const name = catalogName(input.name, 80);
+  if (!name) fail("O bot precisa de um nome com 2 a 80 caracteres.");
+  assertRunnableFlow(editorGraph(input));
+  return { valid: true as const };
+}
+
+export async function previewChatbotFlow(userId: string, input: { name: string; nodes: unknown; edges: unknown; messages: string[] }) {
+  const { organizationId } = await membership(userId, "settings");
+  const name = catalogName(input.name, 80);
+  if (!name) fail("O bot precisa de um nome com 2 a 80 caracteres.");
+  assertRunnableFlow(editorGraph(input));
+  const messages = input.messages.map((item) => item.trim()).filter(Boolean).slice(0, 12);
+  if (!messages.length) fail("Escreva a mensagem do contato para testar.");
+  const hours = await organizationBusinessHours(organizationId);
+  const outsideHours = outsideBusinessHours(Date.now(), hours);
+  return { outsideHours, ...previewFlowTurns(flowGraph(input), messages, outsideHours) };
 }
 
 export async function startChatbotFlow(userId: string, conversationId: string, flowId: string) {

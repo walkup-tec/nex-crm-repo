@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, crmSaveField, flowMedia, flowMediaLabel, businessHours, outsideBusinessHours, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, crmSaveField, flowMedia, flowMediaLabel, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -119,6 +119,11 @@ const closedPath = stepFlow(hoursFlow, null, { text: "oi", at: night, outsideHou
 assert.equal(closedPath.actions[0]?.type === "send" ? closedPath.actions[0].text : "", "Estamos fechados.");
 const openPath = stepFlow(hoursFlow, null, { text: "oi", at: noon, outsideHours: false });
 assert.equal(openPath.actions[0]?.type === "send" ? openPath.actions[0].text : "", "Estamos abertos.");
+const closedPreview = previewFlowTurns(hoursFlow.graph, ["oi"], true, night);
+assert.equal(closedPreview.turns.find((turn) => turn.from === "bot")?.text, "Estamos fechados.");
+const openPreview = previewFlowTurns(hoursFlow.graph, ["oi"], false, noon);
+assert.equal(openPreview.turns.find((turn) => turn.from === "bot")?.text, "Estamos abertos.");
+assert.equal(openPreview.finished, true);
 
 const photo = { kind: "image" as const, name: "foto.jpg", mime: "image/jpeg", path: "11111111-1111-4111-8111-111111111111/flows/22222222-2222-4222-8222-222222222222.jpg" };
 const mediaFlow: SavedFlow = {

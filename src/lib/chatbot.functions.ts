@@ -582,6 +582,29 @@ export const saveChatbotFlowFn = createServerFn({ method: "POST" })
     return guard(() => saveChatbotFlow(context.userId, data));
   });
 
+const flowDraft = (data: { name?: string; nodes?: unknown; edges?: unknown; messages?: string[] }) => ({
+  name: typeof data.name === "string" ? data.name : "",
+  nodes: Array.isArray(data.nodes) ? data.nodes.slice(0, 80) : [],
+  edges: Array.isArray(data.edges) ? data.edges.slice(0, 120) : [],
+  messages: Array.isArray(data.messages) ? data.messages.filter((item) => typeof item === "string").slice(0, 12) : [],
+});
+
+export const validateChatbotFlowFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name?: string; nodes?: unknown; edges?: unknown }) => flowDraft(data))
+  .handler(async ({ context, data }) => {
+    const { validateChatbotFlow } = await import("@/server/chatbot.server");
+    return guard(() => validateChatbotFlow(context.userId, data));
+  });
+
+export const previewChatbotFlowFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name?: string; nodes?: unknown; edges?: unknown; messages?: string[] }) => flowDraft(data))
+  .handler(async ({ context, data }) => {
+    const { previewChatbotFlow } = await import("@/server/chatbot.server");
+    return guard(() => previewChatbotFlow(context.userId, data));
+  });
+
 export const saveChatbotFlowMediaFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { name: string; mime: string; base64: string }) => ({

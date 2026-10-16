@@ -282,3 +282,40 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
   actions.push({ type: "pause" });
   return { actions, run: doneRun(flow.id, start[0] ?? "", lastAnswer) };
 }
+
+export type FlowPreviewTurn = { from: "contact" | "bot"; text: string };
+
+function describeFlowAction(action: FlowAction) {
+  if (action.type === "send") {
+    const media = action.media ? flowMediaLabel(action.media.kind) : "";
+    const text = action.text.trim();
+    if (text && media) return `${media}: ${text}`;
+    return text || media;
+  }
+  if (action.type === "tag") return `Etiqueta adicionada: ${action.name}`;
+  if (action.type === "deal") return `Oportunidade criada: ${action.text}`;
+  if (action.type === "save") return `Resposta salva em ${crmSaveLabel(action.field)}: ${action.text}`;
+  if (action.type === "queue") return "Conversa encaminhada à fila.";
+  return "";
+}
+
+export function previewFlowTurns(graph: FlowGraph, messages: string[], outsideHours: boolean, at = Date.now()) {
+  const flow: SavedFlow = { id: "preview", name: "Prévia", graph };
+  let run: FlowRun | null = null;
+  const turns: FlowPreviewTurn[] = [];
+  const clean = messages.map((item) => item.trim()).filter(Boolean).slice(0, 12);
+  for (const text of clean) {
+    turns.push({ from: "contact", text });
+    const step = stepFlow(flow, run, { text, at, outsideHours });
+    run = step.run;
+    const lines = step.actions.map(describeFlowAction).filter(Boolean);
+    if (run?.status === "delay") {
+      const minutes = Math.max(1, Math.round((run.waitUntil - at) / 60_000));
+      lines.push(`Aguarda ${minutes} min antes de continuar.`);
+    }
+    if (!lines.length) lines.push("O fluxo não enviou mensagem nesta etapa.");
+    for (const line of lines) turns.push({ from: "bot", text: line });
+    if (run?.status === "done" || run?.status === "delay") break;
+  }
+  return { turns, waiting: run?.status === "waiting", finished: run?.status === "done" };
+}

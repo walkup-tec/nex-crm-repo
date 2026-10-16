@@ -508,20 +508,14 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
 export async function listChatbotChannels(userId: string) {
   const { organizationId } = await membership(userId);
   const loaded = await rows(
-    table("chatbot_connections")
-      .select("id, display_name, phone, status, instance_name")
-      .eq("organization_id", organizationId)
-      .order("display_name", { ascending: true }),
+    table("chatbot_connections").select("id, display_name, phone, status").eq("organization_id", organizationId).order("display_name", { ascending: true }),
   );
-  return Promise.all(
-    loaded.map(async (row) => {
-      const stored = cell(row, "status");
-      const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(cell(row, "instance_name"))}`, "GET").catch(() => null);
-      const observed = evolutionConnectionStatus(readState(stateBody));
-      const status = observed === "connected" ? "connected" : observed === "disconnected" ? "disconnected" : stored;
-      return { id: cell(row, "id"), name: cell(row, "display_name"), phone: cell(row, "phone"), status };
-    }),
-  );
+  return loaded.map((row) => ({
+    id: cell(row, "id"),
+    name: cell(row, "display_name"),
+    phone: cell(row, "phone"),
+    status: cell(row, "status"),
+  }));
 }
 
 export async function deleteChatbotConnection(userId: string, connectionId: string) {

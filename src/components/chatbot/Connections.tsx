@@ -116,6 +116,7 @@ export function Connections() {
 
   function applyStatus(connectionId: string, status: ChatbotConnectionStatus, error = "") {
     setRows((current) => current.map((row) => (row.id === connectionId ? { ...row, status, error } : row)));
+    window.dispatchEvent(new Event("nex-channel-status"));
   }
 
   function closeQr() {

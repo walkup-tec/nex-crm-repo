@@ -324,6 +324,7 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
       if (target == null) return { actions: [], run };
       return walk(flow, target ? [target] : [], input.text.trim(), input);
     }
+    if (waiting?.label === "Fazer pergunta" && !input.text.trim()) return { actions: [], run };
     return walk(flow, outgoing(flow.graph, run.nodeId), input.text.trim(), input);
   }
   if (run?.status === "done" && !manual) {
@@ -380,7 +381,7 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
     }
     if (node.label === "Fazer pergunta" && content) {
       actions.push({ type: "send", text: content });
-      return { actions, run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer } };
+      return { actions, run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer: "" } };
     }
     if (node.label === "Salvar resposta no CRM" && lastAnswer) actions.push({ type: "save", field: crmSaveField(content), text: lastAnswer });
     if (node.label === "Adicionar etiqueta" && content) actions.push({ type: "tag", name: content });

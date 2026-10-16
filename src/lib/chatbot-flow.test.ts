@@ -84,6 +84,14 @@ const namedGraph: FlowGraph = {
 const asked = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, null, { text: "oi", at: noon, outsideHours: false });
 const savedName = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, asked.run, { text: "Marina", at: noon + 1000, outsideHours: false });
 assert.deepEqual(savedName.actions[0], { type: "save", field: "name", text: "Marina" });
+const askedKnownName = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, null, { text: "Marcelo Mozart", at: noon, outsideHours: false });
+assert.equal(askedKnownName.run?.status, "waiting");
+assert.equal(askedKnownName.actions.some((action) => action.type === "save"), false);
+const keptWaiting = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, askedKnownName.run, { text: "", at: noon + 500, outsideHours: false });
+assert.equal(keptWaiting.run?.status, "waiting");
+assert.equal(keptWaiting.actions.length, 0);
+const answeredKnown = stepFlow({ id: "nome", name: "Nome", graph: namedGraph }, askedKnownName.run, { text: "Ana", at: noon + 1000, outsideHours: false });
+assert.deepEqual(answeredKnown.actions[0], { type: "save", field: "name", text: "Ana" });
 
 const again = stepFlow(flow, answered.run, { text: "de novo", at: noon + 2000, outsideHours: false });
 assert.deepEqual(again.actions, []);

@@ -39,6 +39,13 @@ const saturdayOpen = businessHours({
 });
 assert.equal(outsideBusinessHours(Date.parse("2026-10-17T15:00:00.000Z"), saturdayOpen), false);
 assert.equal(outsideBusinessHours(Date.parse("2026-10-17T18:00:00.000Z"), saturdayOpen), true);
+const fridayUntilMidnight = businessHours({
+  timeZone: "America/Sao_Paulo",
+  days: [0, 1, 2, 3, 4, 5, 6].map((index) => ({ open: index < 5, start: "09:00", end: index === 4 ? "00:00" : "18:00" })),
+});
+assert.equal(outsideBusinessHours(Date.parse("2026-10-16T23:14:00.000Z"), fridayUntilMidnight), false);
+assert.equal(outsideBusinessHours(Date.parse("2026-10-16T11:00:00.000Z"), fridayUntilMidnight), true);
+assert.equal(outsideBusinessHours(Date.parse("2026-10-17T02:59:00.000Z"), fridayUntilMidnight), false);
 
 const started = stepFlow(flow, null, { text: "oi", at: noon, outsideHours: false });
 assert.deepEqual(started.actions.map((item) => item.type), ["send", "send"]);

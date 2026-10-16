@@ -213,6 +213,13 @@ const emptyStep: FlowStep = { actions: [], run: null };
 
 const weekdayIndex: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
+function insideBusinessClock(clock: number, start: number, end: number) {
+  const close = end === 0 ? 24 * 60 : end;
+  if (close === start) return false;
+  if (close > start) return clock >= start && clock < close;
+  return clock >= start || clock < close;
+}
+
 export function outsideBusinessHours(at: number, hours: BusinessHours = defaultBusinessHours()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: hours.timeZone || "America/Sao_Paulo",
@@ -228,9 +235,8 @@ export function outsideBusinessHours(at: number, hours: BusinessHours = defaultB
   if (!day?.open) return true;
   const start = clockMinutes(day.start);
   const end = clockMinutes(day.end);
-  if (start == null || end == null || end <= start) return true;
-  const clock = hour * 60 + minute;
-  return clock < start || clock >= end;
+  if (start == null || end == null) return true;
+  return !insideBusinessClock(hour * 60 + minute, start, end);
 }
 
 function terms(content: string) {

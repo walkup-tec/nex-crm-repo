@@ -124,6 +124,7 @@ export function ContactRecord({
   const [documentDraft, setDocumentDraft] = useState("");
   const [rgDraft, setRgDraft] = useState("");
   const [extraOpen, setExtraOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
@@ -132,6 +133,7 @@ export function ContactRecord({
     setDocumentDraft("");
     setRgDraft("");
     setExtraOpen(false);
+    setMediaOpen(false);
     setError("");
     if (!contactId) return;
     let active = true;
@@ -445,34 +447,41 @@ export function ContactRecord({
               <p>O valor negociado ainda não está disponível.</p>
             )}
           </section>
-          <section className="contact-section">
-            <h3>Mídias salvas</h3>
-            {profile.files.length ? (
-              <ul className="contact-files">
-                {profile.files.map((file) => (
-                  <li key={file.id}>
-                    <SavedMediaName
-                      file={file}
-                      onRenamed={(fileId, name) =>
-                        setProfile((current) =>
-                          current
-                            ? { ...current, files: current.files.map((item) => (item.id === fileId ? { ...item, name } : item)) }
-                            : current,
-                        )
-                      }
-                    />
-                    <time dateTime={file.createdAt}>{messageClock(file.createdAt)}</time>
-                    {file.url ? (
-                      <a href={file.url} target="_blank" rel="noreferrer">
-                        Abrir
-                      </a>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Nenhuma mídia salva neste contato.</p>
-            )}
+          <section className={`contact-section${mediaOpen ? "" : " is-collapsed"}`}>
+            <Collapsible open={mediaOpen} onOpenChange={setMediaOpen}>
+              <CollapsibleTrigger className="contact-extra">
+                Mídias salvas
+                <ChevronDown />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="contact-extra-body">
+                {profile.files.length ? (
+                  <ul className="contact-files">
+                    {profile.files.map((file) => (
+                      <li key={file.id}>
+                        <SavedMediaName
+                          file={file}
+                          onRenamed={(fileId, name) =>
+                            setProfile((current) =>
+                              current
+                                ? { ...current, files: current.files.map((item) => (item.id === fileId ? { ...item, name } : item)) }
+                                : current,
+                            )
+                          }
+                        />
+                        <time dateTime={file.createdAt}>{messageClock(file.createdAt)}</time>
+                        {file.url ? (
+                          <a href={file.url} target="_blank" rel="noreferrer">
+                            Abrir
+                          </a>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Nenhuma mídia salva neste contato.</p>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
             {profile.dealReady ? (
               <Button type="button" className="contact-register" disabled={registering || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
                 {profile.clientOwnerId ? "Cliente cadastrado" : registering ? "Cadastrando" : "Cadastrar cliente"}

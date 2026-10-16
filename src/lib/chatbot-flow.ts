@@ -161,7 +161,14 @@ export type FlowAction =
   | { type: "queue" }
   | { type: "pause" };
 export type FlowStep = { actions: FlowAction[]; run: FlowRun | null };
-export type SavedFlow = { id: string; name: string; graph: FlowGraph };
+export type FlowLaunch = "auto" | "manual";
+export type SavedFlow = { id: string; name: string; graph: FlowGraph; launch?: FlowLaunch };
+
+export function flowLaunch(value: unknown): FlowLaunch {
+  if (value === "manual") return "manual";
+  if (!value || typeof value !== "object") return "auto";
+  return (value as Record<string, unknown>)["launch"] === "manual" ? "manual" : "auto";
+}
 
 const emptyStep: FlowStep = { actions: [], run: null };
 
@@ -226,14 +233,15 @@ function doneRun(flowId: string, nodeId: string, lastAnswer: string): FlowRun {
 export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHours: boolean; run: FlowRun | null; manualFlowId?: string }) {
   if (input.manualFlowId) return flows.find((flow) => flow.id === input.manualFlowId) ?? null;
   if (input.run && input.run.status !== "done") return flows.find((flow) => flow.id === input.run?.flowId) ?? null;
-  const keyword = flows.find((flow) =>
+  const automatic = flows.filter((flow) => flow.launch !== "manual");
+  const keyword = automatic.find((flow) =>
     triggers(flow.graph).some((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content)),
   );
   if (keyword && (!input.run || includesTerm(input.text, triggers(keyword.graph).find((node) => node.label === "Palavra-chave")?.content ?? ""))) return keyword;
   if (input.run?.status === "done") return null;
-  const received = flows.find((flow) => triggers(flow.graph).some((node) => node.label === "Mensagem recebida"));
+  const received = automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Mensagem recebida"));
   if (received) return received;
-  return flows.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;
+  return automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;
 }
 
 function startNode(graph: FlowGraph, input: { text: string; manual: boolean }) {
@@ -365,7 +373,7 @@ function describeFlowAction(action: FlowAction) {
   if (action.type === "tag") return `Etiqueta adicionada: ${action.name}`;
   if (action.type === "deal") return `Oportunidade criada: ${action.text}`;
   if (action.type === "save") return `Resposta salva em ${crmSaveLabel(action.field)}: ${action.text}`;
-  if (action.type === "queue") return "Conversa encaminhada à fila.";
+  if (action.type === "queue") return "Conversa enviada para a fila de atendimento do Chatbot.";
   return "";
 }
 

@@ -27,6 +27,7 @@ import {
   evolutionQrImage,
   tintQrPixel,
   attendanceLabel,
+  attendanceMark,
   keepAttendanceBotsPaused,
   headerAttendant,
   negotiatedCents,
@@ -477,6 +478,11 @@ assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: fal
 assert.equal(attendanceLabel({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "Bot atendendo");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "Marina Costa");
 assert.equal(attendanceLabel({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: true }), "Encerrado");
+assert.equal(attendanceMark({ assigneeName: "", botPaused: false, botSpoke: true, closed: false }), "bot");
+assert.equal(attendanceMark({ assigneeName: "", botPaused: true, botSpoke: false, closed: false }), "human");
+assert.equal(attendanceMark({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: false }), "human");
+assert.equal(attendanceMark({ assigneeName: "", botPaused: false, botSpoke: false, closed: false }), "");
+assert.equal(attendanceMark({ assigneeName: "Marina Costa", botPaused: true, botSpoke: true, closed: true }), "");
 assert.equal(keepAttendanceBotsPaused(true, false), true);
 assert.equal(keepAttendanceBotsPaused(true, true), true);
 assert.equal(keepAttendanceBotsPaused(false, true), true);

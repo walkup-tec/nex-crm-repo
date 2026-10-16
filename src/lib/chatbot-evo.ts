@@ -84,6 +84,13 @@ export function attendanceLabel(input: { assigneeName: string; botPaused: boolea
   return "Em fila";
 }
 
+export function attendanceMark(input: { assigneeName: string; botPaused: boolean; botSpoke: boolean; closed: boolean }) {
+  if (input.closed) return "";
+  if (input.assigneeName.trim() || input.botPaused) return "human";
+  if (input.botSpoke) return "bot";
+  return "";
+}
+
 export function inboxVisible(input: { assigneeId: string; userId: string; admin: boolean }) {
   if (!input.assigneeId) return true;
   return input.assigneeId === input.userId || input.admin;

@@ -21,6 +21,19 @@
 .chatbot-app .flow-node-exits{position:absolute;right:14px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:16px;margin:0;font-size:10px;font-weight:700;color:var(--primary)}
 .chatbot-app .flow-node-exits span{width:auto;text-align:right}
 .chatbot-app .react-flow__edge-text{fill:var(--primary)!important;font-size:11px;font-weight:700}
+.chatbot-app .flow-edge-tools{position:absolute;display:flex;align-items:center;gap:4px;pointer-events:all}
+.chatbot-app .flow-edge-tools span{font-size:11px;font-weight:700;color:var(--primary);background:var(--card);padding:0 4px;border-radius:4px}
+.chatbot-app .flow-edge-tools button{width:18px;height:18px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--foreground);font-size:13px;line-height:1;cursor:pointer;padding:0}
+.chatbot-app .flow-edge-tools button:hover{color:#fff;background:var(--primary);border-color:var(--primary)}
+.chatbot-app .flow-links{display:grid;gap:8px;margin-top:16px}
+.chatbot-app .flow-links h4{margin:0;font-size:10px;font-weight:700;color:var(--muted-foreground)}
+.chatbot-app .flow-links div{display:grid;gap:6px}
+.chatbot-app .flow-links span{font-size:11px;color:var(--foreground);line-height:1.4}
+.chatbot-app .flow-links button{width:100%;height:28px;font-size:10px}
+.chatbot-app .flow-row-actions{display:flex;justify-content:flex-end;gap:8px}
+.chatbot-app .flow-row-actions button{width:auto}
+.chatbot-app .react-flow__selection,.chatbot-app .react-flow__nodesselection-rect{background:color-mix(in oklch,var(--primary) 14%,transparent);border:1px solid var(--primary)}
+.chatbot-app .react-flow__node.selected .flow-node{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in oklch,var(--primary) 35%,transparent)}
 @media(min-width:1600px){.chatbot-app .inbox-layout{grid-template-columns:320px minmax(400px,1fr) 290px;height:calc(100dvh - 324px)}}
 @media(max-width:1200px){.chatbot-app .contact-panel{display:none}.chatbot-app .inbox-layout{grid-template-columns:270px minmax(280px,1fr)}.chatbot-app .flow-layout{grid-template-columns:175px 1fr}.chatbot-app .flow-properties{display:none}.chatbot-app .nav-item{font-size:10px}.chatbot-app .nex-sidebar{width:225px}.chatbot-app .nex-main{margin-left:225px}}
 @media(max-width:900px){.chatbot-app .nex-sidebar{transform:translateX(-100%);transition:transform .2s;width:244px}.chatbot-app .nex-sidebar.is-open{transform:translateX(0);box-shadow:var(--shadow-panel)}.chatbot-app .nex-main{margin-left:0}.chatbot-app .mobile-only{display:inline-flex}.chatbot-app .page{padding:22px 20px}.chatbot-app .topbar{padding:0 20px}.chatbot-app .stats-strip{gap:10px}.chatbot-app .flow-layout{grid-template-columns:170px 1fr}.chatbot-app .chart-grid{grid-template-columns:1fr}}
@@ -116,6 +129,11 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .conversation-row{display:flex;align-items:flex-start;gap:10px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;text-align:left}
 .chatbot-app .conversation-row .conversation-main{flex:1;min-width:0;text-align:left}
 .chatbot-app .conversation-row.unread .conversation-main strong{font-weight:800}
+.chatbot-app .conversation-name{display:flex;align-items:center;gap:6px;min-width:0}
+.chatbot-app .conversation-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chatbot-app .conversation-name svg{flex:none}
+.chatbot-app .conversation-name .is-bot{color:var(--primary)}
+.chatbot-app .conversation-name .is-human{color:var(--foreground)}
 .chatbot-app .conversation-row > .conversation-side{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px;margin-left:auto}
 .chatbot-app .unread-count{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#6F02FD;color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;line-height:1}
 .chatbot-app .pin-toggle{display:grid;place-items:center;width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:var(--muted-foreground);cursor:pointer}

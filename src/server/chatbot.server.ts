@@ -6,7 +6,7 @@ import { isGhostButtonResponse } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowMedia, flowMenuOptions, flowSourceHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia, flowMenuOptions, flowSourceHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -2653,6 +2653,7 @@ function editorGraph(value: unknown) {
       const handle = flowSourceHandle(row["sourceHandle"]);
       return [{ id: cell(row, "id") || `${source}-${target}`, source, target, ...(handle ? { sourceHandle: handle } : {}) }];
     }),
+    launch: flowLaunch(record),
   };
 }
 
@@ -2674,7 +2675,7 @@ async function loadActiveFlows(organizationId: string): Promise<SavedFlow[]> {
     table("chatbot_flows").select("id, name, graph").eq("organization_id", organizationId).eq("active", true).order("name", { ascending: true }),
   );
   if (loaded.missing) return [];
-  return loaded.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), graph: flowGraph(row["graph"]) }));
+  return loaded.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), launch: flowLaunch(row["graph"]), graph: flowGraph(row["graph"]) }));
 }
 
 async function sendFlowText(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
@@ -2899,10 +2900,22 @@ async function applyFlowActions(connection: Record<string, unknown>, organizatio
     if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
     if (action.type === "deal") await createFlowDeal(organizationId, contactId, action.text);
     if (action.type === "queue") {
-      await table("chatbot_conversations")
-        .update({ status: "queue", assignee_id: null, bot_paused: true, updated_at: new Date().toISOString() })
-        .eq("id", conversationId)
-        .eq("organization_id", organizationId);
+      const patch: Record<string, unknown> = {
+        status: "queue",
+        assignee_id: null,
+        bot_paused: true,
+        queued_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const updated = await table("chatbot_conversations").update(patch).eq("id", conversationId).eq("organization_id", organizationId).select("id").maybeSingle();
+        if (!updated.error) break;
+        const missing = updated.error.message.match(/queued_at|bot_paused/i);
+        if (!missing) break;
+        const key = missing[0].toLowerCase();
+        if (!(key in patch)) break;
+        delete patch[key];
+      }
     }
     if (action.type === "pause") {
       await table("chatbot_conversations").update({ bot_paused: true, updated_at: new Date().toISOString() }).eq("id", conversationId).eq("organization_id", organizationId);
@@ -2956,9 +2969,10 @@ async function executeConversationFlow(connection: Record<string, unknown>, orga
 
 async function runIncomingFlow(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
   try {
-    const conversation = await table("chatbot_conversations").select("assignee_id, bot_paused").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+    const conversation = await table("chatbot_conversations").select("assignee_id, bot_paused, status").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
     if (conversation.error || cell(conversation.data, "assignee_id")) return false;
     const paused = conversation.data?.["bot_paused"] === true;
+    if (paused && cell(conversation.data, "status") === "queue") return false;
     const stored = await table("chatbot_flow_runs").select("status").eq("conversation_id", conversationId).maybeSingle();
     if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
     const status = cell(stored.data, "status");
@@ -2997,7 +3011,7 @@ export async function listChatbotFlows(userId: string) {
   );
   return loaded.map((row) => {
     const graph = editorGraph(row["graph"]);
-    return { id: cell(row, "id"), name: cell(row, "name"), active: row["active"] === true, updatedAt: cell(row, "updated_at"), nodes: graph.nodes, edges: graph.edges };
+    return { id: cell(row, "id"), name: cell(row, "name"), active: row["active"] === true, launch: graph.launch, updatedAt: cell(row, "updated_at"), nodes: graph.nodes, edges: graph.edges };
   });
 }
 
@@ -3023,11 +3037,11 @@ export async function saveChatbotFlowMedia(userId: string, input: { name: string
 
 export async function saveChatbotFlow(
   userId: string,
-  input: { id: string; name: string; active: boolean; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number }[]; edges: { id: string; source: string; target: string }[] },
+  input: { id: string; name: string; active: boolean; launch?: string; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number }[]; edges: { id: string; source: string; target: string }[] },
 ) {
   const name = catalogName(input.name, 80);
   if (!name) fail("O bot precisa de um nome com 2 a 80 caracteres.");
-  const graph = editorGraph({ nodes: input.nodes, edges: input.edges });
+  const graph = editorGraph({ nodes: input.nodes, edges: input.edges, launch: input.launch });
   if (input.active === true) assertRunnableFlow(graph);
   const { organizationId } = await membership(userId, "settings");
   const payload = { name, active: input.active === true, graph, updated_at: new Date().toISOString() };
@@ -3037,13 +3051,13 @@ export async function saveChatbotFlow(
     if (duplicate(updated.error)) fail("Já existe um bot com esse nome.");
     if (updated.error) fail(schemaMessage(updated.error.message));
     if (!updated.data) fail("Esse bot não pertence à sua empresa.");
-    return { id, active: updated.data["active"] === true };
+    return { id, active: updated.data["active"] === true, launch: graph.launch };
   }
   const inserted = await table("chatbot_flows").insert({ ...payload, organization_id: organizationId }).select("id, active").maybeSingle();
   if (duplicate(inserted.error)) fail("Já existe um bot com esse nome.");
   if (inserted.error) fail(schemaMessage(inserted.error.message));
   if (!inserted.data) fail("Não foi possível gravar o bot.");
-  return { id: cell(inserted.data, "id"), active: inserted.data["active"] === true };
+  return { id: cell(inserted.data, "id"), active: inserted.data["active"] === true, launch: graph.launch };
 }
 
 export async function validateChatbotFlow(userId: string, input: { name: string; nodes: unknown; edges: unknown }) {

@@ -100,6 +100,12 @@ const keyword: SavedFlow = {
   },
 };
 assert.equal(chooseFlow([flow, keyword], { text: "qual o preço?", outsideHours: false, run: null })?.id, "key");
+const manual: SavedFlow = { ...keyword, id: "manual", name: "Envio", launch: "manual" };
+assert.equal(chooseFlow([manual], { text: "qual o preço?", outsideHours: false, run: null }), null);
+assert.equal(chooseFlow([manual], { text: "", outsideHours: false, run: null, manualFlowId: "manual" })?.id, "manual");
+assert.equal(chooseFlow([manual], { text: "ok", outsideHours: false, run: { flowId: "manual", nodeId: "s", status: "waiting", waitUntil: 0, lastAnswer: "" } })?.id, "manual");
+const queued = previewFlowTurns({ nodes: [{ id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" }, { id: "q", label: "Encaminhar à fila", kind: "Ação", content: "" }], edges: [{ source: "t", target: "q" }] }, ["oi"], false, noon);
+assert.equal(queued.turns.find((turn) => turn.from === "bot")?.text, "Conversa enviada para a fila de atendimento do Chatbot.");
 const priced = stepFlow(keyword, null, { text: "qual o preço?", at: noon, outsideHours: false });
 assert.equal(priced.actions[0]?.type, "send");
 

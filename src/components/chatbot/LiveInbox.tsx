@@ -1,4 +1,4 @@
-import { MessageSquare, Bot, Pause, Pin, Play, Send } from "lucide-react";
+import { MessageSquare, Bot, Pause, Pin, Play, Send, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +18,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { acceptSnapshot, attendanceLabel, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -403,6 +403,18 @@ export function LiveInbox() {
     });
   }
 
+  function markFor(conversationId: string) {
+    const current = data?.conversations.find((item) => item.id === conversationId);
+    if (!current || !data) return "";
+    const botSpoke = data.messages.some((item) => item.conversationId === conversationId && item.direction === "out");
+    return attendanceMark({
+      assigneeName: current.assigneeName,
+      botPaused: current.botPaused,
+      botSpoke,
+      closed: current.status === "closed",
+    });
+  }
+
   function openConversation(id: string) {
     selectedRef.current = id;
     setSelected(id);
@@ -607,6 +619,7 @@ export function LiveInbox() {
     const person = data.contacts.find((contact) => contact.id === item.contactId);
     const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
     const unread = item.unreadCount > 99 ? "99+" : String(item.unreadCount);
+    const mark = markFor(item.id);
     return (
       <div
         key={item.id}
@@ -623,7 +636,7 @@ export function LiveInbox() {
       >
         <ContactAvatar name={person?.name ?? ""} avatarUrl={person?.avatarUrl ?? ""} />
         <div className="conversation-main">
-          <strong>{person?.name}</strong>
+          <strong className="conversation-name"><span>{person?.name}</span>{mark==="bot"?<Bot className="is-bot" size={14} aria-label="Atendido pelo bot"/>:mark==="human"?<UserRound className="is-human" size={14} aria-label="Atendimento humano"/>:null}</strong>
           <p>{clientPhoneLabel(person?.phone ?? "") || person?.phone}</p>
           <div className="conversation-tags">
             {channel ? <span className="status-pill">{channel}</span> : null}

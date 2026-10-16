@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -125,6 +125,7 @@ export function ContactRecord({
   const [documentDraft, setDocumentDraft] = useState("");
   const [rgDraft, setRgDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
+  const noteRef = useRef<HTMLTextAreaElement>(null);
   const [extraOpen, setExtraOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
@@ -157,6 +158,13 @@ export function ContactRecord({
       active = false;
     };
   }, [contactId, tick]);
+
+  useEffect(() => {
+    const element = noteRef.current;
+    if (!element) return;
+    element.style.height = "0px";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [noteDraft, profile?.id]);
 
   async function saveName() {
     if (!profile || savingName) return;
@@ -344,9 +352,11 @@ export function ContactRecord({
           </section>
           <section className="contact-section">
             <h3>Observação</h3>
-            <input
-              className="contact-deal"
+            <textarea
+              ref={noteRef}
+              className="contact-note-field"
               maxLength={300}
+              rows={1}
               aria-label="Observação"
               placeholder="Observação"
               value={noteDraft}

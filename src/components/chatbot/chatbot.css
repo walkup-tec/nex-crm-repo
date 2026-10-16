@@ -7,6 +7,7 @@
 .chatbot-app .flow-nav{display:flex;gap:22px;border-bottom:1px solid var(--border);margin:-8px 0 22px}
 .chatbot-app .flow-nav button{height:42px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted-foreground);font-size:13px;font-weight:600;padding:0;cursor:pointer}
 .chatbot-app .flow-nav button[aria-pressed=true]{color:var(--primary);border-bottom-color:var(--primary)}
+.chatbot-app .flow-nav-count{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:8px;padding:0 5px;border-radius:999px;background:var(--primary);color:#fff;font-size:10px;font-weight:700;line-height:1}
 .chatbot-app .flow-save-note{margin:-6px 0 16px}
 .chatbot-app .flow-save-note.good{background:color-mix(in oklch,var(--success) 14%,var(--card));color:var(--success)}
 .chatbot-app tr.flow-saved td{background:color-mix(in oklch,var(--primary) 10%,var(--card))}

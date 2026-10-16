@@ -1332,7 +1332,8 @@ function LibraryCard({
         draggable={Boolean(onDragItemStart)}
         onDragStart={onDragItemStart}
         className={cn(
-          "relative grid aspect-video w-full place-items-center bg-secondary/70",
+          "relative grid aspect-video w-full place-items-center",
+          file && "bg-secondary/70",
           onDragItemStart && "cursor-grab active:cursor-grabbing",
         )}
         onClick={onOpen}

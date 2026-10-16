@@ -12,6 +12,7 @@ import {
   channelsAllConnected,
   droppedChannels,
   shouldSyncEvolution,
+  queueByKey,
   pendingOutgoing,
   messageClock,
   audioDurationLabel,
@@ -778,3 +779,14 @@ assert.deepEqual(
   ).map((lead) => lead.name),
   ["Ana"],
 );
+const lane: string[] = [];
+const firstLane = queueByKey("conversa", async () => {
+  lane.push("inicio");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  lane.push("fim");
+});
+const secondLane = queueByKey("conversa", async () => {
+  lane.push("seguinte");
+});
+await Promise.all([firstLane, secondLane]);
+assert.deepEqual(lane, ["inicio", "fim", "seguinte"]);

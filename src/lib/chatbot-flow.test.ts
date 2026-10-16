@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chooseFlow, clientFlowVariableTokens, cloneFlowSelection, crmSaveField, fillFlowVariables, flowDropPosition, flowMedia, flowMediaLabel, flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, clientFlowVariableTokens, cloneFlowSelection, crmSaveField, fillFlowVariables, flowDropPosition, flowMedia, flowMediaLabel, flowMenuButtonText,
+  flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -212,6 +213,10 @@ assert.deepEqual(duplicated.edges, [{ id: "n3", source: "n1", target: "n2", sour
 assert.deepEqual(flowDropPosition({ x: 10, y: 20 }, [{ x: 10, y: 20 }]), { x: 38, y: 48 });
 assert.deepEqual(flowDropPosition({ x: 200, y: 80 }, []), { x: 200, y: 80 });
 assert.equal(flowMenuOptions([{ id: "1", label: "  Vendas  " }, { id: "4", label: "Fora" }]).map((option) => option.label).join(","), "Vendas");
+const menuButton = flowMenuButtonText("  Você já fez anúncio?  ");
+assert.equal(menuButton.title, "Você já fez anúncio?");
+assert.equal(menuButton.title.includes("*"), false);
+assert.equal(menuButton.description, "\u00a0");
 assert.deepEqual(waitSetting("5"), { amount: 5, unit: "minutos" });
 assert.deepEqual(waitSetting("30 segundos"), { amount: 30, unit: "segundos" });
 assert.deepEqual(waitSetting("2 horas"), { amount: 2, unit: "horas" });

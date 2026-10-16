@@ -105,6 +105,22 @@ export function shouldSyncEvolution(lastStartedAt: number, now: number) {
   return now - lastStartedAt >= 10000;
 }
 
+const queuedLanes = new Map<string, Promise<void>>();
+
+export function queueByKey<T>(key: string, run: () => Promise<T>) {
+  const previous = queuedLanes.get(key) ?? Promise.resolve();
+  const current = previous.then(run, run);
+  const settled = current.then(
+    () => undefined,
+    () => undefined,
+  );
+  queuedLanes.set(key, settled);
+  void settled.then(() => {
+    if (queuedLanes.get(key) === settled) queuedLanes.delete(key);
+  });
+  return current;
+}
+
 export function pendingOutgoing<T extends { conversationId: string; direction: string; text: string; createdAt: string; internal?: boolean }>(
   saved: T[],
   previews: { id: string; conversationId: string; text: string; createdAt: string }[],

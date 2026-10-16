@@ -111,6 +111,11 @@ export function nextMenuOptionId(options: { id: string }[] | undefined) {
   return (["1", "2", "3"] as const).find((id) => !options?.some((option) => option.id === id));
 }
 
+export function flowMenuButtonText(text: string) {
+  const question = text.trim().slice(0, 1024);
+  return { title: question, description: "\u00a0", footer: "" };
+}
+
 export function cloneFlowSelection<TNode extends { id: string; x: number; y: number }, TEdge extends { id: string; source: string; target: string }>(
   nodes: TNode[],
   edges: TEdge[],

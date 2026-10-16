@@ -6,7 +6,8 @@ import { isGhostButtonResponse } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia, flowMenuOptions, flowSourceHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia, flowMenuButtonText,
+  flowMenuOptions, flowSourceHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -16,6 +17,7 @@ import {
   inboxVisible,
   keepAttendanceBotsPaused,
   shouldSyncEvolution,
+  queueByKey,
   evolutionConnectionStatus,
   evolutionInstanceClosed,
   evolutionInstanceNameOf,
@@ -2936,7 +2938,8 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
   const instance = encodeURIComponent(instanceName);
   const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
   await showBotPresence(instanceName, phone, text);
-  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "\u200b", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
+  const menuText = flowMenuButtonText(text);
+  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: menuText.title, description: menuText.description, footer: menuText.footer, buttons }).catch(() => null);
   if (!sent || isGhostButtonResponse(sent)) {
     await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
     return;
@@ -2980,9 +2983,8 @@ async function applyFlowActions(connection: Record<string, unknown>, organizatio
   }
 }
 
-async function saveFlowRun(organizationId: string, conversationId: string, run: FlowRun | null) {
-  if (!run?.flowId) return;
-  const patch = {
+function flowRunPatch(organizationId: string, conversationId: string, run: FlowRun) {
+  return {
     organization_id: organizationId,
     conversation_id: conversationId,
     flow_id: run.flowId,
@@ -2992,10 +2994,27 @@ async function saveFlowRun(organizationId: string, conversationId: string, run: 
     last_answer: run.lastAnswer,
     updated_at: new Date().toISOString(),
   };
-  const updated = await table("chatbot_flow_runs").update(patch).eq("conversation_id", conversationId).select("conversation_id").maybeSingle();
-  if (updated.error) return;
-  if (updated.data) return;
-  await table("chatbot_flow_runs").insert(patch).select("conversation_id").maybeSingle();
+}
+
+async function claimFlowRun(organizationId: string, conversationId: string, seen: FlowRun | null, next: FlowRun) {
+  const patch = flowRunPatch(organizationId, conversationId, next);
+  if (!seen) {
+    const inserted = await table("chatbot_flow_runs").insert(patch).select("conversation_id").maybeSingle();
+    if (inserted.data) return true;
+    if (duplicate(inserted.error)) return false;
+    return true;
+  }
+  const updated = await table("chatbot_flow_runs")
+    .update(patch)
+    .eq("conversation_id", conversationId)
+    .eq("organization_id", organizationId)
+    .eq("flow_id", seen.flowId)
+    .eq("node_id", seen.nodeId)
+    .eq("status", seen.status)
+    .select("conversation_id")
+    .maybeSingle();
+  if (updated.error) return true;
+  return Boolean(updated.data);
 }
 
 async function organizationBusinessHours(organizationId: string) {
@@ -3005,6 +3024,10 @@ async function organizationBusinessHours(organizationId: string) {
 }
 
 async function executeConversationFlow(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
+  return queueByKey(`flow:${conversationId}`, () => executeConversationFlowOnce(connection, organizationId, conversationId, contactId, text, manualFlowId));
+}
+
+async function executeConversationFlowOnce(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
   const flows = await loadActiveFlows(organizationId);
   if (!flows.length) return false;
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
@@ -3015,10 +3038,23 @@ async function executeConversationFlow(connection: Record<string, unknown>, orga
   const outsideHours = outsideBusinessHours(Date.now(), hours);
   const chosen = chooseFlow(flows, { text, outsideHours, run, manualFlowId });
   if (!chosen) return { sent: false, owned: false };
-  const step = stepFlow(chosen, manualFlowId ? null : run && run.flowId === chosen.id ? run : null, { text, at: Date.now(), outsideHours, manual: Boolean(manualFlowId) });
+  const manual = Boolean(manualFlowId);
+  const step = stepFlow(chosen, manual ? null : run && run.flowId === chosen.id ? run : null, { text, at: Date.now(), outsideHours, manual });
   if (!step.actions.length && !step.run) return { sent: false, owned: false };
+  const samePlace = Boolean(
+    storedRun &&
+      step.run &&
+      storedRun.flowId === step.run.flowId &&
+      storedRun.nodeId === step.run.nodeId &&
+      storedRun.status === step.run.status &&
+      !step.actions.length,
+  );
+  if (samePlace) return { sent: false, owned: true };
+  if (step.run) {
+    const claimed = await claimFlowRun(organizationId, conversationId, storedRun, step.run);
+    if (!claimed) return { sent: false, owned: true };
+  }
   await applyFlowActions(connection, organizationId, conversationId, contactId, step.actions);
-  await saveFlowRun(organizationId, conversationId, step.run);
   return {
     sent: step.actions.some((action) => action.type === "send"),
     owned: step.actions.length > 0 || step.run?.status === "waiting" || step.run?.status === "delay",

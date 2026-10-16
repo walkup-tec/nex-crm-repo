@@ -2,10 +2,11 @@ import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { isGhostButtonResponse } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowMedia, hoursHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowMedia, flowMenuOptions, flowSourceHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -2600,6 +2601,9 @@ function assertRunnableFlow(graph: ReturnType<typeof editorGraph>) {
   if (graph.nodes.some((node) => node.label === "Enviar mensagem" && !node.content.trim() && !flowMedia(node.media))) {
     fail("Escreva o texto ou anexe imagem, áudio ou vídeo nos blocos de mensagem.");
   }
+  if (graph.nodes.some((node) => node.label === "Menu" && (!node.content.trim() || !flowMenuOptions(node.options).length))) {
+    fail("Escreva o texto do menu e pelo menos uma opção.");
+  }
 }
 
 function flowGraph(value: unknown) {
@@ -2613,14 +2617,15 @@ function flowGraph(value: unknown) {
       const label = cell(row, "label");
       if (!id || !label) return [];
       const media = flowMedia(row["media"]);
-      return [{ id, label, kind: cell(row, "kind"), content: cell(row, "content").slice(0, 1000), ...(media ? { media } : {}) }];
+      const options = flowMenuOptions(row["options"]);
+      return [{ id, label, kind: cell(row, "kind"), content: cell(row, "content").slice(0, 1000), ...(media ? { media } : {}), ...(options.length ? { options } : {}) }];
     }),
     edges: edges.slice(0, 120).flatMap((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
       const source = cell(row, "source");
       const target = cell(row, "target");
       if (!source || !target) return [];
-      const handle = hoursHandle(row["sourceHandle"]);
+      const handle = flowSourceHandle(row["sourceHandle"]);
       return [{ source, target, ...(handle ? { sourceHandle: handle } : {}) }];
     }),
   };
@@ -2637,14 +2642,15 @@ function editorGraph(value: unknown) {
       const label = cell(row, "label");
       if (!id || !label) return [];
       const media = flowMedia(row["media"]);
-      return [{ id, label, kind: cell(row, "kind") || "Ação", content: cell(row, "content").slice(0, 1000), x: Number(row["x"]) || 0, y: Number(row["y"]) || 0, ...(media ? { media } : {}) }];
+      const options = flowMenuOptions(row["options"]);
+      return [{ id, label, kind: cell(row, "kind") || "Ação", content: cell(row, "content").slice(0, 1000), x: Number(row["x"]) || 0, y: Number(row["y"]) || 0, ...(media ? { media } : {}), ...(options.length ? { options } : {}) }];
     }),
     edges: edges.slice(0, 120).flatMap((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
       const source = cell(row, "source");
       const target = cell(row, "target");
       if (!source || !target) return [];
-      const handle = hoursHandle(row["sourceHandle"]);
+      const handle = flowSourceHandle(row["sourceHandle"]);
       return [{ id: cell(row, "id") || `${source}-${target}`, source, target, ...(handle ? { sourceHandle: handle } : {}) }];
     }),
   };
@@ -2865,14 +2871,30 @@ async function flowVariableValues(organizationId: string, contactId: string) {
   };
 }
 
+async function sendFlowMenu(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, options: FlowMenuOption[]) {
+  if (!text || !options.length || cell(connection, "status") !== "connected") return;
+  const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const phone = cell(contact.data, "phone");
+  if (!phone) return;
+  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
+  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: "Menu", description: text.slice(0, 1024), footer: "", buttons }).catch(() => null);
+  if (!sent || isGhostButtonResponse(sent)) {
+    await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"));
+    return;
+  }
+  await insertFlowMessage(organizationId, conversationId, [text, ...options.map((option) => option.label)].join("\n"), readMessageId(sent));
+}
+
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {
-  const values = actions.some((action) => action.type === "send") ? await flowVariableValues(organizationId, contactId) : {};
+  const values = actions.some((action) => action.type === "send" || action.type === "menu") ? await flowVariableValues(organizationId, contactId) : {};
   for (const action of actions) {
     if (action.type === "send") {
       const text = fillFlowVariables(action.text, values);
       if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, text, action.media);
       else await sendFlowText(connection, organizationId, conversationId, contactId, text);
     }
+    if (action.type === "menu") await sendFlowMenu(connection, organizationId, conversationId, contactId, fillFlowVariables(action.text, values), action.options);
     if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
     if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
     if (action.type === "deal") await createFlowDeal(organizationId, contactId, action.text);

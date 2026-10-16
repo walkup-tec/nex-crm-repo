@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chooseFlow, clientFlowVariableTokens, crmSaveField, fillFlowVariables, flowMedia, flowMediaLabel, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+import { chooseFlow, clientFlowVariableTokens, crmSaveField, fillFlowVariables, flowMedia, flowMediaLabel, flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -154,3 +154,32 @@ assert.equal(flowMedia(photo)?.kind, "image");
 assert.equal(flowMedia({ ...photo, path: "../segredo.jpg" }), null);
 assert.equal(flowMediaLabel("video"), "Vídeo");
 assert.equal(flowMediaLabel("audio"), "Áudio");
+
+const menuFlow: SavedFlow = {
+  id: "menu",
+  name: "Menu",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      { id: "menu", label: "Menu", kind: "Ação", content: "Como posso ajudar?", options: [{ id: "1", label: "Vendas" }, { id: "2", label: "Suporte" }] },
+      { id: "a", label: "Enviar mensagem", kind: "Ação", content: "Time de vendas." },
+      { id: "b", label: "Enviar mensagem", kind: "Ação", content: "Time de suporte." },
+    ],
+    edges: [
+      { source: "t", target: "menu" },
+      { source: "menu", target: "a", sourceHandle: "1" },
+      { source: "menu", target: "b", sourceHandle: "2" },
+    ],
+  },
+};
+const menuStep = stepFlow(menuFlow, null, { text: "oi", at: noon, outsideHours: false });
+assert.equal(menuStep.actions[0]?.type, "menu");
+assert.equal(menuStep.run?.status, "waiting");
+const sales = stepFlow(menuFlow, menuStep.run, { text: "Vendas", at: noon, outsideHours: false });
+assert.equal(sales.actions[0]?.type === "send" ? sales.actions[0].text : "", "Time de vendas.");
+const support = stepFlow(menuFlow, menuStep.run, { text: "2", at: noon, outsideHours: false });
+assert.equal(support.actions[0]?.type === "send" ? support.actions[0].text : "", "Time de suporte.");
+const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
+assert.equal(ignored.run?.nodeId, "menu");
+assert.equal(ignored.actions.length, 0);
+assert.equal(flowMenuOptions([{ id: "1", label: "  Vendas  " }, { id: "4", label: "Fora" }]).map((option) => option.label).join(","), "Vendas");

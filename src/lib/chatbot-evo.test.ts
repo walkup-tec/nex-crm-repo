@@ -535,6 +535,7 @@ assert.equal(clientPhoneLabel("5511999999999"), "(11) 99999-9999");
 assert.equal(evolutionConnectionStatus("open"), "connected");
 assert.equal(evolutionConnectionStatus("close"), "disconnected");
 assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");
+assert.equal(evolutionMessageText({ buttonsResponseMessage: { selectedButtonId: "1", selectedDisplayText: "Vendas" } }), "Vendas");
 assert.equal(evolutionMessageText({ imageMessage: { url: "x" } }), "[imagem]");
 assert.equal(evolutionMessageContent({ messageType: "imageMessage", message: { mimetype: "image/jpeg", url: "https://mmg.whatsapp.net/a", caption: "foto" } }).mediaKind, "image");
 assert.equal(evolutionMessageContent({ messageType: "imageMessage", message: { mimetype: "image/jpeg", url: "https://mmg.whatsapp.net/a", caption: "foto" } }).text, "foto");

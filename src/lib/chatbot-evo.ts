@@ -542,11 +542,29 @@ export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video
   return { mime: mime || (kind === "video" ? "video/mp4" : kind === "audio" ? "audio/ogg" : "image/jpeg"), base64, kind };
 }
 
+function buttonReplyText(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  const row = value as Record<string, unknown>;
+  if (typeof row["selectedDisplayText"] === "string" && row["selectedDisplayText"].trim()) return row["selectedDisplayText"].trim();
+  const id = row["selectedButtonId"] ?? row["selectedId"];
+  if (typeof id === "string" && id.trim()) return id.trim();
+  const single = row["singleSelectReply"];
+  if (single && typeof single === "object") {
+    const selected = (single as Record<string, unknown>)["selectedRowId"];
+    if (typeof selected === "string" && selected.trim()) return selected.trim();
+  }
+  return typeof row["title"] === "string" ? row["title"].trim() : "";
+}
+
 export function evolutionMessageText(message: unknown): string {
   if (typeof message === "string") return message.trim();
   if (!message || typeof message !== "object") return "";
   const record = message as Record<string, unknown>;
   if (typeof record["conversation"] === "string") return record["conversation"];
+  for (const key of ["buttonsResponseMessage", "templateButtonReplyMessage", "listResponseMessage"]) {
+    const reply = buttonReplyText(record[key]);
+    if (reply) return reply;
+  }
   const extended = record["extendedTextMessage"];
   if (extended && typeof extended === "object" && typeof (extended as Record<string, unknown>)["text"] === "string") {
     return (extended as Record<string, unknown>)["text"] as string;

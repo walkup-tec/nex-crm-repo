@@ -1,6 +1,7 @@
 export type FlowMediaKind = "image" | "video" | "audio";
 export type FlowMedia = { kind: FlowMediaKind; name: string; mime: string; path: string };
-export type FlowNode = { id: string; label: string; kind: string; content: string; media?: FlowMedia };
+export type FlowMenuOption = { id: "1" | "2" | "3"; label: string };
+export type FlowNode = { id: string; label: string; kind: string; content: string; media?: FlowMedia; options?: FlowMenuOption[] };
 
 const flowMediaMimes = new Set([
   "image/jpeg",
@@ -39,7 +40,9 @@ export function flowMediaLabel(kind: FlowMediaKind) {
   return "Imagem";
 }
 export type FlowHoursHandle = "sim" | "nao";
-export type FlowEdge = { source: string; target: string; sourceHandle?: FlowHoursHandle };
+export type FlowMenuHandle = "1" | "2" | "3";
+export type FlowSourceHandle = FlowHoursHandle | FlowMenuHandle;
+export type FlowEdge = { source: string; target: string; sourceHandle?: FlowSourceHandle };
 
 export const businessDayNames = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"] as const;
 export type BusinessDay = { open: boolean; start: string; end: string };
@@ -81,6 +84,31 @@ export function businessHours(value: unknown): BusinessHours {
 
 export function hoursHandle(value: unknown): FlowHoursHandle | undefined {
   return value === "sim" || value === "nao" ? value : undefined;
+}
+
+export function flowSourceHandle(value: unknown): FlowSourceHandle | undefined {
+  return hoursHandle(value) ?? (value === "1" || value === "2" || value === "3" ? value : undefined);
+}
+
+export function flowMenuOptions(value: unknown): FlowMenuOption[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const options: FlowMenuOption[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = row["id"];
+    if ((id !== "1" && id !== "2" && id !== "3") || seen.has(id)) continue;
+    const label = typeof row["label"] === "string" ? row["label"].trim().slice(0, 20) : "";
+    if (!label) continue;
+    seen.add(id);
+    options.push({ id, label });
+  }
+  return options;
+}
+
+export function nextMenuOptionId(options: { id: string }[] | undefined) {
+  return (["1", "2", "3"] as const).find((id) => !options?.some((option) => option.id === id));
 }
 export type FlowGraph = { nodes: FlowNode[]; edges: FlowEdge[] };
 export type FlowRun = { flowId: string; nodeId: string; status: "waiting" | "delay" | "done"; waitUntil: number; lastAnswer: string };
@@ -126,6 +154,7 @@ export function fillFlowVariables(text: string, values: Record<string, string>) 
 
 export type FlowAction =
   | { type: "send"; text: string; media?: FlowMedia }
+  | { type: "menu"; text: string; options: FlowMenuOption[] }
   | { type: "tag"; name: string }
   | { type: "deal"; text: string }
   | { type: "save"; field: CrmSaveField; text: string }
@@ -222,6 +251,12 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
     return walk(flow, outgoing(flow.graph, run.nodeId), run.lastAnswer, input);
   }
   if (run && run.flowId === flow.id && run.status === "waiting" && !manual) {
+    const waiting = nodeById(flow.graph, run.nodeId);
+    if (waiting?.label === "Menu") {
+      const target = menuTarget(flow.graph, waiting, input.text);
+      if (target == null) return { actions: [], run };
+      return walk(flow, target ? [target] : [], input.text.trim(), input);
+    }
     return walk(flow, outgoing(flow.graph, run.nodeId), input.text.trim(), input);
   }
   if (run?.status === "done" && !manual) {
@@ -236,6 +271,13 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
     return walk(flow, target ? [target] : [], "", input);
   }
   return walk(flow, outgoing(flow.graph, trigger.id), "", input);
+}
+
+function menuTarget(graph: FlowGraph, node: FlowNode, text: string) {
+  const answer = text.trim().toLocaleLowerCase("pt-BR");
+  const matched = flowMenuOptions(node.options).find((option) => option.id === text.trim() || option.label.toLocaleLowerCase("pt-BR") === answer);
+  if (!matched) return null;
+  return graph.edges.find((edge) => edge.source === node.id && edge.sourceHandle === matched.id)?.target ?? "";
 }
 
 function hoursTarget(graph: FlowGraph, id: string, outside: boolean) {
@@ -261,6 +303,13 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
     if (node.label === "Enviar mensagem") {
       const media = flowMedia(node.media);
       if (content || media) actions.push(media ? { type: "send", text: content, media } : { type: "send", text: content });
+    }
+    if (node.label === "Menu") {
+      const options = flowMenuOptions(node.options);
+      if (content && options.length) {
+        actions.push({ type: "menu", text: content, options });
+        return { actions, run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer } };
+      }
     }
     if (node.label === "Fazer pergunta" && content) {
       actions.push({ type: "send", text: content });
@@ -306,6 +355,7 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
 export type FlowPreviewTurn = { from: "contact" | "bot"; text: string };
 
 function describeFlowAction(action: FlowAction) {
+  if (action.type === "menu") return [action.text, ...action.options.map((option) => option.label)].filter(Boolean).join(" · ");
   if (action.type === "send") {
     const media = action.media ? flowMediaLabel(action.media.kind) : "";
     const text = action.text.trim();

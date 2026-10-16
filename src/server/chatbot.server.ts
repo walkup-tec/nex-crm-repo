@@ -57,6 +57,7 @@ import {
   overdueQueue,
   reactivationMinutes,
   reactivatesClosedConversation,
+  attendanceExpired,
   queueMinutes,
   chatbotCompanyName,
   defaultOfflineNotice,
@@ -1249,10 +1250,8 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   }
   if (!inserted) return;
   const scored = content.mediaKind ? false : await acceptRatingReply(organizationId, conversationId, contactId, text);
-  await table("chatbot_conversations")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", conversationId);
   if (scored) {
+    await table("chatbot_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
     await thankForRating(connection, organizationId, conversationId, contactId);
     return;
   }
@@ -1260,6 +1259,8 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     await table("chatbot_conversations").update({ bot_paused: true }).eq("id", conversationId).eq("organization_id", organizationId);
   }
   await returnClosedToQueue(organizationId, conversationId);
+  if (!botsDisabled) await restartExpiredBotAttendance(organizationId, conversationId);
+  await table("chatbot_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
   if (!botsDisabled) await resumeDueFlows(organizationId, conversationId);
   const flowReplied = botsDisabled ? false : await runIncomingFlow(connection, organizationId, conversationId, contactId, text);
   if (!botsDisabled && !flowReplied) await noticeOfflineWaiting(connection, organizationId, conversationId, contactId);
@@ -1288,6 +1289,18 @@ async function thankForRating(connection: Record<string, unknown>, organizationI
   } catch {
     return;
   }
+}
+
+async function restartExpiredBotAttendance(organizationId: string, conversationId: string) {
+  const current = await table("chatbot_conversations").select("status, updated_at, assignee_id, bot_paused").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error || !current.data || cell(current.data, "assignee_id")) return;
+  const status = cell(current.data, "status");
+  if (status === "closed" || (current.data["bot_paused"] === true && status === "queue")) return;
+  const settings = await table("organizations").select("chatbot_reactivation_minutes").eq("id", organizationId).maybeSingle();
+  const minutes = settings.error ? 15 : reactivationMinutes(settings.data?.["chatbot_reactivation_minutes"]);
+  if (!attendanceExpired(cell(current.data, "updated_at"), minutes, Date.now())) return;
+  await forgetFlowRun(organizationId, conversationId);
+  await table("chatbot_conversations").update({ bot_paused: false }).eq("id", conversationId).eq("organization_id", organizationId);
 }
 
 async function returnClosedToQueue(organizationId: string, conversationId: string) {
@@ -2678,7 +2691,11 @@ function editorGraph(value: unknown) {
 }
 
 async function forgetFlowRun(organizationId: string, conversationId: string) {
-  await (table("chatbot_flow_runs").delete().eq("conversation_id", conversationId).eq("organization_id", organizationId) as unknown as Promise<unknown>).catch(() => undefined);
+  try {
+    await (table("chatbot_flow_runs").delete().eq("conversation_id", conversationId).eq("organization_id", organizationId) as unknown as Promise<unknown>);
+  } catch {
+    return;
+  }
 }
 
 function readFlowRun(row: Record<string, unknown> | null | undefined): FlowRun | null {
@@ -2992,7 +3009,8 @@ async function executeConversationFlow(connection: Record<string, unknown>, orga
   if (!flows.length) return false;
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
   if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
-  const run = readFlowRun(stored.data);
+  const storedRun = readFlowRun(stored.data);
+  const run = storedRun?.status === "done" ? null : storedRun;
   const hours = await organizationBusinessHours(organizationId);
   const outsideHours = outsideBusinessHours(Date.now(), hours);
   const chosen = chooseFlow(flows, { text, outsideHours, run, manualFlowId });

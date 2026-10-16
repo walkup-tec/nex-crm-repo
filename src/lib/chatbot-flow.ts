@@ -255,13 +255,15 @@ function doneRun(flowId: string, nodeId: string, lastAnswer: string): FlowRun {
 
 export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHours: boolean; run: FlowRun | null; manualFlowId?: string }) {
   if (input.manualFlowId) return flows.find((flow) => flow.id === input.manualFlowId) ?? null;
-  if (input.run && input.run.status !== "done") return flows.find((flow) => flow.id === input.run?.flowId) ?? null;
+  if (input.run && input.run.status !== "done") {
+    const current = flows.find((flow) => flow.id === input.run?.flowId);
+    if (current) return current;
+  }
   const automatic = flows.filter((flow) => flow.launch !== "manual");
   const keyword = automatic.find((flow) =>
     triggers(flow.graph).some((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content)),
   );
-  if (keyword && (!input.run || includesTerm(input.text, triggers(keyword.graph).find((node) => node.label === "Palavra-chave")?.content ?? ""))) return keyword;
-  if (input.run?.status === "done") return null;
+  if (keyword && (!input.run || input.run.status === "done" || includesTerm(input.text, triggers(keyword.graph).find((node) => node.label === "Palavra-chave")?.content ?? ""))) return keyword;
   const received = automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Mensagem recebida"));
   if (received) return received;
   return automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;

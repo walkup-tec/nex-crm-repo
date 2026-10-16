@@ -1237,6 +1237,12 @@ export function reactivatesClosedConversation(closedAt: string, minutes: number,
   return now - closed < reactivationMinutes(minutes) * 60_000;
 }
 
+export function attendanceExpired(since: string, minutes: number, now: number) {
+  const start = Date.parse(since);
+  if (!Number.isFinite(start)) return false;
+  return now - start >= reactivationMinutes(minutes) * 60_000;
+}
+
 export const defaultOfflineNotice = "No momento não há atendentes disponíveis. Sua mensagem continua na fila e será atendida assim que alguém entrar.";
 
 export function offlineNoticeText(value: unknown) {

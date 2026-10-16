@@ -87,7 +87,8 @@ assert.deepEqual(savedName.actions[0], { type: "save", field: "name", text: "Mar
 
 const again = stepFlow(flow, answered.run, { text: "de novo", at: noon + 2000, outsideHours: false });
 assert.deepEqual(again.actions, []);
-assert.equal(chooseFlow([flow], { text: "de novo", outsideHours: false, run: answered.run }), null);
+assert.equal(chooseFlow([flow], { text: "de novo", outsideHours: false, run: answered.run })?.id, "flow");
+assert.equal(chooseFlow([flow], { text: "oi", outsideHours: false, run: { flowId: "antigo", nodeId: "x", status: "waiting", waitUntil: 0, lastAnswer: "" } })?.id, "flow");
 const restarted = stepFlow(flow, null, { text: "de novo", at: noon + 2000, outsideHours: false });
 assert.equal(chooseFlow([flow], { text: "de novo", outsideHours: false, run: null })?.id, "flow");
 assert.equal(restarted.actions[0]?.type, "send");

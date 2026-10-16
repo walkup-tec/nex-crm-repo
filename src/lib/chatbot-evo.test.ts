@@ -79,6 +79,7 @@ import {
   offlineNoticeText,
   reactivationMinutes,
   reactivatesClosedConversation,
+  attendanceExpired,
   waitingMinutes,
   overdueQueue,
   noticeCue,
@@ -760,6 +761,9 @@ assert.equal(reactivationMinutes(10), 15);
 assert.equal(reactivatesClosedConversation("2026-10-15T12:00:00.000Z", 15, Date.parse("2026-10-15T12:14:00.000Z")), true);
 assert.equal(reactivatesClosedConversation("2026-10-15T12:00:00.000Z", 15, Date.parse("2026-10-15T12:15:00.000Z")), false);
 assert.equal(reactivatesClosedConversation("", 15, Date.parse("2026-10-15T12:01:00.000Z")), false);
+assert.equal(attendanceExpired("2026-10-15T12:00:00.000Z", 15, Date.parse("2026-10-15T12:14:00.000Z")), false);
+assert.equal(attendanceExpired("2026-10-15T12:00:00.000Z", 15, Date.parse("2026-10-15T12:15:00.000Z")), true);
+assert.equal(attendanceExpired("", 15, Date.parse("2026-10-15T12:20:00.000Z")), false);
 assert.equal(offlineNoticeText(`  ${defaultOfflineNotice}  `), defaultOfflineNotice);
 assert.equal(offlineNoticeText("a"), "");
 assert.equal(waitingMinutes("2026-10-15T12:00:00.000Z", Date.parse("2026-10-15T12:05:00.000Z")), 5);

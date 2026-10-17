@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access";
-import { competenceLabel, type OwnFinance } from "@/lib/finance-access";
+import { competenceLabel, pixQrPayload, type OwnFinance } from "@/lib/finance-access";
 import { listOwnFinanceFn } from "@/lib/finance.functions";
+import { PixCharge } from "@/components/nex/PixCharge";
 
 const financeSteps = ["Contrato", "Cobranças", "Faturas"] as const;
 
@@ -45,12 +46,12 @@ function FinanceLoading() {
 function FinancePayButton({
   href,
   paid,
-  cora,
+  pix,
   onPay,
 }: {
   href: string | null;
   paid: boolean;
-  cora: boolean;
+  pix: string;
   onPay: () => void;
 }) {
   if (paid) {
@@ -75,7 +76,7 @@ function FinancePayButton({
       </Button>
     );
   }
-  if (cora && href) {
+  if (pix) {
     return (
       <Button size="sm" className="w-fit shrink-0" type="button" onClick={onPay}>
         Pagar
@@ -172,7 +173,7 @@ export function ClientFinance() {
                     <FinancePayButton
                       href={item.invoiceUrl}
                       paid={item.status === "paid"}
-                      cora={snapshot.billingProvider === "cora"}
+                      pix={snapshot.billingProvider === "cora" ? pixQrPayload(item.pixCode) : ""}
                       onPay={() => setCoraCharge(item)}
                     />
                   </div>
@@ -181,21 +182,22 @@ export function ClientFinance() {
             </CardContent>
           </Card>
           <Dialog open={coraCharge !== null} onOpenChange={(open) => !open && setCoraCharge(null)}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
+            <DialogContent className="max-h-[92vh] w-[min(64rem,96vw)] max-w-[min(64rem,96vw)] overflow-y-auto">
+              <DialogHeader className="sr-only">
                 <DialogTitle>Pagamento via Pix</DialogTitle>
-                <DialogDescription>
-                  {coraCharge
-                    ? `${competenceLabel(coraCharge.competence)} • ${moneyFromCents(coraCharge.totalCents)}`
-                    : "Cobrança Cora"}
-                </DialogDescription>
+                <DialogDescription>Cobrança da mensalidade com QR Code Pix.</DialogDescription>
               </DialogHeader>
-              {coraCharge?.invoiceUrl ? (
-                <img
-                  src={coraCharge.invoiceUrl}
-                  alt="QR Code Pix da cobrança"
-                  referrerPolicy="no-referrer"
-                  className="mx-auto w-full max-w-sm rounded-md bg-white p-3"
+              {coraCharge && pixQrPayload(coraCharge.pixCode) ? (
+                <PixCharge
+                  payload={pixQrPayload(coraCharge.pixCode)}
+                  totalCents={coraCharge.totalCents}
+                  dueDate={coraCharge.dueDate}
+                  clientName={snapshot.clientName}
+                  clientDocument={snapshot.clientDocument}
+                  delinquencyMode={snapshot.delinquencyMode}
+                  finePercent={snapshot.finePercent}
+                  interestPercent={snapshot.interestPercent}
+                  delinquencyAmountCents={snapshot.delinquencyAmountCents}
                 />
               ) : null}
             </DialogContent>

@@ -41,6 +41,10 @@ type ContractRow = {
   starts_on: string;
   ends_on: string | null;
   billing_provider: string | null;
+  fine_percent: number | null;
+  interest_percent_monthly: number | null;
+  delinquency_mode: string | null;
+  delinquency_amount_cents: number | null;
 };
 type InvoiceRow = {
   id: string;
@@ -53,6 +57,7 @@ type InvoiceRow = {
   paid_at: string | null;
   invoice_url: string | null;
   external_charge_id: string | null;
+  pix_code: string | null;
 };
 
 function fail(message: string): never {
@@ -92,7 +97,9 @@ async function actorOf(userId: string): Promise<Actor> {
 async function contractsOf(organizationId?: string) {
   let query = supabaseAdmin
     .from("contracts")
-    .select("id, organization_id, external_subscription_id, monthly_fee_cents, starts_on, ends_on, billing_provider");
+    .select(
+      "id, organization_id, external_subscription_id, monthly_fee_cents, starts_on, ends_on, billing_provider, fine_percent, interest_percent_monthly, delinquency_mode, delinquency_amount_cents",
+    );
   if (organizationId) query = query.eq("organization_id", organizationId);
   const { data, error } = await query;
   if (error) fail(error.message);
@@ -404,7 +411,7 @@ async function invoicesOf(organizationId?: string) {
   let query = supabaseAdmin
     .from("invoices")
     .select(
-      "id, organization_id, competence, due_date, base_amount_cents, total_amount_cents, status, paid_at, invoice_url, external_charge_id",
+      "id, organization_id, competence, due_date, base_amount_cents, total_amount_cents, status, paid_at, invoice_url, external_charge_id, pix_code",
     )
     .order("due_date", { ascending: false });
   if (organizationId) query = query.eq("organization_id", organizationId);
@@ -425,6 +432,7 @@ function toCharge(row: InvoiceRow, names: Map<string, string>): FinanceCharge {
     status: row.status,
     paidAt: row.paid_at,
     invoiceUrl: row.invoice_url,
+    pixCode: row.pix_code,
     canNegotiate: Boolean(row.external_charge_id) && row.status === "overdue",
   };
 }
@@ -504,10 +512,11 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const actor = await actorOf(userId);
   if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
   const notice = await syncFinance(userId, actor.organizationId);
-  const [contracts, rows, names] = await Promise.all([
+  const [contracts, rows, names, company] = await Promise.all([
     contractsOf(actor.organizationId),
     invoicesOf(actor.organizationId),
     namesOf([actor.organizationId]),
+    supabaseAdmin.from("organizations").select("document").eq("id", actor.organizationId).maybeSingle(),
   ]);
   const contract = contracts[0] ?? null;
   const charges = rows.map((row) => toCharge(row, names));
@@ -536,6 +545,15 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
       contract?.billing_provider === "cora" || contract?.billing_provider === "asaas"
         ? contract.billing_provider
         : "",
+    clientDocument: company.data?.document ?? "",
+    delinquencyMode:
+      contract?.delinquency_mode === "rate" || contract?.delinquency_mode === "amount"
+        ? contract.delinquency_mode
+        : "",
+    finePercent: Number(contract?.fine_percent ?? 0),
+    interestPercent: Number(contract?.interest_percent_monthly ?? 0),
+    delinquencyAmountCents:
+      contract?.delinquency_amount_cents == null ? null : Number(contract.delinquency_amount_cents),
   };
 }
 

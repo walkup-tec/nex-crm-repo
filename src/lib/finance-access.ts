@@ -11,8 +11,14 @@ export type FinanceCharge = {
   status: InvoiceStatus;
   paidAt: string | null;
   invoiceUrl: string | null;
+  pixCode: string | null;
   canNegotiate: boolean;
 };
+
+export function pixQrPayload(code: string | null) {
+  const value = code?.trim() ?? "";
+  return value.startsWith("000201") ? value : "";
+}
 
 export type FinanceAudit = {
   id: string;
@@ -44,6 +50,11 @@ export type OwnFinance = {
   overdueChargeId: string | null;
   notice: string;
   billingProvider: "cora" | "asaas" | "";
+  clientDocument: string;
+  delinquencyMode: "rate" | "amount" | "";
+  finePercent: number;
+  interestPercent: number;
+  delinquencyAmountCents: number | null;
 };
 
 export type ChargePix = {

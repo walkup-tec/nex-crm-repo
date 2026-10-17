@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   AdsPlatformSwitch,
@@ -9,6 +9,9 @@ import { AppShell } from "@/components/nex/AppShell";
 import { MetaPerformance } from "@/components/nex/MetaPerformance";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  beforeLoad: ({ context }) => {
+    if ((context as { master?: boolean }).master) throw redirect({ to: "/master" });
+  },
   head: () => ({
     meta: [
       { title: "Dashboard Anúncios — NEX Ads" },

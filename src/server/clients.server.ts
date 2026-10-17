@@ -1,22 +1,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
+import type { ClientDraft, ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
+import { assertCoraAmounts, chargeCents, contractDueDates, coraPaymentTerms, noticeSchedule } from "@/lib/billing-plan";
 import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
-
-type Draft = {
-  legalName: string;
-  document: string;
-  responsibleName: string;
-  responsibleEmail: string;
-  whatsapp: string;
-  sameFinancePhone: boolean;
-  monthlyFee: string;
-  dueDay: string;
-  startsOn: string;
-  endsOn: string;
-  finePercent: string;
-  interestPercent: string;
-  asaasSubscriptionId: string;
-};
+import { createCoraInvoice } from "@/server/cora.server";
 
 function fail(message: string): never {
   throw new Error(message);
@@ -49,7 +35,14 @@ function parseDate(value: string, label: string) {
   return `${String(year).padStart(4, "0")}-${match[2]}-${match[1]}`;
 }
 
-function parseDraft(input: Draft) {
+function migrationMessage(message: string) {
+  if (/billing_provider|promo_enabled|delinquency_mode|billing_notices|schema cache|does not exist/i.test(message)) {
+    return "A migração da cobrança Cora ainda não foi aplicada no Supabase.";
+  }
+  return message;
+}
+
+function parseDraft(input: ClientDraft) {
   const legalName = input.legalName.trim();
   const responsibleName = input.responsibleName.trim();
   const document = digits(input.document);
@@ -64,8 +57,11 @@ function parseDraft(input: Draft) {
   const dueDay = Number(digits(input.dueDay));
   if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28)
     fail("O vencimento precisa ser um dia entre 1 e 28.");
+  const billingProvider = input.billingProvider;
+  if (billingProvider !== "asaas" && billingProvider !== "cora") fail("Escolha a cobrança pela Cora ou pelo Asaas.");
   const startsOn = parseDate(input.startsOn, "o início do contrato");
   const endsOn = input.endsOn.trim() ? parseDate(input.endsOn, "o término do contrato") : null;
+  if (billingProvider === "cora" && !endsOn) fail("Informe o término do contrato para gerar as cobranças da Cora.");
   if (endsOn && endsOn < startsOn) fail("O término do contrato não pode ser antes do início.");
   const finePercent = input.finePercent.trim() ? Number(digits(input.finePercent)) / 100 : 0;
   const interestPercent = input.interestPercent.trim()
@@ -75,9 +71,27 @@ function parseDraft(input: Draft) {
     fail("Informe a multa entre 0% e 100%.");
   if (!Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100)
     fail("Informe os juros entre 0% e 100%.");
-  const asaasSubscriptionId = input.asaasSubscriptionId.trim();
+  const asaasSubscriptionId = billingProvider === "asaas" ? input.asaasSubscriptionId.trim() : "";
   if (asaasSubscriptionId && !/^[A-Za-z0-9_]{1,64}$/.test(asaasSubscriptionId))
     fail("A assinatura do Asaas é inválida.");
+  const promoEnabled = billingProvider === "cora" && input.promoEnabled;
+  const promoStartsOn = promoEnabled ? parseDate(input.promoStartsOn, "o início da promoção") : null;
+  const promoEndsOn = promoEnabled ? parseDate(input.promoEndsOn, "o fim da promoção") : null;
+  if (promoStartsOn && promoEndsOn && promoEndsOn < promoStartsOn) fail("O fim da promoção não pode ser antes do início.");
+  if (promoStartsOn && endsOn && (promoStartsOn < startsOn || (promoEndsOn && promoEndsOn > endsOn))) {
+    fail("A promoção precisa ficar dentro do contrato.");
+  }
+  const afterDigits = digits(input.afterPromoFee);
+  const afterPromoCents = promoEnabled ? Number(afterDigits) : null;
+  if (promoEnabled && !afterDigits) fail("Informe o valor cobrado depois da promoção.");
+  const delinquencyMode = billingProvider === "cora" ? input.delinquencyMode : "";
+  if (billingProvider === "cora" && delinquencyMode !== "rate" && delinquencyMode !== "amount") {
+    fail("Escolha juros e multa ou um valor fixo para a inadimplência.");
+  }
+  const delinquencyAmountCents = delinquencyMode === "amount" ? Number(digits(input.delinquencyAmount)) : null;
+  if (delinquencyMode === "amount" && (!delinquencyAmountCents || delinquencyAmountCents <= 0)) {
+    fail("Informe o valor cobrado na inadimplência.");
+  }
   const whatsapp = input.whatsapp.trim();
   return {
     legalName,
@@ -86,6 +100,7 @@ function parseDraft(input: Draft) {
     responsibleEmail,
     whatsapp,
     financePhone: input.sameFinancePhone ? whatsapp : "não informado",
+    billingProvider,
     monthlyFeeCents: Number(feeDigits),
     dueDay,
     startsOn,
@@ -93,6 +108,12 @@ function parseDraft(input: Draft) {
     finePercent,
     interestPercent,
     asaasSubscriptionId,
+    promoEnabled,
+    promoStartsOn,
+    promoEndsOn,
+    afterPromoCents,
+    delinquencyMode: delinquencyMode === "rate" || delinquencyMode === "amount" ? delinquencyMode : null,
+    delinquencyAmountCents,
   };
 }
 
@@ -150,11 +171,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
         "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status",
       )
       .order("legal_name"),
-    supabaseAdmin
-      .from("contracts")
-      .select(
-        "organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, external_subscription_id",
-      ),
+    loadContracts(),
     supabaseAdmin
       .from("meta_accounts")
       .select(
@@ -227,6 +244,13 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       finePercent: contract ? Number(contract.fine_percent) : null,
       interestPercent: contract ? Number(contract.interest_percent_monthly) : null,
       asaasSubscriptionId: contract?.external_subscription_id ?? "",
+      billingProvider: contract?.billing_provider === "cora" || contract?.billing_provider === "asaas" ? contract.billing_provider : "",
+      promoEnabled: contract?.promo_enabled === true,
+      promoStartsOn: contract?.promo_starts_on ?? null,
+      promoEndsOn: contract?.promo_ends_on ?? null,
+      afterPromoCents: contract?.after_promo_cents == null ? null : Number(contract.after_promo_cents),
+      delinquencyMode: contract?.delinquency_mode === "rate" || contract?.delinquency_mode === "amount" ? contract.delinquency_mode : "",
+      delinquencyAmountCents: contract?.delinquency_amount_cents == null ? null : Number(contract.delinquency_amount_cents),
       portfolioId: portfolio,
       balanceUrl: orgAccounts.find((row) => row.selected)?.balance_url?.trim() || "",
       adAccountIds: manualAccounts.map((row) => row.external_account_id),
@@ -244,6 +268,31 @@ export async function masterDashboard(userId: string): Promise<MasterDashboard> 
   return masterDashboardFrom(await listClients(userId));
 }
 
+const contractColumns =
+  "organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, external_subscription_id, billing_provider, promo_enabled, promo_starts_on, promo_ends_on, after_promo_cents, delinquency_mode, delinquency_amount_cents";
+
+async function loadContracts() {
+  const full = await supabaseAdmin.from("contracts").select(contractColumns);
+  if (!full.error) return full;
+  if (!/billing_provider|promo_|delinquency_|schema cache|does not exist/i.test(full.error.message)) return full;
+  const basic = await supabaseAdmin
+    .from("contracts")
+    .select("organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, external_subscription_id");
+  return {
+    data: (basic.data ?? []).map((row) => ({
+      ...row,
+      billing_provider: null,
+      promo_enabled: false,
+      promo_starts_on: null,
+      promo_ends_on: null,
+      after_promo_cents: null,
+      delinquency_mode: null,
+      delinquency_amount_cents: null,
+    })),
+    error: basic.error,
+  };
+}
+
 async function saveContract(organizationId: string, parsed: ReturnType<typeof parseDraft>) {
   const { error } = await supabaseAdmin.from("contracts").upsert(
     {
@@ -254,17 +303,76 @@ async function saveContract(organizationId: string, parsed: ReturnType<typeof pa
       ends_on: parsed.endsOn,
       fine_percent: parsed.finePercent,
       interest_percent_monthly: parsed.interestPercent,
-      ...(parsed.asaasSubscriptionId
-        ? { external_subscription_id: parsed.asaasSubscriptionId }
-        : {}),
+      external_subscription_id: parsed.asaasSubscriptionId || null,
+      billing_provider: parsed.billingProvider,
+      promo_enabled: parsed.promoEnabled,
+      promo_starts_on: parsed.promoStartsOn,
+      promo_ends_on: parsed.promoEndsOn,
+      after_promo_cents: parsed.afterPromoCents,
+      delinquency_mode: parsed.delinquencyMode,
+      delinquency_amount_cents: parsed.delinquencyAmountCents,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "organization_id" },
   );
-  if (error) fail(error.message);
+  if (error) fail(migrationMessage(error.message));
 }
 
-export async function createClient(userId: string, input: Draft) {
+async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>) {
+  if (parsed.billingProvider !== "cora" || !parsed.endsOn || !parsed.delinquencyMode) return;
+  const existing = await supabaseAdmin.from("invoices").select("id").eq("organization_id", organizationId).limit(1);
+  if (existing.error) fail(migrationMessage(existing.error.message));
+  if ((existing.data ?? []).length) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const dues = contractDueDates(parsed.startsOn, parsed.endsOn, parsed.dueDay, today);
+  if (!dues.length) fail("Não há vencimento futuro até o término do contrato.");
+  const promo =
+    parsed.promoEnabled && parsed.promoStartsOn && parsed.promoEndsOn && parsed.afterPromoCents != null
+      ? { startsOn: parsed.promoStartsOn, endsOn: parsed.promoEndsOn, afterCents: parsed.afterPromoCents }
+      : null;
+  const amounts = dues.map((due) => chargeCents(due, parsed.monthlyFeeCents, promo));
+  const amountError = assertCoraAmounts(amounts);
+  if (amountError) fail(amountError);
+  const contract = await supabaseAdmin.from("contracts").select("id").eq("organization_id", organizationId).maybeSingle();
+  if (contract.error || !contract.data) fail(migrationMessage(contract.error?.message || "Não foi possível localizar o contrato."));
+  for (let index = 0; index < dues.length; index += 1) {
+    const due = dues[index] ?? "";
+    const amount = amounts[index] ?? 0;
+    const created = await createCoraInvoice({
+      code: `${organizationId}:${due}`,
+      name: parsed.legalName,
+      email: parsed.responsibleEmail,
+      document: parsed.document,
+      amountCents: amount,
+      paymentTerms: coraPaymentTerms(due, parsed.delinquencyMode, parsed.finePercent, parsed.interestPercent, parsed.delinquencyAmountCents ?? 0),
+    });
+    const inserted = await supabaseAdmin.from("invoices").insert({
+      organization_id: organizationId,
+      contract_id: contract.data.id,
+      competence: due,
+      due_date: due,
+      base_amount_cents: amount,
+      total_amount_cents: amount,
+      status: "pending",
+      external_charge_id: created.id,
+      invoice_url: created.url || null,
+      pix_code: created.pixCode || null,
+    });
+    if (inserted.error) fail(migrationMessage(inserted.error.message));
+    const notices = noticeSchedule(due).map((item) => ({
+      organization_id: organizationId,
+      due_date: due,
+      kind: item.kind,
+      send_on: item.sendOn,
+      status: "pending",
+      body: "",
+    }));
+    const savedNotices = await supabaseAdmin.from("billing_notices").insert(notices);
+    if (savedNotices.error) fail(migrationMessage(savedNotices.error.message));
+  }
+}
+
+export async function createClient(userId: string, input: ClientDraft) {
   await requireMaster(userId);
   const parsed = parseDraft(input);
   const { data: org, error: orgError } = await supabaseAdmin
@@ -288,6 +396,7 @@ export async function createClient(userId: string, input: Draft) {
     );
   try {
     await saveContract(org.id, parsed);
+    await issueCoraCharges(org.id, parsed);
     await audit(userId, org.id, "client.create");
   } catch (error) {
     await supabaseAdmin.from("organizations").delete().eq("id", org.id);
@@ -296,7 +405,7 @@ export async function createClient(userId: string, input: Draft) {
   return { id: org.id };
 }
 
-export async function updateClient(userId: string, id: string, input: Draft) {
+export async function updateClient(userId: string, id: string, input: ClientDraft) {
   await requireMaster(userId);
   const parsed = parseDraft(input);
   const { data: current, error: currentError } = await supabaseAdmin
@@ -325,6 +434,7 @@ export async function updateClient(userId: string, id: string, input: Draft) {
         : error.message,
     );
   await saveContract(id, parsed);
+  await issueCoraCharges(id, parsed);
   await audit(userId, id, "client.update");
   return { id };
 }

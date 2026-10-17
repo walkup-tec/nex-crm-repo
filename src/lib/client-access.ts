@@ -10,6 +10,9 @@ export type ClientInvoice = {
   paidAt: string | null;
 };
 
+export type BillingProvider = "asaas" | "cora";
+export type DelinquencyMode = "rate" | "amount";
+
 export type ClientDraft = {
   legalName: string;
   document: string;
@@ -17,6 +20,7 @@ export type ClientDraft = {
   responsibleEmail: string;
   whatsapp: string;
   sameFinancePhone: boolean;
+  billingProvider: BillingProvider | "";
   monthlyFee: string;
   dueDay: string;
   startsOn: string;
@@ -24,6 +28,12 @@ export type ClientDraft = {
   finePercent: string;
   interestPercent: string;
   asaasSubscriptionId: string;
+  promoEnabled: boolean;
+  promoStartsOn: string;
+  promoEndsOn: string;
+  afterPromoFee: string;
+  delinquencyMode: DelinquencyMode | "";
+  delinquencyAmount: string;
 };
 
 export type ListedClient = {
@@ -45,6 +55,13 @@ export type ListedClient = {
   finePercent: number | null;
   interestPercent: number | null;
   asaasSubscriptionId: string;
+  billingProvider: BillingProvider | "";
+  promoEnabled: boolean;
+  promoStartsOn: string | null;
+  promoEndsOn: string | null;
+  afterPromoCents: number | null;
+  delinquencyMode: DelinquencyMode | "";
+  delinquencyAmountCents: number | null;
   portfolioId: string;
   balanceUrl: string;
   adAccountIds: string[];

@@ -12,8 +12,8 @@ function publicMessage(error: unknown) {
   if (message.includes("SUPABASE_SERVICE_ROLE_KEY")) {
     return "O servidor ainda não tem a chave de administração do Supabase.";
   }
-  if (/\$aact|access_token|ASAAS_API_KEY/i.test(message)) {
-    return "Não foi possível consultar o Asaas.";
+  if (/\$aact|access_token|ASAAS_API_KEY|client_secret|CORA_CLIENT/i.test(message)) {
+    return "Não foi possível consultar o banco da cobrança.";
   }
   if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ECONNRESET|EAUTH/i.test(message)) {
     return "Não foi possível enviar o e-mail de acesso. O servidor de e-mail recusou a conexão.";

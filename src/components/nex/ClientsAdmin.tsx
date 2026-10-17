@@ -53,6 +53,7 @@ const emptyDraft: ClientDraft = {
   responsibleEmail: "",
   whatsapp: "",
   sameFinancePhone: true,
+  billingProvider: "",
   monthlyFee: "",
   dueDay: "",
   startsOn: "",
@@ -60,6 +61,12 @@ const emptyDraft: ClientDraft = {
   finePercent: "",
   interestPercent: "",
   asaasSubscriptionId: "",
+  promoEnabled: false,
+  promoStartsOn: "",
+  promoEndsOn: "",
+  afterPromoFee: "",
+  delinquencyMode: "",
+  delinquencyAmount: "",
 };
 
 function draftFrom(client: ListedClient): ClientDraft {
@@ -74,6 +81,7 @@ function draftFrom(client: ListedClient): ClientDraft {
     responsibleEmail: client.responsibleEmail,
     whatsapp: client.whatsapp ? applyMask("phone", client.whatsapp) : "",
     sameFinancePhone: client.sameFinancePhone,
+    billingProvider: client.billingProvider,
     monthlyFee: client.monthlyFeeCents == null ? "" : moneyFromCents(client.monthlyFeeCents),
     dueDay: client.dueDay == null ? "" : String(client.dueDay),
     startsOn: dateBr(client.startsOn, ""),
@@ -81,6 +89,12 @@ function draftFrom(client: ListedClient): ClientDraft {
     finePercent: client.finePercent == null ? "" : percentBr(client.finePercent),
     interestPercent: client.interestPercent == null ? "" : percentBr(client.interestPercent),
     asaasSubscriptionId: client.asaasSubscriptionId,
+    promoEnabled: client.promoEnabled,
+    promoStartsOn: dateBr(client.promoStartsOn, ""),
+    promoEndsOn: dateBr(client.promoEndsOn, ""),
+    afterPromoFee: client.afterPromoCents == null ? "" : moneyFromCents(client.afterPromoCents),
+    delinquencyMode: client.delinquencyMode,
+    delinquencyAmount: client.delinquencyAmountCents == null ? "" : moneyFromCents(client.delinquencyAmountCents),
   };
 }
 
@@ -573,6 +587,7 @@ function ClientForm({
                 onChange={(value) => set({ responsibleEmail: value })}
                 placeholder="nome@empresa.com.br"
               />
+              {draft.billingProvider === "asaas" && (
               <Button
                 type="button"
                 variant="ghost"
@@ -605,6 +620,7 @@ function ClientForm({
               >
                 {asaasLoading ? "Consultando o Asaas..." : "Integrar Asaas"}
               </Button>
+              )}
               {asaasNote && (
                 <p
                   className={`mt-1 text-xs ${asaasNote.startsWith("Assinatura localizada") ? "text-muted-foreground" : "text-destructive"}`}
@@ -626,6 +642,30 @@ function ClientForm({
               />
               Mesmo WhatsApp do responsável
             </label>
+            <fieldset className="sm:col-span-2 grid gap-3">
+              <legend className="text-sm font-medium">Cobrança</legend>
+              <p className="text-xs text-muted-foreground">Escolha um banco. O cliente não pode ser cobrado pelos dois.</p>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="billing-provider"
+                    checked={draft.billingProvider === "cora"}
+                    onChange={() => set({ billingProvider: "cora", asaasSubscriptionId: "" })}
+                  />
+                  Cora
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="billing-provider"
+                    checked={draft.billingProvider === "asaas"}
+                    onChange={() => set({ billingProvider: "asaas" })}
+                  />
+                  Asaas
+                </label>
+              </div>
+            </fieldset>
           </div>
         )}
         {step === 2 && (
@@ -654,18 +694,78 @@ function ClientForm({
               onChange={(value) => set({ endsOn: applyMask("date", value) })}
               placeholder="DD/MM/AAAA"
             />
-            <Field
-              label="Multa"
-              value={draft.finePercent}
-              onChange={(value) => set({ finePercent: applyMask("percent", value) })}
-              placeholder="2,00%"
-            />
-            <Field
-              label="Juros mensais"
-              value={draft.interestPercent}
-              onChange={(value) => set({ interestPercent: applyMask("percent", value) })}
-              placeholder="1,00%"
-            />
+            {draft.billingProvider === "cora" && (
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <Checkbox checked={draft.promoEnabled} onCheckedChange={(value) => set({ promoEnabled: value === true })} />
+                Promoção
+              </label>
+            )}
+            {draft.billingProvider === "cora" && draft.promoEnabled && (
+              <>
+                <Field
+                  label="Início da promoção"
+                  value={draft.promoStartsOn}
+                  onChange={(value) => set({ promoStartsOn: applyMask("date", value) })}
+                  placeholder="DD/MM/AAAA"
+                />
+                <Field
+                  label="Fim da promoção"
+                  value={draft.promoEndsOn}
+                  onChange={(value) => set({ promoEndsOn: applyMask("date", value) })}
+                  placeholder="DD/MM/AAAA"
+                />
+                <Field
+                  label="Valor após a promoção"
+                  value={draft.afterPromoFee}
+                  onChange={(value) => set({ afterPromoFee: applyMask("money", value) })}
+                  placeholder="R$ 0,00"
+                />
+              </>
+            )}
+            {draft.billingProvider === "cora" && (
+              <fieldset className="sm:col-span-2 grid gap-3">
+                <legend className="text-sm font-medium">Inadimplência</legend>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="delinquency-mode" checked={draft.delinquencyMode === "rate"} onChange={() => set({ delinquencyMode: "rate" })} />
+                    Juros e multa
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="delinquency-mode" checked={draft.delinquencyMode === "amount"} onChange={() => set({ delinquencyMode: "amount" })} />
+                    Valor específico
+                  </label>
+                </div>
+              </fieldset>
+            )}
+            {(draft.billingProvider === "asaas" || draft.delinquencyMode === "rate") && (
+              <>
+                <Field
+                  label="Multa"
+                  value={draft.finePercent}
+                  onChange={(value) => set({ finePercent: applyMask("percent", value) })}
+                  placeholder="2,00%"
+                />
+                <Field
+                  label="Juros mensais"
+                  value={draft.interestPercent}
+                  onChange={(value) => set({ interestPercent: applyMask("percent", value) })}
+                  placeholder="1,00%"
+                />
+              </>
+            )}
+            {draft.billingProvider === "cora" && draft.delinquencyMode === "amount" && (
+              <Field
+                label="Valor da inadimplência"
+                value={draft.delinquencyAmount}
+                onChange={(value) => set({ delinquencyAmount: applyMask("money", value) })}
+                placeholder="R$ 0,00"
+              />
+            )}
+            {draft.billingProvider === "cora" && (
+              <p className="sm:col-span-2 text-xs text-muted-foreground">
+                A Cora gera um Pix para cada vencimento até o término. O WhatsApp avisa 7 dias antes, 3 dias antes, no dia, e 1, 3 e 5 dias depois. O texto das mensagens entra depois.
+              </p>
+            )}
           </div>
         )}
         <DialogFooter>
@@ -680,7 +780,7 @@ function ClientForm({
           {step < 2 ? (
             <Button
               type="button"
-              disabled={saving}
+              disabled={saving || !draft.billingProvider}
               onClick={() => setStep((current) => current + 1)}
             >
               Continuar

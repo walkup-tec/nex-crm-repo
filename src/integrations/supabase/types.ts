@@ -170,6 +170,10 @@ export type Database = {
       }
       contracts: {
         Row: {
+          after_promo_cents: number | null
+          billing_provider: string | null
+          delinquency_amount_cents: number | null
+          delinquency_mode: string | null
           due_day: number
           ends_on: string | null
           external_subscription_id: string | null
@@ -178,10 +182,17 @@ export type Database = {
           interest_percent_monthly: number
           monthly_fee_cents: number
           organization_id: string
+          promo_enabled: boolean
+          promo_ends_on: string | null
+          promo_starts_on: string | null
           starts_on: string
           updated_at: string
         }
         Insert: {
+          after_promo_cents?: number | null
+          billing_provider?: string | null
+          delinquency_amount_cents?: number | null
+          delinquency_mode?: string | null
           due_day: number
           ends_on?: string | null
           external_subscription_id?: string | null
@@ -190,10 +201,17 @@ export type Database = {
           interest_percent_monthly?: number
           monthly_fee_cents: number
           organization_id: string
+          promo_enabled?: boolean
+          promo_ends_on?: string | null
+          promo_starts_on?: string | null
           starts_on: string
           updated_at?: string
         }
         Update: {
+          after_promo_cents?: number | null
+          billing_provider?: string | null
+          delinquency_amount_cents?: number | null
+          delinquency_mode?: string | null
           due_day?: number
           ends_on?: string | null
           external_subscription_id?: string | null
@@ -202,6 +220,9 @@ export type Database = {
           interest_percent_monthly?: number
           monthly_fee_cents?: number
           organization_id?: string
+          promo_enabled?: boolean
+          promo_ends_on?: string | null
+          promo_starts_on?: string | null
           starts_on?: string
           updated_at?: string
         }
@@ -214,6 +235,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      billing_notices: {
+        Row: {
+          body: string
+          created_at: string
+          due_date: string
+          id: string
+          kind: string
+          organization_id: string
+          send_on: string
+          status: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          due_date: string
+          id?: string
+          kind: string
+          organization_id: string
+          send_on: string
+          status?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          due_date?: string
+          id?: string
+          kind?: string
+          organization_id?: string
+          send_on?: string
+          status?: string
+        }
+        Relationships: []
       }
       creative_files: {
         Row: {

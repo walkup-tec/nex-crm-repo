@@ -24,6 +24,7 @@ import {
   evolutionMessageContent,
   evolutionMediaFile,
   evolutionSameOwnerInstance,
+  evolutionProfileNumber,
   evolutionProfilePictureUrl,
   evolutionQrImage,
   tintQrPixel,
@@ -65,6 +66,7 @@ import {
   whatsappMask,
   catalogName,
   quickReplyText,
+  inboxContactTags,
   tagColorValue,
   tagInk,
   keepWhatsappName,
@@ -657,6 +659,9 @@ assert.equal(
   "anterior",
 );
 assert.equal(evolutionSameOwnerInstance([{ name: "atual", ownerJid: "5551@s.whatsapp.net", _count: { Message: 2 } }], "atual"), "");
+assert.equal(evolutionProfileNumber("5551997451409"), "5551997451409@s.whatsapp.net");
+assert.equal(evolutionProfileNumber("555197451409"), "5551997451409@s.whatsapp.net");
+assert.equal(evolutionProfileNumber("(51) 99745-1409"), "5551997451409@s.whatsapp.net");
 assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: "https://pps.whatsapp.net/foto.jpg" }), "https://pps.whatsapp.net/foto.jpg");
 assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: "" }), "");
 assert.deepEqual(evolutionContactAvatar({ remoteJid: "5511999999999@s.whatsapp.net", profilePicUrl: "https://pps.whatsapp.net/foto.jpg" }), {
@@ -689,6 +694,15 @@ assert.equal(tagColorValue("#6F02FD"), "#6f02fd");
 assert.equal(tagColorValue("roxo"), "");
 assert.equal(tagInk("#ffffff"), "#1a1a1a");
 assert.equal(tagInk("#6f02fd"), "#ffffff");
+const cardTags = inboxContactTags(
+  [
+    { contactId: "drax", tagId: "1" },
+    { contactId: "drax", tagId: "1" },
+    { contactId: "drax", tagId: "missing" },
+  ],
+  [{ id: "1", name: "Cliente", color: "#6F02FD" }],
+);
+assert.deepEqual(cardTags.get("drax"), [{ name: "Cliente", color: "#6f02fd" }]);
 assert.equal(keepWhatsappName("5551999666841", false, "Marcelo Mozart", "5551999666841"), "Marcelo Mozart");
 assert.equal(keepWhatsappName("Cliente VIP", true, "Marcelo Mozart", "5551999666841"), "Cliente VIP");
 assert.equal(keepWhatsappName("Marcelo Mozart", false, "5551999666841", "5551999666841"), "Marcelo Mozart");

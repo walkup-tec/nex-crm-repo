@@ -33,10 +33,12 @@ import {
   evolutionMediaFile,
   evolutionMessageContent,
   evolutionMessageText,
+  evolutionProfileNumber,
   evolutionProfilePictureUrl,
   evolutionQrImage,
   evolutionSameOwnerInstance,
   evolutionContactAvatar,
+  inboxContactTags,
   preferredWhatsappPhone,
   sameWhatsappAccount,
   whatsappDeviceRemoved,
@@ -389,6 +391,18 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     times.push(cell(message, "created_at"));
     inboundAt.set(id, times);
   }
+  const tagLinks = await rowsOrMissing(table("chatbot_contact_tags").select("contact_id, tag_id").eq("organization_id", organizationId));
+  const tagCatalog = tagLinks.missing
+    ? []
+    : (await rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId))).rows.map((row) => ({
+        id: cell(row, "id"),
+        name: cell(row, "name"),
+        color: cell(row, "color"),
+      }));
+  const tagsByContact = inboxContactTags(
+    tagLinks.rows.map((row) => ({ contactId: cell(row, "contact_id"), tagId: cell(row, "tag_id") })),
+    tagCatalog,
+  );
   void refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations)
     .then((fresh) => {
       for (const [contactId, url] of fresh) avatarCache.set(contactId, url);
@@ -419,6 +433,8 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       phone: cell(row, "phone"),
       avatarUrl: avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
       botsDisabled: row["bots_disabled"] === true,
+      tags: tagsByContact.get(cell(row, "id")) ?? [],
+      stage: cell(row, "stage_name"),
     })),
     conversations: ordered.map(({ row, pinned, updatedAt }) => {
       const assigneeId = cell(row, "assignee_id");
@@ -1009,7 +1025,9 @@ async function refreshContactAvatar(instanceName: string, organizationId: string
   if (!instanceName || !phone || !contactId) return null;
   if (!force && !avatarStale(contactId, "")) return null;
   avatarAttempt.set(contactId, Date.now());
-  const body = await evo(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: phone }).catch(() => null);
+  const number = evolutionProfileNumber(phone);
+  if (!number) return null;
+  const body = await evo(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number }).catch(() => null);
   if (!body) return null;
   const url = evolutionProfilePictureUrl(body);
   await saveContactAvatar(organizationId, contactId, url).catch(() => null);
@@ -1104,7 +1122,8 @@ async function refreshStaleAvatars(
     if (!contactId || seen.has(contactId)) continue;
     seen.add(contactId);
     const contact = contactRows.find((row) => cell(row, "id") === contactId);
-    if (!contact || !avatarStale(contactId, cell(contact, "avatar_checked_at"))) continue;
+    const checkedAt = cell(contact, "avatar_url") ? cell(contact, "avatar_checked_at") : "";
+    if (!avatarStale(contactId, checkedAt)) continue;
     const instanceName = instanceByConnection.get(cell(conversation, "connection_id")) ?? "";
     if (!instanceName || !cell(contact, "phone")) continue;
     jobs.push({ contactId, phone: cell(contact, "phone"), instanceName });

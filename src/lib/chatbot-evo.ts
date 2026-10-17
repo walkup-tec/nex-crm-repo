@@ -16,7 +16,7 @@ export type ChatbotSnapshot = {
     status: ChatbotConnectionStatus;
     error: string;
   }[];
-  contacts: { id: string; name: string; phone: string; avatarUrl: string; botsDisabled: boolean }[];
+  contacts: { id: string; name: string; phone: string; avatarUrl: string; botsDisabled: boolean; tags: InboxContactTag[]; stage: string }[];
   conversations: {
     id: string;
     contactId: string;
@@ -263,6 +263,14 @@ export function attendancePhone(value: string) {
   const digits = hasCountry && raw.startsWith("55") ? raw.slice(2) : raw;
   if (digits.length !== 10 && digits.length !== 11) return "";
   return `55${digits}`;
+}
+
+export function evolutionProfileNumber(phone: string) {
+  const group = whatsappGroupJid(phone);
+  if (group) return group;
+  const international = attendancePhone(whatsappMask(phone));
+  if (!international) return "";
+  return `${international}@s.whatsapp.net`;
 }
 
 export function whatsappJidPhone(jid: string) {
@@ -1042,6 +1050,29 @@ export function quickReplyText(value: string, max = 1000) {
 export function tagColorValue(value: string) {
   const match = /^#([0-9a-fA-F]{6})$/.exec(value.trim());
   return match ? `#${match[1].toLowerCase()}` : "";
+}
+
+export type InboxContactTag = { name: string; color: string };
+
+export function inboxContactTags(
+  links: { contactId: string; tagId: string }[],
+  catalog: { id: string; name: string; color: string }[],
+) {
+  const byId = new Map(
+    catalog
+      .filter((tag) => tag.id && tag.name.trim())
+      .map((tag) => [tag.id, { name: tag.name.trim(), color: tagColorValue(tag.color) || "#6F02FD" }]),
+  );
+  const grouped = new Map<string, InboxContactTag[]>();
+  for (const link of links) {
+    const tag = byId.get(link.tagId);
+    if (!tag) continue;
+    const current = grouped.get(link.contactId) ?? [];
+    if (current.some((item) => item.name === tag.name)) continue;
+    current.push(tag);
+    grouped.set(link.contactId, current);
+  }
+  return grouped;
 }
 
 export function tagInk(color: string) {

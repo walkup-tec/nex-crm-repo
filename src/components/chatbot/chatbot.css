@@ -84,6 +84,8 @@
 .chatbot-app .avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .chatbot-app .conversation-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chatbot-app .conversation-tags .status-pill{margin-top:0}
+.chatbot-app .conversation-tags .conversation-tag{cursor:default;border-radius:4px;padding:4px 7px;font-size:9px}
+.chatbot-app .conversation-tags .status-pill.stage{background:color-mix(in srgb,#00eafd 16%,var(--card));color:#d7f6fb;border:1px solid #00eafd}
 .chatbot-app .chat-top > span{display:flex;align-items:center;gap:8px;min-width:0}
 .chatbot-app input[type="checkbox"]{width:auto;padding:0}
 .chatbot-app .team-choice{display:flex;align-items:center;gap:8px;font-weight:500}

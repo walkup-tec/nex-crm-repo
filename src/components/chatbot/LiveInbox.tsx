@@ -18,7 +18,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -642,6 +642,12 @@ export function LiveInbox() {
           <div className="conversation-tags">
             {channel ? <span className="status-pill">{channel}</span> : null}
             <span className={`status-pill${pending ? " waiting" : ""}`}>{labelFor(item.id)}</span>
+            {(person?.tags ?? []).map((tag) => (
+              <span key={tag.name} className="tag-chip conversation-tag" style={{ background: tag.color, color: tagInk(tag.color), borderColor: tag.color }}>
+                {tag.name}
+              </span>
+            ))}
+            {person?.stage ? <span className="status-pill stage">{person.stage}</span> : null}
           </div>
         </div>
         <div className="conversation-side">

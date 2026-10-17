@@ -43,6 +43,7 @@ export type OwnFinance = {
   openChargeId: string | null;
   overdueChargeId: string | null;
   notice: string;
+  billingProvider: "cora" | "asaas" | "";
 };
 
 export type ChargePix = {

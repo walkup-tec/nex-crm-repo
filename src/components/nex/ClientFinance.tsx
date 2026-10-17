@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access";
 import { competenceLabel, type OwnFinance } from "@/lib/finance-access";
@@ -41,7 +42,17 @@ function FinanceLoading() {
   );
 }
 
-function FinancePayButton({ href, paid }: { href: string | null; paid: boolean }) {
+function FinancePayButton({
+  href,
+  paid,
+  cora,
+  onPay,
+}: {
+  href: string | null;
+  paid: boolean;
+  cora: boolean;
+  onPay: () => void;
+}) {
   if (paid) {
     if (!href) {
       return (
@@ -61,6 +72,13 @@ function FinancePayButton({ href, paid }: { href: string | null; paid: boolean }
         <a href={href} target="_blank" rel="noreferrer" aria-label="Baixar documento">
           <Download />
         </a>
+      </Button>
+    );
+  }
+  if (cora && href) {
+    return (
+      <Button size="sm" className="w-fit shrink-0" type="button" onClick={onPay}>
+        Pagar
       </Button>
     );
   }
@@ -84,6 +102,7 @@ export function ClientFinance() {
   const [snapshot, setSnapshot] = useState<OwnFinance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [coraCharge, setCoraCharge] = useState<OwnFinance["charges"][number] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,12 +169,37 @@ export function ClientFinance() {
                     </div>
                     <strong>{moneyFromCents(item.totalCents)}</strong>
                     <Badge variant="outline">{invoiceStatusLabel(item.status)}</Badge>
-                    <FinancePayButton href={item.invoiceUrl} paid={item.status === "paid"} />
+                    <FinancePayButton
+                      href={item.invoiceUrl}
+                      paid={item.status === "paid"}
+                      cora={snapshot.billingProvider === "cora"}
+                      onPay={() => setCoraCharge(item)}
+                    />
                   </div>
                 ))
               )}
             </CardContent>
           </Card>
+          <Dialog open={coraCharge !== null} onOpenChange={(open) => !open && setCoraCharge(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Pagamento via Pix</DialogTitle>
+                <DialogDescription>
+                  {coraCharge
+                    ? `${competenceLabel(coraCharge.competence)} • ${moneyFromCents(coraCharge.totalCents)}`
+                    : "Cobrança Cora"}
+                </DialogDescription>
+              </DialogHeader>
+              {coraCharge?.invoiceUrl ? (
+                <img
+                  src={coraCharge.invoiceUrl}
+                  alt="QR Code Pix da cobrança"
+                  referrerPolicy="no-referrer"
+                  className="mx-auto w-full max-w-sm rounded-md bg-white p-3"
+                />
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </div>

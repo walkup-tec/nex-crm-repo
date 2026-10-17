@@ -40,6 +40,7 @@ type ContractRow = {
   monthly_fee_cents: number;
   starts_on: string;
   ends_on: string | null;
+  billing_provider: string | null;
 };
 type InvoiceRow = {
   id: string;
@@ -91,7 +92,7 @@ async function actorOf(userId: string): Promise<Actor> {
 async function contractsOf(organizationId?: string) {
   let query = supabaseAdmin
     .from("contracts")
-    .select("id, organization_id, external_subscription_id, monthly_fee_cents, starts_on, ends_on");
+    .select("id, organization_id, external_subscription_id, monthly_fee_cents, starts_on, ends_on, billing_provider");
   if (organizationId) query = query.eq("organization_id", organizationId);
   const { data, error } = await query;
   if (error) fail(error.message);
@@ -249,8 +250,10 @@ export async function syncFinance(userId: string, organizationId?: string) {
       ? "O Asaas ainda não está configurado no servidor. As cobranças já gravadas continuam visíveis."
       : "Nenhum contrato integrado ao Asaas.";
   }
-  if (!linked.length)
+  if (!linked.length) {
+    if (contracts.some((contract) => contract.billing_provider === "cora")) return "";
     return "Nenhum contrato integrado ao Asaas. A cobrança entra depois da integração.";
+  }
   let inserted = 0;
   let problem = "";
   for (const contract of linked) {
@@ -529,6 +532,10 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     openChargeId: open?.id ?? null,
     overdueChargeId: oldestOverdue?.id ?? null,
     notice,
+    billingProvider:
+      contract?.billing_provider === "cora" || contract?.billing_provider === "asaas"
+        ? contract.billing_provider
+        : "",
   };
 }
 

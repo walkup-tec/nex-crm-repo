@@ -93,10 +93,10 @@ async function coraToken() {
   if (cachedToken.value && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   const settings = coraRuntime();
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
-  let body = "grant_type=client_credentials";
-  if (settings.direct) body += `&client_id=${encodeURIComponent(settings.id)}`;
+  let form = "grant_type=client_credentials";
+  if (settings.direct) form += `&client_id=${encodeURIComponent(settings.id)}`;
   else headers.authorization = `Basic ${Buffer.from(`${settings.id}:${settings.secret}`).toString("base64")}`;
-  const response = await coraRequest(settings, settings.direct ? "/token" : "/oauth/token", headers, body);
+  const response = await coraRequest(settings, settings.direct ? "/token" : "/oauth/token", headers, form);
   const text = response.text;
   if (response.status < 200 || response.status >= 300) fail(coraMessage(text) || "A Cora recusou as credenciais.");
   const body = JSON.parse(text) as { access_token?: string; expires_in?: number };

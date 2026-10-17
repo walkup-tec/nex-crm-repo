@@ -101,7 +101,7 @@ function ProfileAvatar({ name, avatarUrl }: { name: string; avatarUrl: string })
   if (!avatarUrl || hidden) return <span className="avatar">{initials}</span>;
   return (
     <span className="avatar">
-      <img src={avatarUrl} alt="" onError={() => setHidden(true)} />
+      <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setHidden(true)} />
     </span>
   );
 }

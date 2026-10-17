@@ -663,8 +663,11 @@ assert.equal(evolutionProfileNumber("5551997451409"), "5551997451409@s.whatsapp.
 assert.equal(evolutionProfileNumber("555197451409"), "5551997451409@s.whatsapp.net");
 assert.equal(evolutionProfileNumber("(51) 99745-1409"), "5551997451409@s.whatsapp.net");
 assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: "https://pps.whatsapp.net/foto.jpg" }), "https://pps.whatsapp.net/foto.jpg");
+assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: null, picture: "https://pps.whatsapp.net/foto.jpg" }), "https://pps.whatsapp.net/foto.jpg");
+assert.equal(evolutionProfilePictureUrl([{ profilePicUrl: "https://pps.whatsapp.net/foto.jpg" }]), "https://pps.whatsapp.net/foto.jpg");
 assert.equal(evolutionProfilePictureUrl({ profilePictureUrl: "" }), "");
 assert.deepEqual(evolutionContactAvatar({ remoteJid: "5511999999999@s.whatsapp.net", profilePicUrl: "https://pps.whatsapp.net/foto.jpg" }), {
+  jid: "5511999999999@s.whatsapp.net",
   phone: "5511999999999",
   url: "https://pps.whatsapp.net/foto.jpg",
   changed: false,

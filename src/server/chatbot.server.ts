@@ -22,6 +22,7 @@ import {
   evolutionInstanceClosed,
   evolutionInstanceNameOf,
   evolutionNumberInUse,
+  evolutionContactIdentity,
   evolutionConversationPhone,
   evolutionGroupSubject,
   groupInboundText,
@@ -1004,6 +1005,7 @@ export async function ingestEvolutionWebhook(request: Request) {
 
 const avatarAttempt = new Map<string, number>();
 const avatarCache = new Map<string, string>();
+const phoneLids = new Map<string, string>();
 const avatarFreshMs = 10 * 60 * 1000;
 
 function avatarStale(contactId: string, checkedAt: string) {
@@ -1021,17 +1023,51 @@ async function saveContactAvatar(organizationId: string, contactId: string, url:
     .eq("organization_id", organizationId);
 }
 
+async function requestProfilePicture(instanceName: string, number: string) {
+  const encoded = encodeURIComponent(instanceName);
+  const direct = await evo(`/chat/fetchProfilePictureUrl/${encoded}`, "POST", { number }).catch(() => null);
+  const directUrl = evolutionProfilePictureUrl(direct);
+  if (directUrl) return directUrl;
+  const profile = await evo(`/chat/fetchProfile/${encoded}`, "POST", { number }).catch(() => null);
+  const profileUrl = evolutionProfilePictureUrl(profile);
+  if (profileUrl) return profileUrl;
+  const listed = await evo(`/chat/findContacts/${encoded}`, "POST", { where: { remoteJid: number } }).catch(() => null);
+  return evolutionProfilePictureUrl(listed);
+}
+
+async function durableAvatar(url: string) {
+  if (!url.startsWith("https://")) return "";
+  try {
+    const response = await fetch(url, {
+      headers: { accept: "image/*", "user-agent": "Mozilla/5.0" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return url;
+    const type = (response.headers.get("content-type") || "image/jpeg").split(";")[0]?.trim().toLowerCase() ?? "";
+    if (!type.startsWith("image/") || type === "image/svg+xml") return url;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength < 32 || bytes.byteLength > 350000) return url;
+    return `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
+  } catch {
+    return url;
+  }
+}
+
 async function refreshContactAvatar(instanceName: string, organizationId: string, contactId: string, phone: string, force = false) {
   if (!instanceName || !phone || !contactId) return null;
   if (!force && !avatarStale(contactId, "")) return null;
   avatarAttempt.set(contactId, Date.now());
-  const number = evolutionProfileNumber(phone);
-  if (!number) return null;
-  const body = await evo(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number }).catch(() => null);
-  if (!body) return null;
-  const url = evolutionProfilePictureUrl(body);
-  await saveContactAvatar(organizationId, contactId, url).catch(() => null);
-  return url;
+  const numbers = [evolutionProfileNumber(phone), phoneLids.get(phone) ?? ""].filter((number, index, all) => number && all.indexOf(number) === index);
+  let url = "";
+  for (const number of numbers) {
+    url = await requestProfilePicture(instanceName, number);
+    if (url) break;
+  }
+  if (!url) return null;
+  const stored = await durableAvatar(url);
+  await saveContactAvatar(organizationId, contactId, stored).catch(() => null);
+  return stored;
 }
 
 async function findContactByPhone(organizationId: string, phone: string) {
@@ -1086,20 +1122,28 @@ async function refreshMessageAvatar(connection: Record<string, unknown>, data: u
   if (key["fromMe"] === true) return;
   const phone = incomingPhone(key, knownLids);
   if (!phone) return;
+  const lid = evolutionContactIdentity(key).lid;
+  if (lid) phoneLids.set(phone, lid);
   const organizationId = cell(connection, "organization_id");
   const contact = await findContactByPhone(organizationId, phone);
   if (!contact) return;
-  await refreshContactAvatar(cell(connection, "instance_name"), organizationId, cell(contact, "id"), cell(contact, "phone"), true);
+  const storedPhone = cell(contact, "phone");
+  if (lid && storedPhone) phoneLids.set(storedPhone, lid);
+  await refreshContactAvatar(cell(connection, "instance_name"), organizationId, cell(contact, "id"), storedPhone || phone, true);
 }
 
 async function refreshWebhookAvatar(connection: Record<string, unknown>, data: unknown) {
   const update = evolutionContactAvatar(data);
   if (!update) return;
+  const phone = update.jid.endsWith("@lid") ? knownLidPhones[update.jid] ?? "" : update.phone;
+  if (!phone) return;
   const organizationId = cell(connection, "organization_id");
-  const contact = await findContactByPhone(organizationId, update.phone);
+  const contact = await findContactByPhone(organizationId, phone);
   if (!contact) return;
+  if (update.jid.endsWith("@lid")) phoneLids.set(cell(contact, "phone") || phone, update.jid);
   if (update.url) {
-    await saveContactAvatar(organizationId, cell(contact, "id"), update.url).catch(() => null);
+    const stored = await durableAvatar(update.url);
+    await saveContactAvatar(organizationId, cell(contact, "id"), stored).catch(() => null);
     return;
   }
   if (update.changed) {
@@ -1122,7 +1166,8 @@ async function refreshStaleAvatars(
     if (!contactId || seen.has(contactId)) continue;
     seen.add(contactId);
     const contact = contactRows.find((row) => cell(row, "id") === contactId);
-    const checkedAt = cell(contact, "avatar_url") ? cell(contact, "avatar_checked_at") : "";
+    const currentAvatar = cell(contact, "avatar_url");
+    const checkedAt = currentAvatar.startsWith("data:") ? cell(contact, "avatar_checked_at") : "";
     if (!avatarStale(contactId, checkedAt)) continue;
     const instanceName = instanceByConnection.get(cell(conversation, "connection_id")) ?? "";
     if (!instanceName || !cell(contact, "phone")) continue;

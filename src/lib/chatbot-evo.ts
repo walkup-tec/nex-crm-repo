@@ -398,10 +398,31 @@ export function tintQrPixel(r: number, g: number, b: number, a: number) {
   ] as const;
 }
 
+const profilePictureKeys = ["profilePictureUrl", "profilePicUrl", "picture"];
+
+function readProfilePicture(value: unknown, depth: number): string {
+  if (!value || typeof value !== "object" || depth > 3) return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const url = readProfilePicture(item, depth + 1);
+      if (url) return url;
+    }
+    return "";
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of profilePictureKeys) {
+    const raw = record[key];
+    if (typeof raw === "string" && raw.startsWith("https://")) return raw;
+  }
+  for (const key of ["data", "response"]) {
+    const url = readProfilePicture(record[key], depth + 1);
+    if (url) return url;
+  }
+  return "";
+}
+
 export function evolutionProfilePictureUrl(payload: unknown) {
-  if (!payload || typeof payload !== "object") return "";
-  const url = (payload as Record<string, unknown>)["profilePictureUrl"];
-  return typeof url === "string" && url.startsWith("https://") ? url : "";
+  return readProfilePicture(payload, 0);
 }
 
 export function evolutionContactAvatar(data: unknown) {
@@ -409,10 +430,10 @@ export function evolutionContactAvatar(data: unknown) {
   if (!record) return null;
   const jid = [record["remoteJid"], record["id"], record["jid"]].find((value) => typeof value === "string");
   const phone = typeof jid === "string" ? whatsappJidPhone(jid) : "";
-  if (!phone) return null;
+  if (!phone || typeof jid !== "string") return null;
   const raw = [record["profilePicUrl"], record["profilePictureUrl"], record["imgUrl"]].find((value) => typeof value === "string");
   const url = typeof raw === "string" && raw.startsWith("https://") ? raw : "";
-  return { phone, url, changed: raw === "changed" };
+  return { jid, phone, url, changed: raw === "changed" };
 }
 
 export function evolutionQrImage(payload: unknown): string {

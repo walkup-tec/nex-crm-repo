@@ -527,15 +527,20 @@ function ClientForm({
   const submit = async () => {
     setSaving(true);
     setFormError("");
-    const result = client
-      ? await updateClientFn({ data: { ...draft, id: client.id } })
-      : await createClientFn({ data: draft });
-    setSaving(false);
-    if (!result.ok) {
-      setFormError(result.message);
-      return;
+    try {
+      const result = client
+        ? await updateClientFn({ data: { ...draft, id: client.id } })
+        : await createClientFn({ data: draft });
+      if (!result.ok) {
+        setFormError(result.message);
+        return;
+      }
+      await onSaved(client ? "Cliente atualizado." : "Cliente criado.");
+    } catch {
+      setFormError("Não foi possível concluir. Tente de novo.");
+    } finally {
+      setSaving(false);
     }
-    await onSaved(client ? "Cliente atualizado." : "Cliente criado.");
   };
 
   return (

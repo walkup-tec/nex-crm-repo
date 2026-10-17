@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import https from "node:https";
+import { resolveCoraSettings, type CoraSettings } from "@/lib/cora-connection";
 
 function idempotencyKey(code: string) {
   const hash = createHash("sha256").update(code).digest();
@@ -19,12 +22,57 @@ function fail(message: string): never {
   throw new Error(message);
 }
 
+function pemEnv(valueName: string, pathName: string) {
+  const inline = process.env[valueName] ?? "";
+  if (inline.trim()) return inline;
+  const path = process.env[pathName]?.trim() ?? "";
+  if (!path) return "";
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 function coraRuntime() {
-  const id = process.env["CORA_CLIENT_ID"]?.trim() ?? "";
-  const secret = process.env["CORA_CLIENT_SECRET"]?.trim() ?? "";
-  const base = (process.env["CORA_API_URL"]?.trim() || "https://api.stage.cora.com.br").replace(/\/$/, "");
-  if (!id || !secret) fail("A Cora ainda não está configurada no servidor.");
-  return { id, secret, base };
+  return resolveCoraSettings({
+    id: process.env["CORA_CLIENT_ID"],
+    secret: process.env["CORA_CLIENT_SECRET"],
+    base: process.env["CORA_API_URL"],
+    cert: pemEnv("CORA_CERT", "CORA_CERT_PATH"),
+    key: pemEnv("CORA_KEY", "CORA_KEY_PATH"),
+  });
+}
+
+function coraRequest(settings: CoraSettings, path: string, headers: Record<string, string>, body: string) {
+  const target = new URL(`${settings.base}${path}`);
+  return new Promise<{ status: number; text: string }>((resolve, reject) => {
+    const request = https.request(
+      {
+        hostname: target.hostname,
+        path: `${target.pathname}${target.search}`,
+        method: "POST",
+        headers,
+        cert: settings.cert || undefined,
+        key: settings.key || undefined,
+        timeout: 20000,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => {
+          resolve({ status: response.statusCode ?? 0, text: Buffer.concat(chunks).toString("utf8") });
+        });
+      },
+    );
+    request.on("timeout", () => {
+      request.destroy();
+      reject(new Error("A Cora não respondeu."));
+    });
+    request.on("error", () => reject(new Error("Não foi possível falar com a Cora.")));
+    request.write(body);
+    request.end();
+  });
 }
 
 function coraMessage(text: string) {
@@ -43,18 +91,14 @@ let cachedToken = { value: "", expiresAt: 0 };
 
 async function coraToken() {
   if (cachedToken.value && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  const { id, secret, base } = coraRuntime();
-  const response = await fetch(`${base}/oauth/token`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
-    },
-    body: "grant_type=client_credentials",
-    signal: AbortSignal.timeout(20000),
-  });
-  const text = await response.text();
-  if (!response.ok) fail(coraMessage(text) || "A Cora recusou as credenciais.");
+  const settings = coraRuntime();
+  const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
+  let body = "grant_type=client_credentials";
+  if (settings.direct) body += `&client_id=${encodeURIComponent(settings.id)}`;
+  else headers.authorization = `Basic ${Buffer.from(`${settings.id}:${settings.secret}`).toString("base64")}`;
+  const response = await coraRequest(settings, settings.direct ? "/token" : "/oauth/token", headers, body);
+  const text = response.text;
+  if (response.status < 200 || response.status >= 300) fail(coraMessage(text) || "A Cora recusou as credenciais.");
   const body = JSON.parse(text) as { access_token?: string; expires_in?: number };
   if (!body.access_token) fail("A Cora não devolveu o acesso.");
   cachedToken = {
@@ -76,16 +120,17 @@ export async function createCoraInvoice(input: {
   amountCents: number;
   paymentTerms: { due_date: string; fine?: { amount: number } | { rate: number }; interest?: { rate: number } };
 }): Promise<CoraInvoiceResult> {
-  const { base } = coraRuntime();
+  const settings = coraRuntime();
   const token = await coraToken();
-  const response = await fetch(`${base}/v2/invoices`, {
-    method: "POST",
-    headers: {
+  const response = await coraRequest(
+    settings,
+    "/v2/invoices",
+    {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
       "idempotency-key": idempotencyKey(input.code),
     },
-    body: JSON.stringify({
+    JSON.stringify({
       code: input.code.slice(0, 64),
       customer: {
         name: input.name.slice(0, 60),
@@ -105,11 +150,10 @@ export async function createCoraInvoice(input: {
       payment_terms: input.paymentTerms,
       payment_forms: ["PIX"],
     }),
-    signal: AbortSignal.timeout(20000),
-  });
-  const text = await response.text();
+  );
+  const text = response.text;
   if (response.status === 401 || response.status === 403) fail("A Cora recusou o acesso para emitir a cobrança.");
-  if (!response.ok) fail(coraMessage(text) || "Não foi possível gerar a cobrança na Cora.");
+  if (response.status < 200 || response.status >= 300) fail(coraMessage(text) || "Não foi possível gerar a cobrança na Cora.");
   const body = JSON.parse(text) as Record<string, unknown>;
   const id = textOf(body["id"]);
   if (!id) fail("A Cora não devolveu a cobrança.");

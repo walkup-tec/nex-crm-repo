@@ -4,6 +4,7 @@ export type FinanceCharge = {
   id: string;
   organizationId: string;
   clientName: string;
+  clientDocument: string;
   competence: string;
   dueDate: string;
   totalCents: number;
@@ -13,7 +14,17 @@ export type FinanceCharge = {
   invoiceUrl: string | null;
   pixCode: string | null;
   canNegotiate: boolean;
+  billingProvider: "cora" | "asaas" | "";
 };
+
+export function chargeMatchesClient(charge: { clientName: string; clientDocument: string }, query: string) {
+  const text = query.trim().toLocaleLowerCase("pt-BR");
+  if (!text) return true;
+  if (charge.clientName.toLocaleLowerCase("pt-BR").includes(text)) return true;
+  const digits = text.replace(/\D/g, "");
+  if (!digits) return false;
+  return charge.clientDocument.replace(/\D/g, "").includes(digits);
+}
 
 export function pixQrPayload(code: string | null) {
   const value = code?.trim() ?? "";

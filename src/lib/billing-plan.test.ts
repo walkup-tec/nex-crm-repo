@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionAmount, promotionsOverlap } from "./billing-plan";
+import { chargeCents, contractDueDates, coraDelinquencyFine, coraNegotiatedTerms, coraNegotiationDue, coraPaymentTerms, noticeSchedule, promotionAmount, promotionsOverlap } from "./billing-plan";
 
 assert.deepEqual(contractDueDates("2026-10-17", "2027-01-31", 10, "2026-10-17"), [
   "2026-11-10",
@@ -49,3 +49,30 @@ assert.deepEqual(fixed.fine, { amount: 130100 });
 assert.equal(fixed.interest, undefined);
 const sameAmount = coraPaymentTerms("2026-11-10", "amount", 2, 1, coraDelinquencyFine(180000, 180000));
 assert.equal(sameAmount.fine, undefined);
+
+assert.equal(coraNegotiationDue("2026-10-17", "2026-10-18"), "2026-10-18");
+assert.equal(coraNegotiationDue("2026-11-17", "2026-10-18"), "2026-11-17");
+const withoutFine = coraNegotiatedTerms({
+  due: "2026-10-18",
+  mode: "amount",
+  finePercent: 2,
+  interestPercent: 1,
+  chargeCents: 49900,
+  delinquencyAmountCents: 180000,
+  waiveFine: true,
+  waiveInterest: false,
+});
+assert.equal(withoutFine.due_date, "2026-10-18");
+assert.equal(withoutFine.fine, undefined);
+const keptFine = coraNegotiatedTerms({
+  due: "2026-10-18",
+  mode: "amount",
+  finePercent: 2,
+  interestPercent: 1,
+  chargeCents: 49900,
+  delinquencyAmountCents: 180000,
+  waiveFine: false,
+  waiveInterest: true,
+});
+assert.deepEqual(keptFine.fine, { amount: 130100 });
+assert.equal(keptFine.interest, undefined);

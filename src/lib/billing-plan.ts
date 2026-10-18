@@ -86,6 +86,33 @@ export function coraDelinquencyFine(chargeAmount: number, delinquencyAmount: num
   return delinquencyAmount - chargeAmount;
 }
 
+export function coraNegotiationDue(due: string, today: string) {
+  return due >= today ? due : today;
+}
+
+export function coraNegotiatedTerms(input: {
+  due: string;
+  mode: "rate" | "amount" | "";
+  finePercent: number;
+  interestPercent: number;
+  chargeCents: number;
+  delinquencyAmountCents: number | null;
+  waiveFine: boolean;
+  waiveInterest: boolean;
+}) {
+  const fineCents =
+    input.mode === "amount" && !input.waiveFine
+      ? Math.max(0, coraDelinquencyFine(input.chargeCents, input.delinquencyAmountCents ?? input.chargeCents))
+      : 0;
+  return coraPaymentTerms(
+    input.due,
+    input.mode === "amount" ? "amount" : "rate",
+    input.waiveFine ? 0 : input.finePercent,
+    input.waiveInterest ? 0 : input.interestPercent,
+    fineCents,
+  );
+}
+
 export function coraPaymentTerms(
   due: string,
   mode: DelinquencyMode,

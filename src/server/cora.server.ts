@@ -44,14 +44,20 @@ function coraRuntime() {
   });
 }
 
-function coraRequest(settings: CoraSettings, path: string, headers: Record<string, string>, body: string) {
+function coraRequest(
+  settings: CoraSettings,
+  path: string,
+  method: "GET" | "POST" | "DELETE",
+  headers: Record<string, string>,
+  body?: string,
+) {
   const target = new URL(`${settings.base}${path}`);
   return new Promise<{ status: number; text: string }>((resolve, reject) => {
     const request = https.request(
       {
         hostname: target.hostname,
         path: `${target.pathname}${target.search}`,
-        method: "POST",
+        method,
         headers,
         cert: settings.cert || undefined,
         key: settings.key || undefined,
@@ -70,7 +76,7 @@ function coraRequest(settings: CoraSettings, path: string, headers: Record<strin
       reject(new Error("A Cora não respondeu."));
     });
     request.on("error", () => reject(new Error("Não foi possível falar com a Cora.")));
-    request.write(body);
+    if (body) request.write(body);
     request.end();
   });
 }
@@ -96,7 +102,7 @@ async function coraToken() {
   let form = "grant_type=client_credentials";
   if (settings.direct) form += `&client_id=${encodeURIComponent(settings.id)}`;
   else headers.authorization = `Basic ${Buffer.from(`${settings.id}:${settings.secret}`).toString("base64")}`;
-  const response = await coraRequest(settings, settings.direct ? "/token" : "/oauth/token", headers, form);
+  const response = await coraRequest(settings, settings.direct ? "/token" : "/oauth/token", "POST", headers, form);
   const text = response.text;
   if (response.status < 200 || response.status >= 300) fail(coraMessage(text) || "A Cora recusou as credenciais.");
   const body = JSON.parse(text) as { access_token?: string; expires_in?: number };
@@ -125,6 +131,7 @@ export async function createCoraInvoice(input: {
   const response = await coraRequest(
     settings,
     "/v2/invoices",
+    "POST",
     {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
@@ -172,4 +179,34 @@ export async function createCoraInvoice(input: {
     url: textOf(slipRecord["url"]),
     pixCode,
   };
+}
+
+function invoicePath(id: string) {
+  const invoiceId = id.trim();
+  if (!invoiceId) fail("A cobrança da Cora não tem identificador.");
+  return `/v2/invoices/${encodeURIComponent(invoiceId)}`;
+}
+
+export async function readCoraInvoice(id: string) {
+  const settings = coraRuntime();
+  const token = await coraToken();
+  const response = await coraRequest(settings, invoicePath(id), "GET", { authorization: `Bearer ${token}` });
+  if (response.status === 404) return { status: "CANCELLED" };
+  if (response.status === 401 || response.status === 403) fail("A Cora recusou o acesso para consultar a cobrança.");
+  if (response.status < 200 || response.status >= 300) fail(coraMessage(response.text) || "Não foi possível consultar a cobrança na Cora.");
+  const body = JSON.parse(response.text) as { status?: string };
+  return { status: textOf(body.status).toUpperCase() };
+}
+
+export async function cancelCoraInvoice(id: string) {
+  const current = await readCoraInvoice(id);
+  if (current.status === "PAID") fail("Esta cobrança já foi paga na Cora.");
+  if (current.status === "CANCELLED") return;
+  const settings = coraRuntime();
+  const token = await coraToken();
+  const response = await coraRequest(settings, invoicePath(id), "DELETE", { authorization: `Bearer ${token}` });
+  if (response.status === 204 || response.status === 200 || response.status === 404) return;
+  if (response.status === 422 && /pago|paid|REC-0006/i.test(response.text)) fail("Esta cobrança já foi paga na Cora.");
+  if (response.status === 401 || response.status === 403) fail("A Cora recusou o acesso para cancelar a cobrança.");
+  fail(coraMessage(response.text) || "Não foi possível cancelar a cobrança na Cora.");
 }

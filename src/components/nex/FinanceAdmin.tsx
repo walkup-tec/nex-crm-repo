@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { History } from "lucide-react";
+import { History, Search } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access";
-import { chargeInPeriod, competenceLabel, dailyChargeTotals, financePeriodBounds, todayKey, whenLabel, type FinanceCharge, type FinancePeriod, type MasterFinance } from "@/lib/finance-access";
+import { chargeInPeriod, chargeMatchesClient, competenceLabel, dailyChargeTotals, financePeriodBounds, todayKey, whenLabel, type FinanceCharge, type FinancePeriod, type MasterFinance } from "@/lib/finance-access";
+import { applyMask } from "@/lib/masks";
 import { listMasterFinanceFn, negotiateChargeFn } from "@/lib/finance.functions";
 
 const periods: { value: FinancePeriod; label: string }[] = [
@@ -25,6 +27,7 @@ export function FinanceAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
   const [period, setPeriod] = useState<FinancePeriod>("all");
   const [view, setView] = useState("lista");
   const [charge, setCharge] = useState<FinanceCharge | null>(null);
@@ -45,15 +48,19 @@ export function FinanceAdmin() {
     void load();
   }, [load]);
 
-  const bounds = financePeriodBounds(period, todayKey());
+  const today = todayKey();
+  const bounds = financePeriodBounds(period, today);
+  const listedStatus = (item: FinanceCharge) =>
+    item.status === "pending" && item.dueDate.slice(0, 10) < today ? "overdue" : item.status;
   const inPeriod = (snapshot?.charges ?? []).filter((item) => chargeInPeriod(item.dueDate, bounds));
   const charges = inPeriod.filter((item) => {
-    if (filter === "overdue") return item.status === "overdue";
-    if (filter === "paid") return item.status === "paid";
+    const status = listedStatus(item);
+    if (filter === "overdue") return status === "overdue";
+    if (filter === "paid") return status === "paid";
     return true;
-  });
+  }).filter((item) => chargeMatchesClient(item, query));
   const receivableCents = period === "all" ? snapshot?.receivableCents ?? 0 : inPeriod.filter((item) => item.status === "pending" || item.status === "overdue").reduce((sum, item) => sum + item.totalCents, 0);
-  const overdueCents = period === "all" ? snapshot?.overdueCents ?? 0 : inPeriod.filter((item) => item.status === "overdue").reduce((sum, item) => sum + item.totalCents, 0);
+  const overdueCents = inPeriod.filter((item) => listedStatus(item) === "overdue").reduce((sum, item) => sum + item.totalCents, 0);
   const receivedCents = period === "all" ? snapshot?.receivedThisMonthCents ?? 0 : inPeriod.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.totalCents, 0);
   const days = dailyChargeTotals(snapshot?.charges ?? [], bounds);
 
@@ -92,22 +99,34 @@ export function FinanceAdmin() {
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>Cobranças</CardTitle>
-                <Select value={filter} onValueChange={setFilter}>
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os status</SelectItem>
-                    <SelectItem value="overdue">Vencidas</SelectItem>
-                    <SelectItem value="paid">Pagas</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <div className="relative sm:w-72">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                    <Input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Nome ou CNPJ"
+                      aria-label="Pesquisar por nome ou CNPJ"
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select value={filter} onValueChange={setFilter}>
+                    <SelectTrigger className="w-full sm:w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os status</SelectItem>
+                      <SelectItem value="overdue">Vencidas</SelectItem>
+                      <SelectItem value="paid">Pagas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {charges.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  {snapshot.charges.length === 0 ? "Nenhuma cobrança gravada." : inPeriod.length === 0 ? "Nenhuma cobrança neste período." : "Nenhuma cobrança neste filtro."}
+                  {snapshot.charges.length === 0 ? "Nenhuma cobrança gravada." : inPeriod.length === 0 ? "Nenhuma cobrança neste período." : query.trim() ? "Nenhum cliente encontrado para esta pesquisa." : "Nenhuma cobrança neste filtro."}
                 </p>
               ) : (
                 charges.map((item) => (
@@ -115,11 +134,12 @@ export function FinanceAdmin() {
                     <div className="flex-1">
                       <p className="font-semibold">{item.clientName}</p>
                       <p className="text-xs text-muted-foreground">
+                        {item.clientDocument.replace(/\D/g, "") ? `${applyMask("doc", item.clientDocument)} • ` : ""}
                         Competência {competenceLabel(item.competence)} • vencimento {dateBr(item.dueDate)}
                       </p>
                     </div>
                     <strong>{moneyFromCents(item.totalCents)}</strong>
-                    <Badge variant={item.status === "overdue" ? "destructive" : "outline"}>{item.status === "paid" ? "Paga" : invoiceStatusLabel(item.status)}</Badge>
+                    <Badge variant={listedStatus(item) === "overdue" ? "destructive" : "outline"}>{listedStatus(item) === "paid" ? "Paga" : invoiceStatusLabel(listedStatus(item))}</Badge>
                     {item.canNegotiate && (
                       <Button variant="outline" onClick={() => setCharge(item)}>
                         Negociar
@@ -297,9 +317,11 @@ function NegotiateDialog({ charge, onClose, onSaved }: { charge: FinanceCharge |
               <Switch checked={waiveInterest} onCheckedChange={setWaiveInterest} />
             </label>
             <p className="text-xs text-muted-foreground">
-              {waiveFine && waiveInterest
-                ? "Só esta cobrança fica no valor nominal. A multa e os juros dela saem no Asaas. As outras cobranças não mudam."
-                : "A alteração vale apenas para esta cobrança no Asaas."}
+              {charge.billingProvider === "cora"
+                ? "A Cora não altera o Pix já emitido. Ele é cancelado e um novo Pix sai sem a multa ou os juros marcados. Se o vencimento já passou, o novo Pix vence hoje. As outras cobranças não mudam."
+                : waiveFine && waiveInterest
+                  ? "Só esta cobrança fica no valor nominal. A multa e os juros dela saem no Asaas. As outras cobranças não mudam."
+                  : "A alteração vale apenas para esta cobrança no Asaas."}
             </p>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>

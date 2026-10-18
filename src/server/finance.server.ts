@@ -22,6 +22,8 @@ import {
   type OwnFinance,
 } from "@/lib/finance-access";
 import type { InvoiceStatus } from "@/lib/client-access";
+import { coraNegotiationDue, coraNegotiatedTerms } from "@/lib/billing-plan";
+import { cancelCoraInvoice, createCoraInvoice } from "@/server/cora.server";
 import {
   asaasConfigured,
   createNominalPix,
@@ -467,11 +469,20 @@ async function invoicesOf(organizationId?: string) {
   return (data ?? []) as InvoiceRow[];
 }
 
-function toCharge(row: InvoiceRow, names: Map<string, string>): FinanceCharge {
+function toCharge(
+  row: InvoiceRow,
+  names: Map<string, { legalName: string; document: string }>,
+  providers: Map<string, "cora" | "asaas" | "">,
+): FinanceCharge {
+  const org = names.get(row.organization_id);
+  const due = row.due_date.slice(0, 10);
+  const open = row.status !== "paid" && row.status !== "cancelled";
+  const provider = providers.get(row.organization_id) ?? "";
   return {
     id: row.id,
     organizationId: row.organization_id,
-    clientName: names.get(row.organization_id) ?? "Cliente",
+    clientName: org?.legalName ?? "Cliente",
+    clientDocument: org?.document ?? "",
     competence: row.competence,
     dueDate: row.due_date,
     totalCents: Number(row.total_amount_cents),
@@ -480,18 +491,35 @@ function toCharge(row: InvoiceRow, names: Map<string, string>): FinanceCharge {
     paidAt: row.paid_at,
     invoiceUrl: row.invoice_url,
     pixCode: row.pix_code,
-    canNegotiate: Boolean(row.external_charge_id) && row.status === "overdue",
+    canNegotiate: open && Boolean(row.external_charge_id) && (row.status === "overdue" || due < todayKey()),
+    billingProvider: provider,
   };
 }
 
+async function providersOf(ids: string[]) {
+  const providers = new Map<string, "cora" | "asaas" | "">();
+  if (!ids.length) return providers;
+  const { data, error } = await supabaseAdmin
+    .from("contracts")
+    .select("organization_id, billing_provider")
+    .in("organization_id", ids);
+  if (error) return providers;
+  for (const row of data ?? []) {
+    providers.set(row.organization_id, row.billing_provider === "cora" || row.billing_provider === "asaas" ? row.billing_provider : "");
+  }
+  return providers;
+}
+
 async function namesOf(ids: string[]) {
-  if (!ids.length) return new Map<string, string>();
+  if (!ids.length) return new Map<string, { legalName: string; document: string }>();
   const { data, error } = await supabaseAdmin
     .from("organizations")
-    .select("id, legal_name")
+    .select("id, legal_name, document")
     .in("id", ids);
   if (error) fail(error.message);
-  return new Map((data ?? []).map((row) => [row.id, row.legal_name]));
+  return new Map(
+    (data ?? []).map((row) => [row.id, { legalName: row.legal_name, document: row.document ?? "" }]),
+  );
 }
 
 async function auditOf(): Promise<FinanceAudit[]> {
@@ -536,8 +564,9 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
   if (actor.role !== "master") fail("Só o Master consulta o financeiro geral.");
   const notice = await syncFinance(userId);
   const rows = await invoicesOf();
-  const names = await namesOf([...new Set(rows.map((row) => row.organization_id))]);
-  const charges = rows.map((row) => toCharge(row, names));
+  const organizationIds = [...new Set(rows.map((row) => row.organization_id))];
+  const [names, providers] = await Promise.all([namesOf(organizationIds), providersOf(organizationIds)]);
+  const charges = rows.map((row) => toCharge(row, names, providers));
   const month = todayKey().slice(0, 7);
   return {
     receivableCents: charges
@@ -597,10 +626,16 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     fail(promotionResult.error.message);
   }
   const contract = contracts[0] ?? null;
-  const clientName = names.get(actor.organizationId) ?? actor.fullName;
+  const clientName = names.get(actor.organizationId)?.legalName ?? actor.fullName;
   const demoAccess = keepsAccessWithoutPayment(clientName);
   if (demoAccess) await keepDemoClientActive();
-  const charges = rows.map((row) => toCharge(row, names));
+  const providers = new Map<string, "cora" | "asaas" | "">([
+    [
+      actor.organizationId,
+      contract?.billing_provider === "cora" || contract?.billing_provider === "asaas" ? contract.billing_provider : "",
+    ],
+  ]);
+  const charges = rows.map((row) => toCharge(row, names, providers));
   const today = todayKey();
   const overdue = charges
     .filter((item) => item.status === "overdue")
@@ -656,6 +691,100 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   };
 }
 
+function chargeRail(provider: string | null, externalId: string) {
+  if (provider === "cora" || provider === "asaas") return provider;
+  return externalId.startsWith("inv_") ? "cora" : "asaas";
+}
+
+async function negotiateCoraCharge(
+  actorId: string,
+  invoice: {
+    id: string;
+    organization_id: string;
+    competence: string;
+    due_date: string;
+    base_amount_cents: number;
+    external_charge_id: string;
+    contract_id: string | null;
+  },
+  input: { waiveFine: boolean; waiveInterest: boolean },
+  provider: string | null,
+) {
+  const mode = provider === "amount" || provider === "rate" ? provider : "";
+  const [{ data: org, error: orgError }, { data: contract, error: contractError }] = await Promise.all([
+    supabaseAdmin
+      .from("organizations")
+      .select("legal_name, responsible_email, document")
+      .eq("id", invoice.organization_id)
+      .maybeSingle(),
+    invoice.contract_id
+      ? supabaseAdmin
+          .from("contracts")
+          .select("delinquency_mode, fine_percent, interest_percent_monthly, delinquency_amount_cents")
+          .eq("id", invoice.contract_id)
+          .maybeSingle()
+      : supabaseAdmin
+          .from("contracts")
+          .select("delinquency_mode, fine_percent, interest_percent_monthly, delinquency_amount_cents")
+          .eq("organization_id", invoice.organization_id)
+          .maybeSingle(),
+  ]);
+  if (orgError) fail(orgError.message);
+  if (contractError) fail(contractError.message);
+  if (!org?.legal_name || !org.responsible_email) fail("O cliente não tem nome e e-mail para reemitir a cobrança na Cora.");
+  const document = (org.document ?? "").replace(/\D/g, "");
+  if (document.length !== 11 && document.length !== 14) fail("O cliente não tem CPF ou CNPJ para reemitir a cobrança na Cora.");
+  const amountCents = Number(invoice.base_amount_cents);
+  if (!Number.isInteger(amountCents) || amountCents < 500) fail("Cada cobrança da Cora precisa ser de pelo menos R$ 5,00.");
+  const due = coraNegotiationDue(invoice.due_date.slice(0, 10), todayKey());
+  const delinquencyMode = contract?.delinquency_mode === "amount" || contract?.delinquency_mode === "rate" ? contract.delinquency_mode : mode;
+  await cancelCoraInvoice(invoice.external_charge_id);
+  let created;
+  try {
+    created = await createCoraInvoice({
+      code: `${invoice.organization_id}:${invoice.due_date.slice(0, 10)}:neg:${input.waiveFine ? "m" : ""}${input.waiveInterest ? "j" : ""}:${Date.now()}`,
+      name: org.legal_name,
+      email: org.responsible_email,
+      document,
+      amountCents,
+      paymentTerms: coraNegotiatedTerms({
+        due,
+        mode: delinquencyMode === "amount" || delinquencyMode === "rate" ? delinquencyMode : "",
+        finePercent: Number(contract?.fine_percent ?? 0),
+        interestPercent: Number(contract?.interest_percent_monthly ?? 0),
+        chargeCents: amountCents,
+        delinquencyAmountCents: contract?.delinquency_amount_cents == null ? null : Number(contract.delinquency_amount_cents),
+        waiveFine: input.waiveFine,
+        waiveInterest: input.waiveInterest,
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível gerar a cobrança na Cora.";
+    fail(`A cobrança anterior foi cancelada na Cora, mas o novo Pix não foi gerado. ${message}`);
+  }
+  const { error: updateError } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      external_charge_id: created.id,
+      pix_code: created.pixCode,
+      invoice_url: created.url || null,
+      due_date: due,
+      total_amount_cents: amountCents,
+      status: due < todayKey() ? "overdue" : "pending",
+      penalties_waived: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoice.id);
+  if (updateError) fail(updateError.message);
+  const names = await namesOf([invoice.organization_id]);
+  await audit(actorId, invoice.organization_id, "finance.negotiate", invoice.id, {
+    clientName: names.get(invoice.organization_id)?.legalName ?? "cliente",
+    waiveFine: input.waiveFine,
+    waiveInterest: input.waiveInterest,
+    competence: invoice.competence,
+  });
+}
+
 export async function negotiateCharge(
   userId: string,
   input: { invoiceId: string; waiveFine: boolean; waiveInterest: boolean },
@@ -675,7 +804,17 @@ export async function negotiateCharge(
   if (!invoice) fail("Cobrança não encontrada.");
   if (invoice.status === "paid" || invoice.status === "cancelled")
     fail("Esta cobrança não pode mais ser negociada.");
-  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada ao Asaas.");
+  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada a um provedor.");
+  const { data: contract, error: contractError } = await supabaseAdmin
+    .from("contracts")
+    .select("billing_provider, delinquency_mode")
+    .eq("organization_id", invoice.organization_id)
+    .maybeSingle();
+  if (contractError) fail(contractError.message);
+  if (chargeRail(contract?.billing_provider ?? null, invoice.external_charge_id) === "cora") {
+    await negotiateCoraCharge(actor.id, { ...invoice, external_charge_id: invoice.external_charge_id }, input, contract?.delinquency_mode ?? "");
+    return;
+  }
   const nominal =
     input.waiveFine && input.waiveInterest ? Number(invoice.base_amount_cents) / 100 : null;
   const payment = await waivePaymentPenalties(invoice.external_charge_id, {
@@ -727,7 +866,7 @@ export async function negotiateCharge(
     .eq("id", invoice.id);
   if (updateError) fail(updateError.message);
   await audit(actor.id, invoice.organization_id, "finance.negotiate", invoice.id, {
-    clientName: names.get(invoice.organization_id) ?? "cliente",
+    clientName: names.get(invoice.organization_id)?.legalName ?? "cliente",
     waiveFine: input.waiveFine,
     waiveInterest: input.waiveInterest,
     competence: invoice.competence,

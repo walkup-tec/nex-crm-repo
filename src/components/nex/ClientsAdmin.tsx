@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoundCog } from "lucide-react";
+import { Check, CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoundCog } from "lucide-react";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
@@ -21,6 +21,7 @@ import {
   lookupAsaasSubscriptionFn,
   setClientStatusFn,
   updateClientFn,
+  updateContractEndFn,
   updateContractScheduleFn,
 } from "@/lib/clients.functions";
 import {
@@ -263,6 +264,13 @@ export function ClientsAdmin() {
 
       <ClientDialog
         client={selected}
+        onEndSaved={(patch) => {
+          const apply = (item: ListedClient) =>
+            item.id === patch.id ? { ...item, endsOn: patch.endsOn } : item;
+          setClients((current) => current.map(apply));
+          setSelected((current) => (current ? apply(current) : current));
+          setNotice("Término do contrato atualizado.");
+        }}
         onScheduleSaved={(patch) => {
           const apply = (item: ListedClient) =>
             item.id === patch.id ? { ...item, dueDay: patch.dueDay, promoEndsOn: patch.promoEndsOn } : item;
@@ -347,6 +355,7 @@ function ClientDialog({
   onStatus,
   onSupport,
   onFinance,
+  onEndSaved,
   onScheduleSaved,
 }: {
   client: ListedClient | null;
@@ -355,11 +364,16 @@ function ClientDialog({
   onStatus: () => void;
   onSupport: () => Promise<void>;
   onFinance: () => void;
+  onEndSaved: (patch: { id: string; endsOn: string }) => void;
   onScheduleSaved: (patch: { id: string; dueDay: number; promoEndsOn: string | null }) => void;
 }) {
   const [working, setWorking] = useState(false);
   const [dueDay, setDueDay] = useState("");
   const [promoEnd, setPromoEnd] = useState("");
+  const [contractEnd, setContractEnd] = useState("");
+  const [editingEnd, setEditingEnd] = useState(false);
+  const [savingEnd, setSavingEnd] = useState(false);
+  const [endError, setEndError] = useState("");
   const [savingDates, setSavingDates] = useState(false);
   const [dateError, setDateError] = useState("");
   const inactive = client ? isInactiveClient(client.status) : false;
@@ -367,6 +381,9 @@ function ClientDialog({
   useEffect(() => {
     setDueDay(client?.dueDay == null ? "" : String(client.dueDay));
     setPromoEnd(client?.promoEndsOn ? dateBr(client.promoEndsOn, "") : "");
+    setContractEnd(client?.endsOn ? dateBr(client.endsOn, "") : "");
+    setEditingEnd(false);
+    setEndError("");
     setDateError("");
   }, [client]);
   return (
@@ -419,7 +436,59 @@ function ClientDialog({
                 />
               </div>
               <Info label="Início" value={dateBr(client.startsOn)} />
-              <Info label="Término" value={dateBr(client.endsOn)} />
+              <div className="rounded-lg border p-4">
+                <p className="text-xs text-muted-foreground">Término</p>
+                {editingEnd ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      inputMode="numeric"
+                      placeholder="DD/MM/AAAA"
+                      value={contractEnd}
+                      disabled={savingEnd}
+                      onChange={(event) => setContractEnd(applyMask("date", event.target.value))}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      aria-label="Salvar término do contrato"
+                      disabled={savingEnd}
+                      onClick={() => {
+                        setSavingEnd(true);
+                        setEndError("");
+                        void updateContractEndFn({ data: { id: client.id, endsOn: contractEnd } }).then((result) => {
+                          setSavingEnd(false);
+                          if (!result.ok) {
+                            setEndError(result.message);
+                            return;
+                          }
+                          setEditingEnd(false);
+                          onEndSaved({ id: client.id, endsOn: result.data.endsOn });
+                        });
+                      }}
+                    >
+                      <Check />
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-1 text-left font-semibold hover:text-primary disabled:cursor-default"
+                    disabled={client.startsOn == null}
+                    onClick={() => {
+                      setEndError("");
+                      setEditingEnd(true);
+                    }}
+                  >
+                    {dateBr(client.endsOn)}
+                  </button>
+                )}
+                {endError ? (
+                  <p role="alert" className="mt-2 text-sm text-destructive">
+                    {endError}
+                  </p>
+                ) : null}
+              </div>
               <div className="rounded-lg border p-4 sm:col-span-2">
                 <label htmlFor="contract-promo-end" className="text-xs text-muted-foreground">
                   Fim da promoção

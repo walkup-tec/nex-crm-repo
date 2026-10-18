@@ -473,6 +473,29 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
   return { id };
 }
 
+export async function updateContractEnd(userId: string, input: { id: string; endsOn: string }) {
+  await requireMaster(userId);
+  const endsOn = parseDate(input.endsOn, "o término do contrato");
+  const { data: contract, error } = await supabaseAdmin
+    .from("contracts")
+    .select("id, starts_on, promo_enabled, promo_ends_on")
+    .eq("organization_id", input.id)
+    .maybeSingle();
+  if (error) fail(migrationMessage(error.message));
+  if (!contract) fail("Este cliente ainda não tem contrato.");
+  if (endsOn < contract.starts_on) fail("O término do contrato não pode ser antes do início.");
+  if (contract.promo_enabled && contract.promo_ends_on && contract.promo_ends_on > endsOn) {
+    fail("O fim da promoção precisa ficar dentro do contrato.");
+  }
+  const { error: updateError } = await supabaseAdmin
+    .from("contracts")
+    .update({ ends_on: endsOn, updated_at: new Date().toISOString() })
+    .eq("id", contract.id);
+  if (updateError) fail(migrationMessage(updateError.message));
+  await audit(userId, input.id, "client.contract_end");
+  return { endsOn };
+}
+
 export async function updateContractSchedule(
   userId: string,
   input: { id: string; dueDay: string; promoEndsOn: string },

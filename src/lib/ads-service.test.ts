@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { adsServiceDescription, promoChargeCopy } from "./client-access";
+import { keepsAccessWithoutPayment } from "./finance-access";
 
 const promo = promoChargeCopy("R$ 1.800,00", "R$ 499,00", "R$ 1.800,00");
 assert.equal(
@@ -23,3 +24,7 @@ assert.equal(
   adsServiceDescription({ adsMeta: true, adsGoogle: true }),
   "Mensalidade referente ao serviço de anúncios na plataforma Google e Meta Ads.",
 );
+
+assert.equal(keepsAccessWithoutPayment("MMS MARKETING E SISTEMAS DIGITAIS LTDA"), true);
+assert.equal(keepsAccessWithoutPayment(" mms marketing e sistemas digitais ltda "), true);
+assert.equal(keepsAccessWithoutPayment("WALKUP SISTEMAS E INTELIGENCIA LTDA"), false);

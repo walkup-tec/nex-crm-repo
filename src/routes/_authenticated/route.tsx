@@ -8,6 +8,7 @@ import {
   noClientPermissions,
 } from "@/lib/client-permissions";
 import { allChatbotMenus, chatbotMenusFromStorage, type ChatbotMenuMap } from "@/lib/chatbot-menus";
+import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { readMasterRoles } from "@/lib/master-role";
 import type { UserPermissions, UserRole } from "@/lib/user-access";
 
@@ -65,12 +66,12 @@ export const Route = createFileRoute("/_authenticated")({
     if (profile?.organization_id) {
       const { data: org } = await supabase
         .from("organizations")
-        .select("status")
+        .select("status, legal_name")
         .eq("id", profile.organization_id)
         .maybeSingle();
       const closed =
         org?.status === "disabled" || org?.status === "blocked" || org?.status === "contract_ended";
-      if (!master && closed) {
+      if (!master && closed && !keepsAccessWithoutPayment(org?.legal_name ?? "")) {
         await supabase.auth.signOut();
         throw redirect({ href: "/auth?motivo=inativo" });
       }

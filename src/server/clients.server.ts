@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ClientDraft, ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
 import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionsOverlap } from "@/lib/billing-plan";
+import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
 import { createCoraInvoice } from "@/server/cora.server";
 
@@ -238,8 +239,24 @@ function promotionsOf(
   ];
 }
 
+export async function keepDemoClientActive() {
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name, status")
+    .ilike("legal_name", "MMS MARKETING E SISTEMAS DIGITAIS LTDA");
+  if (error) return;
+  for (const org of data ?? []) {
+    if (!keepsAccessWithoutPayment(org.legal_name) || org.status === "active") continue;
+    await supabaseAdmin
+      .from("organizations")
+      .update({ status: "active", updated_at: new Date().toISOString() })
+      .eq("id", org.id);
+  }
+}
+
 export async function listClients(userId: string): Promise<ListedClient[]> {
   await requireMaster(userId);
+  await keepDemoClientActive();
   const [
     { data: organizations, error: orgError },
     { data: contracts, error: contractError },
@@ -771,11 +788,14 @@ export async function setClientStatus(userId: string, id: string, active: boolea
   await requireMaster(userId);
   const { data: current, error: currentError } = await supabaseAdmin
     .from("organizations")
-    .select("id, status")
+    .select("id, legal_name, status")
     .eq("id", id)
     .maybeSingle();
   if (currentError) fail(currentError.message);
   if (!current) fail("Cliente não encontrado.");
+  if (!active && keepsAccessWithoutPayment(current.legal_name)) {
+    fail("A MMS Marketing permanece ativa. Essa conta é de demonstração e não depende de mensalidade.");
+  }
   const status: ClientStatus = active ? "active" : "disabled";
   const { error } = await supabaseAdmin
     .from("organizations")

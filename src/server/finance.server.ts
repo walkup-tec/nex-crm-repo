@@ -7,6 +7,8 @@ import {
   competenceOf,
   daysPast,
   keepsNominalValue,
+  dropsLocalCharge,
+  keepsAccessWithoutPayment,
   preservesLocalPayment,
   monthKey,
   nominalPaymentId,
@@ -30,6 +32,7 @@ import {
   waivePaymentPenalties,
   type AsaasPayment,
 } from "@/server/asaas.server";
+import { keepDemoClientActive } from "@/server/clients.server";
 
 type Role = "master" | "client_admin" | "client_user";
 type Actor = { id: string; role: Role; organizationId: string | null; fullName: string };
@@ -108,6 +111,46 @@ async function contractsOf(organizationId?: string) {
   return (data ?? []) as ContractRow[];
 }
 
+async function droppedLocally(organizationId: string, due: string, totalCents: number) {
+  const competence = competenceOf(due);
+  if (competence !== "2026-10-01" || due !== "2026-10-27" || totalCents !== 140000) return false;
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("legal_name")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error || !data?.legal_name) return false;
+  return dropsLocalCharge({ legalName: data.legal_name, competence, dueDate: due, totalCents });
+}
+
+async function removeDroppedInvoice() {
+  const { data: orgs, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name")
+    .ilike("legal_name", "MMS MARKETING E SISTEMAS DIGITAIS LTDA");
+  if (error) return;
+  for (const org of orgs ?? []) {
+    if (
+      !dropsLocalCharge({
+        legalName: org.legal_name,
+        competence: "2026-10-01",
+        dueDate: "2026-10-27",
+        totalCents: 140000,
+      })
+    ) {
+      continue;
+    }
+    await supabaseAdmin
+      .from("invoices")
+      .delete()
+      .eq("organization_id", org.id)
+      .eq("competence", "2026-10-01")
+      .eq("due_date", "2026-10-27")
+      .or("total_amount_cents.eq.140000,base_amount_cents.eq.140000");
+    await supabaseAdmin.from("billing_notices").delete().eq("organization_id", org.id).eq("due_date", "2026-10-27");
+  }
+}
+
 async function keptLocally(organizationId: string, due: string) {
   const competence = competenceOf(due);
   if (competence !== "2026-06-01" || due !== "2026-06-27") return false;
@@ -163,6 +206,7 @@ async function savePayment(
   if (!payment.id || !payment.dueDate || typeof payment.value !== "number") return "skipped";
   const due = payment.dueDate.slice(0, 10);
   if (await keptLocally(contract.organization_id, due)) return "skipped";
+  if (await droppedLocally(contract.organization_id, due, centsFromReais(payment.value))) return "skipped";
   const today = todayKey();
   const status = chargeStatus(payment.status ?? "", due, today);
   const base = typeof payment.originalValue === "number" ? payment.originalValue : payment.value;
@@ -252,6 +296,7 @@ export async function syncFinance(userId: string, organizationId?: string) {
   if (actor.role !== "master" && organizationId && organizationId !== actor.organizationId)
     fail("Você não pode sincronizar o financeiro deste cliente.");
   await markPreservedInvoicePaid();
+  await removeDroppedInvoice();
   const contracts = await contractsOf(target);
   const linked = contracts.filter((contract) => contract.external_subscription_id);
   if (!asaasConfigured()) {
@@ -552,6 +597,9 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     fail(promotionResult.error.message);
   }
   const contract = contracts[0] ?? null;
+  const clientName = names.get(actor.organizationId) ?? actor.fullName;
+  const demoAccess = keepsAccessWithoutPayment(clientName);
+  if (demoAccess) await keepDemoClientActive();
   const charges = rows.map((row) => toCharge(row, names));
   const today = todayKey();
   const overdue = charges
@@ -562,7 +610,7 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const overdueDays = oldestOverdue ? Math.max(daysPast(oldestOverdue.dueDate, today), 1) : 0;
   const situation = overdueDays > 0 ? "Em atraso" : open ? "Em aberto" : "Em dia";
   return {
-    clientName: names.get(actor.organizationId) ?? actor.fullName,
+    clientName,
     monthlyFeeCents: contract ? Number(contract.monthly_fee_cents) : null,
     startsOn: contract?.starts_on ?? null,
     endsOn: contract?.ends_on ?? null,
@@ -572,7 +620,7 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     overdueDays,
     charges,
     openChargeId: open?.id ?? null,
-    overdueChargeId: oldestOverdue?.id ?? null,
+    overdueChargeId: demoAccess ? null : (oldestOverdue?.id ?? null),
     notice,
     billingProvider:
       contract?.billing_provider === "cora" || contract?.billing_provider === "asaas"

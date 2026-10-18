@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Check, CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoundCog } from "lucide-react";
 import { normalizeBalanceLink } from "@/lib/balance-link";
+import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
 import type { ClientDraft, ClientPromotion, ListedClient } from "@/lib/client-access";
@@ -759,10 +760,12 @@ function ClientDialog({
             <CircleDollarSign />
             Abrir financeiro
           </Button>
-          <Button variant="destructive" onClick={onStatus}>
-            <Trash2 />
-            {inactive ? "Reativar cliente" : "Desativar cliente"}
-          </Button>
+          {client && keepsAccessWithoutPayment(client.legalName) ? null : (
+            <Button variant="destructive" onClick={onStatus}>
+              <Trash2 />
+              {inactive ? "Reativar cliente" : "Desativar cliente"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

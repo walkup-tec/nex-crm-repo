@@ -104,6 +104,31 @@ const localPaidCharge = {
   dueDate: "2026-06-27",
 };
 
+const droppedCharge = {
+  legalName: "MMS MARKETING E SISTEMAS DIGITAIS LTDA",
+  competence: "2026-10-01",
+  dueDate: "2026-10-27",
+  totalCents: 140000,
+};
+
+export function dropsLocalCharge(input: {
+  legalName: string;
+  competence: string;
+  dueDate: string;
+  totalCents: number;
+}) {
+  return (
+    input.legalName.trim().toLocaleUpperCase("pt-BR") === droppedCharge.legalName &&
+    input.competence.slice(0, 10) === droppedCharge.competence &&
+    input.dueDate.slice(0, 10) === droppedCharge.dueDate &&
+    input.totalCents === droppedCharge.totalCents
+  );
+}
+
+export function keepsAccessWithoutPayment(legalName: string) {
+  return legalName.trim().toLocaleUpperCase("pt-BR") === "MMS MARKETING E SISTEMAS DIGITAIS LTDA";
+}
+
 export function preservesLocalPayment(input: {
   legalName: string;
   competence: string;

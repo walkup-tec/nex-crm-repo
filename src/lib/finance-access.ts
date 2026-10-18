@@ -55,6 +55,7 @@ export type OwnFinance = {
   adsGoogle: boolean;
   promoMonthlyCents: number | null;
   nominalMonthlyCents: number | null;
+  promotions: { startsOn: string; endsOn: string; amountCents: number; nominalCents: number }[];
   delinquencyMode: "rate" | "amount" | "";
   finePercent: number;
   interestPercent: number;

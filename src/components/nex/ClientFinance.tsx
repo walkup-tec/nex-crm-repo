@@ -198,6 +198,7 @@ export function ClientFinance() {
                   promoMonthlyCents={snapshot.promoMonthlyCents}
                   nominalMonthlyCents={snapshot.nominalMonthlyCents}
                   delinquencyAmountCents={snapshot.delinquencyAmountCents}
+                  promotions={snapshot.promotions}
                 />
               ) : null}
             </DialogContent>

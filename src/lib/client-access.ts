@@ -38,6 +38,14 @@ export type ClientDraft = {
   delinquencyAmount: string;
 };
 
+export type ClientPromotion = {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  amountCents: number;
+  nominalCents: number;
+};
+
 export type ListedClient = {
   id: string;
   legalName: string;
@@ -64,6 +72,7 @@ export type ListedClient = {
   promoStartsOn: string | null;
   promoEndsOn: string | null;
   afterPromoCents: number | null;
+  promotions: ClientPromotion[];
   delinquencyMode: DelinquencyMode | "";
   delinquencyAmountCents: number | null;
   portfolioId: string;

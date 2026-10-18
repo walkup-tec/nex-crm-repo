@@ -4,7 +4,7 @@ import { Check, CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoun
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
-import type { ClientDraft, ListedClient } from "@/lib/client-access";
+import type { ClientDraft, ClientPromotion, ListedClient } from "@/lib/client-access";
 import {
   adsPlatformLabel,
   clientStatusLabel,
@@ -20,7 +20,9 @@ import {
   listClientsFn,
   lookupAsaasSubscriptionFn,
   setClientStatusFn,
+  addClientPromotionFn,
   updateClientFn,
+  updateClientPromotionEndFn,
   updateContractEndFn,
   updateContractScheduleFn,
 } from "@/lib/clients.functions";
@@ -271,6 +273,21 @@ export function ClientsAdmin() {
           setSelected((current) => (current ? apply(current) : current));
           setNotice("Término do contrato atualizado.");
         }}
+        onPromotionsSaved={(patch) => {
+          const apply = (item: ListedClient) => {
+            if (item.id !== patch.id) return item;
+            const current = patch.promotions.find((promo) => promo.startsOn === item.promoStartsOn);
+            return {
+              ...item,
+              promotions: patch.promotions,
+              promoEnabled: patch.promotions.length > 0 || item.promoEnabled,
+              promoEndsOn: current?.endsOn ?? item.promoEndsOn,
+            };
+          };
+          setClients((current) => current.map(apply));
+          setSelected((current) => (current ? apply(current) : current));
+          setNotice("Histórico de promoções atualizado.");
+        }}
         onScheduleSaved={(patch) => {
           const apply = (item: ListedClient) =>
             item.id === patch.id ? { ...item, dueDay: patch.dueDay, promoEndsOn: patch.promoEndsOn } : item;
@@ -356,6 +373,7 @@ function ClientDialog({
   onSupport,
   onFinance,
   onEndSaved,
+  onPromotionsSaved,
   onScheduleSaved,
 }: {
   client: ListedClient | null;
@@ -365,26 +383,37 @@ function ClientDialog({
   onSupport: () => Promise<void>;
   onFinance: () => void;
   onEndSaved: (patch: { id: string; endsOn: string }) => void;
+  onPromotionsSaved: (patch: { id: string; promotions: ClientPromotion[] }) => void;
   onScheduleSaved: (patch: { id: string; dueDay: number; promoEndsOn: string | null }) => void;
 }) {
   const [working, setWorking] = useState(false);
   const [dueDay, setDueDay] = useState("");
-  const [promoEnd, setPromoEnd] = useState("");
   const [contractEnd, setContractEnd] = useState("");
   const [editingEnd, setEditingEnd] = useState(false);
   const [savingEnd, setSavingEnd] = useState(false);
   const [endError, setEndError] = useState("");
   const [savingDates, setSavingDates] = useState(false);
   const [dateError, setDateError] = useState("");
+  const [promoAmount, setPromoAmount] = useState("");
+  const [promoStart, setPromoStart] = useState("");
+  const [promoFinish, setPromoFinish] = useState("");
+  const [savingPromo, setSavingPromo] = useState(false);
+  const [promoError, setPromoError] = useState("");
+  const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
+  const [editingPromoEnd, setEditingPromoEnd] = useState("");
   const inactive = client ? isInactiveClient(client.status) : false;
   const balanceHref = client ? normalizeBalanceLink(client.balanceUrl) : null;
   useEffect(() => {
     setDueDay(client?.dueDay == null ? "" : String(client.dueDay));
-    setPromoEnd(client?.promoEndsOn ? dateBr(client.promoEndsOn, "") : "");
     setContractEnd(client?.endsOn ? dateBr(client.endsOn, "") : "");
     setEditingEnd(false);
     setEndError("");
     setDateError("");
+    setPromoAmount("");
+    setPromoStart("");
+    setPromoFinish("");
+    setPromoError("");
+    setEditingPromoId(null);
   }, [client]);
   return (
     <Dialog open={client !== null} onOpenChange={(open) => !open && onClose()}>
@@ -425,15 +454,47 @@ function ClientDialog({
                 <label htmlFor="contract-due-day" className="text-xs text-muted-foreground">
                   Vencimento
                 </label>
-                <Input
-                  id="contract-due-day"
-                  className="mt-2"
-                  inputMode="numeric"
-                  placeholder="17"
-                  value={dueDay}
-                  disabled={client.dueDay == null || savingDates}
-                  onChange={(event) => setDueDay(applyMask("day", event.target.value))}
-                />
+                <div className="mt-2 flex items-center gap-2">
+                  <Input
+                    id="contract-due-day"
+                    inputMode="numeric"
+                    placeholder="17"
+                    value={dueDay}
+                    disabled={client.dueDay == null || savingDates}
+                    onChange={(event) => setDueDay(applyMask("day", event.target.value))}
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    aria-label="Salvar dia de vencimento"
+                    disabled={client.dueDay == null || savingDates}
+                    onClick={() => {
+                      setSavingDates(true);
+                      setDateError("");
+                      void updateContractScheduleFn({
+                        data: { id: client.id, dueDay, promoEndsOn: "" },
+                      }).then((result) => {
+                        setSavingDates(false);
+                        if (!result.ok) {
+                          setDateError(result.message);
+                          return;
+                        }
+                        onScheduleSaved({
+                          id: client.id,
+                          dueDay: result.data.dueDay,
+                          promoEndsOn: result.data.promoEndsOn,
+                        });
+                      });
+                    }}
+                  >
+                    <Check />
+                  </Button>
+                </div>
+                {dateError ? (
+                  <p role="alert" className="mt-2 text-sm text-destructive">
+                    {dateError}
+                  </p>
+                ) : null}
               </div>
               <Info label="Início" value={dateBr(client.startsOn)} />
               <div className="rounded-lg border p-4">
@@ -490,57 +551,150 @@ function ClientDialog({
                 ) : null}
               </div>
               <div className="rounded-lg border p-4 sm:col-span-2">
-                <label htmlFor="contract-promo-end" className="text-xs text-muted-foreground">
-                  Fim da promoção
-                </label>
-                {client.promoEnabled ? (
-                  <Input
-                    id="contract-promo-end"
-                    className="mt-2"
-                    inputMode="numeric"
-                    placeholder="DD/MM/AAAA"
-                    value={promoEnd}
-                    disabled={savingDates}
-                    onChange={(event) => setPromoEnd(applyMask("date", event.target.value))}
-                  />
+                <p className="text-xs text-muted-foreground">Histórico de promoções</p>
+                {client.promotions.length === 0 ? (
+                  <p className="mt-2 text-sm">Nenhuma promoção registrada.</p>
                 ) : (
-                  <p className="mt-1 font-semibold">Sem promoção</p>
-                )}
-                {client.dueDay != null ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={savingDates}
-                      onClick={() => {
-                        setSavingDates(true);
-                        setDateError("");
-                        void updateContractScheduleFn({
-                          data: { id: client.id, dueDay, promoEndsOn: promoEnd },
-                        }).then((result) => {
-                          setSavingDates(false);
-                          if (!result.ok) {
-                            setDateError(result.message);
-                            return;
-                          }
-                          onScheduleSaved({
-                            id: client.id,
-                            dueDay: result.data.dueDay,
-                            promoEndsOn: result.data.promoEndsOn,
-                          });
-                        });
-                      }}
-                    >
-                      {savingDates ? "Salvando..." : "Salvar datas"}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Os Pix já emitidos na Cora permanecem com o vencimento original.
-                    </p>
+                  <div className="mt-3 space-y-3">
+                    {client.promotions.map((promo) => (
+                      <div key={promo.id} className="border-t pt-3">
+                        <p className="font-medium">
+                          {moneyFromCents(promo.nominalCents)} para {moneyFromCents(promo.amountCents)}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                          <span>{dateBr(promo.startsOn)} até</span>
+                          {editingPromoId === promo.id ? (
+                            <>
+                              <Input
+                                className="h-8 max-w-36"
+                                inputMode="numeric"
+                                value={editingPromoEnd}
+                                disabled={savingPromo}
+                                onChange={(event) => setEditingPromoEnd(applyMask("date", event.target.value))}
+                              />
+                              <Button
+                                type="button"
+                                size="icon"
+                                className="size-8"
+                                aria-label="Salvar fim da promoção"
+                                disabled={savingPromo}
+                                onClick={() => {
+                                  setSavingPromo(true);
+                                  setPromoError("");
+                                  void updateClientPromotionEndFn({
+                                    data: { id: client.id, promotionId: promo.id, endsOn: editingPromoEnd },
+                                  }).then((result) => {
+                                    setSavingPromo(false);
+                                    if (!result.ok) {
+                                      setPromoError(result.message);
+                                      return;
+                                    }
+                                    setEditingPromoId(null);
+                                    onPromotionsSaved({ id: client.id, promotions: result.data.promotions });
+                                  });
+                                }}
+                              >
+                                <Check />
+                              </Button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="font-semibold text-foreground hover:text-primary"
+                              onClick={() => {
+                                setPromoError("");
+                                setEditingPromoId(promo.id);
+                                setEditingPromoEnd(dateBr(promo.endsOn, ""));
+                              }}
+                            >
+                              {dateBr(promo.endsOn)}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ) : null}
-                {dateError ? (
+                )}
+                <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
+                  <div>
+                    <label htmlFor="next-promo-amount" className="text-xs text-muted-foreground">
+                      Nova promoção
+                    </label>
+                    <Input
+                      id="next-promo-amount"
+                      className="mt-2"
+                      placeholder="R$ 0,00"
+                      value={promoAmount}
+                      disabled={savingPromo || client.startsOn == null}
+                      onChange={(event) => setPromoAmount(applyMask("money", event.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="next-promo-start" className="text-xs text-muted-foreground">
+                      Início
+                    </label>
+                    <Input
+                      id="next-promo-start"
+                      className="mt-2"
+                      inputMode="numeric"
+                      placeholder="DD/MM/AAAA"
+                      value={promoStart}
+                      disabled={savingPromo || client.startsOn == null}
+                      onChange={(event) => setPromoStart(applyMask("date", event.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="next-promo-end" className="text-xs text-muted-foreground">
+                      Fim
+                    </label>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        id="next-promo-end"
+                        inputMode="numeric"
+                        placeholder="DD/MM/AAAA"
+                        value={promoFinish}
+                        disabled={savingPromo || client.startsOn == null}
+                        onChange={(event) => setPromoFinish(applyMask("date", event.target.value))}
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        aria-label="Registrar promoção"
+                        disabled={savingPromo || client.startsOn == null}
+                        onClick={() => {
+                          setSavingPromo(true);
+                          setPromoError("");
+                          void addClientPromotionFn({
+                            data: {
+                              id: client.id,
+                              amount: promoAmount,
+                              startsOn: promoStart,
+                              endsOn: promoFinish,
+                            },
+                          }).then((result) => {
+                            setSavingPromo(false);
+                            if (!result.ok) {
+                              setPromoError(result.message);
+                              return;
+                            }
+                            setPromoAmount("");
+                            setPromoStart("");
+                            setPromoFinish("");
+                            onPromotionsSaved({ id: client.id, promotions: result.data.promotions });
+                          });
+                        }}
+                      >
+                        <Check />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Os Pix já emitidos na Cora permanecem com o valor original.
+                </p>
+                {promoError ? (
                   <p role="alert" className="mt-2 text-sm text-destructive">
-                    {dateError}
+                    {promoError}
                   </p>
                 ) : null}
               </div>

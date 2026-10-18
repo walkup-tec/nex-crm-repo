@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ClientDraft, ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
-import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule } from "@/lib/billing-plan";
+import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionsOverlap } from "@/lib/billing-plan";
 import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
 import { createCoraInvoice } from "@/server/cora.server";
 
@@ -36,6 +36,9 @@ function parseDate(value: string, label: string) {
 }
 
 function migrationMessage(message: string) {
+  if (/client_promotions/i.test(message)) {
+    return "A migração do histórico de promoções ainda não foi aplicada no Supabase.";
+  }
   if (/ads_meta|ads_google/i.test(message)) {
     return "A migração das plataformas de anúncio ainda não foi aplicada no Supabase.";
   }
@@ -182,6 +185,59 @@ async function loadOrganizations() {
   };
 }
 
+type PromotionRow = {
+  id: string;
+  organization_id: string;
+  starts_on: string;
+  ends_on: string;
+  amount_cents: number;
+  nominal_cents: number;
+};
+
+async function loadPromotions() {
+  const result = await supabaseAdmin
+    .from("client_promotions")
+    .select("id, organization_id, starts_on, ends_on, amount_cents, nominal_cents")
+    .order("starts_on");
+  if (!result.error || !/client_promotions|schema cache|does not exist/i.test(result.error.message)) return result;
+  return { data: [] as PromotionRow[], error: null };
+}
+
+function promotionsOf(
+  organizationId: string,
+  contract: {
+    promo_enabled?: boolean | null;
+    promo_starts_on?: string | null;
+    promo_ends_on?: string | null;
+    monthly_fee_cents?: number | null;
+    after_promo_cents?: number | null;
+  } | null,
+  rows: PromotionRow[] | null,
+) {
+  const stored = (rows ?? [])
+    .filter((row) => row.organization_id === organizationId)
+    .map((row) => ({
+      id: row.id,
+      startsOn: row.starts_on,
+      endsOn: row.ends_on,
+      amountCents: Number(row.amount_cents),
+      nominalCents: Number(row.nominal_cents),
+    }));
+  if (stored.length) return stored;
+  if (!contract?.promo_enabled || !contract.promo_starts_on || !contract.promo_ends_on || contract.after_promo_cents == null) {
+    return [];
+  }
+  return [
+    {
+      id: `contract:${organizationId}`,
+      startsOn: contract.promo_starts_on,
+      endsOn: contract.promo_ends_on,
+      amountCents: Number(contract.monthly_fee_cents),
+      nominalCents: Number(contract.after_promo_cents),
+    },
+  ];
+}
+
 export async function listClients(userId: string): Promise<ListedClient[]> {
   await requireMaster(userId);
   const [
@@ -190,6 +246,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
     { data: accounts, error: accountError },
     { data: invoices, error: invoiceError },
     { data: profiles, error: profileError },
+    { data: promotionRows, error: promotionError },
   ] = await Promise.all([
     loadOrganizations(),
     loadContracts(),
@@ -203,12 +260,14 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       .select("organization_id, competence, due_date, total_amount_cents, status, paid_at")
       .order("due_date", { ascending: false }),
     supabaseAdmin.from("profiles").select("id, email, organization_id"),
+    loadPromotions(),
   ]);
   if (orgError) fail(orgError.message);
   if (contractError) fail(contractError.message);
   if (accountError) fail(accountError.message);
   if (invoiceError) fail(invoiceError.message);
   if (profileError) fail(profileError.message);
+  if (promotionError) fail(promotionError.message);
 
   const profileIds = (profiles ?? []).map((row) => row.id);
   const roles = profileIds.length
@@ -272,6 +331,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       promoStartsOn: contract?.promo_starts_on ?? null,
       promoEndsOn: contract?.promo_ends_on ?? null,
       afterPromoCents: contract?.after_promo_cents == null ? null : Number(contract.after_promo_cents),
+      promotions: promotionsOf(org.id, contract, promotionRows),
       delinquencyMode: contract?.delinquency_mode === "rate" || contract?.delinquency_mode === "amount" ? contract.delinquency_mode : "",
       delinquencyAmountCents: contract?.delinquency_amount_cents == null ? null : Number(contract.delinquency_amount_cents),
       portfolioId: portfolio,
@@ -339,6 +399,33 @@ async function saveContract(organizationId: string, parsed: ReturnType<typeof pa
     { onConflict: "organization_id" },
   );
   if (error) fail(migrationMessage(error.message));
+  await rememberPromotion(organizationId, parsed);
+}
+
+async function rememberPromotion(organizationId: string, parsed: ReturnType<typeof parseDraft>) {
+  if (!parsed.promoEnabled || !parsed.promoStartsOn || !parsed.promoEndsOn || parsed.afterPromoCents == null) return;
+  const existing = await supabaseAdmin
+    .from("client_promotions")
+    .select("id, starts_on")
+    .eq("organization_id", organizationId);
+  if (existing.error) {
+    if (/client_promotions|schema cache|does not exist/i.test(existing.error.message)) return;
+    fail(migrationMessage(existing.error.message));
+  }
+  const same = (existing.data ?? []).find((row) => row.starts_on === parsed.promoStartsOn);
+  const payload = {
+    ends_on: parsed.promoEndsOn,
+    amount_cents: parsed.monthlyFeeCents,
+    nominal_cents: parsed.afterPromoCents,
+  };
+  const saved = same
+    ? await supabaseAdmin.from("client_promotions").update(payload).eq("id", same.id)
+    : await supabaseAdmin.from("client_promotions").insert({
+        organization_id: organizationId,
+        starts_on: parsed.promoStartsOn,
+        ...payload,
+      });
+  if (saved.error) fail(migrationMessage(saved.error.message));
 }
 
 async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>) {
@@ -473,6 +560,151 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
   return { id };
 }
 
+async function promotionList(organizationId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("client_promotions")
+    .select("id, starts_on, ends_on, amount_cents, nominal_cents")
+    .eq("organization_id", organizationId)
+    .order("starts_on");
+  if (error) fail(migrationMessage(error.message));
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+    amountCents: Number(row.amount_cents),
+    nominalCents: Number(row.nominal_cents),
+  }));
+}
+
+export async function addClientPromotion(
+  userId: string,
+  input: { id: string; amount: string; startsOn: string; endsOn: string },
+) {
+  await requireMaster(userId);
+  const amountCents = Number(digits(input.amount));
+  if (!amountCents || amountCents < 500) fail("A mensalidade promocional precisa ser de pelo menos R$ 5,00.");
+  const startsOn = parseDate(input.startsOn, "o início da promoção");
+  const endsOn = parseDate(input.endsOn, "o fim da promoção");
+  if (endsOn < startsOn) fail("O fim da promoção não pode ser antes do início.");
+  const { data: contract, error } = await supabaseAdmin
+    .from("contracts")
+    .select("id, starts_on, ends_on, monthly_fee_cents, promo_enabled, promo_starts_on, promo_ends_on, after_promo_cents")
+    .eq("organization_id", input.id)
+    .maybeSingle();
+  if (error) fail(migrationMessage(error.message));
+  if (!contract) fail("Este cliente ainda não tem contrato.");
+  if (startsOn < contract.starts_on || (contract.ends_on && endsOn > contract.ends_on)) {
+    fail("A promoção precisa ficar dentro do contrato.");
+  }
+  const nominalCents =
+    contract.after_promo_cents != null ? Number(contract.after_promo_cents) : Number(contract.monthly_fee_cents);
+  let current = await promotionList(input.id);
+  if (
+    !current.length &&
+    contract.promo_enabled &&
+    contract.promo_starts_on &&
+    contract.promo_ends_on &&
+    contract.after_promo_cents != null
+  ) {
+    const seeded = await supabaseAdmin.from("client_promotions").insert({
+      organization_id: input.id,
+      starts_on: contract.promo_starts_on,
+      ends_on: contract.promo_ends_on,
+      amount_cents: contract.monthly_fee_cents,
+      nominal_cents: contract.after_promo_cents,
+    });
+    if (seeded.error) fail(migrationMessage(seeded.error.message));
+    current = await promotionList(input.id);
+  }
+  if (promotionsOverlap([...current, { startsOn, endsOn }])) {
+    fail("Essa promoção cruza outra promoção já registrada.");
+  }
+  const inserted = await supabaseAdmin.from("client_promotions").insert({
+    organization_id: input.id,
+    starts_on: startsOn,
+    ends_on: endsOn,
+    amount_cents: amountCents,
+    nominal_cents: nominalCents,
+  });
+  if (inserted.error) fail(migrationMessage(inserted.error.message));
+  if (!contract.promo_enabled) {
+    const updated = await supabaseAdmin
+      .from("contracts")
+      .update({
+        promo_enabled: true,
+        promo_starts_on: startsOn,
+        promo_ends_on: endsOn,
+        monthly_fee_cents: amountCents,
+        after_promo_cents: nominalCents,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", contract.id);
+    if (updated.error) fail(migrationMessage(updated.error.message));
+  }
+  await audit(userId, input.id, "client.promotion");
+  return { promotions: await promotionList(input.id) };
+}
+
+export async function updateClientPromotionEnd(
+  userId: string,
+  input: { id: string; promotionId: string; endsOn: string },
+) {
+  await requireMaster(userId);
+  const endsOn = parseDate(input.endsOn, "o fim da promoção");
+  const { data: contract, error } = await supabaseAdmin
+    .from("contracts")
+    .select("id, starts_on, ends_on, monthly_fee_cents, after_promo_cents, promo_starts_on")
+    .eq("organization_id", input.id)
+    .maybeSingle();
+  if (error) fail(migrationMessage(error.message));
+  if (!contract) fail("Este cliente ainda não tem contrato.");
+  if (endsOn < contract.starts_on || (contract.ends_on && endsOn > contract.ends_on)) {
+    fail("A promoção precisa ficar dentro do contrato.");
+  }
+  if (input.promotionId.startsWith("contract:")) {
+    if (!contract.promo_starts_on || endsOn < contract.promo_starts_on) {
+      fail("O fim da promoção não pode ser antes do início.");
+    }
+    const updated = await supabaseAdmin
+      .from("contracts")
+      .update({ promo_ends_on: endsOn, updated_at: new Date().toISOString() })
+      .eq("id", contract.id);
+    if (updated.error) fail(migrationMessage(updated.error.message));
+    await audit(userId, input.id, "client.promotion_end");
+    const stored = await promotionList(input.id);
+    if (stored.length) return { promotions: stored };
+    return {
+      promotions: [
+        {
+          id: input.promotionId,
+          startsOn: contract.promo_starts_on,
+          endsOn,
+          amountCents: Number(contract.monthly_fee_cents),
+          nominalCents: Number(contract.after_promo_cents ?? contract.monthly_fee_cents),
+        },
+      ],
+    };
+  }
+  const current = await promotionList(input.id);
+  const target = current.find((row) => row.id === input.promotionId);
+  if (!target) fail("Promoção não encontrada.");
+  if (endsOn < target.startsOn) fail("O fim da promoção não pode ser antes do início.");
+  if (promotionsOverlap(current.map((row) => (row.id === target.id ? { ...row, endsOn } : row)))) {
+    fail("Essa promoção cruza outra promoção já registrada.");
+  }
+  const saved = await supabaseAdmin.from("client_promotions").update({ ends_on: endsOn }).eq("id", target.id);
+  if (saved.error) fail(migrationMessage(saved.error.message));
+  if (contract.promo_starts_on === target.startsOn) {
+    const updated = await supabaseAdmin
+      .from("contracts")
+      .update({ promo_ends_on: endsOn, updated_at: new Date().toISOString() })
+      .eq("id", contract.id);
+    if (updated.error) fail(migrationMessage(updated.error.message));
+  }
+  await audit(userId, input.id, "client.promotion_end");
+  return { promotions: await promotionList(input.id) };
+}
+
 export async function updateContractEnd(userId: string, input: { id: string; endsOn: string }) {
   await requireMaster(userId);
   const endsOn = parseDate(input.endsOn, "o término do contrato");
@@ -513,7 +745,7 @@ export async function updateContractSchedule(
   if (error) fail(migrationMessage(error.message));
   if (!contract) fail("Este cliente ainda não tem contrato.");
   let promoEndsOn = contract.promo_ends_on;
-  if (contract.promo_enabled) {
+  if (contract.promo_enabled && input.promoEndsOn.trim()) {
     promoEndsOn = parseDate(input.promoEndsOn, "o fim da promoção");
     if (contract.promo_starts_on && promoEndsOn < contract.promo_starts_on) {
       fail("O fim da promoção não pode ser antes do início.");

@@ -168,6 +168,36 @@ export type Database = {
           },
         ]
       }
+      client_promotions: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          ends_on: string
+          id: string
+          nominal_cents: number
+          organization_id: string
+          starts_on: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          ends_on: string
+          id?: string
+          nominal_cents: number
+          organization_id: string
+          starts_on: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          ends_on?: string
+          id?: string
+          nominal_cents?: number
+          organization_id?: string
+          starts_on?: string
+        }
+        Relationships: []
+      }
       contracts: {
         Row: {
           after_promo_cents: number | null

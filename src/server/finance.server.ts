@@ -537,12 +537,20 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const actor = await actorOf(userId);
   if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
   const notice = await syncFinance(userId, actor.organizationId);
-  const [contracts, rows, names, company] = await Promise.all([
+  const [contracts, rows, names, company, promotionResult] = await Promise.all([
     contractsOf(actor.organizationId),
     invoicesOf(actor.organizationId),
     namesOf([actor.organizationId]),
     organizationBillingProfile(actor.organizationId),
+    supabaseAdmin
+      .from("client_promotions")
+      .select("starts_on, ends_on, amount_cents, nominal_cents")
+      .eq("organization_id", actor.organizationId)
+      .order("starts_on"),
   ]);
+  if (promotionResult.error && !/client_promotions|schema cache|does not exist/i.test(promotionResult.error.message)) {
+    fail(promotionResult.error.message);
+  }
   const contract = contracts[0] ?? null;
   const charges = rows.map((row) => toCharge(row, names));
   const today = todayKey();
@@ -581,6 +589,14 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
       contract?.promo_enabled && contract.after_promo_cents != null
         ? Number(contract.after_promo_cents)
         : null,
+    promotions: promotionResult.error
+      ? []
+      : (promotionResult.data ?? []).map((row) => ({
+          startsOn: row.starts_on,
+          endsOn: row.ends_on,
+          amountCents: Number(row.amount_cents),
+          nominalCents: Number(row.nominal_cents),
+        })),
     delinquencyMode:
       contract?.delinquency_mode === "rate" || contract?.delinquency_mode === "amount"
         ? contract.delinquency_mode

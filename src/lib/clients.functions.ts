@@ -62,6 +62,22 @@ export const updateClientFn = createServerFn({ method: "POST" })
     return guard(() => updateClient(context.userId, data.id, data));
   });
 
+export const addClientPromotionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string; amount: string; startsOn: string; endsOn: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { addClientPromotion } = await import("@/server/clients.server");
+    return guard(() => addClientPromotion(context.userId, data));
+  });
+
+export const updateClientPromotionEndFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string; promotionId: string; endsOn: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { updateClientPromotionEnd } = await import("@/server/clients.server");
+    return guard(() => updateClientPromotionEnd(context.userId, data));
+  });
+
 export const updateContractEndFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { id: string; endsOn: string }) => data)

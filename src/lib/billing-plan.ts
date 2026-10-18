@@ -51,6 +51,23 @@ export function contractDueDates(startsOn: string, endsOn: string, dueDay: numbe
   return dates;
 }
 
+export type PromoWindow = { startsOn: string; endsOn: string; amountCents: number };
+
+export function promotionAmount(due: string, nominalCents: number, promos: PromoWindow[]) {
+  const match = promos.find((promo) => due >= promo.startsOn && due <= promo.endsOn);
+  return match ? match.amountCents : nominalCents;
+}
+
+export function promotionsOverlap(promos: { startsOn: string; endsOn: string }[]) {
+  const ordered = [...promos].sort((left, right) => left.startsOn.localeCompare(right.startsOn));
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    if (previous && current && current.startsOn <= previous.endsOn) return true;
+  }
+  return false;
+}
+
 export function chargeCents(
   due: string,
   monthlyCents: number,

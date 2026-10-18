@@ -17,6 +17,7 @@ export function PixCharge({
   promoMonthlyCents,
   nominalMonthlyCents,
   delinquencyAmountCents,
+  promotions,
 }: {
   payload: string;
   totalCents: number;
@@ -27,15 +28,19 @@ export function PixCharge({
   promoMonthlyCents: number | null;
   nominalMonthlyCents: number | null;
   delinquencyAmountCents: number | null;
+  promotions: { startsOn: string; endsOn: string; amountCents: number; nominalCents: number }[];
 }) {
   const [image, setImage] = useState("");
   const [failed, setFailed] = useState(false);
   const afterDue =
     delinquencyAmountCents != null && delinquencyAmountCents > 0 ? moneyFromCents(delinquencyAmountCents) : "";
+  const matched = promotions.find((promo) => dueDate >= promo.startsOn && dueDate <= promo.endsOn);
   const promo =
-    promoMonthlyCents != null && nominalMonthlyCents != null && afterDue
-      ? promoChargeCopy(moneyFromCents(nominalMonthlyCents), moneyFromCents(promoMonthlyCents), afterDue)
-      : null;
+    afterDue && matched
+      ? promoChargeCopy(moneyFromCents(matched.nominalCents), moneyFromCents(matched.amountCents), afterDue)
+      : afterDue && promotions.length === 0 && promoMonthlyCents != null && nominalMonthlyCents != null
+        ? promoChargeCopy(moneyFromCents(nominalMonthlyCents), moneyFromCents(promoMonthlyCents), afterDue)
+        : null;
 
   useEffect(() => {
     let active = true;

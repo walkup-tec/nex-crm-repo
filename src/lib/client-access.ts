@@ -21,6 +21,8 @@ export type ClientDraft = {
   whatsapp: string;
   sameFinancePhone: boolean;
   billingProvider: BillingProvider | "";
+  adsMeta: boolean;
+  adsGoogle: boolean;
   monthlyFee: string;
   dueDay: string;
   startsOn: string;
@@ -56,6 +58,8 @@ export type ListedClient = {
   interestPercent: number | null;
   asaasSubscriptionId: string;
   billingProvider: BillingProvider | "";
+  adsMeta: boolean;
+  adsGoogle: boolean;
   promoEnabled: boolean;
   promoStartsOn: string | null;
   promoEndsOn: string | null;
@@ -70,6 +74,30 @@ export type ListedClient = {
   accessUserId: string | null;
   invoices: ClientInvoice[];
 };
+
+export function adsPlatformLabel(client: { adsMeta: boolean; adsGoogle: boolean }) {
+  if (client.adsMeta && client.adsGoogle) return "Meta e Google Ads";
+  if (client.adsGoogle) return "Google Ads";
+  if (client.adsMeta) return "Meta Ads";
+  return "Não informado";
+}
+
+export function promoChargeCopy(nominal: string, promotional: string, afterDue: string) {
+  return {
+    about: `Está ativa no seu cadastro a promoção que reduz a sua mensalidade nominal de ${nominal} para mensalidade promocional de ${promotional}.`,
+    keep: `Mantenham suas mensalidades em dia para não perder a promoção. Após o vencimento, o valor da cobrança será de ${afterDue}.`,
+  };
+}
+
+export function adsServiceDescription(client: { adsMeta: boolean; adsGoogle: boolean }) {
+  if (client.adsMeta && client.adsGoogle) {
+    return "Mensalidade referente ao serviço de anúncios na plataforma Google e Meta Ads.";
+  }
+  if (client.adsGoogle) {
+    return "Mensalidade referente ao serviço de anúncios na plataforma Google Ads.";
+  }
+  return "Mensalidade referente ao serviço de anúncios na plataforma Meta Ads.";
+}
 
 export function isInactiveClient(status: ClientStatus) {
   return status === "disabled" || status === "blocked" || status === "contract_ended";

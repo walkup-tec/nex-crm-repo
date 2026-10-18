@@ -565,6 +565,8 @@ export type Database = {
           document: string
           finance_phone: string
           id: string
+          ads_google: boolean
+          ads_meta: boolean
           legal_name: string
           meta_low_balance_alerted_at: string | null
           responsible_email: string
@@ -578,6 +580,8 @@ export type Database = {
           document: string
           finance_phone: string
           id?: string
+          ads_google?: boolean
+          ads_meta?: boolean
           legal_name: string
           meta_low_balance_alerted_at?: string | null
           responsible_email: string
@@ -591,6 +595,8 @@ export type Database = {
           document?: string
           finance_phone?: string
           id?: string
+          ads_google?: boolean
+          ads_meta?: boolean
           legal_name?: string
           meta_low_balance_alerted_at?: string | null
           responsible_email?: string

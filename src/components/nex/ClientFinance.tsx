@@ -193,10 +193,10 @@ export function ClientFinance() {
                   totalCents={coraCharge.totalCents}
                   dueDate={coraCharge.dueDate}
                   clientName={snapshot.clientName}
-                  clientDocument={snapshot.clientDocument}
-                  delinquencyMode={snapshot.delinquencyMode}
-                  finePercent={snapshot.finePercent}
-                  interestPercent={snapshot.interestPercent}
+                  adsMeta={snapshot.adsMeta}
+                  adsGoogle={snapshot.adsGoogle}
+                  promoMonthlyCents={snapshot.promoMonthlyCents}
+                  nominalMonthlyCents={snapshot.nominalMonthlyCents}
                   delinquencyAmountCents={snapshot.delinquencyAmountCents}
                 />
               ) : null}

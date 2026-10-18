@@ -45,6 +45,8 @@ type ContractRow = {
   interest_percent_monthly: number | null;
   delinquency_mode: string | null;
   delinquency_amount_cents: number | null;
+  promo_enabled: boolean;
+  after_promo_cents: number | null;
 };
 type InvoiceRow = {
   id: string;
@@ -98,7 +100,7 @@ async function contractsOf(organizationId?: string) {
   let query = supabaseAdmin
     .from("contracts")
     .select(
-      "id, organization_id, external_subscription_id, monthly_fee_cents, starts_on, ends_on, billing_provider, fine_percent, interest_percent_monthly, delinquency_mode, delinquency_amount_cents",
+      "id, organization_id, external_subscription_id, monthly_fee_cents, starts_on, ends_on, billing_provider, fine_percent, interest_percent_monthly, delinquency_mode, delinquency_amount_cents, promo_enabled, after_promo_cents",
     );
   if (organizationId) query = query.eq("organization_id", organizationId);
   const { data, error } = await query;
@@ -508,6 +510,29 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
   };
 }
 
+async function organizationBillingProfile(organizationId: string) {
+  const full = await supabaseAdmin
+    .from("organizations")
+    .select("document, ads_meta, ads_google")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (!full.error) {
+    return {
+      document: full.data?.document ?? "",
+      adsMeta: full.data?.ads_meta !== false,
+      adsGoogle: full.data?.ads_google === true,
+    };
+  }
+  if (!/ads_meta|ads_google/i.test(full.error.message)) fail(full.error.message);
+  const basic = await supabaseAdmin
+    .from("organizations")
+    .select("document")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (basic.error) fail(basic.error.message);
+  return { document: basic.data?.document ?? "", adsMeta: true, adsGoogle: false };
+}
+
 export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const actor = await actorOf(userId);
   if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
@@ -516,7 +541,7 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     contractsOf(actor.organizationId),
     invoicesOf(actor.organizationId),
     namesOf([actor.organizationId]),
-    supabaseAdmin.from("organizations").select("document").eq("id", actor.organizationId).maybeSingle(),
+    organizationBillingProfile(actor.organizationId),
   ]);
   const contract = contracts[0] ?? null;
   const charges = rows.map((row) => toCharge(row, names));
@@ -545,7 +570,17 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
       contract?.billing_provider === "cora" || contract?.billing_provider === "asaas"
         ? contract.billing_provider
         : "",
-    clientDocument: company.data?.document ?? "",
+    clientDocument: company.document,
+    adsMeta: company.adsMeta,
+    adsGoogle: company.adsGoogle,
+    promoMonthlyCents:
+      contract?.promo_enabled && contract.after_promo_cents != null
+        ? Number(contract.monthly_fee_cents)
+        : null,
+    nominalMonthlyCents:
+      contract?.promo_enabled && contract.after_promo_cents != null
+        ? Number(contract.after_promo_cents)
+        : null,
     delinquencyMode:
       contract?.delinquency_mode === "rate" || contract?.delinquency_mode === "amount"
         ? contract.delinquency_mode

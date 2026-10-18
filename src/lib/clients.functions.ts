@@ -62,6 +62,14 @@ export const updateClientFn = createServerFn({ method: "POST" })
     return guard(() => updateClient(context.userId, data.id, data));
   });
 
+export const updateContractScheduleFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string; dueDay: string; promoEndsOn: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { updateContractSchedule } = await import("@/server/clients.server");
+    return guard(() => updateContractSchedule(context.userId, data));
+  });
+
 export const setClientStatusFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { id: string; active: boolean }) => data)

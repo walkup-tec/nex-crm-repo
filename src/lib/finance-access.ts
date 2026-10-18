@@ -51,6 +51,10 @@ export type OwnFinance = {
   notice: string;
   billingProvider: "cora" | "asaas" | "";
   clientDocument: string;
+  adsMeta: boolean;
+  adsGoogle: boolean;
+  promoMonthlyCents: number | null;
+  nominalMonthlyCents: number | null;
   delinquencyMode: "rate" | "amount" | "";
   finePercent: number;
   interestPercent: number;

@@ -6,6 +6,7 @@ import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
 import type { ClientDraft, ListedClient } from "@/lib/client-access";
 import {
+  adsPlatformLabel,
   clientStatusLabel,
   dateBr,
   invoiceStatusLabel,
@@ -20,6 +21,7 @@ import {
   lookupAsaasSubscriptionFn,
   setClientStatusFn,
   updateClientFn,
+  updateContractScheduleFn,
 } from "@/lib/clients.functions";
 import {
   AlertDialog,
@@ -54,6 +56,8 @@ const emptyDraft: ClientDraft = {
   whatsapp: "",
   sameFinancePhone: true,
   billingProvider: "",
+  adsMeta: false,
+  adsGoogle: false,
   monthlyFee: "",
   dueDay: "",
   startsOn: "",
@@ -82,6 +86,8 @@ function draftFrom(client: ListedClient): ClientDraft {
     whatsapp: client.whatsapp ? applyMask("phone", client.whatsapp) : "",
     sameFinancePhone: client.sameFinancePhone,
     billingProvider: client.billingProvider,
+    adsMeta: client.adsMeta,
+    adsGoogle: client.adsGoogle,
     monthlyFee: client.monthlyFeeCents == null ? "" : moneyFromCents(client.monthlyFeeCents),
     dueDay: client.dueDay == null ? "" : String(client.dueDay),
     startsOn: dateBr(client.startsOn, ""),
@@ -257,6 +263,13 @@ export function ClientsAdmin() {
 
       <ClientDialog
         client={selected}
+        onScheduleSaved={(patch) => {
+          const apply = (item: ListedClient) =>
+            item.id === patch.id ? { ...item, dueDay: patch.dueDay, promoEndsOn: patch.promoEndsOn } : item;
+          setClients((current) => current.map(apply));
+          setSelected((current) => (current ? apply(current) : current));
+          setNotice("Vencimento e fim da promoção atualizados no contrato.");
+        }}
         onClose={() => setSelected(null)}
         onEdit={() => {
           if (!selected) return;
@@ -334,6 +347,7 @@ function ClientDialog({
   onStatus,
   onSupport,
   onFinance,
+  onScheduleSaved,
 }: {
   client: ListedClient | null;
   onClose: () => void;
@@ -341,10 +355,20 @@ function ClientDialog({
   onStatus: () => void;
   onSupport: () => Promise<void>;
   onFinance: () => void;
+  onScheduleSaved: (patch: { id: string; dueDay: number; promoEndsOn: string | null }) => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [dueDay, setDueDay] = useState("");
+  const [promoEnd, setPromoEnd] = useState("");
+  const [savingDates, setSavingDates] = useState(false);
+  const [dateError, setDateError] = useState("");
   const inactive = client ? isInactiveClient(client.status) : false;
   const balanceHref = client ? normalizeBalanceLink(client.balanceUrl) : null;
+  useEffect(() => {
+    setDueDay(client?.dueDay == null ? "" : String(client.dueDay));
+    setPromoEnd(client?.promoEndsOn ? dateBr(client.promoEndsOn, "") : "");
+    setDateError("");
+  }, [client]);
   return (
     <Dialog open={client !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -361,6 +385,7 @@ function ClientDialog({
             </TabsList>
             <TabsContent value="summary" className="grid gap-3 sm:grid-cols-2">
               <Info label="Responsável" value={client.responsibleName || "—"} />
+              <Info label="Anúncios" value={adsPlatformLabel(client)} />
               <Info label="Situação" value={clientStatusLabel(client.status)} />
               <Info label="Financeiro" value={client.financeLabel} />
               <Info
@@ -379,12 +404,77 @@ function ClientDialog({
                     : moneyFromCents(client.monthlyFeeCents)
                 }
               />
-              <Info
-                label="Vencimento"
-                value={client.dueDay == null ? "—" : `Todo dia ${client.dueDay}`}
-              />
+              <div className="rounded-lg border p-4">
+                <label htmlFor="contract-due-day" className="text-xs text-muted-foreground">
+                  Vencimento
+                </label>
+                <Input
+                  id="contract-due-day"
+                  className="mt-2"
+                  inputMode="numeric"
+                  placeholder="17"
+                  value={dueDay}
+                  disabled={client.dueDay == null || savingDates}
+                  onChange={(event) => setDueDay(applyMask("day", event.target.value))}
+                />
+              </div>
               <Info label="Início" value={dateBr(client.startsOn)} />
               <Info label="Término" value={dateBr(client.endsOn)} />
+              <div className="rounded-lg border p-4 sm:col-span-2">
+                <label htmlFor="contract-promo-end" className="text-xs text-muted-foreground">
+                  Fim da promoção
+                </label>
+                {client.promoEnabled ? (
+                  <Input
+                    id="contract-promo-end"
+                    className="mt-2"
+                    inputMode="numeric"
+                    placeholder="DD/MM/AAAA"
+                    value={promoEnd}
+                    disabled={savingDates}
+                    onChange={(event) => setPromoEnd(applyMask("date", event.target.value))}
+                  />
+                ) : (
+                  <p className="mt-1 font-semibold">Sem promoção</p>
+                )}
+                {client.dueDay != null ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={savingDates}
+                      onClick={() => {
+                        setSavingDates(true);
+                        setDateError("");
+                        void updateContractScheduleFn({
+                          data: { id: client.id, dueDay, promoEndsOn: promoEnd },
+                        }).then((result) => {
+                          setSavingDates(false);
+                          if (!result.ok) {
+                            setDateError(result.message);
+                            return;
+                          }
+                          onScheduleSaved({
+                            id: client.id,
+                            dueDay: result.data.dueDay,
+                            promoEndsOn: result.data.promoEndsOn,
+                          });
+                        });
+                      }}
+                    >
+                      {savingDates ? "Salvando..." : "Salvar datas"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Os Pix já emitidos na Cora permanecem com o vencimento original.
+                    </p>
+                  </div>
+                ) : null}
+                {dateError ? (
+                  <p role="alert" className="mt-2 text-sm text-destructive">
+                    {dateError}
+                  </p>
+                ) : null}
+              </div>
               <Info
                 label="Multa"
                 value={client.finePercent == null ? "—" : percentBr(client.finePercent)}
@@ -648,6 +738,26 @@ function ClientForm({
               Mesmo WhatsApp do responsável
             </label>
             <fieldset className="sm:col-span-2 grid gap-3">
+              <legend className="text-sm font-medium">Anúncios</legend>
+              <p className="text-xs text-muted-foreground">Marque Meta Ads, Google Ads ou os dois.</p>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.adsMeta}
+                    onCheckedChange={(value) => set({ adsMeta: value === true })}
+                  />
+                  Meta Ads
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.adsGoogle}
+                    onCheckedChange={(value) => set({ adsGoogle: value === true })}
+                  />
+                  Google Ads
+                </label>
+              </div>
+            </fieldset>
+            <fieldset className="sm:col-span-2 grid gap-3">
               <legend className="text-sm font-medium">Cobrança</legend>
               <p className="text-xs text-muted-foreground">Escolha um banco. O cliente não pode ser cobrado pelos dois.</p>
               <div className="flex flex-wrap gap-4">
@@ -785,7 +895,7 @@ function ClientForm({
           {step < 2 ? (
             <Button
               type="button"
-              disabled={saving || !draft.billingProvider}
+              disabled={saving || !draft.billingProvider || (!draft.adsMeta && !draft.adsGoogle)}
               onClick={() => setStep((current) => current + 1)}
             >
               Continuar

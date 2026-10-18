@@ -2,38 +2,40 @@ import { useEffect, useState } from "react";
 import { Calendar, CircleDollarSign } from "lucide-react";
 import QRCode from "@/vendor/qrcode/lib/browser.js";
 import { Brand } from "@/components/nex/Brand";
-import { dateBr, moneyFromCents, percentBr } from "@/lib/client-access";
-import { applyMask } from "@/lib/masks";
+import { adsServiceDescription, dateBr, moneyFromCents, promoChargeCopy } from "@/lib/client-access";
+
+const beneficiaryName = "WALKUP SISTEMAS E INTELIGENCIA LTDA";
+const beneficiaryDocument = "69.511.558/0001-38";
 
 export function PixCharge({
   payload,
   totalCents,
   dueDate,
   clientName,
-  clientDocument,
-  delinquencyMode,
-  finePercent,
-  interestPercent,
+  adsMeta,
+  adsGoogle,
+  promoMonthlyCents,
+  nominalMonthlyCents,
   delinquencyAmountCents,
 }: {
   payload: string;
   totalCents: number;
   dueDate: string;
   clientName: string;
-  clientDocument: string;
-  delinquencyMode: "rate" | "amount" | "";
-  finePercent: number;
-  interestPercent: number;
+  adsMeta: boolean;
+  adsGoogle: boolean;
+  promoMonthlyCents: number | null;
+  nominalMonthlyCents: number | null;
   delinquencyAmountCents: number | null;
 }) {
   const [image, setImage] = useState("");
   const [failed, setFailed] = useState(false);
-  const document = clientDocument.replace(/\D/g, "");
-  const fine =
-    delinquencyMode === "amount" && delinquencyAmountCents != null
-      ? moneyFromCents(delinquencyAmountCents)
-      : percentBr(finePercent);
-  const interest = delinquencyMode === "amount" ? percentBr(0) : percentBr(interestPercent);
+  const afterDue =
+    delinquencyAmountCents != null && delinquencyAmountCents > 0 ? moneyFromCents(delinquencyAmountCents) : "";
+  const promo =
+    promoMonthlyCents != null && nominalMonthlyCents != null && afterDue
+      ? promoChargeCopy(moneyFromCents(nominalMonthlyCents), moneyFromCents(promoMonthlyCents), afterDue)
+      : null;
 
   useEffect(() => {
     let active = true;
@@ -94,36 +96,26 @@ export function PixCharge({
           <div className="space-y-4">
             <section>
               <h3 className="font-display text-lg font-bold text-primary">Beneficiário</h3>
-              <p className="mt-1 font-medium">{clientName}</p>
-              {document ? (
-                <p className="text-sm text-muted-foreground">
-                  {document.length > 11 ? "CNPJ" : "CPF"} {applyMask("doc", document)}
-                </p>
-              ) : null}
+              <p className="mt-1 font-medium">{beneficiaryName}</p>
+              <p className="text-sm text-muted-foreground">CNPJ {beneficiaryDocument}</p>
             </section>
             <section className="border-t pt-4">
               <h3 className="font-display text-lg font-bold text-primary">Descrição</h3>
-              <p className="mt-1 font-medium">Mensalidade Nex</p>
-              <p className="text-sm text-muted-foreground">Mensalidade do contrato Nex</p>
+              <p className="mt-1 font-medium">{adsServiceDescription({ adsMeta, adsGoogle })}</p>
             </section>
-            <section className="border-t pt-4">
-              <h3 className="font-display text-lg font-bold text-primary">Após o vencimento</h3>
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="font-medium">{fine}</p>
-                  <p className="text-sm text-muted-foreground">multa</p>
-                </div>
-                <div className="border-l pl-3">
-                  <p className="font-medium">{interest}</p>
-                  <p className="text-sm text-muted-foreground">juros</p>
-                </div>
-              </div>
-            </section>
-            <section className="border-t pt-4">
-              <h3 className="font-display text-lg font-bold text-primary">Antes do vencimento</h3>
-              <p className="mt-1 font-medium">{moneyFromCents(0)}</p>
-              <p className="text-sm text-muted-foreground">desconto</p>
-            </section>
+            {promo ? (
+              <section className="border-t pt-4">
+                <h3 className="font-display text-lg font-bold text-primary">Sobre o valor da mensalidade</h3>
+                <p className="mt-1 text-sm leading-6">{promo.about}</p>
+                <p className="mt-2 text-sm leading-6">{promo.keep}</p>
+              </section>
+            ) : null}
+            {afterDue ? (
+              <section className="border-t pt-4">
+                <h3 className="font-display text-lg font-bold text-primary">Após vencimento</h3>
+                <p className="mt-1 font-medium">{afterDue}</p>
+              </section>
+            ) : null}
           </div>
           <div className="rounded-2xl border bg-card p-4">
             <p className="text-center text-sm font-medium">

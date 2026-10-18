@@ -64,6 +64,11 @@ export function noticeSchedule(due: string) {
   return billingNoticeRules.map((rule) => ({ kind: rule.kind, sendOn: addIsoDays(due, rule.days) }));
 }
 
+export function coraDelinquencyFine(chargeAmount: number, delinquencyAmount: number) {
+  if (!Number.isInteger(chargeAmount) || !Number.isInteger(delinquencyAmount)) return -1;
+  return delinquencyAmount - chargeAmount;
+}
+
 export function coraPaymentTerms(
   due: string,
   mode: DelinquencyMode,

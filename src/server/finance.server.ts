@@ -10,6 +10,7 @@ import {
   dropsLocalCharge,
   keepsAccessWithoutPayment,
   preservesLocalPayment,
+  unpaidChargeBlocksClient,
   monthKey,
   nominalPaymentId,
   penaltiesRemain,
@@ -23,7 +24,7 @@ import {
 } from "@/lib/finance-access";
 import type { InvoiceStatus } from "@/lib/client-access";
 import { coraNegotiationDue, coraNegotiatedTerms } from "@/lib/billing-plan";
-import { cancelCoraInvoice, createCoraInvoice } from "@/server/cora.server";
+import { cancelCoraInvoice, createCoraInvoice, ensureCoraPaidWebhook, readCoraInvoice } from "@/server/cora.server";
 import {
   asaasConfigured,
   createNominalPix,
@@ -300,6 +301,11 @@ export async function syncFinance(userId: string, organizationId?: string) {
   await markPreservedInvoicePaid();
   await removeDroppedInvoice();
   const contracts = await contractsOf(target);
+  if (contracts.some((contract) => contract.billing_provider === "cora")) {
+    void ensureCoraPaidWebhook().catch((registerError) => {
+      console.error("cora_webhook_register", registerError instanceof Error ? registerError.message : "falha");
+    });
+  }
   const linked = contracts.filter((contract) => contract.external_subscription_id);
   if (!asaasConfigured()) {
     return linked.length
@@ -607,9 +613,72 @@ async function organizationBillingProfile(organizationId: string) {
   return { document: basic.data?.document ?? "", adsMeta: true, adsGoogle: false };
 }
 
+async function refreshCoraPayments(organizationId: string) {
+  const { data: contract, error } = await supabaseAdmin
+    .from("contracts")
+    .select("billing_provider")
+    .eq("organization_id", organizationId)
+    .limit(1);
+  if (error || contract?.[0]?.billing_provider !== "cora") return;
+  void ensureCoraPaidWebhook().catch((registerError) => {
+    console.error("cora_webhook_register", registerError instanceof Error ? registerError.message : "falha");
+  });
+  const today = todayKey();
+  const { data: invoices, error: invoiceError } = await supabaseAdmin
+    .from("invoices")
+    .select("id, external_charge_id, due_date, status")
+    .eq("organization_id", organizationId)
+    .in("status", ["pending", "overdue"]);
+  if (invoiceError) return;
+  for (const invoice of invoices ?? []) {
+    if (!invoice.external_charge_id) continue;
+    if (!unpaidChargeBlocksClient(invoice.status, invoice.due_date, today)) continue;
+    try {
+      const remote = await readCoraInvoice(invoice.external_charge_id);
+      if (remote.status !== "PAID") continue;
+      await supabaseAdmin
+        .from("invoices")
+        .update({
+          status: "paid",
+          paid_at: remote.paidAt ?? new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", invoice.id)
+        .neq("status", "paid");
+    } catch (checkError) {
+      console.error("cora_payment_check", checkError instanceof Error ? checkError.message : "falha");
+    }
+  }
+}
+
+export async function applyCoraPaidNotice(externalChargeId: string) {
+  const id = externalChargeId.trim();
+  if (!id.startsWith("inv_")) return false;
+  const remote = await readCoraInvoice(id);
+  if (remote.status !== "PAID") return false;
+  const { data, error } = await supabaseAdmin
+    .from("invoices")
+    .select("id, status")
+    .eq("external_charge_id", id)
+    .maybeSingle();
+  if (error) fail(error.message);
+  if (!data || data.status === "paid") return Boolean(data);
+  const { error: updateError } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "paid",
+      paid_at: remote.paidAt ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", data.id);
+  if (updateError) fail(updateError.message);
+  return true;
+}
+
 export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const actor = await actorOf(userId);
   if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
+  await refreshCoraPayments(actor.organizationId);
   const notice = await syncFinance(userId, actor.organizationId);
   const [contracts, rows, names, company, promotionResult] = await Promise.all([
     contractsOf(actor.organizationId),
@@ -638,7 +707,7 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const charges = rows.map((row) => toCharge(row, names, providers));
   const today = todayKey();
   const overdue = charges
-    .filter((item) => item.status === "overdue")
+    .filter((item) => unpaidChargeBlocksClient(item.status, item.dueDate, today))
     .sort((left, right) => left.dueDate.localeCompare(right.dueDate));
   const oldestOverdue = overdue[0] ?? null;
   const open = oldestOverdue ?? charges.find((item) => item.status === "pending") ?? null;
@@ -907,7 +976,25 @@ export async function chargePix(userId: string, invoiceId: string) {
     fail("Você não pode abrir esta cobrança.");
   if (invoice.status === "paid" || invoice.status === "cancelled")
     fail("Esta cobrança não está em aberto.");
-  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada ao Asaas.");
+  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada a um provedor.");
+  const { data: billing } = await supabaseAdmin
+    .from("contracts")
+    .select("billing_provider")
+    .eq("organization_id", invoice.organization_id)
+    .limit(1);
+  if (chargeRail(billing?.[0]?.billing_provider ?? null, invoice.external_charge_id) === "cora") {
+    const payload = invoice.pix_code?.trim() ?? "";
+    if (!payload.startsWith("000201")) fail("A Cora não devolveu o código Pix desta cobrança.");
+    return {
+      payload,
+      image: "",
+      invoiceUrl: invoice.invoice_url,
+      totalCents: Number(invoice.total_amount_cents),
+      nominal: true,
+      fineCents: 0,
+      interestCents: 0,
+    };
+  }
   const [payment, rates] = await Promise.all([
     getPayment(invoice.external_charge_id),
     contractPenaltyRates(invoice.contract_id),

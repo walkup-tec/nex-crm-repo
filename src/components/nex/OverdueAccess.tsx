@@ -1,11 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
 import { Copy } from "lucide-react";
+import QRCode from "@/vendor/qrcode/lib/browser.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { moneyFromCents } from "@/lib/client-access";
 import type { ChargePix } from "@/lib/finance-access";
 import { chargePixFn, listOwnFinanceFn } from "@/lib/finance.functions";
+
+function PixQr({ image, payload }: { image: string; payload: string }) {
+  const [drawn, setDrawn] = useState("");
+  useEffect(() => {
+    if (image || !payload.startsWith("000201")) {
+      setDrawn("");
+      return;
+    }
+    let active = true;
+    void QRCode.toDataURL(payload, { width: 640, margin: 1, errorCorrectionLevel: "M", color: { dark: "#111111", light: "#ffffff" } })
+      .then((url) => {
+        if (active) setDrawn(url);
+      })
+      .catch(() => {
+        if (active) setDrawn("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [image, payload]);
+  const src = image ? `data:image/png;base64,${image}` : drawn;
+  if (!src) return <span className="px-3 text-center text-xs text-muted-foreground">Sem QR Code</span>;
+  return <img src={src} alt="QR Code Pix" className="h-full w-full object-contain" />;
+}
 
 function penaltyNote(pix: ChargePix) {
   const parts = [
@@ -36,6 +61,14 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!overdueChargeId) return;
+    const timer = window.setInterval(() => {
+      void load();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [overdueChargeId, load]);
 
   const openPix = async () => {
     if (!overdueChargeId) return;
@@ -96,7 +129,7 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
           {pix && (
             <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
               <div className="grid aspect-square place-items-center overflow-hidden rounded-lg border bg-muted">
-                {pix.image ? <img src={`data:image/png;base64,${pix.image}`} alt="QR Code Pix" className="h-full w-full object-contain" /> : <span className="px-3 text-center text-xs text-muted-foreground">Sem QR Code</span>}
+                <PixQr image={pix.image} payload={pix.payload} />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total devido</p>

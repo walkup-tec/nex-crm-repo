@@ -191,11 +191,12 @@ export async function readCoraInvoice(id: string) {
   const settings = coraRuntime();
   const token = await coraToken();
   const response = await coraRequest(settings, invoicePath(id), "GET", { authorization: `Bearer ${token}` });
-  if (response.status === 404) return { status: "CANCELLED" };
+  if (response.status === 404) return { status: "CANCELLED", paidAt: null };
   if (response.status === 401 || response.status === 403) fail("A Cora recusou o acesso para consultar a cobrança.");
   if (response.status < 200 || response.status >= 300) fail(coraMessage(response.text) || "Não foi possível consultar a cobrança na Cora.");
-  const body = JSON.parse(response.text) as { status?: string };
-  return { status: textOf(body.status).toUpperCase() };
+  const body = JSON.parse(response.text) as { status?: string; occurrence_date?: string | null };
+  const paidAt = textOf(body.occurrence_date);
+  return { status: textOf(body.status).toUpperCase(), paidAt: paidAt || null };
 }
 
 export async function cancelCoraInvoice(id: string) {
@@ -209,4 +210,27 @@ export async function cancelCoraInvoice(id: string) {
   if (response.status === 422 && /pago|paid|REC-0006/i.test(response.text)) fail("Esta cobrança já foi paga na Cora.");
   if (response.status === 401 || response.status === 403) fail("A Cora recusou o acesso para cancelar a cobrança.");
   fail(coraMessage(response.text) || "Não foi possível cancelar a cobrança na Cora.");
+}
+
+let paidWebhookReady = false;
+
+export async function ensureCoraPaidWebhook() {
+  if (paidWebhookReady) return;
+  const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
+  const url = `${base}/api/cora/webhook`;
+  const settings = coraRuntime();
+  const token = await coraToken();
+  const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  const created = await coraRequest(
+    settings,
+    "/v2/webhooks",
+    "POST",
+    { ...headers, "idempotency-key": idempotencyKey(`cora-paid-webhook:${url}`) },
+    JSON.stringify({ url, resource: "invoice", trigger: "paid" }),
+  );
+  if ((created.status >= 200 && created.status < 300) || created.status === 409) {
+    paidWebhookReady = true;
+    return;
+  }
+  console.error("cora_webhook_register", created.status, coraMessage(created.text) || "falha");
 }

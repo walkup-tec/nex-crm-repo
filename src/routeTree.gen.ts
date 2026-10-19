@@ -45,6 +45,7 @@ import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
 import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
+import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
@@ -247,6 +248,11 @@ const ApiChatbotEvoRoute = ApiChatbotEvoRouteImport.update({
   path: '/api/chatbot/evo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCoraWebhookRoute = ApiCoraWebhookRouteImport.update({
+  id: '/api/cora/webhook',
+  path: '/api/cora/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/meta/callback',
   path: '/meta/callback',
@@ -299,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
+  '/api/cora/webhook': typeof ApiCoraWebhookRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
@@ -336,6 +343,7 @@ export interface FileRoutesByTo {
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
+  '/api/cora/webhook': typeof ApiCoraWebhookRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
   '/master': typeof AuthenticatedMasterIndexRoute
@@ -378,6 +386,7 @@ export interface FileRoutesById {
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
+  '/api/cora/webhook': typeof ApiCoraWebhookRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
@@ -420,6 +429,7 @@ export interface FileRouteTypes {
     | '/master/criativos'
     | '/master/financeiro'
     | '/api/chatbot/evo'
+    | '/api/cora/webhook'
     | '/auth/meta/callback'
     | '/chatbot/'
     | '/master/'
@@ -457,6 +467,7 @@ export interface FileRouteTypes {
     | '/master/criativos'
     | '/master/financeiro'
     | '/api/chatbot/evo'
+    | '/api/cora/webhook'
     | '/auth/meta/callback'
     | '/chatbot'
     | '/master'
@@ -498,6 +509,7 @@ export interface FileRouteTypes {
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
     | '/api/chatbot/evo'
+    | '/api/cora/webhook'
     | '/auth/meta/callback'
     | '/_authenticated/chatbot/'
     | '/_authenticated/master/'
@@ -514,6 +526,7 @@ export interface RootRouteChildren {
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
+  ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -770,6 +783,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatbotEvoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cora/webhook': {
+      id: '/api/cora/webhook'
+      path: '/api/cora/webhook'
+      fullPath: '/api/cora/webhook'
+      preLoaderRoute: typeof ApiCoraWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
       path: '/meta/callback'
@@ -915,6 +935,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
+  ApiCoraWebhookRoute: ApiCoraWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

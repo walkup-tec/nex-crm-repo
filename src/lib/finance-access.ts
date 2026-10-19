@@ -93,6 +93,12 @@ const cancelledStatuses = new Set([
   "AWAITING_CHARGEBACK_REVERSAL",
 ]);
 
+export function unpaidChargeBlocksClient(status: InvoiceStatus, dueDate: string, today: string) {
+  if (status === "paid" || status === "cancelled") return false;
+  if (status === "overdue") return true;
+  return status === "pending" && dueDate.slice(0, 10) < today;
+}
+
 export function chargeStatus(asaasStatus: string, dueDate: string, today: string): InvoiceStatus {
   if (paidStatuses.has(asaasStatus)) return "paid";
   if (cancelledStatuses.has(asaasStatus)) return "cancelled";

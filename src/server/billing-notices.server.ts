@@ -35,7 +35,7 @@ export function startBillingNoticeRunner() {
       console.error("billing_notices", error instanceof Error ? error.message : "falha");
     });
   };
-  setTimeout(tick, 60_000).unref();
+  setTimeout(tick, 10_000).unref();
   setInterval(tick, 15 * 60_000).unref();
 }
 

@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { readProviderMessageId } from "@/lib/billing-notice";
+import { evolutionBaseUrls, gatewayFromProcRoute } from "@/lib/evolution-route";
 import {
   inviteAccessLink,
   invitePasswordButton,
@@ -105,6 +107,7 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
   if (input.imagePng.byteLength === 0) return { ok: false, messageId: "", error: "A imagem da fatura não foi gerada." };
   const target = await openEvolutionTarget("evo_finance");
   if (!target) {
+    console.error("evo_finance", "no_open_instance");
     return {
       ok: false,
       messageId: "",
@@ -151,21 +154,33 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
 async function openEvolutionTarget(tag: string) {
   const runtime = evolutionRuntime();
   const keys = runtime.key === draxEvolutionKey ? [runtime.key] : [runtime.key, draxEvolutionKey];
-  const bases = [runtime.base, hostEvolutionUrl, publicEvolutionUrl].filter(
-    (base, index, all) => Boolean(base) && all.indexOf(base) === index,
-  );
+  const bases = evolutionBaseUrls({
+    configured: runtime.base,
+    gateway: hostGateway(),
+    hostUrl: hostEvolutionUrl,
+    publicUrl: publicEvolutionUrl,
+  });
   const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
   for (const key of keys) {
     const headers = { "content-type": "application/json", apikey: key };
     for (const base of bases) {
-      const listed = await evoGet(`${base}/instance/fetchInstances`, headers, tag);
+      const listed = await evoGet(`${base}/instance/fetchInstances`, headers, tag, 8000);
       if (!listed) continue;
       const instance = evolutionInstanceName(listed, preferred === closedSenderInstance ? "" : preferred);
       if (!instance || instance === closedSenderInstance) continue;
+      console.error(tag, "instance", instance);
       return { base, headers, instance };
     }
   }
   return null;
+}
+
+function hostGateway() {
+  try {
+    return gatewayFromProcRoute(readFileSync("/proc/net/route", "utf8"));
+  } catch {
+    return "";
+  }
 }
 
 function inviteAppUrl() {
@@ -180,9 +195,9 @@ function envValue(...names: string[]) {
   return "";
 }
 
-async function evoGet(url: string, headers: Record<string, string>, tag = "evo_low_balance") {
+async function evoGet(url: string, headers: Record<string, string>, tag = "evo_low_balance", timeoutMs = 20000) {
   try {
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) {
       console.error(tag, response.status);
       return null;

@@ -59,7 +59,7 @@ export function evolutionInstanceName(payload: unknown, preferred: string) {
 }
 
 function instanceHits(payload: unknown) {
-  const rows = Array.isArray(payload) ? payload : [];
+  const rows = instanceRows(payload);
   return rows.flatMap((row) => {
     const record = asRecord(row);
     if (!record) return [];
@@ -79,13 +79,25 @@ function instanceHits(payload: unknown) {
   });
 }
 
+function instanceRows(payload: unknown) {
+  if (Array.isArray(payload)) return payload;
+  const record = asRecord(payload);
+  if (!record) return [];
+  for (const key of ["data", "instances", "rows", "value"]) {
+    if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  return [];
+}
+
 function asRecord(value: unknown) {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
 function textField(record: Record<string, unknown>, key: string) {
   const value = record[key];
-  return typeof value === "string" ? value : "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
 }
 
 export const lowBalanceWhatsappTitle = "Saldo META baixo";

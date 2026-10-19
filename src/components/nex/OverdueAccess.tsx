@@ -4,7 +4,7 @@ import QRCode from "@/vendor/qrcode/lib/browser.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { moneyFromCents } from "@/lib/client-access";
+import { moneyFromCents, overdueAccessCopy, overduePixCopy } from "@/lib/client-access";
 import type { ChargePix } from "@/lib/finance-access";
 import { chargePixFn, listOwnFinanceFn } from "@/lib/finance.functions";
 
@@ -43,6 +43,8 @@ function penaltyNote(pix: ChargePix) {
 
 export function OverdueAccess({ children }: { children: React.ReactNode }) {
   const [overdueChargeId, setOverdueChargeId] = useState<string | null>(null);
+  const [platforms, setPlatforms] = useState({ adsMeta: true, adsGoogle: false });
+  const [billingProvider, setBillingProvider] = useState<"cora" | "asaas" | "">("");
   const [pixOpen, setPixOpen] = useState(false);
   const [pix, setPix] = useState<ChargePix | null>(null);
   const [pixError, setPixError] = useState("");
@@ -56,6 +58,8 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
       return;
     }
     setOverdueChargeId(result.data.overdueChargeId);
+    setPlatforms({ adsMeta: result.data.adsMeta, adsGoogle: result.data.adsGoogle });
+    setBillingProvider(result.data.billingProvider);
   }, []);
 
   useEffect(() => {
@@ -98,7 +102,7 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-40 grid place-items-center bg-background/55 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="overdue-access-title" className="w-full max-w-md rounded-xl border bg-card p-6 text-center shadow-lg">
             <p id="overdue-access-title" className="text-sm leading-relaxed">
-              Continue impulsionando o crescimento do seu negócio com anúncios na Meta e no Google. Regularize sua pendência para restabelecer o acesso aos nossos serviços.
+              {overdueAccessCopy(platforms)}
             </p>
             <Button className="mt-6 w-full" onClick={() => void openPix()}>
               Regularizar agora
@@ -117,11 +121,7 @@ export function OverdueAccess({ children }: { children: React.ReactNode }) {
           <DialogHeader>
             <DialogTitle>Regularizar pendência</DialogTitle>
             <DialogDescription>
-              {pix
-                ? pix.nominal
-                  ? "Pix do valor nominal desta parcela. A cobrança vencida sai do Asaas quando este pagamento for identificado."
-                  : "Pix desta parcela com multa e juros calculados. A cobrança vencida sai do Asaas quando este pagamento for identificado."
-                : "A cobrança vencida sai do Asaas quando este pagamento for identificado."}
+              {overduePixCopy({ provider: billingProvider, nominal: pix ? pix.nominal : null })}
             </DialogDescription>
           </DialogHeader>
           {pixLoading && <p className="text-sm text-muted-foreground">Consultando o Pix...</p>}

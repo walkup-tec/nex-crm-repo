@@ -91,6 +91,28 @@ export function adsPlatformLabel(client: { adsMeta: boolean; adsGoogle: boolean 
   return "Não informado";
 }
 
+export function overdueAccessCopy(client: { adsMeta: boolean; adsGoogle: boolean }) {
+  const channel =
+    client.adsMeta && client.adsGoogle
+      ? "anúncios na Meta e no Google"
+      : client.adsGoogle
+        ? "anúncios no Google"
+        : "anúncios na Meta";
+  return `Continue impulsionando o crescimento do seu negócio com ${channel}. Regularize sua pendência para restabelecer o acesso aos nossos serviços.`;
+}
+
+export function overduePixCopy(input: { provider: "cora" | "asaas" | ""; nominal: boolean | null }) {
+  const closing =
+    input.provider === "cora"
+      ? "A cobrança vencida sai da Cora quando este pagamento for identificado."
+      : input.provider === "asaas"
+        ? "A cobrança vencida sai do Asaas quando este pagamento for identificado."
+        : "A cobrança vencida sai quando este pagamento for identificado.";
+  if (input.nominal == null) return closing;
+  if (input.nominal) return `Pix do valor nominal desta parcela. ${closing}`;
+  return `Pix desta parcela com multa e juros calculados. ${closing}`;
+}
+
 export function promoChargeCopy(nominal: string, promotional: string, afterDue: string) {
   return {
     about: `Está ativa no seu cadastro a promoção que reduz a sua mensalidade nominal de ${nominal} para mensalidade promocional de ${promotional}.`,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { adsServiceDescription, promoChargeCopy } from "./client-access";
+import { adsServiceDescription, overdueAccessCopy, overduePixCopy, promoChargeCopy } from "./client-access";
 import { keepsAccessWithoutPayment } from "./finance-access";
 
 const promo = promoChargeCopy("R$ 1.800,00", "R$ 499,00", "R$ 1.800,00");
@@ -23,6 +23,32 @@ assert.equal(
 assert.equal(
   adsServiceDescription({ adsMeta: true, adsGoogle: true }),
   "Mensalidade referente ao serviço de anúncios na plataforma Google e Meta Ads.",
+);
+
+assert.equal(
+  overdueAccessCopy({ adsMeta: true, adsGoogle: false }),
+  "Continue impulsionando o crescimento do seu negócio com anúncios na Meta. Regularize sua pendência para restabelecer o acesso aos nossos serviços.",
+);
+assert.equal(
+  overdueAccessCopy({ adsMeta: false, adsGoogle: true }),
+  "Continue impulsionando o crescimento do seu negócio com anúncios no Google. Regularize sua pendência para restabelecer o acesso aos nossos serviços.",
+);
+assert.equal(
+  overdueAccessCopy({ adsMeta: true, adsGoogle: true }),
+  "Continue impulsionando o crescimento do seu negócio com anúncios na Meta e no Google. Regularize sua pendência para restabelecer o acesso aos nossos serviços.",
+);
+
+assert.equal(
+  overduePixCopy({ provider: "cora", nominal: true }),
+  "Pix do valor nominal desta parcela. A cobrança vencida sai da Cora quando este pagamento for identificado.",
+);
+assert.equal(
+  overduePixCopy({ provider: "asaas", nominal: false }),
+  "Pix desta parcela com multa e juros calculados. A cobrança vencida sai do Asaas quando este pagamento for identificado.",
+);
+assert.equal(
+  overduePixCopy({ provider: "cora", nominal: null }),
+  "A cobrança vencida sai da Cora quando este pagamento for identificado.",
 );
 
 assert.equal(keepsAccessWithoutPayment("MMS MARKETING E SISTEMAS DIGITAIS LTDA"), true);

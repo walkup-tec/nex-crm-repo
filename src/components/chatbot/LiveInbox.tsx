@@ -9,7 +9,9 @@ import {
   finishChatbotConversationFn,
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
+  sendChatbotArtesFn,
   sendChatbotCadastroFn,
+  sendChatbotMinutaFn,
   sendChatbotMessageFn,
   startChatbotFlowFn,
   listChatbotQuickRepliesFn,
@@ -20,7 +22,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -592,6 +594,70 @@ export function LiveInbox() {
     if (result.ok) await load();
   }
 
+  async function sendArtes() {
+    if (!selected || !contact || !data?.contractingForm || sending.current) return;
+    setQuickOpen(false);
+    setBotsOpen(false);
+    const preview: OutgoingPreview = {
+      id: `local-${Date.now()}`,
+      conversationId: selected,
+      text: "Artes",
+      createdAt: new Date().toISOString(),
+    };
+    sending.current = true;
+    setOutgoing((current) => [...current, preview]);
+    setPending(true);
+    try {
+      const result = await sendChatbotArtesFn({ data: { conversationId: selected } });
+      if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      void load();
+    } catch {
+      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+      setMessage("Não foi possível enviar as artes.");
+    } finally {
+      sending.current = false;
+      setPending(false);
+      composerRef.current?.focus();
+    }
+  }
+
+  async function sendMinuta() {
+    if (!selected || !contact || !data?.contractingForm || sending.current) return;
+    setQuickOpen(false);
+    setBotsOpen(false);
+    const preview: OutgoingPreview = {
+      id: `local-${Date.now()}`,
+      conversationId: selected,
+      text: minutaFileName,
+      createdAt: new Date().toISOString(),
+    };
+    sending.current = true;
+    setOutgoing((current) => [...current, preview]);
+    setPending(true);
+    try {
+      const result = await sendChatbotMinutaFn({ data: { conversationId: selected } });
+      if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      void load();
+    } catch {
+      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+      setMessage("Não foi possível enviar a minuta.");
+    } finally {
+      sending.current = false;
+      setPending(false);
+      composerRef.current?.focus();
+    }
+  }
+
   async function sendForm() {
     if (!selected || !contact || !data?.contractingForm || sending.current) return;
     setQuickOpen(false);
@@ -881,6 +947,16 @@ export function LiveInbox() {
                       Bots
                     </Button>
                     {data?.contractingForm ? (
+                      <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendArtes()}>
+                        Artes
+                      </Button>
+                    ) : null}
+                    {data?.contractingForm ? (
+                      <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendMinuta()}>
+                        Minuta
+                      </Button>
+                    ) : null}
+                    {data?.contractingForm ? (
                       <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendForm()}>
                         Form
                       </Button>
@@ -953,6 +1029,7 @@ export function LiveInbox() {
         <ContactRecord
           contactId={contact?.id ?? ""}
           tick={savedMedia}
+          preview={contact ? { name: contact.name, phone: contact.phone, avatarUrl: contact.avatarUrl } : null}
           onRenamed={(contactId, name) =>
             setData((current) =>
               current

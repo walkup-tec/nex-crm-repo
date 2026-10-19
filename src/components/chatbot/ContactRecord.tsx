@@ -17,7 +17,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { contractingFormUrl } from "@/lib/contracting";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
-import { clientPhoneLabel, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+import { clientPhoneLabel, contactExtraDataCount, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
 function SavedMediaName({
   file,
@@ -95,6 +95,14 @@ function SavedMediaName({
   );
 }
 
+function ExtraCount({ count, label }: { count: number; label: string }) {
+  return (
+    <span className={`contact-extra-count${count ? " has-items" : ""}`} aria-label={`${count} ${label}`}>
+      {count}
+    </span>
+  );
+}
+
 function ProfileAvatar({ name, avatarUrl }: { name: string; avatarUrl: string }) {
   const [hidden, setHidden] = useState(false);
   const initials = (name || "?").slice(0, 2).toUpperCase();
@@ -110,10 +118,12 @@ function ProfileAvatar({ name, avatarUrl }: { name: string; avatarUrl: string })
 export function ContactRecord({
   contactId,
   tick,
+  preview,
   onRenamed,
 }: {
   contactId: string;
   tick: number;
+  preview: { name: string; phone: string; avatarUrl: string } | null;
   onRenamed: (contactId: string, name: string) => void;
 }) {
   const [profile, setProfile] = useState<ChatbotContactProfile | null>(null);
@@ -127,25 +137,43 @@ export function ContactRecord({
   const [rgDraft, setRgDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const noteRef = useRef<HTMLTextAreaElement>(null);
+  const contactRef = useRef(contactId);
+  contactRef.current = contactId;
   const [extraOpen, setExtraOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [contractingUrl, setContractingUrl] = useState("");
   const [mediaOpen, setMediaOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
 
   useEffect(() => {
     setContractingUrl(contactId ? contractingFormUrl(window.location.origin, contactId) : "");
   }, [contactId]);
 
+  function applyProfile(data: ChatbotContactProfile) {
+    setProfile(data);
+    setDraft(data.name);
+    setDocumentDraft(applyMask("doc", data.document));
+    setRgDraft(applyMask("rg", data.rg));
+    setNoteDraft(data.note.replace(/\s+/g, " ").trim().slice(0, 300));
+    setDeal(negotiatedLabel(data.negotiatedCents));
+    setExtraOpen(Boolean(data.contracting));
+    setMediaOpen(Boolean(data.contracting));
+    setLinkCopied(false);
+  }
+
   useEffect(() => {
     setEditing(false);
-    setProfile(null);
+    setProfile((current) => (current?.id === contactId ? current : null));
     setDocumentDraft("");
     setRgDraft("");
     setNoteDraft("");
     setExtraOpen(false);
     setLinkCopied(false);
     setMediaOpen(false);
+    setRefreshing(false);
+    setRefreshed(false);
     setError("");
     if (!contactId) return;
     let active = true;
@@ -155,15 +183,20 @@ export function ContactRecord({
         setError(result.message);
         return;
       }
+      applyProfile(result.data);
+    });
+    return () => {
+      active = false;
+    };
+  }, [contactId]);
+
+  useEffect(() => {
+    if (!contactId || !tick) return;
+    let active = true;
+    void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
+      if (!active || !result.ok) return;
       setProfile(result.data);
-      setDraft(result.data.name);
-      setDocumentDraft(applyMask("doc", result.data.document));
-      setRgDraft(applyMask("rg", result.data.rg));
-      setNoteDraft(result.data.note.replace(/\s+/g, " ").trim().slice(0, 300));
-      setDeal(negotiatedLabel(result.data.negotiatedCents));
-      setExtraOpen(Boolean(result.data.contracting));
-      setMediaOpen(Boolean(result.data.contracting));
-      setLinkCopied(false);
+      setMediaOpen((open) => open || Boolean(result.data.contracting));
     });
     return () => {
       active = false;
@@ -171,11 +204,52 @@ export function ContactRecord({
   }, [contactId, tick]);
 
   useEffect(() => {
+    if (!refreshed) return;
+    const timer = window.setTimeout(() => setRefreshed(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [refreshed]);
+
+  useEffect(() => {
     const element = noteRef.current;
     if (!element) return;
     element.style.height = "0px";
     element.style.height = `${element.scrollHeight}px`;
   }, [noteDraft, profile?.id]);
+
+  async function refreshExtras() {
+    if (!profile || refreshing) return;
+    setRefreshing(true);
+    setRefreshed(false);
+    setError("");
+    const requestedId = profile.id;
+    const result = await chatbotContactProfileFn({ data: { contactId: requestedId } });
+    if (contactRef.current !== requestedId) return;
+    setRefreshing(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const data = result.data;
+    setProfile((current) =>
+      current
+        ? {
+            ...current,
+            files: data.files,
+            contracting: data.contracting,
+            contractingLink: data.contractingLink,
+            document: data.document,
+            rg: data.rg,
+            showDocument: data.showDocument,
+            showRg: data.showRg,
+          }
+        : current,
+    );
+    setDocumentDraft(applyMask("doc", data.document));
+    setRgDraft(applyMask("rg", data.rg));
+    setExtraOpen((open) => open || Boolean(data.contracting || data.document || data.rg));
+    setMediaOpen((open) => open || data.files.length > 0);
+    setRefreshed(true);
+  }
 
   async function saveName() {
     if (!profile || savingName) return;
@@ -321,9 +395,23 @@ export function ContactRecord({
           <p>Abra uma conversa para ver o cadastro.</p>
         </div>
       ) : !profile ? (
-        <div className="contact-placeholder">
-          <p>{error || "Carregando o contato..."}</p>
-        </div>
+        <>
+          {preview ? (
+            <>
+              <section className="contact-section contact-identity">
+                <ProfileAvatar name={preview.name} avatarUrl={preview.avatarUrl} />
+                <span className="contact-name">{preview.name}</span>
+              </section>
+              <section className="contact-section">
+                <h3>WhatsApp</h3>
+                <p className="contact-phone">{clientPhoneLabel(preview.phone) || preview.phone}</p>
+              </section>
+            </>
+          ) : null}
+          <div className="contact-placeholder">
+            <p>{error || "Carregando o contato..."}</p>
+          </div>
+        </>
       ) : (
         <>
           {error ? <p className="contact-error">{error}</p> : null}
@@ -457,13 +545,18 @@ export function ContactRecord({
               <p>O valor negociado ainda não está disponível.</p>
             )}
           </section>
+          <section className="contact-section contact-refresh-section">
+            <Button type="button" variant="outline" className="contact-refresh" disabled={refreshing} aria-label="Atualizar mídias e outros dados" onClick={() => void refreshExtras()}>
+              {refreshing ? "Atualizando" : refreshed ? "Atualizado" : "Atualizar"}
+            </Button>
+          </section>
           {profile.showDocument || profile.showRg || profile.contractingLink ? (
             <section className={`contact-section${extraOpen ? "" : " is-collapsed"}`}>
               <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
                 <CollapsibleTrigger className="contact-extra">
                   <span className="contact-extra-title">
                     Outros dados
-                    {(profile.showDocument && profile.document) || (profile.showRg && profile.rg) || profile.contracting ? <Check className="contact-extra-mark" aria-label="Preenchido" /> : null}
+                    <ExtraCount count={contactExtraDataCount(profile)} label="dados" />
                   </span>
                   <ChevronDown />
                 </CollapsibleTrigger>
@@ -557,7 +650,7 @@ export function ContactRecord({
               <CollapsibleTrigger className="contact-extra">
                 <span className="contact-extra-title">
                   Mídias salvas
-                  {profile.files.length ? <Check className="contact-extra-mark" aria-label="Preenchido" /> : null}
+                  <ExtraCount count={profile.files.length} label="mídias" />
                 </span>
                 <ChevronDown />
               </CollapsibleTrigger>

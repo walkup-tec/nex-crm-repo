@@ -49,7 +49,12 @@ import {
   inboxUnread,
   inboxVisible,
   attendancePhone,
+  artesFileNames,
+  artesMime,
+  minutaFileName,
+  whatsappImagePayload,
   whatsappCadastroButton,
+  whatsappDocumentPayload,
   whatsappTextPayload,
   preferredWhatsappPhone,
   sameWhatsappAccount,
@@ -73,6 +78,7 @@ import {
   tagInk,
   keepWhatsappName,
   contactFileLabel,
+  contactExtraDataCount,
   savedMediaTitle,
   internalNote,
   kanbanStageName,
@@ -821,3 +827,34 @@ assert.deepEqual(whatsappTextPayload("5547992082637", "https://app.nexmeta.com.b
 });
 assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.displayText, "Cadastro");
 assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.type, "url");
+const minuta = whatsappDocumentPayload("5547992082637", minutaFileName, "QUJERg==");
+assert.equal(minuta.mediatype, "document");
+assert.equal(minuta.mimetype, "application/pdf");
+assert.equal(minuta.fileName, "MINUTA NEX.pdf");
+assert.equal(minuta.caption, "");
+assert.equal(minuta.media, "QUJERg==");
+assert.deepEqual(artesFileNames(["SIAPE.png", "nota.txt", ".gitkeep", "CLT1.PNG", "foto.jpg", "CLT1.PNG"]), ["CLT1.PNG", "foto.jpg", "SIAPE.png"]);
+assert.equal(artesMime("CONVENIO SP.png"), "image/png");
+assert.equal(artesMime("arte.webp"), "image/webp");
+assert.equal(whatsappImagePayload("5547992082637", "CLT1.png", "image/png", "aaa").mediatype, "image");
+const emptyExtra = { contracting: null, document: "", rg: "", showDocument: true, showRg: true };
+assert.equal(contactExtraDataCount(emptyExtra), 0);
+assert.equal(contactExtraDataCount({ ...emptyExtra, document: "12345678901", rg: "1234567" }), 2);
+assert.equal(
+  contactExtraDataCount({
+    ...emptyExtra,
+    contracting: {
+      id: "1",
+      protocol: "123456",
+      cnpj: "04.252.011/0001-10",
+      legalName: "Empresa",
+      address: "Rua 1",
+      representativeName: "Ana",
+      representativeEmail: "ana@empresa.com",
+      witnessName: "Bia",
+      witnessDocument: "123.456.789-09",
+      witnessEmail: "bia@empresa.com",
+    },
+  }),
+  6,
+);

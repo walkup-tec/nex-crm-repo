@@ -289,6 +289,54 @@ export function whatsappCadastroButton(phone: string, url: string) {
   };
 }
 
+export const minutaFileName = "MINUTA NEX.pdf";
+
+export function whatsappDocumentPayload(phone: string, fileName: string, base64: string) {
+  return {
+    number: phone,
+    mediatype: "document",
+    mimetype: "application/pdf",
+    caption: "",
+    media: base64,
+    fileName,
+  };
+}
+
+const artesExtensions: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+export function artesFileNames(names: string[]) {
+  const images = names
+    .map((name) => name.trim())
+    .filter((name) => {
+      if (!name || name.startsWith(".")) return false;
+      const extension = name.split(".").pop()?.toLowerCase() ?? "";
+      return Boolean(artesExtensions[extension]);
+    });
+  return [...new Set(images)].sort((left, right) => left.localeCompare(right, "pt-BR"));
+}
+
+export function artesMime(name: string) {
+  const extension = name.split(".").pop()?.toLowerCase() ?? "";
+  return artesExtensions[extension] ?? "";
+}
+
+export function whatsappImagePayload(phone: string, fileName: string, mime: string, base64: string) {
+  return {
+    number: phone,
+    mediatype: "image",
+    mimetype: mime,
+    caption: "",
+    media: base64,
+    fileName,
+  };
+}
+
 export function evolutionProfileNumber(phone: string) {
   const group = whatsappGroupJid(phone);
   if (group) return group;
@@ -1151,6 +1199,29 @@ export function savedMediaTitle(mime: string, name: string) {
   const clean = name.trim();
   if (clean && !generatedMediaName.test(clean)) return clean;
   return contactFileLabel(mime, clean);
+}
+
+export function contactExtraDataCount(profile: {
+  contracting: ChatbotContracting | null;
+  document: string;
+  rg: string;
+  showDocument: boolean;
+  showRg: boolean;
+}) {
+  const filled = (value: string) => value.trim().length > 0;
+  let count = 0;
+  const contracting = profile.contracting;
+  if (contracting) {
+    if (filled(contracting.protocol)) count += 1;
+    if (filled(contracting.cnpj)) count += 1;
+    if (filled(contracting.legalName)) count += 1;
+    if (filled(contracting.address)) count += 1;
+    if (filled(contracting.representativeName) || filled(contracting.representativeEmail)) count += 1;
+    if (filled(contracting.witnessName) || filled(contracting.witnessDocument) || filled(contracting.witnessEmail)) count += 1;
+  }
+  if (profile.showDocument && filled(profile.document)) count += 1;
+  if (profile.showRg && filled(profile.rg)) count += 1;
+  return count;
 }
 
 export type ChatbotContracting = {

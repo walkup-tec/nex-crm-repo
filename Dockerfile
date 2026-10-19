@@ -18,6 +18,8 @@ ENV NODE_ENV=production \
     NITRO_HOST=0.0.0.0 \
     PORT=3000
 COPY --from=build /app/.output ./.output
+COPY --from=build /app/assets/minuta-nex.pdf /app/assets/minuta-nex.pdf
+COPY --from=build /app/artes_exemplo /app/artes
 COPY docker-entrypoint.mjs /app/docker-entrypoint.mjs
 EXPOSE 3000
 CMD ["node", "--import", "./docker-entrypoint.mjs", ".output/server/index.mjs"]

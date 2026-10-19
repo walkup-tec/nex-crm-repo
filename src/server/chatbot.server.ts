@@ -3,6 +3,8 @@ import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { chatbotMediaBucket as mediaBucket, chatbotMediaMimeTypes as mediaMimeTypes } from "@/lib/chatbot-media";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { cepMask, cnpjMask, contractingAddressLine, contractingButtonText, contractingFormUrl, cpfMask } from "@/lib/contracting";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
@@ -48,7 +50,12 @@ import {
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
+  artesFileNames,
+  artesMime,
+  minutaFileName,
   whatsappCadastroButton,
+  whatsappDocumentPayload,
+  whatsappImagePayload,
   whatsappTextPayload,
   clientPhoneLabel,
   catalogName,
@@ -773,6 +780,172 @@ export async function sendChatbotCadastro(userId: string, conversationId: string
       organization_id: organizationId,
       conversation_id: conversationId,
       text: contractingButtonText(clean),
+      direction: "out",
+      status: "sent",
+      external_id: externalId || null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (saved.error) fail(schemaMessage(saved.error.message));
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (assigned.error) fail(schemaMessage(assigned.error.message));
+}
+
+const artesMaxBytes = 16 * 1024 * 1024;
+
+function artesDirectory() {
+  const configured = process.env.NEX_ARTES_DIR?.trim();
+  const candidates = [configured, "E:\\01A-Drax-Servidor\\Nex\\artes_exemplo", join(process.cwd(), "artes_exemplo"), "/app/artes"].filter(
+    (item): item is string => Boolean(item),
+  );
+  for (const dir of candidates) {
+    try {
+      if (statSync(dir).isDirectory()) return dir;
+    } catch {
+      continue;
+    }
+  }
+  fail("A pasta de artes não está disponível no servidor.");
+}
+
+function imageBytes(bytes: Buffer, mime: string) {
+  if (mime === "image/png") return bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a";
+  if (mime === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (mime === "image/gif") return bytes.subarray(0, 3).toString("ascii") === "GIF";
+  if (mime === "image/webp") return bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+  return false;
+}
+
+export async function sendChatbotArtes(userId: string, conversationId: string) {
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contactId = cell(conversation.data, "contact_id");
+  const contact = await table("chatbot_contacts")
+    .select("phone")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (contact.error) fail(schemaMessage(contact.error.message));
+  const storedPhone = cell(contact.data, "phone");
+  const phone = whatsappNumber(storedPhone) ?? storedPhone;
+  if (!phone) fail("Esse contato não tem um telefone válido.");
+  const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
+  const dir = artesDirectory();
+  const names = artesFileNames(readdirSync(dir));
+  if (!names.length) fail("Não há artes para enviar nessa pasta.");
+  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  let sent = 0;
+  for (const name of names) {
+    const bytes = readFileSync(join(dir, name));
+    const mime = artesMime(name);
+    if (bytes.byteLength > artesMaxBytes || !imageBytes(bytes, mime)) fail(`A arte ${name} não pode ser enviada.`);
+    try {
+      const result = await evo(`/message/sendMedia/${instance}`, "POST", whatsappImagePayload(phone, name, mime, bytes.toString("base64")), 60000);
+      const externalId = readMessageId(result);
+      const saved = await table("chatbot_messages")
+        .insert({
+          organization_id: organizationId,
+          conversation_id: conversationId,
+          text: name,
+          direction: "out",
+          status: "sent",
+          external_id: externalId || null,
+        })
+        .select("id")
+        .maybeSingle();
+      if (saved.error) fail(schemaMessage(saved.error.message));
+      sent += 1;
+    } catch (error) {
+      if (sent > 0) {
+        await assignConversation(conversationId, organizationId, userId, {
+          status: "active",
+          bot_paused: true,
+          updated_at: new Date().toISOString(),
+        });
+      }
+      if (error instanceof Error && error.message !== "A Evolution API não concluiu a operação.") throw error;
+      fail(`Não foi possível enviar a arte ${name}.`);
+    }
+  }
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (assigned.error) fail(schemaMessage(assigned.error.message));
+  return { count: sent };
+}
+
+function minutaPdfBase64() {
+  const paths = [join(process.cwd(), "assets", "minuta-nex.pdf"), "/app/assets/minuta-nex.pdf"];
+  for (const path of paths) {
+    try {
+      const bytes = readFileSync(path);
+      if (bytes.subarray(0, 4).toString("ascii") === "%PDF") return bytes.toString("base64");
+    } catch {
+      continue;
+    }
+  }
+  fail("A minuta não está disponível no servidor.");
+}
+
+export async function sendChatbotMinuta(userId: string, conversationId: string) {
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contactId = cell(conversation.data, "contact_id");
+  const contact = await table("chatbot_contacts")
+    .select("phone")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (contact.error) fail(schemaMessage(contact.error.message));
+  const storedPhone = cell(contact.data, "phone");
+  const phone = whatsappNumber(storedPhone) ?? storedPhone;
+  if (!phone) fail("Esse contato não tem um telefone válido.");
+  const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
+  const pdf = minutaPdfBase64();
+  const sent = await evo(
+    `/message/sendMedia/${encodeURIComponent(cell(connection, "instance_name"))}`,
+    "POST",
+    whatsappDocumentPayload(phone, minutaFileName, pdf),
+    60000,
+  );
+  const externalId = readMessageId(sent);
+  const saved = await table("chatbot_messages")
+    .insert({
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      text: minutaFileName,
       direction: "out",
       status: "sent",
       external_id: externalId || null,
@@ -1985,58 +2158,54 @@ async function replaceContactLinks(
   }
 }
 
-export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
-  const { organizationId } = await membership(userId, "inbox");
+function negotiatedCentsOf(row: Record<string, unknown> | null | undefined) {
+  const raw = row?.["negotiated_cents"];
+  const amount = raw == null || raw === "" ? null : Number(raw);
+  return amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null;
+}
+
+async function contactCardRow(organizationId: string, contactId: string) {
+  const wide = await table("chatbot_contacts")
+    .select("id, name, phone, avatar_url, stage_name, negotiated_cents, client_owner_id, bot_note, document, rg")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (!wide.error) {
+    if (!wide.data) fail("Esse contato não pertence à sua empresa.");
+    return {
+      id: cell(wide.data, "id"),
+      name: cell(wide.data, "name"),
+      phone: cell(wide.data, "phone"),
+      avatarUrl: cell(wide.data, "avatar_url"),
+      stageReady: true,
+      stage: cell(wide.data, "stage_name"),
+      dealReady: true,
+      negotiated: negotiatedCentsOf(wide.data),
+      clientOwnerId: cell(wide.data, "client_owner_id"),
+      note: cell(wide.data, "bot_note"),
+      document: cell(wide.data, "document"),
+      rg: cell(wide.data, "rg"),
+    };
+  }
+  if (!/avatar_url|stage_name|negotiated_cents|client_owner_id|bot_note|document|rg|schema cache|does not exist|PGRST205/i.test(wide.error.message)) {
+    fail(schemaMessage(wide.error.message));
+  }
   const contact = await ownedContact(organizationId, contactId);
-  const [tags, products, tagLinks, productLinks, files] = await Promise.all([
-    rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
-    rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
-    rowsOrMissing(table("chatbot_contact_tags").select("tag_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
-    rowsOrMissing(table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
-    rows(table("chatbot_contact_files").select("id, name, mime_type, storage_path, created_at").eq("contact_id", contactId).eq("organization_id", organizationId).order("created_at", { ascending: false })),
+  const [avatarRow, stageRow, dealRow, identity] = await Promise.all([
+    table("chatbot_contacts").select("avatar_url").eq("id", contactId).eq("organization_id", organizationId).maybeSingle(),
+    table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle(),
+    table("chatbot_contacts").select("negotiated_cents, client_owner_id, bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle(),
+    contactIdentity(organizationId, contactId),
   ]);
-  const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
-  const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
-  const listedStages = await listChatbotStages(userId);
-  const stageRow = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  const avatarRow = await table("chatbot_contacts").select("avatar_url").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  const identity = await contactIdentity(organizationId, contactId);
-  const orgRow = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
-  if (orgRow.error) fail(schemaMessage(orgRow.error.message));
-  const contractingLink = keepsAccessWithoutPayment(cell(orgRow.data, "legal_name"));
-  const intake = contractingLink
-    ? await table("contracting_intakes")
-        .select("id, protocol, cnpj, legal_name, postal_code, street, address_number, address_complement, district, city, state, representative_name, representative_email, witness_name, witness_document, witness_email")
-        .eq("contact_id", contactId)
-        .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    : { data: null, error: null };
-  if (intake.error && !/contracting_intakes|schema cache|does not exist|PGRST205/i.test(intake.error.message)) fail(schemaMessage(intake.error.message));
-  const contracting = intake.data
-    ? {
-        id: cell(intake.data, "id"),
-        protocol: cell(intake.data, "protocol"),
-        cnpj: cnpjMask(cell(intake.data, "cnpj")),
-        legalName: cell(intake.data, "legal_name"),
-        address: contractingAddressLine({
-          street: cell(intake.data, "street"),
-          addressNumber: cell(intake.data, "address_number"),
-          complement: cell(intake.data, "address_complement"),
-          district: cell(intake.data, "district"),
-          city: cell(intake.data, "city"),
-          state: cell(intake.data, "state"),
-          postalCode: cepMask(cell(intake.data, "postal_code")),
-        }),
-        representativeName: cell(intake.data, "representative_name"),
-        representativeEmail: cell(intake.data, "representative_email"),
-        witnessName: cell(intake.data, "witness_name"),
-        witnessDocument: cpfMask(cell(intake.data, "witness_document")),
-        witnessEmail: cell(intake.data, "witness_email"),
-      }
-    : null;
-  const dealRow = await table("chatbot_contacts").select("negotiated_cents, client_owner_id, bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (avatarRow.error && !/avatar_url|schema cache|does not exist|PGRST205/i.test(avatarRow.error.message)) fail(schemaMessage(avatarRow.error.message));
+  let stageReady = true;
+  let stage = "";
+  if (stageRow.error) {
+    if (/stage_name|schema cache|does not exist|PGRST205/i.test(stageRow.error.message)) stageReady = false;
+    else fail(schemaMessage(stageRow.error.message));
+  } else {
+    stage = cell(stageRow.data, "stage_name");
+  }
   let dealReady = true;
   let negotiated: number | null = null;
   let clientOwnerId = "";
@@ -2047,51 +2216,128 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
       if (/negotiated_cents|client_owner_id|schema cache|does not exist|PGRST205/i.test(again.error.message)) dealReady = false;
       else fail(schemaMessage(again.error.message));
     } else {
-      const raw = again.data?.["negotiated_cents"];
-      const amount = raw == null || raw === "" ? null : Number(raw);
-      negotiated = amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null;
+      negotiated = negotiatedCentsOf(again.data);
       clientOwnerId = cell(again.data, "client_owner_id");
     }
   } else if (dealRow.error) {
     if (/negotiated_cents|client_owner_id|schema cache|does not exist|PGRST205/i.test(dealRow.error.message)) dealReady = false;
     else fail(schemaMessage(dealRow.error.message));
   } else {
-    const raw = dealRow.data?.["negotiated_cents"];
-    const amount = raw == null || raw === "" ? null : Number(raw);
-    negotiated = amount != null && Number.isFinite(amount) ? Math.trunc(amount) : null;
+    negotiated = negotiatedCentsOf(dealRow.data);
     clientOwnerId = cell(dealRow.data, "client_owner_id");
     note = cell(dealRow.data, "bot_note");
   }
-  let stageReady = listedStages.ready;
-  let stage = "";
-  if (stageRow.error) {
-    if (/stage_name|schema cache|does not exist|PGRST205/i.test(stageRow.error.message)) stageReady = false;
-    else fail(schemaMessage(stageRow.error.message));
-  } else {
-    stage = cell(stageRow.data, "stage_name");
-  }
-  const savedFiles = await Promise.all(
-    files.map(async (row) => {
-      const storagePath = cell(row, "storage_path");
-      const signed = storagePath ? await supabaseAdmin.storage.from(mediaBucket).createSignedUrl(storagePath, 60 * 30) : null;
-      return {
-        id: cell(row, "id"),
-        name: cell(row, "name"),
-        mime: cell(row, "mime_type"),
-        createdAt: cell(row, "created_at"),
-        url: signed?.data?.signedUrl ?? "",
-      };
-    }),
-  );
   return {
     id: cell(contact, "id"),
     name: cell(contact, "name"),
     phone: cell(contact, "phone"),
     avatarUrl: avatarRow.error ? "" : cell(avatarRow.data, "avatar_url"),
+    stageReady,
+    stage,
+    dealReady,
+    negotiated,
+    clientOwnerId,
+    note,
+    document: identity.document,
+    rg: identity.rg,
+    showDocument: identity.showDocument,
+    showRg: identity.showRg,
+  };
+}
+
+async function organizationCard(organizationId: string) {
+  const row = await table("organizations")
+    .select("legal_name, chatbot_client_document, chatbot_client_rg")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (!row.error) {
+    return {
+      contractingLink: keepsAccessWithoutPayment(cell(row.data, "legal_name")),
+      showDocument: row.data?.["chatbot_client_document"] === true,
+      showRg: row.data?.["chatbot_client_rg"] === true,
+    };
+  }
+  if (!/chatbot_client_document|chatbot_client_rg|schema cache|does not exist|PGRST205/i.test(row.error.message)) fail(schemaMessage(row.error.message));
+  const legal = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+  if (legal.error) fail(schemaMessage(legal.error.message));
+  return { contractingLink: keepsAccessWithoutPayment(cell(legal.data, "legal_name")), showDocument: false, showRg: false };
+}
+
+async function latestContracting(organizationId: string, contactId: string) {
+  const intake = await table("contracting_intakes")
+    .select("id, protocol, cnpj, legal_name, postal_code, street, address_number, address_complement, district, city, state, representative_name, representative_email, witness_name, witness_document, witness_email")
+    .eq("contact_id", contactId)
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (intake.error) {
+    if (/contracting_intakes|schema cache|does not exist|PGRST205/i.test(intake.error.message)) return null;
+    fail(schemaMessage(intake.error.message));
+  }
+  if (!intake.data) return null;
+  return {
+    id: cell(intake.data, "id"),
+    protocol: cell(intake.data, "protocol"),
+    cnpj: cnpjMask(cell(intake.data, "cnpj")),
+    legalName: cell(intake.data, "legal_name"),
+    address: contractingAddressLine({
+      street: cell(intake.data, "street"),
+      addressNumber: cell(intake.data, "address_number"),
+      complement: cell(intake.data, "address_complement"),
+      district: cell(intake.data, "district"),
+      city: cell(intake.data, "city"),
+      state: cell(intake.data, "state"),
+      postalCode: cepMask(cell(intake.data, "postal_code")),
+    }),
+    representativeName: cell(intake.data, "representative_name"),
+    representativeEmail: cell(intake.data, "representative_email"),
+    witnessName: cell(intake.data, "witness_name"),
+    witnessDocument: cpfMask(cell(intake.data, "witness_document")),
+    witnessEmail: cell(intake.data, "witness_email"),
+  };
+}
+
+export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
+  const { organizationId } = await membership(userId, "inbox");
+  const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake] = await Promise.all([
+    contactCardRow(organizationId, contactId),
+    rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
+    rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
+    rowsOrMissing(table("chatbot_contact_tags").select("tag_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
+    rows(table("chatbot_contact_files").select("id, name, mime_type, storage_path, created_at").eq("contact_id", contactId).eq("organization_id", organizationId).order("created_at", { ascending: false })),
+    rowsOrMissing(table("chatbot_stages").select("name, position").eq("organization_id", organizationId).order("position", { ascending: true })),
+    organizationCard(organizationId),
+    latestContracting(organizationId, contactId),
+  ]);
+  const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
+  const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
+  const stageReady = contact.stageReady && !stages.missing;
+  const paths = files.map((row) => cell(row, "storage_path")).filter(Boolean);
+  const signed = paths.length ? await supabaseAdmin.storage.from(mediaBucket).createSignedUrls(paths, 60 * 30) : { data: [] };
+  const signedUrls = new Map((signed.data ?? []).map((item) => [item.path ?? "", item.signedUrl ?? ""]));
+  const savedFiles = files.map((row) => {
+    const storagePath = cell(row, "storage_path");
+    return {
+      id: cell(row, "id"),
+      name: cell(row, "name"),
+      mime: cell(row, "mime_type"),
+      createdAt: cell(row, "created_at"),
+      url: storagePath ? signedUrls.get(storagePath) ?? "" : "",
+    };
+  });
+  const showDocument = "showDocument" in contact ? contact.showDocument : org.showDocument;
+  const showRg = "showRg" in contact ? contact.showRg : org.showRg;
+  return {
+    id: contact.id,
+    name: contact.name,
+    phone: contact.phone,
+    avatarUrl: contact.avatarUrl,
     catalogReady: !tags.missing && !products.missing && !tagLinks.missing && !productLinks.missing,
     stageReady,
-    stage: stageReady ? stage : "",
-    stages: stageReady ? listedStages.stages.map((item) => item.name) : [],
+    stage: stageReady ? contact.stage : "",
+    stages: stageReady ? stages.rows.map((row) => cell(row, "name")).filter(Boolean) : [],
     tags: tags.rows.map((row) => ({
       id: cell(row, "id"),
       name: cell(row, "name"),
@@ -2104,16 +2350,16 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
       selected: selectedProducts.has(cell(row, "id")),
     })),
     files: savedFiles,
-    dealReady,
-    negotiatedCents: dealReady ? negotiated : null,
-    clientOwnerId: dealReady ? clientOwnerId : "",
-    note,
-    document: identity.document,
-    rg: identity.rg,
-    showDocument: identity.showDocument,
-    showRg: identity.showRg,
-    contractingLink,
-    contracting,
+    dealReady: contact.dealReady,
+    negotiatedCents: contact.dealReady ? contact.negotiated : null,
+    clientOwnerId: contact.dealReady ? contact.clientOwnerId : "",
+    note: contact.note,
+    document: contact.document,
+    rg: contact.rg,
+    showDocument,
+    showRg,
+    contractingLink: org.contractingLink,
+    contracting: org.contractingLink ? intake : null,
   };
 }
 

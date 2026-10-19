@@ -106,6 +106,22 @@ export const sendChatbotMessageFn = createServerFn({ method: "POST" })
     return guard(() => sendChatbotMessage(context.userId, data.conversationId, data.text));
   });
 
+export const sendChatbotArtesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { sendChatbotArtes } = await import("@/server/chatbot.server");
+    return guard(() => sendChatbotArtes(context.userId, data.conversationId));
+  });
+
+export const sendChatbotMinutaFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { sendChatbotMinuta } = await import("@/server/chatbot.server");
+    return guard(() => sendChatbotMinuta(context.userId, data.conversationId));
+  });
+
 export const sendChatbotCadastroFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string }) => data)

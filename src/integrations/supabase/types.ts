@@ -269,32 +269,50 @@ export type Database = {
       billing_notices: {
         Row: {
           body: string
+          channel: string | null
+          claimed_at: string | null
           created_at: string
           due_date: string
+          error: string | null
           id: string
+          invoice_id: string | null
           kind: string
           organization_id: string
+          provider_message_id: string | null
           send_on: string
+          sent_at: string | null
           status: string
         }
         Insert: {
           body?: string
+          channel?: string | null
+          claimed_at?: string | null
           created_at?: string
           due_date: string
+          error?: string | null
           id?: string
+          invoice_id?: string | null
           kind: string
           organization_id: string
+          provider_message_id?: string | null
           send_on: string
+          sent_at?: string | null
           status?: string
         }
         Update: {
           body?: string
+          channel?: string | null
+          claimed_at?: string | null
           created_at?: string
           due_date?: string
+          error?: string | null
           id?: string
+          invoice_id?: string | null
           kind?: string
           organization_id?: string
+          provider_message_id?: string | null
           send_on?: string
+          sent_at?: string | null
           status?: string
         }
         Relationships: []

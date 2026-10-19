@@ -1,3 +1,4 @@
+import { readProviderMessageId } from "@/lib/billing-notice";
 import {
   evolutionInstanceName,
   isGhostButtonResponse,
@@ -53,6 +54,51 @@ export async function sendLowBalanceWhatsapp(phone: string, name: string) {
   return text.ok;
 }
 
+export async function sendFinanceWhatsapp(input: { phone: string; text: string; imagePng: Uint8Array }) {
+  const number = whatsappNumber(input.phone);
+  if (!number) return { ok: false, messageId: "", error: "Telefone financeiro inválido." };
+  if (input.imagePng.byteLength === 0) return { ok: false, messageId: "", error: "A imagem da fatura não foi gerada." };
+  const { base, key } = evolutionRuntime();
+  const headers = { "content-type": "application/json", apikey: key };
+  const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
+  const listed = await evoGet(`${base}/instance/fetchInstances`, headers, "evo_finance");
+  const instance = (listed ? evolutionInstanceName(listed, preferred) : null) || preferred || senderInstance;
+  const text = await evoPost(
+    `${base}/message/sendText/${encodeURIComponent(instance)}`,
+    headers,
+    {
+      number,
+      text: input.text,
+    },
+    20000,
+    "evo_finance",
+  );
+  const messageId = readProviderMessageId(text.body);
+  if (!text.ok) return { ok: false, messageId, error: "O WhatsApp não confirmou a mensagem." };
+  const image = await evoPost(
+    `${base}/message/sendMedia/${encodeURIComponent(instance)}`,
+    headers,
+    {
+      number,
+      mediatype: "image",
+      mimetype: "image/png",
+      caption: "Fatura para pagamento",
+      media: Buffer.from(input.imagePng).toString("base64"),
+      fileName: "cobranca.png",
+    },
+    60000,
+    "evo_finance",
+  );
+  if (!image.ok) {
+    return {
+      ok: true,
+      messageId: messageId || readProviderMessageId(image.body),
+      error: "A mensagem foi enviada, mas a imagem da fatura não foi confirmada.",
+    };
+  }
+  return { ok: true, messageId: messageId || readProviderMessageId(image.body), error: "" };
+}
+
 function envValue(...names: string[]) {
   for (const name of names) {
     const value = process.env[name]?.trim();
@@ -61,27 +107,33 @@ function envValue(...names: string[]) {
   return "";
 }
 
-async function evoGet(url: string, headers: Record<string, string>) {
+async function evoGet(url: string, headers: Record<string, string>, tag = "evo_low_balance") {
   try {
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
     if (!response.ok) {
-      console.error("evo_low_balance", response.status);
+      console.error(tag, response.status);
       return null;
     }
     return (await response.json()) as unknown;
   } catch (error) {
-    console.error("evo_low_balance", error instanceof Error ? error.name : "error");
+    console.error(tag, error instanceof Error ? error.name : "error");
     return null;
   }
 }
 
-async function evoPost(url: string, headers: Record<string, string>, payload: unknown) {
+async function evoPost(
+  url: string,
+  headers: Record<string, string>,
+  payload: unknown,
+  timeoutMs = 20000,
+  tag = "evo_low_balance",
+) {
   try {
     const response = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const raw = await response.text();
     let body: unknown = raw;
@@ -93,12 +145,12 @@ async function evoPost(url: string, headers: Record<string, string>, payload: un
       }
     }
     if (!response.ok) {
-      console.error("evo_low_balance", response.status);
+      console.error(tag, response.status);
       return { ok: false, body };
     }
     return { ok: true, body };
   } catch (error) {
-    console.error("evo_low_balance", error instanceof Error ? error.name : "error");
+    console.error(tag, error instanceof Error ? error.name : "error");
     return { ok: false, body: null };
   }
 }

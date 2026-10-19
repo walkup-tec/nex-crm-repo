@@ -1,3 +1,4 @@
+import { startBillingNoticeRunner } from "./server/billing-notices.server";
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
@@ -78,3 +79,9 @@ export default {
     }
   },
 };
+
+try {
+  startBillingNoticeRunner();
+} catch (error) {
+  console.error("billing_notices", error instanceof Error ? error.message : "falha");
+}

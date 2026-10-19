@@ -1,3 +1,4 @@
+import { stopOpenBillingNotices } from "@/server/billing-notices.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   centsFromReais,
@@ -645,6 +646,7 @@ async function refreshCoraPayments(organizationId: string) {
         })
         .eq("id", invoice.id)
         .neq("status", "paid");
+      await stopOpenBillingNotices(organizationId, invoice.due_date, "Pagamento confirmado na Cora.");
     } catch (checkError) {
       console.error("cora_payment_check", checkError instanceof Error ? checkError.message : "falha");
     }
@@ -658,20 +660,23 @@ export async function applyCoraPaidNotice(externalChargeId: string) {
   if (remote.status !== "PAID") return false;
   const { data, error } = await supabaseAdmin
     .from("invoices")
-    .select("id, status")
+    .select("id, status, organization_id, due_date")
     .eq("external_charge_id", id)
     .maybeSingle();
   if (error) fail(error.message);
-  if (!data || data.status === "paid") return Boolean(data);
-  const { error: updateError } = await supabaseAdmin
-    .from("invoices")
-    .update({
-      status: "paid",
-      paid_at: remote.paidAt ?? new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", data.id);
-  if (updateError) fail(updateError.message);
+  if (!data) return false;
+  if (data.status !== "paid") {
+    const { error: updateError } = await supabaseAdmin
+      .from("invoices")
+      .update({
+        status: "paid",
+        paid_at: remote.paidAt ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", data.id);
+    if (updateError) fail(updateError.message);
+  }
+  await stopOpenBillingNotices(data.organization_id, data.due_date, "Pagamento confirmado na Cora.");
   return true;
 }
 

@@ -15,6 +15,7 @@ import {
   setChatbotContactStageFn,
   setChatbotContactTagsFn,
 } from "@/lib/chatbot.functions";
+import { contractingFormUrl } from "@/lib/contracting";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { clientPhoneLabel, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
@@ -133,7 +134,7 @@ export function ContactRecord({
   const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
-    setContractingUrl(contactId ? `${window.location.origin}/contratacao?contato=${contactId}` : "");
+    setContractingUrl(contactId ? contractingFormUrl(window.location.origin, contactId) : "");
   }, [contactId]);
 
   useEffect(() => {

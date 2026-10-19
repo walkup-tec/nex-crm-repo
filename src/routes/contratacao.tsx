@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Brand } from "@/components/nex/Brand";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import {
   contractingFileKinds,
   contractingFileLabels,
   contractingFileProblem,
+  contractingContactId,
   contractingProblem,
   cpfMask,
   type ContractingFileKind,
@@ -25,7 +27,7 @@ export const Route = createFileRoute("/contratacao")({
       { name: "description", content: "Envie os dados e os documentos da contratação." },
     ],
   }),
-  component: Page,
+  component: ContractingFormPage,
 });
 
 function Field({
@@ -47,7 +49,7 @@ function Field({
   );
 }
 
-function Page() {
+export function ContractingFormPage() {
   const [contactId, setContactId] = useState("");
   const [contactName, setContactName] = useState("");
   const [ready, setReady] = useState(false);
@@ -73,7 +75,7 @@ function Page() {
   const [protocol, setProtocol] = useState("");
 
   useEffect(() => {
-    const contato = new URLSearchParams(window.location.search).get("contato") ?? "";
+    const contato = contractingContactId(window.location.pathname, window.location.search);
     setContactId(contato);
     void contractingContactFn({ data: { contactId: contato } })
       .then((result) => {
@@ -264,11 +266,19 @@ function Page() {
                   <input
                     id={kind}
                     type="file"
-                    className="block w-full text-sm"
-                    required={!files[kind]}
-                    onChange={(event) => chooseFile(kind, event.target.files)}
+                    className="sr-only"
+                    onChange={(event) => {
+                      chooseFile(kind, event.target.files);
+                      event.target.value = "";
+                    }}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">{files[kind] ? files[kind]?.name : "PDF, imagem ou outro arquivo de até 15 MB."}</p>
+                  <Button asChild variant="outline" className="h-12 w-full">
+                    <label htmlFor={kind}>
+                      <Upload />
+                      {files[kind] ? "Trocar documento" : "Enviar documento"}
+                    </label>
+                  </Button>
+                  <p className="mt-2 text-sm text-muted-foreground">{files[kind] ? files[kind]?.name : "PDF, imagem ou outro arquivo de até 15 MB."}</p>
                 </Field>
               ))}
             </section>

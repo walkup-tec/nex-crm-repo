@@ -16,6 +16,7 @@ import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ContratacaoRouteImport } from './routes/contratacao'
+import { Route as ContratacaoContactIdRouteImport } from './routes/contratacao.$contactId'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
@@ -84,6 +85,11 @@ const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
 const ContratacaoRoute = ContratacaoRouteImport.update({
   id: '/contratacao',
   path: '/contratacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContratacaoContactIdRoute = ContratacaoContactIdRouteImport.update({
+  id: '/contratacao/$contactId',
+  path: '/contratacao/$contactId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -290,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/contratacao': typeof ContratacaoRoute
+  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -332,6 +339,7 @@ export interface FileRoutesByTo {
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/contratacao': typeof ContratacaoRoute
+  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -375,6 +383,7 @@ export interface FileRoutesById {
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/contratacao': typeof ContratacaoRoute
+  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -420,6 +429,7 @@ export interface FileRouteTypes {
     | '/esqueci-senha'
     | '/primeiro-acesso'
     | '/contratacao'
+    | '/contratacao/$contactId'
     | '/reset-password'
     | '/campanhas'
     | '/chatbot'
@@ -462,6 +472,7 @@ export interface FileRouteTypes {
     | '/esqueci-senha'
     | '/primeiro-acesso'
     | '/contratacao'
+    | '/contratacao/$contactId'
     | '/reset-password'
     | '/campanhas'
     | '/creditos-meta'
@@ -504,6 +515,7 @@ export interface FileRouteTypes {
     | '/esqueci-senha'
     | '/primeiro-acesso'
     | '/contratacao'
+    | '/contratacao/$contactId'
     | '/reset-password'
     | '/_authenticated/campanhas'
     | '/_authenticated/chatbot'
@@ -549,6 +561,7 @@ export interface RootRouteChildren {
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ContratacaoRoute: typeof ContratacaoRoute
+  ContratacaoContactIdRoute: typeof ContratacaoContactIdRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
@@ -604,6 +617,13 @@ declare module '@tanstack/react-router' {
       path: '/contratacao'
       fullPath: '/contratacao'
       preLoaderRoute: typeof ContratacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contratacao/$contactId': {
+      id: '/contratacao/$contactId'
+      path: '/contratacao/$contactId'
+      fullPath: '/contratacao/$contactId'
+      preLoaderRoute: typeof ContratacaoContactIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -974,6 +994,7 @@ const rootRouteChildren: RootRouteChildren = {
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ContratacaoRoute: ContratacaoRoute,
+  ContratacaoContactIdRoute: ContratacaoContactIdRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
   ApiCoraWebhookRoute: ApiCoraWebhookRoute,

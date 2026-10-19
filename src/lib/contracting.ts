@@ -128,9 +128,20 @@ export function contractingAddressLine(input: Pick<ContractingInput, "street" | 
   return `${input.street.trim()}, ${input.addressNumber.trim()}${complement} — ${input.district.trim()}, ${input.city.trim()}/${input.state.trim().toUpperCase()} — CEP ${cepMask(input.postalCode)}`;
 }
 
-export function contractingInviteText(contactId: string, origin: string) {
+export function contractingFormUrl(origin: string, contactId: string) {
   const base = origin.trim().replace(/\/$/, "");
-  return `Para seguir com a contratação, preencha o formulário neste link:\n${base}/contratacao?contato=${contactId}`;
+  return `${base}/contratacao/${contactId}`;
+}
+
+export function contractingContactId(pathname: string, search: string) {
+  const query = new URLSearchParams(search).get("contato") ?? "";
+  if (isContractingContactId(query)) return query;
+  const segment = pathname.split("/").filter(Boolean).at(-1) ?? "";
+  return isContractingContactId(segment) ? segment : "";
+}
+
+export function contractingInviteMessages(contactId: string, origin: string) {
+  return ["Para seguir com a contratação, preencha o formulário neste link:", contractingFormUrl(origin, contactId)] as const;
 }
 
 export function contractingSummary(input: ContractingInput & { contactName: string; protocol: string }) {

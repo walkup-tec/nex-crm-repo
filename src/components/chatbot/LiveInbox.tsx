@@ -18,7 +18,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { contractingInviteText } from "@/lib/contracting";
+import { contractingInviteMessages } from "@/lib/contracting";
 import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
@@ -595,13 +595,15 @@ export function LiveInbox() {
     if (!contact || !data?.contractingForm) return;
     setQuickOpen(false);
     setBotsOpen(false);
-    await send(contractingInviteText(contact.id, window.location.origin));
+    const [intro, link] = contractingInviteMessages(contact.id, window.location.origin);
+    const sent = await send(intro);
+    if (sent) await send(link);
   }
 
   async function send(text = draft) {
     const clean = text.trim();
-    if (!selected || !clean) return;
-    if (sending.current && lastSent.current === clean) return;
+    if (!selected || !clean) return false;
+    if (sending.current && lastSent.current === clean) return false;
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
       conversationId: selected,
@@ -620,15 +622,17 @@ export function LiveInbox() {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
         setDraft(clean);
         setMessage(result.message);
-        return;
+        return false;
       }
       setMessage("");
       void load();
+      return true;
     } catch {
       if (lastSent.current === clean) lastSent.current = "";
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
       setDraft(clean);
       setMessage("Não foi possível enviar a mensagem.");
+      return false;
     } finally {
       sending.current = false;
       composerRef.current?.focus();

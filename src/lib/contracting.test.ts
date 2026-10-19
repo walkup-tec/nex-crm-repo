@@ -4,7 +4,9 @@ import {
   cnpjMask,
   contractingContentType,
   contractingFileProblem,
-  contractingInviteText,
+  contractingContactId,
+  contractingFormUrl,
+  contractingInviteMessages,
   contractingProblem,
   contractingSummary,
   cpfMask,
@@ -52,9 +54,13 @@ assert.equal(contractingContentType("cartao.PDF"), "application/pdf");
 assert.equal(contractingContentType("planilha.xls"), "application/vnd.ms-excel");
 assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Cliente João da Silva \(ID: 123456\)/);
 assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Anexos em Mídias salvas/);
-assert.equal(
-  contractingInviteText("550e8400-e29b-41d4-a716-446655440000", "https://app.nexmeta.com.br/"),
-  "Para seguir com a contratação, preencha o formulário neste link:\nhttps://app.nexmeta.com.br/contratacao?contato=550e8400-e29b-41d4-a716-446655440000",
-);
+assert.equal(contractingFormUrl("https://app.nexmeta.com.br/", "550e8400-e29b-41d4-a716-446655440000"), "https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000");
+assert.deepEqual(contractingInviteMessages("550e8400-e29b-41d4-a716-446655440000", "https://app.nexmeta.com.br"), [
+  "Para seguir com a contratação, preencha o formulário neste link:",
+  "https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000",
+]);
+assert.equal(contractingContactId("/contratacao", "?contato=550e8400-e29b-41d4-a716-446655440000"), "550e8400-e29b-41d4-a716-446655440000");
+assert.equal(contractingContactId("/contratacao/550e8400-e29b-41d4-a716-446655440000", ""), "550e8400-e29b-41d4-a716-446655440000");
+assert.equal(contractingContactId("/contratacao", ""), "");
 
 console.log("contracting tests ok");

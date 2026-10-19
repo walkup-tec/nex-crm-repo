@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ActivationState } from "@/lib/activation-access";
 
@@ -21,9 +22,95 @@ async function profileByEmail(email: string) {
   return data?.[0] ?? null;
 }
 
+async function organizationByEmail(email: string) {
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name, responsible_name, responsible_phone")
+    .ilike("responsible_email", email)
+    .limit(1);
+  if (error) fail("Não foi possível confirmar este acesso.");
+  return data?.[0] ?? null;
+}
+
+function emailTaken(message: string | undefined) {
+  const text = (message ?? "").toLowerCase();
+  return text.includes("already") || text.includes("registered") || text.includes("exists");
+}
+
+async function provisionClientAccess(email: string) {
+  const organization = await organizationByEmail(email);
+  if (!organization) return false;
+  const fullName = organization.responsible_name.trim() || organization.legal_name.trim() || "Cliente";
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password: `${randomUUID()}Aa1`,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
+  });
+  if (error || !data.user) {
+    if (emailTaken(error?.message)) return false;
+    fail("Não foi possível criar o acesso.");
+  }
+  const createdId = data.user.id;
+  const remove = async () => {
+    await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);
+    await supabaseAdmin.from("profiles").delete().eq("id", createdId);
+    await supabaseAdmin.auth.admin.deleteUser(createdId);
+  };
+  const profile = await supabaseAdmin.from("profiles").insert({
+    id: createdId,
+    full_name: fullName,
+    email,
+    whatsapp: organization.responsible_phone,
+    finance_email: email,
+    finance_email_same: true,
+    organization_id: organization.id,
+  });
+  if (profile.error) {
+    await remove();
+    fail("Não foi possível criar o acesso.");
+  }
+  const role = await supabaseAdmin.from("user_roles").insert({ user_id: createdId, role: "client_admin" });
+  if (role.error) {
+    await remove();
+    fail("Não foi possível criar o acesso.");
+  }
+  const permission = await supabaseAdmin.from("user_permissions").insert({
+    user_id: createdId,
+    can_view_campaigns: true,
+    can_view_meta_balance: true,
+    can_add_meta_credit: true,
+    can_manage_users: true,
+    can_use_chatbot: true,
+  });
+  if (permission.error && /can_use_chatbot/i.test(permission.error.message)) {
+    const retry = await supabaseAdmin.from("user_permissions").insert({
+      user_id: createdId,
+      can_view_campaigns: true,
+      can_view_meta_balance: true,
+      can_add_meta_credit: true,
+      can_manage_users: true,
+    });
+    if (retry.error) {
+      await remove();
+      fail("Não foi possível criar o acesso.");
+    }
+  } else if (permission.error) {
+    await remove();
+    fail("Não foi possível criar o acesso.");
+  }
+  return true;
+}
+
 async function activationState(email: string): Promise<ActivationState> {
-  const profile = await profileByEmail(email);
-  if (!profile) return "missing";
+  let profile = await profileByEmail(email);
+  if (!profile) {
+    const created = await provisionClientAccess(email);
+    if (!created) return "missing";
+    profile = await profileByEmail(email);
+    if (!profile) return "missing";
+  }
   if (profile.is_blocked) return "blocked";
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(profile.id);
   if (error || !data.user) return "missing";

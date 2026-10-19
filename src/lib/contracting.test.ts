@@ -56,16 +56,19 @@ assert.equal(contractingContentType("cartao.PDF"), "application/pdf");
 assert.equal(contractingContentType("planilha.xls"), "application/vnd.ms-excel");
 assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Cliente João da Silva \(ID: 123456\)/);
 assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Anexos em Mídias salvas/);
-assert.equal(contractingFormUrl("https://app.nexmeta.com.br/", "550e8400-e29b-41d4-a716-446655440000"), "https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000");
+const formUrl = contractingFormUrl("https://app.nexmeta.com.br/", "550e8400-e29b-41d4-a716-446655440000");
+assert.match(formUrl, /^https:\/\/app\.nexmeta\.com\.br\/c\/[0-9a-z]+$/);
+assert.equal(formUrl.includes("-"), false);
+assert.equal(contractingContactId(new URL(formUrl).pathname, ""), "550e8400-e29b-41d4-a716-446655440000");
 assert.deepEqual(contractingInviteMessages("550e8400-e29b-41d4-a716-446655440000", "https://app.nexmeta.com.br"), [
   "Para seguir com a contratação, preencha o formulário neste link:",
-  "https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000",
+  formUrl,
 ]);
 assert.equal(contractingContactId("/contratacao", "?contato=550e8400-e29b-41d4-a716-446655440000"), "550e8400-e29b-41d4-a716-446655440000");
 assert.equal(contractingContactId("/contratacao/550e8400-e29b-41d4-a716-446655440000", ""), "550e8400-e29b-41d4-a716-446655440000");
 assert.equal(contractingContactId("/contratacao", ""), "");
-assert.equal(isContractingFormUrl("https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440000"), true);
+assert.equal(isContractingFormUrl(formUrl, "550e8400-e29b-41d4-a716-446655440000"), true);
 assert.equal(isContractingFormUrl("https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000?x=1", "550e8400-e29b-41d4-a716-446655440000"), false);
-assert.equal(contractingButtonText("https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000").includes("Cadastro"), true);
+assert.equal(contractingButtonText(formUrl).includes("Cadastro"), true);
 
 console.log("contracting tests ok");

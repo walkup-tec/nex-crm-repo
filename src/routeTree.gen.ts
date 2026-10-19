@@ -17,6 +17,7 @@ import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ContratacaoRouteImport } from './routes/contratacao'
 import { Route as ContratacaoContactIdRouteImport } from './routes/contratacao.$contactId'
+import { Route as CCodeRouteImport } from './routes/c.$code'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
@@ -90,6 +91,11 @@ const ContratacaoRoute = ContratacaoRouteImport.update({
 const ContratacaoContactIdRoute = ContratacaoContactIdRouteImport.update({
   id: '/contratacao/$contactId',
   path: '/contratacao/$contactId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CCodeRoute = CCodeRouteImport.update({
+  id: '/c/$code',
+  path: '/c/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/contratacao': typeof ContratacaoRoute
   '/contratacao/$contactId': typeof ContratacaoContactIdRoute
+  '/c/$code': typeof CCodeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -340,6 +347,7 @@ export interface FileRoutesByTo {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/contratacao': typeof ContratacaoRoute
   '/contratacao/$contactId': typeof ContratacaoContactIdRoute
+  '/c/$code': typeof CCodeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -384,6 +392,7 @@ export interface FileRoutesById {
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/contratacao': typeof ContratacaoRoute
   '/contratacao/$contactId': typeof ContratacaoContactIdRoute
+  '/c/$code': typeof CCodeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -430,6 +439,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/contratacao'
     | '/contratacao/$contactId'
+    | '/c/$code'
     | '/reset-password'
     | '/campanhas'
     | '/chatbot'
@@ -473,6 +483,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/contratacao'
     | '/contratacao/$contactId'
+    | '/c/$code'
     | '/reset-password'
     | '/campanhas'
     | '/creditos-meta'
@@ -516,6 +527,7 @@ export interface FileRouteTypes {
     | '/primeiro-acesso'
     | '/contratacao'
     | '/contratacao/$contactId'
+    | '/c/$code'
     | '/reset-password'
     | '/_authenticated/campanhas'
     | '/_authenticated/chatbot'
@@ -562,6 +574,7 @@ export interface RootRouteChildren {
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ContratacaoRoute: typeof ContratacaoRoute
   ContratacaoContactIdRoute: typeof ContratacaoContactIdRoute
+  CCodeRoute: typeof CCodeRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
@@ -624,6 +637,13 @@ declare module '@tanstack/react-router' {
       path: '/contratacao/$contactId'
       fullPath: '/contratacao/$contactId'
       preLoaderRoute: typeof ContratacaoContactIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/c/$code': {
+      id: '/c/$code'
+      path: '/c/$code'
+      fullPath: '/c/$code'
+      preLoaderRoute: typeof CCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -995,6 +1015,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ContratacaoRoute: ContratacaoRoute,
   ContratacaoContactIdRoute: ContratacaoContactIdRoute,
+  CCodeRoute: CCodeRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
   ApiCoraWebhookRoute: ApiCoraWebhookRoute,

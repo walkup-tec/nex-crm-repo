@@ -128,9 +128,41 @@ export function contractingAddressLine(input: Pick<ContractingInput, "street" | 
   return `${input.street.trim()}, ${input.addressNumber.trim()}${complement} — ${input.district.trim()}, ${input.city.trim()}/${input.state.trim().toUpperCase()} — CEP ${cepMask(input.postalCode)}`;
 }
 
+const contractingCodeAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+export function contractingCode(contactId: string) {
+  const hex = contactId.replace(/-/g, "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(hex)) return "";
+  let value = BigInt(`0x${hex}`);
+  if (value === 0n) return "0";
+  let out = "";
+  while (value > 0n) {
+    out = contractingCodeAlphabet[Number(value % 36n)] + out;
+    value /= 36n;
+  }
+  return out;
+}
+
+export function contactIdFromContractingCode(code: string) {
+  const clean = code.trim().toLowerCase();
+  if (!/^[0-9a-z]{20,26}$/.test(clean)) return "";
+  let value = 0n;
+  for (const char of clean) {
+    const digit = contractingCodeAlphabet.indexOf(char);
+    if (digit < 0) return "";
+    value = value * 36n + BigInt(digit);
+  }
+  const hex = value.toString(16).padStart(32, "0");
+  if (hex.length !== 32) return "";
+  const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  return isContractingContactId(id) ? id : "";
+}
+
 export function contractingFormUrl(origin: string, contactId: string) {
-  const base = origin.trim().replace(/\/$/, "");
-  return `${base}/contratacao/${contactId}`;
+  const code = contractingCode(contactId);
+  const base = "https://app.nexmeta.com.br";
+  if (!code) return `${origin.trim().replace(/\/$/, "")}/contratacao/${contactId}`;
+  return `${base}/c/${code}`;
 }
 
 export function contractingButtonText(url: string) {
@@ -140,7 +172,10 @@ export function contractingButtonText(url: string) {
 export function isContractingFormUrl(url: string, contactId: string) {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "https:" && parsed.pathname === `/contratacao/${contactId}` && parsed.search === "" && parsed.hash === "";
+    if (parsed.protocol !== "https:" || parsed.search !== "" || parsed.hash !== "") return false;
+    if (parsed.pathname === `/contratacao/${contactId}`) return true;
+    const code = contractingCode(contactId);
+    return Boolean(code) && parsed.pathname === `/c/${code}`;
   } catch {
     return false;
   }
@@ -150,7 +185,8 @@ export function contractingContactId(pathname: string, search: string) {
   const query = new URLSearchParams(search).get("contato") ?? "";
   if (isContractingContactId(query)) return query;
   const segment = pathname.split("/").filter(Boolean).at(-1) ?? "";
-  return isContractingContactId(segment) ? segment : "";
+  if (isContractingContactId(segment)) return segment;
+  return contactIdFromContractingCode(segment);
 }
 
 export function contractingInviteMessages(contactId: string, origin: string) {

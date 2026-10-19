@@ -108,10 +108,10 @@ export const sendChatbotMessageFn = createServerFn({ method: "POST" })
 
 export const sendChatbotCadastroFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { conversationId: string; url: string }) => data)
+  .validator((data: { conversationId: string }) => data)
   .handler(async ({ context, data }) => {
     const { sendChatbotCadastro } = await import("@/server/chatbot.server");
-    return guard(() => sendChatbotCadastro(context.userId, data.conversationId, data.url));
+    return guard(() => sendChatbotCadastro(context.userId, data.conversationId));
   });
 
 export const markChatbotConversationReadFn = createServerFn({ method: "POST" })

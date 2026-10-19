@@ -3,9 +3,9 @@ import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { chatbotMediaBucket as mediaBucket, chatbotMediaMimeTypes as mediaMimeTypes } from "@/lib/chatbot-media";
-import { cepMask, cnpjMask, contractingAddressLine, contractingButtonText, cpfMask, isContractingFormUrl } from "@/lib/contracting";
+import { cepMask, cnpjMask, contractingAddressLine, contractingButtonText, contractingFormUrl, cpfMask } from "@/lib/contracting";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
-import { isGhostButtonResponse } from "@/lib/low-balance";
+import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
@@ -733,8 +733,7 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
   if (assigned.error) fail(schemaMessage(assigned.error.message));
 }
 
-export async function sendChatbotCadastro(userId: string, conversationId: string, url: string) {
-  const clean = url.trim();
+export async function sendChatbotCadastro(userId: string, conversationId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")
@@ -746,14 +745,15 @@ export async function sendChatbotCadastro(userId: string, conversationId: string
   const assignee = cell(conversation.data, "assignee_id");
   if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
   const contactId = cell(conversation.data, "contact_id");
-  if (!isContractingFormUrl(clean, contactId)) fail("Esse link de contratação não pertence a este contato.");
+  const clean = contractingFormUrl("https://app.nexmeta.com.br", contactId);
   const contact = await table("chatbot_contacts")
     .select("phone")
     .eq("id", contactId)
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (contact.error) fail(schemaMessage(contact.error.message));
-  const phone = cell(contact.data, "phone");
+  const storedPhone = cell(contact.data, "phone");
+  const phone = whatsappNumber(storedPhone) ?? storedPhone;
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
   if (!admin) {

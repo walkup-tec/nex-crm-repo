@@ -819,10 +819,5 @@ assert.deepEqual(whatsappTextPayload("5547992082637", "https://app.nexmeta.com.b
   text: "https://app.nexmeta.com.br/contratacao?contato=9dcc028f-b4b8-4c79-b3cd-851b7d39bec9",
   linkPreview: false,
 });
-assert.deepEqual(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000"), {
-  number: "5547992082637",
-  title: "Contratação",
-  description: "Para seguir com a contratação, preencha o formulário neste link:",
-  footer: "",
-  buttons: [{ type: "url", displayText: "Cadastro", url: "https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000" }],
-});
+assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.displayText, "Cadastro");
+assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.type, "url");

@@ -596,7 +596,7 @@ export function LiveInbox() {
     if (!selected || !contact || !data?.contractingForm || sending.current) return;
     setQuickOpen(false);
     setBotsOpen(false);
-    const url = contractingFormUrl(window.location.origin, contact.id);
+    const url = contractingFormUrl("https://app.nexmeta.com.br", contact.id);
     const text = contractingButtonText(url);
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
@@ -608,7 +608,7 @@ export function LiveInbox() {
     setOutgoing((current) => [...current, preview]);
     setPending(true);
     try {
-      const result = await sendChatbotCadastroFn({ data: { conversationId: selected, url } });
+      const result = await sendChatbotCadastroFn({ data: { conversationId: selected } });
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
         setMessage(result.message);

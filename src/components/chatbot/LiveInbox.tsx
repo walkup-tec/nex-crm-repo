@@ -19,7 +19,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingInviteText } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -274,6 +274,7 @@ export function LiveInbox() {
   const stickToBottom = useRef(true);
   const sending = useRef(false);
   const lastSent = useRef("");
+  const hasSnapshot = useRef(false);
   selectedRef.current = selected;
 
   async function load() {
@@ -293,13 +294,15 @@ export function LiveInbox() {
         } catch (error) {
           if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
           appliedSnapshot.current = requestId;
-          setMessage(error instanceof Error ? error.message : "Não foi possível carregar as conversas.");
+          const notice = inboxPollNotice(error instanceof Error ? error.message : "", hasSnapshot.current);
+          if (notice) setMessage(notice);
           continue;
         }
         if (!acceptSnapshot(requestId, appliedSnapshot.current)) continue;
         if (!result.ok) {
           appliedSnapshot.current = requestId;
-          setMessage(result.message);
+          const notice = inboxPollNotice(result.message, hasSnapshot.current);
+          if (notice) setMessage(notice);
           continue;
         }
         const openId = selectedRef.current;
@@ -307,6 +310,7 @@ export function LiveInbox() {
         appliedSnapshot.current = requestId;
         const next = { ...result.data, conversations };
         setOutgoing((current) => pendingOutgoing(next.messages, current));
+        hasSnapshot.current = true;
         setData(next);
         setMessage((current) => (sending.current ? current : ""));
         setSelected((current) => {
@@ -535,6 +539,7 @@ export function LiveInbox() {
           }
         : current,
     );
+    if (disabled) setBotsOpen(false);
     setMessage("");
     await load();
   }
@@ -555,6 +560,7 @@ export function LiveInbox() {
   }
 
   async function openBots() {
+    if (contact?.botsDisabled) return;
     setQuickOpen(false);
     const next = !botsOpen;
     setBotsOpen(next);
@@ -574,7 +580,7 @@ export function LiveInbox() {
   }
 
   async function startBot(flowId: string) {
-    if (!selected || sending.current) return;
+    if (!selected || sending.current || contact?.botsDisabled) return;
     sending.current = true;
     setBotsOpen(false);
     setPending(true);
@@ -607,18 +613,26 @@ export function LiveInbox() {
     setDraft("");
     sending.current = true;
     composerRef.current?.focus();
-    const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
-    sending.current = false;
-    if (lastSent.current === clean) lastSent.current = "";
-    composerRef.current?.focus();
-    if (!result.ok) {
+    try {
+      const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
+      if (lastSent.current === clean) lastSent.current = "";
+      if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        setDraft(clean);
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      void load();
+    } catch {
+      if (lastSent.current === clean) lastSent.current = "";
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
       setDraft(clean);
-      setMessage(result.message);
-      return;
+      setMessage("Não foi possível enviar a mensagem.");
+    } finally {
+      sending.current = false;
+      composerRef.current?.focus();
     }
-    setMessage("");
-    void load();
   }
 
   const conversations = data?.conversations ?? [];
@@ -818,7 +832,7 @@ export function LiveInbox() {
                     ))}
                   </div>
                 ) : null}
-                {botsOpen ? (
+                {botsOpen && contact?.botsDisabled !== true ? (
                   <div className="composer-menu" role="listbox" aria-label="Bots">
                     {botsNote ? <p>{botsNote}</p> : null}
                     {flows.map((item) => (
@@ -833,7 +847,7 @@ export function LiveInbox() {
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>
                       Respostas rápidas
                     </Button>
-                    <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={botsOpen} onClick={() => void openBots()}>
+                    <Button type="button" variant="outline" size="sm" disabled={pending || contact?.botsDisabled === true} title={contact?.botsDisabled ? "Bots desativados para este contato" : "Enviar um bot salvo"} aria-expanded={botsOpen} onClick={() => void openBots()}>
                       Bots
                     </Button>
                     {data?.contractingForm ? (

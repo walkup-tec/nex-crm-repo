@@ -48,6 +48,7 @@ import {
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
+  whatsappTextPayload,
   clientPhoneLabel,
   catalogName,
   quickReplyText,
@@ -709,10 +710,7 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
   }
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
-  const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", {
-    number: phone,
-    text: clean,
-  });
+  const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", whatsappTextPayload(phone, clean));
   const externalId = readMessageId(sent);
   const saved = await table("chatbot_messages")
     .insert({

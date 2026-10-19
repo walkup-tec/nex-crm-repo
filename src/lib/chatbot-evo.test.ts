@@ -49,6 +49,7 @@ import {
   inboxUnread,
   inboxVisible,
   attendancePhone,
+  whatsappTextPayload,
   preferredWhatsappPhone,
   sameWhatsappAccount,
   evolutionInstanceClosed,
@@ -812,3 +813,8 @@ const secondLane = queueByKey("conversa", async () => {
 });
 await Promise.all([firstLane, secondLane]);
 assert.deepEqual(lane, ["inicio", "fim", "seguinte"]);
+assert.deepEqual(whatsappTextPayload("5547992082637", "https://app.nexmeta.com.br/contratacao?contato=9dcc028f-b4b8-4c79-b3cd-851b7d39bec9"), {
+  number: "5547992082637",
+  text: "https://app.nexmeta.com.br/contratacao?contato=9dcc028f-b4b8-4c79-b3cd-851b7d39bec9",
+  linkPreview: false,
+});

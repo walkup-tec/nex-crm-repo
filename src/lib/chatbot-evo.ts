@@ -193,6 +193,15 @@ export function acceptSnapshot(requestId: number, lastAppliedId: number) {
   return requestId > lastAppliedId;
 }
 
+export function inboxPollNotice(message: string, hasData: boolean) {
+  const clean = message.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const transient = /404|page not found|502|503|504|bad gateway|gateway timeout|failed to fetch|networkerror|load failed|network request failed/i.test(clean);
+  if (!transient) return clean;
+  if (hasData) return "";
+  return "Não foi possível atualizar as conversas.";
+}
+
 export function stickToLatestMessage(distanceFromBottom: number) {
   return distanceFromBottom <= 80;
 }
@@ -264,6 +273,10 @@ export function attendancePhone(value: string) {
   const digits = hasCountry && raw.startsWith("55") ? raw.slice(2) : raw;
   if (digits.length !== 10 && digits.length !== 11) return "";
   return `55${digits}`;
+}
+
+export function whatsappTextPayload(phone: string, text: string) {
+  return { number: phone, text, linkPreview: false };
 }
 
 export function evolutionProfileNumber(phone: string) {

@@ -157,27 +157,15 @@ if text.strip():
 http_ep = "http"
 https_ep = "https"
 cert_resolver = "letsencrypt"
-parsed_routers = False
 if isinstance(data, dict):
     routers = ((data.get("http") or {}).get("routers") or {})
     for router in routers.values():
         if not isinstance(router, dict):
             continue
-        parsed_routers = True
-        eps = router.get("entryPoints") or []
         tls = router.get("tls") or {}
         if isinstance(tls, dict) and tls.get("certResolver"):
-            cert_resolver = tls["certResolver"]
-        for ep in eps:
-            ep = str(ep)
-            if "https" in ep or "secure" in ep:
-                https_ep = ep
-            elif ep:
-                http_ep = ep
-
-if not parsed_routers:
-    print("main.yaml sem routers legiveis; nex-hostgw.yaml preservado")
-    sys.exit(0)
+            cert_resolver = str(tls["certResolver"])
+            break
 
 app_rule = "Host(`app.nexmeta.com.br`) || Host(`nex-crm.achpyp.easypanel.host`)"
 site_rule = "Host(`nexmeta.com.br`) || Host(`nex-site.achpyp.easypanel.host`)"
@@ -274,11 +262,12 @@ probe() {
   for i in 1 2 3 4 5 6 7 8; do
     code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 12 "$url" || echo 000)"
     case "$code" in
-      000|502|503|504) sleep 5 ;;
+      000|404|502|503|504) sleep 5 ;;
       *) log "${name}:${code} ${url}"; return 0 ;;
     esac
   done
   log "${name}:${code} ${url}"
+  return 1
 }
 
 reconcile() {
@@ -323,11 +312,23 @@ EOF
   log "serviço nex-traefik-persist ativo"
 }
 
+route_missing() {
+  local code
+  code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 "https://app.nexmeta.com.br/health" || echo 000)"
+  case "$code" in
+    000|404|502|503|504) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 watch() {
   log "observando deploys de ${APP_SVC}, ${SITE_SVC} e ${CORBAN_SVC}"
   reconcile
   while true; do
-    sleep 15
+    sleep 5
+    if route_missing; then
+      log "rota publica ausente, regravando o host gateway"
+    fi
     reconcile
   done &
   local loop_pid=$!
@@ -335,7 +336,8 @@ watch() {
   docker events --filter type=service --filter event=update --format '{{.Actor.Attributes.name}}' | while read -r name; do
     case "$name" in
       nex_crm|nex_site|nex_pv_corban)
-        sleep 5
+        reconcile
+        sleep 2
         reconcile
         ;;
     esac

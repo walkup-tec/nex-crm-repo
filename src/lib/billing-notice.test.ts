@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import type { BillingNoticeKind } from "./billing-plan";
 import {
+  billingNoticeEmailHtml,
+  billingNoticeSubject,
   billingNoticeText,
   billingToday,
   chargeImageLabel,
@@ -132,3 +134,13 @@ const png = await renderChargeCardPng({
 });
 assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
 assert.ok(png.byteLength > 20000);
+assert.equal(billingNoticeSubject("before_7"), "Sua mensalidade da Agência NEX vence em breve");
+assert.equal(billingNoticeSubject("before_3"), "Sua mensalidade da Agência NEX vence em três dias");
+assert.equal(billingNoticeSubject("due"), "Sua mensalidade da Agência NEX vence hoje");
+assert.equal(billingNoticeSubject("after_1"), "Sua mensalidade da Agência NEX está em aberto");
+assert.equal(billingNoticeSubject("after_3"), "Sua mensalidade da Agência NEX continua pendente");
+assert.equal(billingNoticeSubject("after_5"), "Pendência da mensalidade da Agência NEX");
+const emailHtml = billingNoticeEmailHtml("Equipe Financeira\nAgência NEX\n\nValor <b>");
+assert.match(emailHtml, /Agência NEX/);
+assert.match(emailHtml, /cid:cobranca@nex/);
+assert.equal(emailHtml.includes("<b>"), false);

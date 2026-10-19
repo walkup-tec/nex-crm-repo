@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
 import nodemailer from "nodemailer";
+import { billingNoticeEmailHtml } from "@/lib/billing-notice";
 import {
   inviteAccessLink,
   inviteParagraphs,
@@ -23,15 +24,70 @@ export function appUrl() {
 }
 
 export async function sendInviteEmail(to: string, name: string) {
+  const link = inviteAccessLink(appUrl(), to);
+  await sendSmtp(
+    {
+      to,
+      subject: inviteSubject,
+      text: invitePlainText(name, to, link),
+      html: inviteHtml(name, to, link),
+    },
+    "Não foi possível enviar o e-mail de acesso.",
+  );
+}
+
+export async function sendBillingNoticeEmail(input: {
+  to: string;
+  subject: string;
+  text: string;
+  imagePng: Uint8Array;
+}) {
+  const to = input.to.trim();
+  if (!to.includes("@")) return { ok: false, error: "Cliente sem e-mail para a cobrança." };
+  try {
+    await sendSmtp(
+      {
+        to,
+        subject: input.subject,
+        text: input.text,
+        html: billingNoticeEmailHtml(input.text),
+        attachments:
+          input.imagePng.byteLength > 0
+            ? [
+                {
+                  filename: "cobranca.png",
+                  content: Buffer.from(input.imagePng),
+                  cid: "cobranca@nex",
+                  contentType: "image/png",
+                },
+              ]
+            : undefined,
+      },
+      "Não foi possível enviar o e-mail da cobrança.",
+    );
+    return { ok: true, error: "" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível enviar o e-mail da cobrança.";
+    return { ok: false, error: message };
+  }
+}
+
+async function sendSmtp(
+  input: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+    attachments?: { filename: string; content: Buffer; cid: string; contentType: string }[];
+  },
+  fallback: string,
+) {
   const smtp = smtpConfig();
   if (!smtp) {
     const failure = new Error("O envio de e-mail não está configurado no servidor.");
     failure.name = "InviteMailError";
     throw failure;
   }
-  const link = inviteAccessLink(appUrl(), to);
-  const text = invitePlainText(name, to, link);
-  const html = inviteHtml(name, to, link);
   let address = smtp.host;
   try {
     address = (await lookup(smtp.host, { family: 4 })).address;
@@ -55,29 +111,30 @@ export async function sendInviteEmail(to: string, name: string) {
   try {
     await transporter.sendMail({
       from: smtp.from,
-      to,
-      subject: inviteSubject,
-      text,
-      html,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+      attachments: input.attachments,
     });
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "error";
     const responseCode = error && typeof error === "object" && "responseCode" in error ? Number(error.responseCode) : 0;
     console.error("smtp_send", code, Number.isFinite(responseCode) ? responseCode : 0);
-    const failure = new Error(mailFailureMessage(code, responseCode));
+    const failure = new Error(mailFailureMessage(code, responseCode, fallback));
     failure.name = "InviteMailError";
     throw failure;
   }
 }
 
-function mailFailureMessage(code: string, responseCode: number) {
+function mailFailureMessage(code: string, responseCode: number, fallback: string) {
   if (code === "EAUTH" || responseCode === 535 || responseCode === 534) {
     return "A caixa de e-mail recusou o usuário ou a senha.";
   }
   if (code === "ENETUNREACH" || code === "EHOSTUNREACH" || code === "ECONNREFUSED" || code === "ETIMEDOUT" || code === "ESOCKET") {
     return "O servidor de e-mail não aceitou a conexão.";
   }
-  return "Não foi possível enviar o e-mail de acesso.";
+  return fallback;
 }
 
 function inviteHtml(name: string, email: string, link: string) {

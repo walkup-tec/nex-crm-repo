@@ -266,6 +266,37 @@ export function billingNoticeText(
     .replaceAll("{{link pix para pagamento do cora}}", input.pixCode.trim());
 }
 
+const subjects: Record<BillingNoticeKind, string> = {
+  before_7: "Sua mensalidade da Agência NEX vence em breve",
+  before_3: "Sua mensalidade da Agência NEX vence em três dias",
+  due: "Sua mensalidade da Agência NEX vence hoje",
+  after_1: "Sua mensalidade da Agência NEX está em aberto",
+  after_3: "Sua mensalidade da Agência NEX continua pendente",
+  after_5: "Pendência da mensalidade da Agência NEX",
+};
+
+export function billingNoticeSubject(kind: BillingNoticeKind) {
+  return subjects[kind];
+}
+
+export function billingNoticeEmailHtml(text: string) {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`);
+  blocks.push(
+    `<p><img src="cid:cobranca@nex" alt="Fatura para pagamento" style="max-width:100%;height:auto"></p>`,
+  );
+  return `<div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:16px">${blocks.join("")}</div>`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function asRecord(value: unknown) {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }

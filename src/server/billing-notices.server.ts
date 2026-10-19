@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { BillingNoticeKind } from "@/lib/billing-plan";
 import {
+  billingNoticeSubject,
   billingNoticeText,
   billingToday,
   judgeNotice,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/billing-notice";
 import { pixQrPayload } from "@/lib/finance-access";
 import { readCoraInvoice } from "@/server/cora.server";
+import { sendBillingNoticeEmail } from "@/server/mail.server";
 import { probeFinanceEvolution, sendFinanceWhatsapp } from "@/server/evo.server";
 
 const kinds = new Set<BillingNoticeKind>(["before_7", "before_3", "due", "after_1", "after_3", "after_5"]);
@@ -174,13 +176,20 @@ async function deliverNotice(notice: NoticeRow, today: string) {
       });
       return;
     }
+    const email = await sendBillingNoticeEmail({
+      to: context.responsibleEmail,
+      subject: billingNoticeSubject(kind),
+      text,
+      imagePng: image,
+    });
     financeSendSucceeded = true;
+    const notes = [sent.error, email.ok ? "" : email.error].filter(Boolean).join(" ");
     await finishNotice(notice.id, {
       status: "sent",
       body: text,
-      channel: "whatsapp",
+      channel: email.ok ? "whatsapp+email" : "whatsapp",
       provider_message_id: sent.messageId,
-      error: sent.error || null,
+      error: notes || null,
       sent_at: new Date().toISOString(),
     });
   } catch (error) {
@@ -231,7 +240,7 @@ async function noticeContext(organizationId: string, dueDate: string) {
   const [organization, invoices, contract, promotions] = await Promise.all([
     supabaseAdmin
       .from("organizations")
-      .select("legal_name, finance_phone, ads_meta, ads_google")
+      .select("legal_name, finance_phone, responsible_email, ads_meta, ads_google")
       .eq("id", organizationId)
       .maybeSingle(),
     supabaseAdmin
@@ -266,6 +275,7 @@ async function noticeContext(organizationId: string, dueDate: string) {
   return {
     legalName: organization.data?.legal_name ?? "",
     financePhone: organization.data?.finance_phone ?? "",
+    responsibleEmail: organization.data?.responsible_email ?? "",
     adsMeta: organization.data?.ads_meta !== false,
     adsGoogle: organization.data?.ads_google === true,
     invoiceId: invoice?.id ?? null,

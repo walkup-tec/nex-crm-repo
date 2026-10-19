@@ -9,6 +9,7 @@ export type ChatbotConnectionStatus =
 export type ChatbotSnapshot = {
   configured: boolean;
   organizationId: string;
+  contractingForm: boolean;
   connections: {
     id: string;
     name: string;
@@ -1129,6 +1130,19 @@ export function savedMediaTitle(mime: string, name: string) {
   return contactFileLabel(mime, clean);
 }
 
+export type ChatbotContracting = {
+  id: string;
+  protocol: string;
+  cnpj: string;
+  legalName: string;
+  address: string;
+  representativeName: string;
+  representativeEmail: string;
+  witnessName: string;
+  witnessDocument: string;
+  witnessEmail: string;
+};
+
 export type ChatbotContactProfile = {
   id: string;
   name: string;
@@ -1149,6 +1163,8 @@ export type ChatbotContactProfile = {
   rg: string;
   showDocument: boolean;
   showRg: boolean;
+  contractingLink: boolean;
+  contracting: ChatbotContracting | null;
 };
 
 export type ChatbotClientRow = {

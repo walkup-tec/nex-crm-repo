@@ -18,6 +18,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
+import { contractingInviteText } from "@/lib/contracting";
 import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
@@ -564,9 +565,12 @@ export function LiveInbox() {
       setBotsNote(result.message);
       return;
     }
-    const active = result.data.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name }));
-    setFlows(active);
-    setBotsNote(active.length ? "" : "Nenhum bot ativo.");
+    const saved = result.data
+      .filter((item) => item.name.trim())
+      .map((item) => ({ id: item.id, name: item.name }))
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+    setFlows(saved);
+    setBotsNote(saved.length ? "" : "Nenhum bot salvo.");
   }
 
   async function startBot(flowId: string) {
@@ -577,8 +581,15 @@ export function LiveInbox() {
     const result = await startChatbotFlowFn({ data: { conversationId: selected, flowId } });
     sending.current = false;
     setPending(false);
-    setMessage(result.ok ? "Bot iniciado nesta conversa." : result.message);
+    setMessage(result.ok ? "Bot enviado nesta conversa." : result.message);
     if (result.ok) await load();
+  }
+
+  async function sendForm() {
+    if (!contact || !data?.contractingForm) return;
+    setQuickOpen(false);
+    setBotsOpen(false);
+    await send(contractingInviteText(contact.id, window.location.origin));
   }
 
   async function send(text = draft) {
@@ -825,6 +836,11 @@ export function LiveInbox() {
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={botsOpen} onClick={() => void openBots()}>
                       Bots
                     </Button>
+                    {data?.contractingForm ? (
+                      <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendForm()}>
+                        Form
+                      </Button>
+                    ) : null}
                   </div>
                   <Button type="submit" disabled={pending || !draft.trim()}>
                     <Send />

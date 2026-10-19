@@ -176,6 +176,15 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .contact-extra > svg{width:14px;height:14px;margin-left:auto;transition:transform .15s}
 .chatbot-app .contact-extra[data-state=closed] > svg{transform:rotate(-90deg)}
 .chatbot-app .contact-extra-body{display:grid;gap:14px;margin-top:16px}
+.chatbot-app .contact-contracting-link{display:grid;gap:6px}
+.chatbot-app .contact-contracting-link p{margin:0;font-size:12px;font-weight:600}
+.chatbot-app .contact-contracting-link button{justify-self:start;border:0;background:transparent;padding:0;color:#6F02FD;font-size:12px;font-weight:700;cursor:pointer}
+.chatbot-app .contact-contracting-link span{font-size:11px;line-height:1.4;color:var(--muted-foreground);word-break:break-all}
+.chatbot-app .contact-contracting{display:grid;gap:10px;margin:0}
+.chatbot-app .contact-contracting div{display:grid;gap:2px}
+.chatbot-app .contact-contracting dt{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground)}
+.chatbot-app .contact-contracting dd{margin:0;font-size:12px;line-height:1.45}
+.chatbot-app .contact-contracting dd span{display:block;color:var(--muted-foreground)}
 .chatbot-app .contact-section .contact-phone{font-size:12px;font-weight:600;color:var(--foreground)}
 .chatbot-app .contact-section a{color:#6F02FD;font-weight:700}
 .chatbot-app .contact-choices{display:grid;gap:8px}

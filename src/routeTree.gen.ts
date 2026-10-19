@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
+import { Route as ContratacaoRouteImport } from './routes/contratacao'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
@@ -46,6 +47,7 @@ import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_auth
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
 import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
 import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
+import { Route as ApiContratacaoRouteImport } from './routes/api/contratacao'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
@@ -77,6 +79,11 @@ const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
 const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
   id: '/primeiro-acesso',
   path: '/primeiro-acesso',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContratacaoRoute = ContratacaoRouteImport.update({
+  id: '/contratacao',
+  path: '/contratacao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -253,6 +260,11 @@ const ApiCoraWebhookRoute = ApiCoraWebhookRouteImport.update({
   path: '/api/cora/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiContratacaoRoute = ApiContratacaoRouteImport.update({
+  id: '/api/contratacao',
+  path: '/api/contratacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/meta/callback',
   path: '/meta/callback',
@@ -277,6 +289,7 @@ export interface FileRoutesByFullPath {
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
+  '/contratacao': typeof ContratacaoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -306,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/contratacao': typeof ApiContratacaoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
@@ -317,6 +331,7 @@ export interface FileRoutesByTo {
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
+  '/contratacao': typeof ContratacaoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -344,6 +359,7 @@ export interface FileRoutesByTo {
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/contratacao': typeof ApiContratacaoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
   '/master': typeof AuthenticatedMasterIndexRoute
@@ -358,6 +374,7 @@ export interface FileRoutesById {
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
+  '/contratacao': typeof ContratacaoRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -387,6 +404,7 @@ export interface FileRoutesById {
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/contratacao': typeof ApiContratacaoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
@@ -401,6 +419,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/esqueci-senha'
     | '/primeiro-acesso'
+    | '/contratacao'
     | '/reset-password'
     | '/campanhas'
     | '/chatbot'
@@ -430,6 +449,7 @@ export interface FileRouteTypes {
     | '/master/financeiro'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/contratacao'
     | '/auth/meta/callback'
     | '/chatbot/'
     | '/master/'
@@ -441,6 +461,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/esqueci-senha'
     | '/primeiro-acesso'
+    | '/contratacao'
     | '/reset-password'
     | '/campanhas'
     | '/creditos-meta'
@@ -468,6 +489,7 @@ export interface FileRouteTypes {
     | '/master/financeiro'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/contratacao'
     | '/auth/meta/callback'
     | '/chatbot'
     | '/master'
@@ -481,6 +503,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/esqueci-senha'
     | '/primeiro-acesso'
+    | '/contratacao'
     | '/reset-password'
     | '/_authenticated/campanhas'
     | '/_authenticated/chatbot'
@@ -510,6 +533,7 @@ export interface FileRouteTypes {
     | '/_authenticated/master/financeiro'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/contratacao'
     | '/auth/meta/callback'
     | '/_authenticated/chatbot/'
     | '/_authenticated/master/'
@@ -524,9 +548,11 @@ export interface RootRouteChildren {
   DemoRoute: typeof DemoRoute
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
+  ContratacaoRoute: typeof ContratacaoRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
+  ApiContratacaoRoute: typeof ApiContratacaoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -571,6 +597,13 @@ declare module '@tanstack/react-router' {
       path: '/primeiro-acesso'
       fullPath: '/primeiro-acesso'
       preLoaderRoute: typeof PrimeiroAcessoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contratacao': {
+      id: '/contratacao'
+      path: '/contratacao'
+      fullPath: '/contratacao'
+      preLoaderRoute: typeof ContratacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -790,6 +823,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCoraWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/contratacao': {
+      id: '/api/contratacao'
+      path: '/api/contratacao'
+      fullPath: '/api/contratacao'
+      preLoaderRoute: typeof ApiContratacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
       path: '/meta/callback'
@@ -933,9 +973,11 @@ const rootRouteChildren: RootRouteChildren = {
   DemoRoute: DemoRoute,
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
+  ContratacaoRoute: ContratacaoRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
   ApiCoraWebhookRoute: ApiCoraWebhookRoute,
+  ApiContratacaoRoute: ApiContratacaoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -2,6 +2,9 @@ import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { chatbotMediaBucket as mediaBucket, chatbotMediaMimeTypes as mediaMimeTypes } from "@/lib/chatbot-media";
+import { cepMask, cnpjMask, contractingAddressLine, cpfMask } from "@/lib/contracting";
+import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isGhostButtonResponse } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
@@ -116,6 +119,9 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_contact_files|media_kind|media_mime/i.test(message)) {
     return "A migração das mídias ainda não foi aplicada no Supabase.";
+  }
+  if (/contracting_intakes|contracting_intake_files/i.test(message)) {
+    return "A migração da contratação ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_teams|chatbot_team_members|chatbot_team_channels/i.test(message)) {
     return "A migração das equipes ainda não foi aplicada no Supabase.";
@@ -418,9 +424,12 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       updatedAt: latestAt.get(cell(row, "id")) || cell(row, "updated_at"),
     })),
   );
+  const orgRow = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+  const contractingForm = !orgRow.error && keepsAccessWithoutPayment(cell(orgRow.data, "legal_name"));
   return {
     configured: true,
     organizationId,
+    contractingForm,
     connections: connectionRows.map((row) => ({
       id: cell(row, "id"),
       name: cell(row, "display_name"),
@@ -1559,25 +1568,6 @@ export async function chatbotMessageMedia(userId: string, messageId: string) {
   return { kind: file.kind, mime: file.mime, base64: file.base64 };
 }
 
-const mediaBucket = "nex-chatbot-media";
-const mediaMimeTypes = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/3gpp",
-  "audio/ogg",
-  "audio/mpeg",
-  "audio/mp4",
-  "audio/webm",
-  "audio/aac",
-  "audio/opus",
-  "audio/wav",
-];
-
 async function ensureMediaBucket() {
   const options = { public: false, fileSizeLimit: 40 * 1024 * 1024, allowedMimeTypes: mediaMimeTypes };
   const existing = await supabaseAdmin.storage.getBucket(mediaBucket);
@@ -1957,6 +1947,41 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
   const stageRow = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const avatarRow = await table("chatbot_contacts").select("avatar_url").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const identity = await contactIdentity(organizationId, contactId);
+  const orgRow = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+  if (orgRow.error) fail(schemaMessage(orgRow.error.message));
+  const contractingLink = keepsAccessWithoutPayment(cell(orgRow.data, "legal_name"));
+  const intake = contractingLink
+    ? await table("contracting_intakes")
+        .select("id, protocol, cnpj, legal_name, postal_code, street, address_number, address_complement, district, city, state, representative_name, representative_email, witness_name, witness_document, witness_email")
+        .eq("contact_id", contactId)
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null, error: null };
+  if (intake.error && !/contracting_intakes|schema cache|does not exist|PGRST205/i.test(intake.error.message)) fail(schemaMessage(intake.error.message));
+  const contracting = intake.data
+    ? {
+        id: cell(intake.data, "id"),
+        protocol: cell(intake.data, "protocol"),
+        cnpj: cnpjMask(cell(intake.data, "cnpj")),
+        legalName: cell(intake.data, "legal_name"),
+        address: contractingAddressLine({
+          street: cell(intake.data, "street"),
+          addressNumber: cell(intake.data, "address_number"),
+          complement: cell(intake.data, "address_complement"),
+          district: cell(intake.data, "district"),
+          city: cell(intake.data, "city"),
+          state: cell(intake.data, "state"),
+          postalCode: cepMask(cell(intake.data, "postal_code")),
+        }),
+        representativeName: cell(intake.data, "representative_name"),
+        representativeEmail: cell(intake.data, "representative_email"),
+        witnessName: cell(intake.data, "witness_name"),
+        witnessDocument: cpfMask(cell(intake.data, "witness_document")),
+        witnessEmail: cell(intake.data, "witness_email"),
+      }
+    : null;
   const dealRow = await table("chatbot_contacts").select("negotiated_cents, client_owner_id, bot_note").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   let dealReady = true;
   let negotiated: number | null = null;
@@ -2033,6 +2058,8 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     rg: identity.rg,
     showDocument: identity.showDocument,
     showRg: identity.showRg,
+    contractingLink,
+    contracting,
   };
 }
 
@@ -3077,9 +3104,21 @@ async function executeConversationFlow(connection: Record<string, unknown>, orga
   return queueByKey(`flow:${conversationId}`, () => executeConversationFlowOnce(connection, organizationId, conversationId, contactId, text, manualFlowId));
 }
 
+async function savedFlowById(organizationId: string, flowId: string) {
+  const row = await table("chatbot_flows").select("id, name, graph").eq("id", flowId).eq("organization_id", organizationId).maybeSingle();
+  if (row.error) {
+    if (/schema cache|does not exist|PGRST205/i.test(row.error.message)) return null;
+    fail(schemaMessage(row.error.message));
+  }
+  if (!row.data) return null;
+  return { id: cell(row.data, "id"), name: cell(row.data, "name"), launch: flowLaunch(row.data["graph"]), graph: flowGraph(row.data["graph"]) };
+}
+
 async function executeConversationFlowOnce(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
-  const flows = await loadActiveFlows(organizationId);
-  if (!flows.length) return false;
+  const active = await loadActiveFlows(organizationId);
+  const manualFlow = manualFlowId && !active.some((flow) => flow.id === manualFlowId) ? await savedFlowById(organizationId, manualFlowId) : null;
+  const flows = manualFlow ? [...active, manualFlow] : active;
+  if (!flows.length) return { sent: false, owned: false };
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
   if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
   const storedRun = readFlowRun(stored.data);
@@ -3229,10 +3268,10 @@ export async function startChatbotFlow(userId: string, conversationId: string, f
   const contactId = cell(conversation, "contact_id");
   if (await contactBotsDisabled(organizationId, contactId)) fail("Os bots estão desativados para este contato.");
   const connection = await ownedConnection(organizationId, cell(conversation, "connection_id"));
-  const flows = await loadActiveFlows(organizationId);
-  if (!flows.some((flow) => flow.id === flowId)) fail("Esse bot não está ativo.");
+  const saved = await savedFlowById(organizationId, flowId);
+  if (!saved) fail("Esse bot não está salvo.");
   const started = await executeConversationFlow(connection, organizationId, conversationId, contactId, "", flowId);
-  if (!started.sent && !started.owned) fail("Esse bot não tem uma ação ligada ao gatilho.");
+  if (!started || (!started.sent && !started.owned)) fail("Esse bot não tem uma ação ligada ao gatilho.");
   return { started: true as const };
 }
 

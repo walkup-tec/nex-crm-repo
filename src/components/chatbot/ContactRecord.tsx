@@ -127,8 +127,14 @@ export function ContactRecord({
   const [noteDraft, setNoteDraft] = useState("");
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const [extraOpen, setExtraOpen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [contractingUrl, setContractingUrl] = useState("");
   const [mediaOpen, setMediaOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
+
+  useEffect(() => {
+    setContractingUrl(contactId ? `${window.location.origin}/contratacao?contato=${contactId}` : "");
+  }, [contactId]);
 
   useEffect(() => {
     setEditing(false);
@@ -137,6 +143,7 @@ export function ContactRecord({
     setRgDraft("");
     setNoteDraft("");
     setExtraOpen(false);
+    setLinkCopied(false);
     setMediaOpen(false);
     setError("");
     if (!contactId) return;
@@ -153,6 +160,9 @@ export function ContactRecord({
       setRgDraft(applyMask("rg", result.data.rg));
       setNoteDraft(result.data.note.replace(/\s+/g, " ").trim().slice(0, 300));
       setDeal(negotiatedLabel(result.data.negotiatedCents));
+      setExtraOpen(Boolean(result.data.contracting));
+      setMediaOpen(Boolean(result.data.contracting));
+      setLinkCopied(false);
     });
     return () => {
       active = false;
@@ -446,17 +456,70 @@ export function ContactRecord({
               <p>O valor negociado ainda não está disponível.</p>
             )}
           </section>
-          {profile.showDocument || profile.showRg ? (
+          {profile.showDocument || profile.showRg || profile.contractingLink ? (
             <section className={`contact-section${extraOpen ? "" : " is-collapsed"}`}>
               <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
                 <CollapsibleTrigger className="contact-extra">
                   <span className="contact-extra-title">
                     Outros dados
-                    {(profile.showDocument && profile.document) || (profile.showRg && profile.rg) ? <Check className="contact-extra-mark" aria-label="Preenchido" /> : null}
+                    {(profile.showDocument && profile.document) || (profile.showRg && profile.rg) || profile.contracting ? <Check className="contact-extra-mark" aria-label="Preenchido" /> : null}
                   </span>
                   <ChevronDown />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="contact-extra-body">
+                  {profile.contractingLink ? (
+                    <div className="contact-contracting-link">
+                      <p>Link de contratação</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!contractingUrl) return;
+                          void navigator.clipboard.writeText(contractingUrl).then(() => setLinkCopied(true)).catch(() => setLinkCopied(false));
+                        }}
+                      >
+                        {linkCopied ? "Link copiado" : "Copiar link"}
+                      </button>
+                      {contractingUrl ? <span>{contractingUrl}</span> : null}
+                    </div>
+                  ) : null}
+                  {profile.contracting ? (
+                    <dl className="contact-contracting">
+                      <div>
+                        <dt>Cliente</dt>
+                        <dd>
+                          {profile.name} (ID: {profile.contracting.protocol})
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>CNPJ</dt>
+                        <dd>{profile.contracting.cnpj}</dd>
+                      </div>
+                      <div>
+                        <dt>Razão social</dt>
+                        <dd>{profile.contracting.legalName}</dd>
+                      </div>
+                      <div>
+                        <dt>Endereço</dt>
+                        <dd>{profile.contracting.address}</dd>
+                      </div>
+                      <div>
+                        <dt>Representante legal</dt>
+                        <dd>
+                          {profile.contracting.representativeName}
+                          <span>{profile.contracting.representativeEmail}</span>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Testemunha</dt>
+                        <dd>
+                          {profile.contracting.witnessName}
+                          <span>
+                            {profile.contracting.witnessDocument} — {profile.contracting.witnessEmail}
+                          </span>
+                        </dd>
+                      </div>
+                    </dl>
+                  ) : null}
                   {profile.showDocument ? (
                     <label>
                       CPF/CNPJ

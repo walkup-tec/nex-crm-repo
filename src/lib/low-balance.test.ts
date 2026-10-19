@@ -50,6 +50,23 @@ assert.equal(
   evolutionInstanceName([{ name: "outra", connectionStatus: "open", number: "5511999999999" }], ""),
   null,
 );
+assert.equal(
+  evolutionInstanceName(
+    [
+      { name: "walkup-v2", connectionStatus: "close", number: "555197979224" },
+      { name: "nex-aberta", connectionStatus: "open", number: "5551997979224" },
+    ],
+    "walkup-v2",
+  ),
+  "nex-aberta",
+);
+assert.equal(
+  evolutionInstanceName(
+    [{ name: "walkup-v2", connectionStatus: "close", ownerJid: "555197979224@s.whatsapp.net" }],
+    "walkup-v2",
+  ),
+  null,
+);
 assert.equal(isGhostButtonResponse({ message: { viewOnceMessage: { message: {} } } }), true);
 assert.equal(
   isGhostButtonResponse({

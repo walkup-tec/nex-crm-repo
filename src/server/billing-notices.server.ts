@@ -14,6 +14,7 @@ const kinds = new Set<BillingNoticeKind>(["before_7", "before_3", "due", "after_
 let running = false;
 let started = false;
 let schemaWarned = false;
+let financeSendSucceeded = false;
 
 type NoticeRow = {
   id: string;
@@ -55,6 +56,7 @@ export async function runBillingNotices(now = new Date()) {
   try {
     await releaseStaleClaims(now);
     const today = billingToday(now);
+    await reopenRefusedNotice(today);
     const { data, error } = await supabaseAdmin
       .from("billing_notices")
       .select("id, organization_id, due_date, kind, send_on, status")
@@ -162,14 +164,16 @@ async function deliverNotice(notice: NoticeRow, today: string) {
     });
     const sent = await sendFinanceWhatsapp({ phone: context.financePhone, text, imagePng: image });
     if (!sent.ok) {
+      const retryLater = sent.error === "Nenhuma instância do WhatsApp financeiro está conectada.";
       await finishNotice(notice.id, {
-        status: "failed",
+        status: retryLater ? "pending" : "failed",
         error: sent.error || "O WhatsApp não confirmou a mensagem.",
         body: text,
         channel: "whatsapp",
       });
       return;
     }
+    financeSendSucceeded = true;
     await finishNotice(notice.id, {
       status: "sent",
       body: text,
@@ -185,6 +189,40 @@ async function deliverNotice(notice: NoticeRow, today: string) {
       body: text,
     });
   }
+}
+
+async function reopenRefusedNotice(today: string) {
+  if (financeSendSucceeded) return;
+  const { data, error } = await supabaseAdmin
+    .from("billing_notices")
+    .select("id, organization_id")
+    .eq("status", "failed")
+    .eq("error", "O WhatsApp não confirmou a mensagem.")
+    .eq("send_on", today)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error || !data?.[0]) {
+    if (error) warnSchema(error.message);
+    return;
+  }
+  const pending = await supabaseAdmin
+    .from("billing_notices")
+    .select("id")
+    .eq("organization_id", data[0].organization_id)
+    .eq("status", "pending")
+    .eq("send_on", today)
+    .limit(1);
+  if (pending.error) {
+    warnSchema(pending.error.message);
+    return;
+  }
+  if (pending.data?.length) return;
+  const { error: updateError } = await supabaseAdmin
+    .from("billing_notices")
+    .update({ status: "pending", error: null, claimed_at: null })
+    .eq("id", data[0].id)
+    .eq("status", "failed");
+  if (updateError) warnSchema(updateError.message);
 }
 
 async function noticeContext(organizationId: string, dueDate: string) {

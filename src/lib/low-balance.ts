@@ -46,12 +46,16 @@ const senderPhone = "5197979224";
 
 export function evolutionInstanceName(payload: unknown, preferred: string) {
   const wanted = whatsappNumber(senderPhone);
-  const matches = instanceHits(payload).filter((hit) => whatsappNumber(hit.number) === wanted);
+  const hits = instanceHits(payload);
+  const matches = hits.filter((hit) => whatsappNumber(hit.number) === wanted);
   const open = matches.find((hit) => hit.open);
   if (open) return open.name;
-  if (matches[0]) return matches[0].name;
+  if (matches.length > 0) return null;
   const named = preferred.trim();
-  return named || null;
+  if (!named) return null;
+  const preferredHit = hits.find((hit) => hit.name === named);
+  if (preferredHit && !preferredHit.open) return null;
+  return named;
 }
 
 function instanceHits(payload: unknown) {

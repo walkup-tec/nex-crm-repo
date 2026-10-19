@@ -14,8 +14,9 @@ import {
   whatsappNumber,
 } from "@/lib/low-balance";
 
-const senderInstance = "walkup-v2";
+const closedSenderInstance = "walkup-v2";
 const hostEvolutionUrl = "http://172.17.0.1:30181";
+const publicEvolutionUrl = "http://72.60.51.127:30181";
 const draxEvolutionKey = "429683C4C977415CAAFCCE10F7D57E11";
 
 export function evolutionRuntime() {
@@ -29,17 +30,17 @@ export function evolutionRuntime() {
 }
 
 export async function sendLowBalanceWhatsapp(phone: string, name: string) {
-  const { base, key } = evolutionRuntime();
   const number = whatsappNumber(phone);
   if (!number) {
     console.error("evo_low_balance", "invalid_phone");
     return false;
   }
-  const headers = { "content-type": "application/json", apikey: key };
-  const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
-  const listed = await evoGet(`${base}/instance/fetchInstances`, headers);
-  const instance =
-    (listed ? evolutionInstanceName(listed, preferred) : null) || preferred || senderInstance;
+  const target = await openEvolutionTarget("evo_low_balance");
+  if (!target) {
+    console.error("evo_low_balance", "no_open_instance");
+    return false;
+  }
+  const { base, headers, instance } = target;
   const description = lowBalanceWhatsappText(name);
   const button = await evoPost(
     `${base}/message/sendButtons/${encodeURIComponent(instance)}`,
@@ -63,11 +64,12 @@ export async function sendLowBalanceWhatsapp(phone: string, name: string) {
 export async function sendInviteWhatsapp(phone: string, name: string, email: string) {
   const number = whatsappNumber(phone);
   if (!number || !email.trim()) return false;
-  const { base, key } = evolutionRuntime();
-  const headers = { "content-type": "application/json", apikey: key };
-  const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
-  const listed = await evoGet(`${base}/instance/fetchInstances`, headers, "evo_invite");
-  const instance = (listed ? evolutionInstanceName(listed, preferred) : null) || preferred || senderInstance;
+  const target = await openEvolutionTarget("evo_invite");
+  if (!target) {
+    console.error("evo_invite", "no_open_instance");
+    return false;
+  }
+  const { base, headers, instance } = target;
   const link = inviteAccessLink(inviteAppUrl(), email);
   const description = inviteWhatsappDescription(name, email);
   const button = await evoPost(
@@ -101,11 +103,15 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
   const number = whatsappNumber(input.phone);
   if (!number) return { ok: false, messageId: "", error: "Telefone financeiro inválido." };
   if (input.imagePng.byteLength === 0) return { ok: false, messageId: "", error: "A imagem da fatura não foi gerada." };
-  const { base, key } = evolutionRuntime();
-  const headers = { "content-type": "application/json", apikey: key };
-  const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
-  const listed = await evoGet(`${base}/instance/fetchInstances`, headers, "evo_finance");
-  const instance = (listed ? evolutionInstanceName(listed, preferred) : null) || preferred || senderInstance;
+  const target = await openEvolutionTarget("evo_finance");
+  if (!target) {
+    return {
+      ok: false,
+      messageId: "",
+      error: "Nenhuma instância do WhatsApp financeiro está conectada.",
+    };
+  }
+  const { base, headers, instance } = target;
   const text = await evoPost(
     `${base}/message/sendText/${encodeURIComponent(instance)}`,
     headers,
@@ -140,6 +146,26 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
     };
   }
   return { ok: true, messageId: messageId || readProviderMessageId(image.body), error: "" };
+}
+
+async function openEvolutionTarget(tag: string) {
+  const runtime = evolutionRuntime();
+  const keys = runtime.key === draxEvolutionKey ? [runtime.key] : [runtime.key, draxEvolutionKey];
+  const bases = [runtime.base, hostEvolutionUrl, publicEvolutionUrl].filter(
+    (base, index, all) => Boolean(base) && all.indexOf(base) === index,
+  );
+  const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
+  for (const key of keys) {
+    const headers = { "content-type": "application/json", apikey: key };
+    for (const base of bases) {
+      const listed = await evoGet(`${base}/instance/fetchInstances`, headers, tag);
+      if (!listed) continue;
+      const instance = evolutionInstanceName(listed, preferred === closedSenderInstance ? "" : preferred);
+      if (!instance || instance === closedSenderInstance) continue;
+      return { base, headers, instance };
+    }
+  }
+  return null;
 }
 
 function inviteAppUrl() {

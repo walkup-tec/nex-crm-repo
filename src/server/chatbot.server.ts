@@ -3,7 +3,7 @@ import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { chatbotMediaBucket as mediaBucket, chatbotMediaMimeTypes as mediaMimeTypes } from "@/lib/chatbot-media";
-import { cepMask, cnpjMask, contractingAddressLine, cpfMask } from "@/lib/contracting";
+import { cepMask, cnpjMask, contractingAddressLine, contractingButtonText, cpfMask, isContractingFormUrl } from "@/lib/contracting";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isGhostButtonResponse } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
@@ -48,6 +48,7 @@ import {
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
   whatsappJidPhone,
+  whatsappCadastroButton,
   whatsappTextPayload,
   clientPhoneLabel,
   catalogName,
@@ -717,6 +718,61 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
       organization_id: organizationId,
       conversation_id: conversationId,
       text: clean,
+      direction: "out",
+      status: "sent",
+      external_id: externalId || null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (saved.error) fail(schemaMessage(saved.error.message));
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (assigned.error) fail(schemaMessage(assigned.error.message));
+}
+
+export async function sendChatbotCadastro(userId: string, conversationId: string, url: string) {
+  const clean = url.trim();
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contactId = cell(conversation.data, "contact_id");
+  if (!isContractingFormUrl(clean, contactId)) fail("Esse link de contratação não pertence a este contato.");
+  const contact = await table("chatbot_contacts")
+    .select("phone")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (contact.error) fail(schemaMessage(contact.error.message));
+  const phone = cell(contact.data, "phone");
+  if (!phone) fail("Esse contato não tem um telefone válido.");
+  const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
+  const sent = await evo(
+    `/message/sendButtons/${encodeURIComponent(cell(connection, "instance_name"))}`,
+    "POST",
+    whatsappCadastroButton(phone, clean),
+  );
+  if (isGhostButtonResponse(sent)) fail("O WhatsApp não confirmou o botão de cadastro.");
+  const externalId = readMessageId(sent);
+  const saved = await table("chatbot_messages")
+    .insert({
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      text: contractingButtonText(clean),
       direction: "out",
       status: "sent",
       external_id: externalId || null,

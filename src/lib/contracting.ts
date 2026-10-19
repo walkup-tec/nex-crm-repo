@@ -133,6 +133,19 @@ export function contractingFormUrl(origin: string, contactId: string) {
   return `${base}/contratacao/${contactId}`;
 }
 
+export function contractingButtonText(url: string) {
+  return `Para seguir com a contratação, preencha o formulário neste link:\nCadastro\n${url}`;
+}
+
+export function isContractingFormUrl(url: string, contactId: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.pathname === `/contratacao/${contactId}` && parsed.search === "" && parsed.hash === "";
+  } catch {
+    return false;
+  }
+}
+
 export function contractingContactId(pathname: string, search: string) {
   const query = new URLSearchParams(search).get("contato") ?? "";
   if (isContractingContactId(query)) return query;

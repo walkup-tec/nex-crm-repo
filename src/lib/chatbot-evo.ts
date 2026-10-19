@@ -279,6 +279,16 @@ export function whatsappTextPayload(phone: string, text: string) {
   return { number: phone, text, linkPreview: false };
 }
 
+export function whatsappCadastroButton(phone: string, url: string) {
+  return {
+    number: phone,
+    title: "Contratação",
+    description: "Para seguir com a contratação, preencha o formulário neste link:",
+    footer: "",
+    buttons: [{ type: "url", displayText: "Cadastro", url }],
+  };
+}
+
 export function evolutionProfileNumber(phone: string) {
   const group = whatsappGroupJid(phone);
   if (group) return group;

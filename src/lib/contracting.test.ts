@@ -4,9 +4,11 @@ import {
   cnpjMask,
   contractingContentType,
   contractingFileProblem,
+  contractingButtonText,
   contractingContactId,
   contractingFormUrl,
   contractingInviteMessages,
+  isContractingFormUrl,
   contractingProblem,
   contractingSummary,
   cpfMask,
@@ -62,5 +64,8 @@ assert.deepEqual(contractingInviteMessages("550e8400-e29b-41d4-a716-446655440000
 assert.equal(contractingContactId("/contratacao", "?contato=550e8400-e29b-41d4-a716-446655440000"), "550e8400-e29b-41d4-a716-446655440000");
 assert.equal(contractingContactId("/contratacao/550e8400-e29b-41d4-a716-446655440000", ""), "550e8400-e29b-41d4-a716-446655440000");
 assert.equal(contractingContactId("/contratacao", ""), "");
+assert.equal(isContractingFormUrl("https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440000"), true);
+assert.equal(isContractingFormUrl("https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000?x=1", "550e8400-e29b-41d4-a716-446655440000"), false);
+assert.equal(contractingButtonText("https://app.nexmeta.com.br/contratacao/550e8400-e29b-41d4-a716-446655440000").includes("Cadastro"), true);
 
 console.log("contracting tests ok");

@@ -9,6 +9,7 @@ import {
   finishChatbotConversationFn,
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
+  sendChatbotCadastroFn,
   sendChatbotMessageFn,
   startChatbotFlowFn,
   listChatbotQuickRepliesFn,
@@ -18,7 +19,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
-import { contractingInviteMessages } from "@/lib/contracting";
+import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
 import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
@@ -592,12 +593,37 @@ export function LiveInbox() {
   }
 
   async function sendForm() {
-    if (!contact || !data?.contractingForm) return;
+    if (!selected || !contact || !data?.contractingForm || sending.current) return;
     setQuickOpen(false);
     setBotsOpen(false);
-    const [intro, link] = contractingInviteMessages(contact.id, window.location.origin);
-    const sent = await send(intro);
-    if (sent) await send(link);
+    const url = contractingFormUrl(window.location.origin, contact.id);
+    const text = contractingButtonText(url);
+    const preview: OutgoingPreview = {
+      id: `local-${Date.now()}`,
+      conversationId: selected,
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    sending.current = true;
+    setOutgoing((current) => [...current, preview]);
+    setPending(true);
+    try {
+      const result = await sendChatbotCadastroFn({ data: { conversationId: selected, url } });
+      if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      void load();
+    } catch {
+      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+      setMessage("Não foi possível enviar a mensagem.");
+    } finally {
+      sending.current = false;
+      setPending(false);
+      composerRef.current?.focus();
+    }
   }
 
   async function send(text = draft) {

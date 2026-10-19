@@ -538,6 +538,24 @@ export async function createClient(userId: string, input: ClientDraft) {
     await supabaseAdmin.from("organizations").delete().eq("id", org.id);
     throw error;
   }
+  try {
+    const { createUser } = await import("@/server/users.server");
+    await createUser(userId, {
+      fullName: parsed.responsibleName,
+      email: parsed.responsibleEmail,
+      whatsapp: parsed.whatsapp,
+      financeEmailSame: true,
+      kind: "client",
+      organizationId: org.id,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "falha";
+    console.error("client_invite", message);
+    if (message === "Já existe um acesso com este e-mail.") {
+      const { sendInviteWhatsapp } = await import("@/server/evo.server");
+      await sendInviteWhatsapp(parsed.whatsapp, parsed.responsibleName, parsed.responsibleEmail);
+    }
+  }
   return { id: org.id };
 }
 

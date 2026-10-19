@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { sendInviteWhatsapp } from "@/server/evo.server";
 import { appUrl, sendInviteEmail } from "@/server/mail.server";
 
 import type { ListedUser, UserPermissions, UserRole } from "@/lib/user-access";
@@ -344,15 +345,15 @@ export async function createUser(
     if (input.sendEmail === false) return { id: createdId, organizationId, emailSent: false as const };
     const actionLink = link.properties?.action_link;
     if (!actionLink) fail("O convite foi criado sem o link de primeiro acesso.");
+    let emailSent = false;
     try {
       await sendInviteEmail(email, fullName);
+      emailSent = true;
     } catch (error) {
-      if (error instanceof Error && error.name === "InviteMailError") {
-        return { id: createdId, organizationId, emailSent: false as const };
-      }
-      throw error;
+      if (!(error instanceof Error) || error.name !== "InviteMailError") throw error;
     }
-    return { id: createdId, organizationId, emailSent: true as const };
+    await sendInviteWhatsapp(contact?.whatsapp ?? "", fullName, email);
+    return { id: createdId, organizationId, emailSent };
   } catch (error) {
     await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);
@@ -369,6 +370,7 @@ export async function resendInvite(userId: string, targetId: string) {
     fail("Você não pode reenviar o convite deste usuário.");
   }
   if (target.row.is_blocked) fail("Este acesso está bloqueado.");
+  await sendInviteWhatsapp(target.row.whatsapp ?? "", target.row.full_name, target.row.email);
   await sendInviteEmail(target.row.email, target.row.full_name);
 }
 

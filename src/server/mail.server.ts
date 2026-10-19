@@ -1,5 +1,12 @@
 import { lookup } from "node:dns/promises";
 import nodemailer from "nodemailer";
+import {
+  inviteAccessLink,
+  inviteParagraphs,
+  invitePasswordButton,
+  invitePlainText,
+  inviteSubject,
+} from "@/lib/invite-message";
 
 function smtpConfig() {
   const host = process.env["SMTP_HOST"];
@@ -18,54 +25,13 @@ export function appUrl() {
 export async function sendInviteEmail(to: string, name: string) {
   const smtp = smtpConfig();
   if (!smtp) {
-    throw new Error("O envio de e-mail não está configurado no servidor.");
+    const failure = new Error("O envio de e-mail não está configurado no servidor.");
+    failure.name = "InviteMailError";
+    throw failure;
   }
-  const displayName = name.trim();
-  const hello = displayName ? `Olá, ${displayName}!` : "Olá!";
-  const link = `${appUrl()}/primeiro-acesso?email=${encodeURIComponent(to)}`;
-  const safeHello = escapeHtml(hello);
-  const safeEmail = escapeHtml(to);
-  const safeLink = escapeHtml(link);
-  const text = [
-    hello,
-    "",
-    "Seja bem-vindo a Agência NEX.",
-    "",
-    "Seu acesso à nossa plataforma foi criado e já está quase tudo pronto para você começar.",
-    "",
-    "Na NEX, você poderá acompanhar de forma simples e centralizada os principais indicadores e resultados das suas campanhas, facilitando a análise do desempenho dos seus anúncios.",
-    "",
-    "Para concluir a ativação da sua conta, clique no botão abaixo e crie sua senha de acesso.",
-    "",
-    "CRIAR MINHA SENHA",
-    link,
-    "",
-    "Após definir sua senha, você poderá acessar normalmente a plataforma utilizando seu e-mail cadastrado.",
-    "",
-    `Seu acesso: ${to}`,
-    "",
-    "Se você não reconhece este cadastro ou acredita que recebeu este e-mail por engano, entre em contato com nossa equipe.",
-    "",
-    "Até logo,",
-    "Equipe NEX",
-    "Dados claros. Decisões melhores.",
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:16px">
-      <p>${safeHello}</p>
-      <p>Seja bem-vindo a Agência NEX.</p>
-      <p>Seu acesso à nossa plataforma foi criado e já está quase tudo pronto para você começar.</p>
-      <p>Na NEX, você poderá acompanhar de forma simples e centralizada os principais indicadores e resultados das suas campanhas, facilitando a análise do desempenho dos seus anúncios.</p>
-      <p>Para concluir a ativação da sua conta, clique no botão abaixo e crie sua senha de acesso.</p>
-      <p style="margin:28px 0">
-        <a href="${safeLink}" style="display:inline-block;background:#5b21b6;color:#ffffff;text-decoration:none;font-weight:700;letter-spacing:.04em;padding:14px 22px;border-radius:8px">CRIAR MINHA SENHA</a>
-      </p>
-      <p>Após definir sua senha, você poderá acessar normalmente a plataforma utilizando seu e-mail cadastrado.</p>
-      <p><strong>Seu acesso:</strong> ${safeEmail}</p>
-      <p>Se você não reconhece este cadastro ou acredita que recebeu este e-mail por engano, entre em contato com nossa equipe.</p>
-      <p>Até logo,<br>Equipe NEX<br>Dados claros. Decisões melhores.</p>
-    </div>
-  `;
+  const link = inviteAccessLink(appUrl(), to);
+  const text = invitePlainText(name, to, link);
+  const html = inviteHtml(name, to, link);
   let address = smtp.host;
   try {
     address = (await lookup(smtp.host, { family: 4 })).address;
@@ -90,7 +56,7 @@ export async function sendInviteEmail(to: string, name: string) {
     await transporter.sendMail({
       from: smtp.from,
       to,
-      subject: "Seja bem-vindo a Agência NEX",
+      subject: inviteSubject,
       text,
       html,
     });
@@ -112,6 +78,20 @@ function mailFailureMessage(code: string, responseCode: number) {
     return "O servidor de e-mail não aceitou a conexão.";
   }
   return "Não foi possível enviar o e-mail de acesso.";
+}
+
+function inviteHtml(name: string, email: string, link: string) {
+  const activate = "Para concluir a ativação da sua conta, clique no botão abaixo e crie sua senha de acesso.";
+  const safeLink = escapeHtml(link);
+  const blocks = inviteParagraphs(name, email).map((paragraph) => {
+    const body = paragraph.startsWith("Seu acesso:")
+      ? `<strong>Seu acesso:</strong> ${escapeHtml(email.trim())}`
+      : escapeHtml(paragraph).replaceAll("\n", "<br>");
+    const html = `<p>${body}</p>`;
+    if (paragraph !== activate) return html;
+    return `${html}<p style="margin:28px 0"><a href="${safeLink}" style="display:inline-block;background:#5b21b6;color:#ffffff;text-decoration:none;font-weight:700;letter-spacing:.04em;padding:14px 22px;border-radius:8px">${invitePasswordButton}</a></p>`;
+  });
+  return `<div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:16px">${blocks.join("")}</div>`;
 }
 
 function escapeHtml(value: string) {

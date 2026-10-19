@@ -1,5 +1,11 @@
 import { readProviderMessageId } from "@/lib/billing-notice";
 import {
+  inviteAccessLink,
+  invitePasswordButton,
+  inviteSubject,
+  inviteWhatsappDescription,
+} from "@/lib/invite-message";
+import {
   evolutionInstanceName,
   isGhostButtonResponse,
   lowBalanceCreditUrl,
@@ -54,6 +60,43 @@ export async function sendLowBalanceWhatsapp(phone: string, name: string) {
   return text.ok;
 }
 
+export async function sendInviteWhatsapp(phone: string, name: string, email: string) {
+  const number = whatsappNumber(phone);
+  if (!number || !email.trim()) return false;
+  const { base, key } = evolutionRuntime();
+  const headers = { "content-type": "application/json", apikey: key };
+  const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
+  const listed = await evoGet(`${base}/instance/fetchInstances`, headers, "evo_invite");
+  const instance = (listed ? evolutionInstanceName(listed, preferred) : null) || preferred || senderInstance;
+  const link = inviteAccessLink(inviteAppUrl(), email);
+  const description = inviteWhatsappDescription(name, email);
+  const button = await evoPost(
+    `${base}/message/sendButtons/${encodeURIComponent(instance)}`,
+    headers,
+    {
+      number,
+      title: inviteSubject,
+      description,
+      footer: "",
+      buttons: [{ type: "url", displayText: invitePasswordButton, url: link }],
+    },
+    20000,
+    "evo_invite",
+  );
+  if (button.ok && !isGhostButtonResponse(button.body)) return true;
+  const text = await evoPost(
+    `${base}/message/sendText/${encodeURIComponent(instance)}`,
+    headers,
+    {
+      number,
+      text: `*${inviteSubject}*\n\n${description}\n\n${invitePasswordButton}\n${link}`,
+    },
+    20000,
+    "evo_invite",
+  );
+  return text.ok;
+}
+
 export async function sendFinanceWhatsapp(input: { phone: string; text: string; imagePng: Uint8Array }) {
   const number = whatsappNumber(input.phone);
   if (!number) return { ok: false, messageId: "", error: "Telefone financeiro inválido." };
@@ -97,6 +140,10 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
     };
   }
   return { ok: true, messageId: messageId || readProviderMessageId(image.body), error: "" };
+}
+
+function inviteAppUrl() {
+  return (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
 }
 
 function envValue(...names: string[]) {

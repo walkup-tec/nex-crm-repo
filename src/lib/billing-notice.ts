@@ -8,7 +8,7 @@ const templates: Record<BillingNoticeKind, string> = {
   before_7: `Olá, {{nome}}! Tudo bem?
 
 Passando para lembrar que sua mensalidade
-da Digital Corban vencerá em {{vencimento}}.
+da Agência NEX vencerá em {{vencimento}}.
 
 Valor: {{valor}}
 
@@ -21,10 +21,10 @@ Ou se preferir, use o link:
 Agradecemos pela parceria!
 
 Equipe Financeira
-Digital Corban`,
+Agência NEX`,
   before_3: `Olá, {{nome}}!
 
-Sua mensalidade da Digital Corban vence
+Sua mensalidade da Agência NEX vence
 daqui a três dias.
 
 Vencimento: {{vencimento}}
@@ -41,11 +41,11 @@ a continuidade dos serviços contratados
 e a manutenção das condições comerciais.
 
 Equipe Financeira
-Digital Corban`,
+Agência NEX`,
   due: `Olá, {{nome}}!
 
 Informamos que sua mensalidade da
-Digital Corban vence hoje.
+Agência NEX vence hoje.
 
 Valor: {{valor}}
 Vencimento: {{vencimento}}
@@ -64,11 +64,11 @@ Caso já tenha efetuado o pagamento,
 desconsidere esta mensagem.
 
 Equipe Financeira
-Digital Corban`,
+Agência NEX`,
   after_1: `Olá, {{nome}}!
 
 Identificamos que sua mensalidade da
-Digital Corban, com vencimento em
+Agência NEX, com vencimento em
 {{vencimento}}, ainda consta em aberto.
 
 Conforme as condições comerciais
@@ -90,10 +90,10 @@ Se o pagamento já foi realizado,
 desconsidere esta mensagem.
 
 Equipe Financeira
-Digital Corban`,
+Agência NEX`,
   after_3: `Olá, {{nome}}!
 
-Sua mensalidade da Digital Corban
+Sua mensalidade da Agência NEX
 continua constando como pendente.
 
 Vencimento: {{vencimento}}
@@ -125,12 +125,12 @@ Caso precise de esclarecimentos,
 entre em contato com nosso suporte.
 
 Equipe Financeira
-Digital Corban`,
+Agência NEX`,
   after_5: `Olá, {{nome}}!
 
 Esta é uma notificação importante
 sobre sua pendência financeira
-com a Digital Corban.
+com a Agência NEX.
 
 Até o momento, não identificamos
 a confirmação do pagamento referente
@@ -162,7 +162,7 @@ Caso o pagamento já tenha sido realizado,
 desconsidere esta notificação.
 
 Equipe Financeira
-Digital Corban`,
+Agência NEX`,
 };
 
 export function noticeUpdatedCents(kind: BillingNoticeKind, faceCents: number, delinquencyCents: number | null) {

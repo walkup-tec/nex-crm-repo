@@ -42,7 +42,7 @@ function onDay(kind: BillingNoticeKind, due: string) {
   assert.match(text, /25\/10\/2026/);
   assert.ok(text.includes(chargeImageLabel));
   assert.ok(text.includes(pix));
-  assert.match(text, /Equipe Financeira\nDigital Corban/);
+  assert.match(text, /Equipe Financeira\nAgência NEX/);
   return text;
 }
 

@@ -19,10 +19,11 @@ assert.deepEqual(
     publicUrl: "http://72.60.51.127:30181",
   }),
   [
+    "http://72.60.51.127:30181",
     "http://172.17.0.1:30181",
+    "http://host.docker.internal:30181",
     "http://127.0.0.1:30181",
     "http://172.18.0.1:30181",
-    "http://72.60.51.127:30181",
   ],
 );
 assert.deepEqual(
@@ -33,10 +34,11 @@ assert.deepEqual(
     publicUrl: "http://72.60.51.127:30181",
   }),
   [
+    "http://72.60.51.127:30181",
     "http://evolution.internal:8080",
+    "http://host.docker.internal:30181",
     "http://127.0.0.1:30181",
     "http://172.17.0.1:30181",
-    "http://72.60.51.127:30181",
   ],
 );
 

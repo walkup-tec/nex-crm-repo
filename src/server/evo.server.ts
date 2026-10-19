@@ -161,18 +161,38 @@ async function openEvolutionTarget(tag: string) {
     publicUrl: publicEvolutionUrl,
   });
   const preferred = envValue("EVO_INSTANCE", "EVOLUTION_INSTANCE");
+  const attempts: string[] = [];
   for (const key of keys) {
     const headers = { "content-type": "application/json", apikey: key };
     for (const base of bases) {
       const listed = await evoGet(`${base}/instance/fetchInstances`, headers, tag, 8000);
-      if (!listed) continue;
-      const instance = evolutionInstanceName(listed, preferred === closedSenderInstance ? "" : preferred);
-      if (!instance || instance === closedSenderInstance) continue;
+      const instance = listed ? evolutionInstanceName(listed, preferred === closedSenderInstance ? "" : preferred) : null;
+      attempts.push(`${reachLabel(base)}=${listed ? (instance && instance !== closedSenderInstance ? "open" : "closed") : "down"}`);
+      if (!listed || !instance || instance === closedSenderInstance) continue;
+      rememberEvolutionReach(attempts.join(" "));
       console.error(tag, "instance", instance);
       return { base, headers, instance };
     }
   }
+  rememberEvolutionReach(attempts.join(" "));
   return null;
+}
+
+export async function probeFinanceEvolution() {
+  await openEvolutionTarget("evo_finance");
+}
+
+function reachLabel(base: string) {
+  if (base.includes("127.0.0.1")) return "local";
+  if (base.includes("host.docker.internal")) return "internal";
+  if (base.includes("172.17.0.1")) return "bridge";
+  if (base.includes("72.60.51.127")) return "public";
+  if (/^http:\/\/172\.(1[6-9]|2\d|3[0-1])\./.test(base)) return "gateway";
+  return "configured";
+}
+
+function rememberEvolutionReach(value: string) {
+  (globalThis as typeof globalThis & { __NEX_EVO_REACH?: string }).__NEX_EVO_REACH = value.slice(0, 180);
 }
 
 function hostGateway() {

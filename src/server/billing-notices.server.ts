@@ -8,7 +8,7 @@ import {
 } from "@/lib/billing-notice";
 import { pixQrPayload } from "@/lib/finance-access";
 import { readCoraInvoice } from "@/server/cora.server";
-import { sendFinanceWhatsapp } from "@/server/evo.server";
+import { probeFinanceEvolution, sendFinanceWhatsapp } from "@/server/evo.server";
 
 const kinds = new Set<BillingNoticeKind>(["before_7", "before_3", "due", "after_1", "after_3", "after_5"]);
 let running = false;
@@ -29,6 +29,7 @@ type NoticeRow = {
 export function startBillingNoticeRunner() {
   if (started) return;
   started = true;
+  void probeFinanceEvolution().catch(() => null);
   const tick = () => {
     if (shuttingDown()) return;
     void runBillingNotices().catch((error: unknown) => {

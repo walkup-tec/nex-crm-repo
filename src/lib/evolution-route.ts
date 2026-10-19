@@ -19,9 +19,14 @@ export function evolutionBaseUrls(input: {
   publicUrl: string;
 }) {
   const gatewayUrl = dockerGatewayUrl(input.gateway);
-  return [input.configured, "http://127.0.0.1:30181", gatewayUrl, input.hostUrl, input.publicUrl].filter(
-    (base, index, all) => Boolean(base) && all.indexOf(base) === index,
-  );
+  return [
+    input.publicUrl,
+    input.configured,
+    "http://host.docker.internal:30181",
+    "http://127.0.0.1:30181",
+    gatewayUrl,
+    input.hostUrl,
+  ].filter((base, index, all) => Boolean(base) && all.indexOf(base) === index);
 }
 
 function dockerGatewayUrl(gateway: string) {

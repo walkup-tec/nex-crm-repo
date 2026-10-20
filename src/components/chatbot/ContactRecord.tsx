@@ -347,7 +347,7 @@ export function ContactRecord({
   }
 
   async function createNexClient() {
-    if (!profile || !profile.contractingLink || !profile.dealReady || creatingClient || profile.nexClientId) return;
+    if (!profile || !profile.contractingLink || !profile.contracting || !profile.dealReady || creatingClient || profile.nexClientId) return;
     setCreatingClient(true);
     const result = await registerChatbotNexClientFn({ data: { contactId: profile.id } });
     setCreatingClient(false);
@@ -708,7 +708,7 @@ export function ContactRecord({
                 <Button type="button" className="contact-register" disabled={registering || creatingClient || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
                   {profile.clientOwnerId ? "Lead cadastrado" : registering ? "Cadastrando" : "Cadastro Lead"}
                 </Button>
-                <Button type="button" className="contact-register" disabled={registering || creatingClient || Boolean(profile.nexClientId)} onClick={() => void createNexClient()}>
+                <Button type="button" className="contact-register" title={profile.contracting ? undefined : "Grave o formulário de contratação neste contato."} disabled={registering || creatingClient || Boolean(profile.nexClientId) || !profile.contracting} onClick={() => void createNexClient()}>
                   {profile.nexClientId ? "Cliente cadastrado" : creatingClient ? "Cadastrando" : "Cadastro Clientes"}
                 </Button>
               </div>

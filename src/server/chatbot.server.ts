@@ -1058,6 +1058,8 @@ export async function sendContractSignedWhatsApp(input: { organizationId: string
     .maybeSingle();
   if (saved.error) throw new Error("A mensagem de assinatura não foi gravada na conversa.");
 }
+
+async function requireVisibleConversation(userId: string, conversationId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")

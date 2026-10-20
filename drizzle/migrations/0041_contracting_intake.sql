@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.contracting_intakes (
   city text NOT NULL,
   state text NOT NULL,
   representative_name text NOT NULL,
+  representative_document text NOT NULL DEFAULT '',
   representative_email text NOT NULL,
   witness_name text NOT NULL,
   witness_document text NOT NULL,

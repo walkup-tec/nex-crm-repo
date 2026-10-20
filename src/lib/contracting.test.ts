@@ -9,6 +9,7 @@ import {
   contractingFormUrl,
   contractingInviteMessages,
   isContractingFormUrl,
+  contractingPartyConflict,
   contractingProblem,
   contractingSummary,
   cpfMask,
@@ -40,21 +41,28 @@ const valid: ContractingInput = {
   city: "São Paulo",
   state: "SP",
   representativeName: "Maria Souza",
+  representativeDocument: "390.533.447-05",
   representativeEmail: "maria@empresa.com.br",
   witnessName: "João Lima",
-  witnessDocument: "390.533.447-05",
+  witnessDocument: "529.982.247-25",
   witnessEmail: "joao@empresa.com.br",
 };
 
 assert.equal(contractingProblem(valid), "");
 assert.equal(contractingProblem({ ...valid, complement: "sala 2" }), "");
 assert.equal(contractingProblem({ ...valid, addressNumber: "" }), "Informe o número do endereço.");
+assert.equal(contractingProblem({ ...valid, representativeDocument: "123" }), "Informe um CPF válido do representante legal.");
+assert.match(contractingPartyConflict({ ...valid, witnessName: "Maria Souza" }), /nome do representante/);
+assert.match(contractingPartyConflict({ ...valid, witnessDocument: valid.representativeDocument }), /CPF do representante/);
+assert.match(contractingPartyConflict({ ...valid, witnessEmail: "Maria@empresa.com.br" }), /e-mail do representante/);
+assert.equal(contractingPartyConflict(valid), "");
 assert.equal(contractingProblem({ ...valid, witnessDocument: "123" }), "Informe um CPF válido da testemunha.");
 assert.equal(isContractingContactId("123456"), false);
 assert.equal(isContractingContactId("550e8400-e29b-41d4-a716-446655440000"), true);
 assert.equal(contractingContentType("cartao.PDF"), "application/pdf");
 assert.equal(contractingContentType("planilha.xls"), "application/vnd.ms-excel");
 assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Cliente João da Silva \(ID: 123456\)/);
+assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Representante legal: Maria Souza — 390\.533\.447-05 — maria@empresa.com.br/);
 assert.match(contractingSummary({ ...valid, contactName: "João da Silva", protocol: "123456" }), /Anexos em Mídias salvas/);
 const formUrl = contractingFormUrl("https://app.nexmeta.com.br/", "550e8400-e29b-41d4-a716-446655440000");
 assert.match(formUrl, /^https:\/\/app\.nexmeta\.com\.br\/c\/[0-9a-z]+$/);

@@ -1216,7 +1216,7 @@ export function contactExtraDataCount(profile: {
     if (filled(contracting.cnpj)) count += 1;
     if (filled(contracting.legalName)) count += 1;
     if (filled(contracting.address)) count += 1;
-    if (filled(contracting.representativeName) || filled(contracting.representativeEmail)) count += 1;
+    if (filled(contracting.representativeName) || filled(contracting.representativeDocument) || filled(contracting.representativeEmail)) count += 1;
     if (filled(contracting.witnessName) || filled(contracting.witnessDocument) || filled(contracting.witnessEmail)) count += 1;
   }
   if (profile.showDocument && filled(profile.document)) count += 1;
@@ -1231,6 +1231,7 @@ export type ChatbotContracting = {
   legalName: string;
   address: string;
   representativeName: string;
+  representativeDocument: string;
   representativeEmail: string;
   witnessName: string;
   witnessDocument: string;

@@ -47,6 +47,7 @@ export type ContractingInput = {
   city: string;
   state: string;
   representativeName: string;
+  representativeDocument: string;
   representativeEmail: string;
   witnessName: string;
   witnessDocument: string;
@@ -200,7 +201,7 @@ export function contractingSummary(input: ContractingInput & { contactName: stri
     `CNPJ: ${cnpjMask(input.cnpj)}`,
     `Razão social: ${input.legalName.trim()}`,
     `Endereço: ${contractingAddressLine(input)}`,
-    `Representante legal: ${input.representativeName.trim()} — ${input.representativeEmail.trim()}`,
+    `Representante legal: ${input.representativeName.trim()} — ${cpfMask(input.representativeDocument)} — ${input.representativeEmail.trim()}`,
     `Testemunha: ${input.witnessName.trim()} — ${cpfMask(input.witnessDocument)} — ${input.witnessEmail.trim()}`,
     "Anexos em Mídias salvas.",
   ].join("\n");
@@ -215,12 +216,40 @@ export function contractingProblem(input: ContractingInput) {
   if (input.district.trim().length < 2) return "Informe o bairro.";
   if (input.city.trim().length < 2) return "Informe a cidade.";
   if (!/^[A-Za-z]{2}$/.test(input.state.trim())) return "Informe a UF.";
+  if (!isValidCpf(input.representativeDocument)) return "Informe um CPF válido do representante legal.";
   if (!fullName(input.representativeName)) return "Informe o nome completo do representante legal.";
   if (!isValidEmail(input.representativeEmail)) return "Informe o e-mail do representante legal.";
   if (!fullName(input.witnessName)) return "Informe o nome completo da testemunha.";
   if (!isValidCpf(input.witnessDocument)) return "Informe um CPF válido da testemunha.";
   if (!isValidEmail(input.witnessEmail)) return "Informe o e-mail da testemunha.";
+  const conflict = contractingPartyConflict(input);
+  if (conflict) return conflict;
   return "";
+}
+
+function samePartyText(left: string, right: string) {
+  const clean = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const a = clean(left);
+  const b = clean(right);
+  return a.length > 0 && a === b;
+}
+
+export function contractingPartyConflict(input: Pick<ContractingInput, "representativeName" | "representativeDocument" | "representativeEmail" | "witnessName" | "witnessDocument" | "witnessEmail">) {
+  const messages: string[] = [];
+  if (samePartyText(input.representativeName, input.witnessName) && input.representativeName.trim().includes(" ")) {
+    messages.push("O nome do representante legal não pode ser o mesmo da testemunha.");
+  }
+  const representativeCpf = input.representativeDocument.replace(/\D/g, "");
+  const witnessCpf = input.witnessDocument.replace(/\D/g, "");
+  if (representativeCpf.length === 11 && representativeCpf === witnessCpf) {
+    messages.push("O CPF do representante legal não pode ser o mesmo da testemunha.");
+  }
+  const representativeEmail = input.representativeEmail.trim().toLowerCase();
+  const witnessEmail = input.witnessEmail.trim().toLowerCase();
+  if (isValidEmail(representativeEmail) && representativeEmail === witnessEmail) {
+    messages.push("O e-mail do representante legal não pode ser o mesmo da testemunha.");
+  }
+  return messages.join(" ");
 }
 
 function fullName(value: string) {

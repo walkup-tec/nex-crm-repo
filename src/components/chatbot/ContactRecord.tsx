@@ -600,7 +600,7 @@ export function ContactRecord({
                         <dt>Representante legal</dt>
                         <dd>
                           {profile.contracting.representativeName}
-                          <span>{profile.contracting.representativeEmail}</span>
+                          <span>{[profile.contracting.representativeDocument, profile.contracting.representativeEmail].filter(Boolean).join(" — ")}</span>
                         </dd>
                       </div>
                       <div>

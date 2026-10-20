@@ -13,12 +13,16 @@ RUN bash -lc 'for v in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY VITE_SUPA
 
 FROM node:22-bookworm-slim
 WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libreoffice-writer \
+  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     NITRO_HOST=0.0.0.0 \
     PORT=3000
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/assets/minuta-nex.pdf /app/assets/minuta-nex.pdf
+COPY --from=build /app/assets/minuta-nex.docx /app/assets/minuta-nex.docx
 COPY --from=build /app/artes_exemplo /app/artes
 COPY docker-entrypoint.mjs /app/docker-entrypoint.mjs
 EXPOSE 3000

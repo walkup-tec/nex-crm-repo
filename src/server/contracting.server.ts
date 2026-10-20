@@ -45,6 +45,9 @@ function fail(message: string): never {
 }
 
 function schemaMessage(message: string) {
+  if (/representative_document/i.test(message)) {
+    return "A migração do CPF do representante ainda não foi aplicada no Supabase.";
+  }
   if (/contracting_intakes|contracting_intake_files/i.test(message)) {
     return "A migração da contratação ainda não foi aplicada no Supabase.";
   }
@@ -164,6 +167,7 @@ export async function saveContracting(form: FormData) {
     city: textField(form, "city"),
     state: textField(form, "state"),
     representativeName: textField(form, "representativeName"),
+    representativeDocument: textField(form, "representativeDocument"),
     representativeEmail: textField(form, "representativeEmail"),
     witnessName: textField(form, "witnessName"),
     witnessDocument: textField(form, "witnessDocument"),
@@ -186,6 +190,7 @@ export async function saveContracting(form: FormData) {
     city: input.city.trim(),
     state: input.state.trim().toUpperCase(),
     representative_name: input.representativeName.trim(),
+    representative_document: input.representativeDocument.replace(/\D/g, ""),
     representative_email: input.representativeEmail.trim().toLowerCase(),
     witness_name: input.witnessName.trim(),
     witness_document: input.witnessDocument.replace(/\D/g, ""),

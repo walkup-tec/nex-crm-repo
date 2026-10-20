@@ -12,6 +12,7 @@ import {
   contractingFileLabels,
   contractingFileProblem,
   contractingContactId,
+  contractingPartyConflict,
   contractingProblem,
   cpfMask,
   type ContractingFileKind,
@@ -49,6 +50,15 @@ function Field({
   );
 }
 
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-4 rounded-lg border bg-muted/30 p-4">
+      <h2 className="text-sm font-bold tracking-wide">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 export function ContractingFormPage() {
   const [contactId, setContactId] = useState("");
   const [contactName, setContactName] = useState("");
@@ -64,6 +74,7 @@ export function ContractingFormPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
+  const [representativeDocument, setRepresentativeDocument] = useState("");
   const [representativeEmail, setRepresentativeEmail] = useState("");
   const [witnessName, setWitnessName] = useState("");
   const [witnessDocument, setWitnessDocument] = useState("");
@@ -147,6 +158,7 @@ export function ContractingFormPage() {
       city,
       state,
       representativeName,
+      representativeDocument,
       representativeEmail,
       witnessName,
       witnessDocument,
@@ -176,6 +188,7 @@ export function ContractingFormPage() {
     body.set("city", city);
     body.set("state", state);
     body.set("representativeName", representativeName);
+    body.set("representativeDocument", representativeDocument);
     body.set("representativeEmail", representativeEmail);
     body.set("witnessName", witnessName);
     body.set("witnessDocument", witnessDocument);
@@ -201,6 +214,15 @@ export function ContractingFormPage() {
     }
   }
 
+  const partyAlert = contractingPartyConflict({
+    representativeName,
+    representativeDocument,
+    representativeEmail,
+    witnessName,
+    witnessDocument,
+    witnessEmail,
+  });
+
   return (
     <main className="min-h-screen bg-muted/40 px-4 py-6">
       <div className="mx-auto w-full max-w-lg rounded-xl border bg-card p-5 shadow-panel sm:p-7">
@@ -219,8 +241,7 @@ export function ContractingFormPage() {
         {ready && !blocked && !protocol ? (
           <form onSubmit={(event) => void submit(event)} className="mt-6 space-y-5">
             <p className="text-sm text-muted-foreground">Cliente {contactName}. Preencha todos os campos. O complemento é o único opcional.</p>
-            <section className="space-y-4">
-              <h2 className="text-sm font-bold tracking-wide">CONTRATANTE</h2>
+            <Section title="SOBRE A EMPRESA">
               <Field id="cnpj" label="CNPJ">
                 <Input id="cnpj" inputMode="numeric" autoComplete="off" className="h-12" value={cnpj} required onChange={(event) => setCnpj(cnpjMask(event.target.value))} onBlur={() => void fillCompany()} />
               </Field>
@@ -246,7 +267,7 @@ export function ContractingFormPage() {
                 <Input id="city" autoComplete="address-level2" className="h-12" value={city} required onChange={(event) => setCity(event.target.value)} />
               </Field>
               <Field id="state" label="UF">
-                <select id="state" className="flex h-12 w-full rounded-md border border-input bg-transparent px-3 text-base" value={state} required onChange={(event) => setState(event.target.value)}>
+                <select id="state" className="flex h-12 w-full rounded-md border border-input bg-background px-3 text-base" value={state} required onChange={(event) => setState(event.target.value)}>
                   <option value="">Selecione</option>
                   {states.map((item) => (
                     <option key={item} value={item}>
@@ -255,12 +276,31 @@ export function ContractingFormPage() {
                   ))}
                 </select>
               </Field>
+            </Section>
+            <Section title="SOBRE O REPRESENTANTE LEGAL">
+              <Field id="representative-document" label="CPF">
+                <Input id="representative-document" inputMode="numeric" autoComplete="off" className="h-12" value={representativeDocument} required onChange={(event) => setRepresentativeDocument(cpfMask(event.target.value))} />
+              </Field>
               <Field id="representative-name" label="Nome completo do representante legal">
                 <Input id="representative-name" autoComplete="name" className="h-12" value={representativeName} required onChange={(event) => setRepresentativeName(event.target.value)} />
               </Field>
-              <Field id="representative-email" label="E-mail do representante legal">
+              <Field id="representative-email" label="E-mail">
                 <Input id="representative-email" type="email" autoComplete="email" className="h-12" value={representativeEmail} required onChange={(event) => setRepresentativeEmail(event.target.value)} />
               </Field>
+            </Section>
+            <Section title="TESTEMUNHA">
+              <Field id="witness-name" label="Nome completo">
+                <Input id="witness-name" autoComplete="name" className="h-12" value={witnessName} required onChange={(event) => setWitnessName(event.target.value)} />
+              </Field>
+              <Field id="witness-document" label="CPF">
+                <Input id="witness-document" inputMode="numeric" autoComplete="off" className="h-12" value={witnessDocument} required onChange={(event) => setWitnessDocument(cpfMask(event.target.value))} />
+              </Field>
+              <Field id="witness-email" label="E-mail">
+                <Input id="witness-email" type="email" autoComplete="email" className="h-12" value={witnessEmail} required onChange={(event) => setWitnessEmail(event.target.value)} />
+              </Field>
+            </Section>
+            {partyAlert ? <p role="alert" className="text-sm text-destructive">{partyAlert}</p> : null}
+            <Section title="DOCUMENTOS">
               {contractingFileKinds.map((kind) => (
                 <Field key={kind} id={kind} label={contractingFileLabels[kind]}>
                   <input
@@ -272,7 +312,7 @@ export function ContractingFormPage() {
                       event.target.value = "";
                     }}
                   />
-                  <Button asChild variant="outline" className="h-12 w-full">
+                  <Button asChild variant="outline" className="h-12 w-full bg-background">
                     <label htmlFor={kind}>
                       <Upload />
                       {files[kind] ? "Trocar documento" : "Enviar documento"}
@@ -281,22 +321,10 @@ export function ContractingFormPage() {
                   <p className="mt-2 text-sm text-muted-foreground">{files[kind] ? files[kind]?.name : "PDF, imagem ou outro arquivo de até 15 MB."}</p>
                 </Field>
               ))}
-            </section>
-            <section className="space-y-4">
-              <h2 className="text-sm font-bold tracking-wide">TESTEMUNHA</h2>
-              <Field id="witness-name" label="Nome completo">
-                <Input id="witness-name" autoComplete="name" className="h-12" value={witnessName} required onChange={(event) => setWitnessName(event.target.value)} />
-              </Field>
-              <Field id="witness-document" label="CPF">
-                <Input id="witness-document" inputMode="numeric" autoComplete="off" className="h-12" value={witnessDocument} required onChange={(event) => setWitnessDocument(cpfMask(event.target.value))} />
-              </Field>
-              <Field id="witness-email" label="E-mail">
-                <Input id="witness-email" type="email" autoComplete="email" className="h-12" value={witnessEmail} required onChange={(event) => setWitnessEmail(event.target.value)} />
-              </Field>
-            </section>
+            </Section>
             {lookingUp ? <p className="text-sm text-muted-foreground">{lookingUp === "cep" ? "Consultando o CEP..." : "Consultando o CNPJ..."}</p> : null}
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" className="h-12 w-full" disabled={pending}>
+            <Button type="submit" className="h-12 w-full" disabled={pending || Boolean(partyAlert)}>
               {pending ? "Enviando..." : "Enviar contratação"}
             </Button>
           </form>

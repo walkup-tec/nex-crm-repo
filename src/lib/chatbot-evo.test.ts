@@ -850,6 +850,7 @@ assert.equal(
       legalName: "Empresa",
       address: "Rua 1",
       representativeName: "Ana",
+      representativeDocument: "390.533.447-05",
       representativeEmail: "ana@empresa.com",
       witnessName: "Bia",
       witnessDocument: "123.456.789-09",

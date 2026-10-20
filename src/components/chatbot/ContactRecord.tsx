@@ -239,6 +239,9 @@ export function ContactRecord({
             files: data.files,
             contracting: data.contracting,
             contractingLink: data.contractingLink,
+            contractSigned: data.contractSigned,
+            stage: data.stage,
+            nexClientId: data.nexClientId,
             document: data.document,
             rg: data.rg,
             showDocument: data.showDocument,
@@ -347,7 +350,7 @@ export function ContactRecord({
   }
 
   async function createNexClient() {
-    if (!profile || !profile.contractingLink || !profile.contracting || !profile.dealReady || creatingClient || profile.nexClientId) return;
+    if (!profile || !profile.contractingLink || !profile.contracting || !profile.contractSigned || !profile.dealReady || creatingClient || profile.nexClientId) return;
     setCreatingClient(true);
     const result = await registerChatbotNexClientFn({ data: { contactId: profile.id } });
     setCreatingClient(false);
@@ -437,33 +440,41 @@ export function ContactRecord({
           {error ? <p className="contact-error">{error}</p> : null}
           <section className="contact-section contact-identity">
             <ProfileAvatar name={profile.name} avatarUrl={profile.avatarUrl} />
-            {editing ? (
-              <div className="contact-name-edit">
-                <input
-                  value={draft}
-                  autoFocus
-                  aria-label="Nome do contato"
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void saveName();
-                    }
-                    if (event.key === "Escape") {
-                      setDraft(profile.name);
-                      setEditing(false);
-                    }
-                  }}
-                />
-                <button type="button" className="contact-check" aria-label="Salvar nome" disabled={savingName} onClick={() => void saveName()}>
-                  <Check />
+            <div className="contact-heading">
+              {editing ? (
+                <div className="contact-name-edit">
+                  <input
+                    value={draft}
+                    autoFocus
+                    aria-label="Nome do contato"
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void saveName();
+                      }
+                      if (event.key === "Escape") {
+                        setDraft(profile.name);
+                        setEditing(false);
+                      }
+                    }}
+                  />
+                  <button type="button" className="contact-check" aria-label="Salvar nome" disabled={savingName} onClick={() => void saveName()}>
+                    <Check />
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="contact-name" onClick={() => { setDraft(profile.name); setEditing(true); }}>
+                  {profile.name}
                 </button>
-              </div>
-            ) : (
-              <button type="button" className="contact-name" onClick={() => { setDraft(profile.name); setEditing(true); }}>
-                {profile.name}
-              </button>
-            )}
+              )}
+              {profile.contractSigned ? (
+                <p className="contact-signed">
+                  <Check />
+                  Ctt Assinado
+                </p>
+              ) : null}
+            </div>
           </section>
           <section className="contact-section">
             <h3>WhatsApp</h3>
@@ -708,7 +719,7 @@ export function ContactRecord({
                 <Button type="button" className="contact-register" disabled={registering || creatingClient || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
                   {profile.clientOwnerId ? "Lead cadastrado" : registering ? "Cadastrando" : "Cadastro Lead"}
                 </Button>
-                <Button type="button" className="contact-register" title={profile.contracting ? undefined : "Grave o formulário de contratação neste contato."} disabled={registering || creatingClient || Boolean(profile.nexClientId) || !profile.contracting} onClick={() => void createNexClient()}>
+                <Button type="button" className="contact-register" title={!profile.contracting ? "Grave o formulário de contratação neste contato." : profile.contractSigned ? undefined : "O cadastro libera depois que o cliente e a testemunha assinarem o contrato."} disabled={registering || creatingClient || Boolean(profile.nexClientId) || !profile.contracting || !profile.contractSigned} onClick={() => void createNexClient()}>
                   {profile.nexClientId ? "Cliente cadastrado" : creatingClient ? "Cadastrando" : "Cadastro Clientes"}
                 </Button>
               </div>

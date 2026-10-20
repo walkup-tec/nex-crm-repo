@@ -1254,6 +1254,7 @@ export type ChatbotContactProfile = {
   negotiatedCents: number | null;
   clientOwnerId: string;
   nexClientId: string;
+  contractSigned: boolean;
   note: string;
   document: string;
   rg: string;

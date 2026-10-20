@@ -680,6 +680,7 @@ export function LiveInbox() {
         return;
       }
       setMessage("");
+      setSavedMedia((value) => value + 1);
       void load();
     } catch {
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));

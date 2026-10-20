@@ -962,6 +962,7 @@ export async function sendChatbotMinuta(userId: string, conversationId: string) 
     updated_at: new Date().toISOString(),
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
+  await moveContactToKanbanStage(organizationId, contactId, "Contrato");
 }
 
 async function clientContractTerms(documentDigits: string) {
@@ -1068,6 +1069,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
 }
 
 export async function sendContractSignedWhatsApp(input: { organizationId: string; contactId: string; name: string }) {
+  await moveContactToKanbanStage(input.organizationId, input.contactId, wonKanbanStage);
   const { contractSignedMessage } = await import("@/lib/autentique");
   const text = contractSignedMessage(input.name);
   const contact = await table("chatbot_contacts").select("phone").eq("id", input.contactId).eq("organization_id", input.organizationId).maybeSingle();
@@ -2445,6 +2447,21 @@ async function latestContracting(organizationId: string, contactId: string) {
   };
 }
 
+async function contractWasSigned(organizationId: string, contactId: string) {
+  const row = await table("contract_signatures")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("contact_id", contactId)
+    .eq("status", "signed")
+    .limit(1)
+    .maybeSingle();
+  if (row.error) {
+    if (/contract_signatures|schema cache|does not exist|PGRST205/i.test(row.error.message)) return false;
+    fail(schemaMessage(row.error.message));
+  }
+  return Boolean(row.data);
+}
+
 async function nexClientIdForDocument(document: string) {
   const digits = document.replace(/\D/g, "");
   if (digits.length !== 11 && digits.length !== 14) return "";
@@ -2509,6 +2526,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     negotiatedCents: contact.dealReady ? contact.negotiated : null,
     clientOwnerId: contact.dealReady ? contact.clientOwnerId : "",
     nexClientId: await nexClientIdForDocument(intake?.cnpj ?? ""),
+    contractSigned: await contractWasSigned(organizationId, contactId),
     note: contact.note,
     document: contact.document,
     rg: contact.rg,
@@ -2640,11 +2658,7 @@ export async function registerChatbotClient(userId: string, contactId: string) {
   return { ownerId: cell(updated.data, "client_owner_id") || userId };
 }
 
-export async function registerChatbotNexClient(userId: string, contactId: string) {
-  const { organizationId } = await membership(userId, "inbox");
-  const owner = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
-  if (owner.error) fail(schemaMessage(owner.error.message));
-  if (!keepsAccessWithoutPayment(cell(owner.data, "legal_name"))) fail("Só o MMS Master cadastra clientes da NEX.");
+async function provisionChatbotNexClient(organizationId: string, contactId: string) {
   const contact = await ownedContact(organizationId, contactId);
   const intake = await latestContracting(organizationId, contactId);
   if (!intake) fail("Este contato ainda não enviou o formulário de contratação.");
@@ -2721,6 +2735,19 @@ export async function registerChatbotNexClient(userId: string, contactId: string
     await removeProvisionedClient(created.id);
     throw error;
   }
+}
+
+async function registerSignedChatbotNexClient(organizationId: string, contactId: string) {
+  const owner = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+  if (owner.error) fail(schemaMessage(owner.error.message));
+  if (!keepsAccessWithoutPayment(cell(owner.data, "legal_name"))) fail("Só o MMS Master cadastra clientes da NEX.");
+  if (!(await contractWasSigned(organizationId, contactId))) fail("O cadastro libera depois que o cliente e a testemunha assinarem o contrato.");
+  return provisionChatbotNexClient(organizationId, contactId);
+}
+
+export async function registerChatbotNexClient(userId: string, contactId: string) {
+  const { organizationId } = await membership(userId, "inbox");
+  return registerSignedChatbotNexClient(organizationId, contactId);
 }
 
 async function sendSchedulingNotice(organizationId: string, contactId: string, phone: string, text: string) {
@@ -3561,6 +3588,42 @@ async function appendFlowNote(organizationId: string, contactId: string, text: s
 
 function contactNoteText(value: string) {
   return value.replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+async function moveContactToKanbanStage(organizationId: string, contactId: string, stageName: string) {
+  try {
+    const wanted = stageName.trim();
+    if (wanted.length < 2) return;
+    const stages = await rowsOrMissing(
+      table("chatbot_stages").select("id, name, position").eq("organization_id", organizationId).order("position", { ascending: true }),
+    );
+    let stored = wanted;
+    if (!stages.missing) {
+      const match = stages.rows.find((row) => cell(row, "name").localeCompare(wanted, "pt-BR", { sensitivity: "accent" }) === 0);
+      if (match) {
+        stored = cell(match, "name");
+      } else {
+        const success = stages.rows.find((row) => protectedKanbanStage(cell(row, "name")));
+        const position = success ? Number(cell(success, "position")) : stages.rows.length;
+        const nextPosition = Number.isFinite(position) ? position : stages.rows.length;
+        if (success && Number.isFinite(position)) {
+          for (const row of [...stages.rows].reverse()) {
+            const current = Number(cell(row, "position"));
+            if (!Number.isFinite(current) || current < position) continue;
+            await table("chatbot_stages").update({ position: current + 1 }).eq("id", cell(row, "id"));
+          }
+        }
+        const inserted = await table("chatbot_stages")
+          .insert({ organization_id: organizationId, name: wanted, position: nextPosition })
+          .select("id")
+          .maybeSingle();
+        if (inserted.error && !duplicate(inserted.error)) return;
+      }
+    }
+    await table("chatbot_contacts").update({ stage_name: stored }).eq("id", contactId).eq("organization_id", organizationId);
+  } catch (error) {
+    console.error("chatbot_stage", error instanceof Error ? error.message : "falha ao mover etapa");
+  }
 }
 
 async function assignFlowStage(organizationId: string, contactId: string, name: string) {

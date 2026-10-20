@@ -160,6 +160,9 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .note-count{margin:-8px 0 0;text-align:right;font-size:11px;color:var(--muted-foreground)}
 .chatbot-app .contact-panel{display:flex;flex-direction:column;min-height:0;overflow:auto;background:var(--card)}
 .chatbot-app .contact-identity{display:flex;align-items:center;gap:10px}
+.chatbot-app .contact-heading{display:flex;flex:1;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.chatbot-app .contact-signed{display:inline-flex;align-items:center;gap:4px;margin:0;color:#7dcea0;font-size:11px;font-weight:600}
+.chatbot-app .contact-signed svg{width:13px;height:13px}
 .chatbot-app .contact-identity .contact-name,.chatbot-app .contact-identity .contact-name-edit{flex:1;min-width:0;width:auto}
 .chatbot-app .contact-name{display:block;width:100%;border:0;background:transparent;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:700;color:var(--foreground);cursor:pointer}
 .chatbot-app .contact-name-edit{display:flex;align-items:center;gap:6px}

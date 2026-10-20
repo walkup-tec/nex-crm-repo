@@ -251,6 +251,7 @@ export function LiveInbox() {
   const [selected, setSelected] = useState("");
   const [draft, setDraft] = useState("");
   const [message, setMessage] = useState("");
+  const [signatureError, setSignatureError] = useState("");
   const [pending, setPending] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [blockingBots, setBlockingBots] = useState(false);
@@ -640,18 +641,20 @@ export function LiveInbox() {
     sending.current = true;
     setOutgoing((current) => [...current, preview]);
     setPending(true);
+    setSignatureError("");
     try {
       const result = await sendChatbotAssinaturaFn({ data: { conversationId: selected } });
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-        setMessage(result.message);
+        setSignatureError(result.message);
         return;
       }
+      setSignatureError("");
       setMessage("");
       void load();
     } catch {
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-      setMessage("Não foi possível enviar o contrato para assinatura.");
+      setSignatureError("Não foi possível enviar o contrato para assinatura.");
     } finally {
       sending.current = false;
       setPending(false);
@@ -972,6 +975,7 @@ export function LiveInbox() {
                     ))}
                   </div>
                 ) : null}
+                {signatureError ? <p className="info-note">{signatureError}</p> : null}
                 <footer className="composer-actions">
                   <div className="composer-tools">
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>

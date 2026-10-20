@@ -965,22 +965,30 @@ export async function sendChatbotMinuta(userId: string, conversationId: string) 
   await moveContactToKanbanStage(organizationId, contactId, "Contrato");
 }
 
-async function clientContractTerms(documentDigits: string) {
-  if (documentDigits.length !== 14) fail("Cadastre este cliente, com a mensalidade e o início do contrato, antes de enviar a assinatura.");
-  const listed = await rows(table("organizations").select("id, document"));
-  const match = listed.find((row) => cell(row, "document").replace(/\D/g, "") === documentDigits);
-  if (!match) fail("Cadastre este cliente, com a mensalidade e o início do contrato, antes de enviar a assinatura.");
-  const contract = await table("contracts")
-    .select("monthly_fee_cents, starts_on")
-    .eq("organization_id", cell(match, "id"))
-    .maybeSingle();
-  if (contract.error) fail(schemaMessage(contract.error.message));
-  const cents = Number(contract.data?.["monthly_fee_cents"]);
-  const startsOn = cell(contract.data, "starts_on").slice(0, 10);
-  if (!contract.data || !Number.isInteger(cents) || cents < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(startsOn)) {
-    fail("Cadastre a mensalidade e o início do contrato deste cliente antes de enviar a assinatura.");
+async function clientContractTerms(organizationId: string, contactId: string, documentDigits: string) {
+  if (documentDigits.length === 14) {
+    const listed = await rows(table("organizations").select("id, document"));
+    const match = listed.find((row) => cell(row, "document").replace(/\D/g, "") === documentDigits);
+    if (match) {
+      const contract = await table("contracts")
+        .select("monthly_fee_cents, starts_on")
+        .eq("organization_id", cell(match, "id"))
+        .maybeSingle();
+      if (contract.error) fail(schemaMessage(contract.error.message));
+      const cents = Number(contract.data?.["monthly_fee_cents"]);
+      const startsOn = cell(contract.data, "starts_on").slice(0, 10);
+      if (!contract.data || !Number.isInteger(cents) || cents < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(startsOn)) {
+        fail("Cadastre a mensalidade e o início do contrato deste cliente antes de enviar a assinatura.");
+      }
+      return { monthlyFeeCents: cents, startsOn };
+    }
   }
-  return { monthlyFeeCents: cents, startsOn };
+  const deal = await table("chatbot_contacts").select("negotiated_cents").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (deal.error) fail(schemaMessage(deal.error.message));
+  const cents = Number(deal.data?.["negotiated_cents"]);
+  if (!Number.isInteger(cents) || cents <= 0) fail("Informe o valor negociado neste contato antes de enviar a assinatura.");
+  const { brazilToday } = await import("@/lib/chatbot-client");
+  return { monthlyFeeCents: cents, startsOn: brazilToday() };
 }
 
 function mailbox(value: string) {
@@ -1025,7 +1033,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     witnessEmail,
   });
   if (conflict) fail(conflict);
-  const terms = await clientContractTerms(intake.cnpj.replace(/\D/g, ""));
+  const terms = await clientContractTerms(organizationId, contactId, intake.cnpj.replace(/\D/g, ""));
   const { filledContractPdf } = await import("@/server/contract-minuta.server");
   const pdfBase64 = filledContractPdf({
     legalName: intake.legalName,

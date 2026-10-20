@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   chatbotContactProfileFn,
   registerChatbotClientFn,
+  registerChatbotNexClientFn,
   renameChatbotContactFileFn,
   renameChatbotContactFn,
   setChatbotContactDealFn,
@@ -132,6 +133,7 @@ export function ContactRecord({
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
+  const [creatingClient, setCreatingClient] = useState(false);
   const [deal, setDeal] = useState("");
   const [documentDraft, setDocumentDraft] = useState("");
   const [rgDraft, setRgDraft] = useState("");
@@ -342,6 +344,24 @@ export function ContactRecord({
     }
     setError("");
     setProfile({ ...profile, clientOwnerId: result.data.ownerId });
+  }
+
+  async function createNexClient() {
+    if (!profile || !profile.contractingLink || !profile.dealReady || creatingClient || profile.nexClientId) return;
+    setCreatingClient(true);
+    const result = await registerChatbotNexClientFn({ data: { contactId: profile.id } });
+    setCreatingClient(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const notes = [
+      result.data.accessEmail ? "" : "O e-mail de acesso não foi enviado.",
+      result.data.accessWhatsapp ? "" : "O WhatsApp de acesso não foi enviado.",
+      result.data.noticeSent ? "" : "O aviso de agendamento não foi enviado no WhatsApp.",
+    ].filter(Boolean);
+    setError(notes.join(" "));
+    setProfile({ ...profile, nexClientId: result.data.organizationId });
   }
 
   async function saveStage(stage: string) {
@@ -683,7 +703,16 @@ export function ContactRecord({
                 )}
               </CollapsibleContent>
             </Collapsible>
-            {profile.dealReady ? (
+            {profile.dealReady && profile.contractingLink ? (
+              <div className="contact-register-row">
+                <Button type="button" className="contact-register" disabled={registering || creatingClient || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
+                  {profile.clientOwnerId ? "Lead cadastrado" : registering ? "Cadastrando" : "Cadastro Lead"}
+                </Button>
+                <Button type="button" className="contact-register" disabled={registering || creatingClient || Boolean(profile.nexClientId)} onClick={() => void createNexClient()}>
+                  {profile.nexClientId ? "Cliente cadastrado" : creatingClient ? "Cadastrando" : "Cadastro Clientes"}
+                </Button>
+              </div>
+            ) : profile.dealReady ? (
               <Button type="button" className="contact-register" disabled={registering || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
                 {profile.clientOwnerId ? "Cliente cadastrado" : registering ? "Cadastrando" : "Cadastrar cliente"}
               </Button>

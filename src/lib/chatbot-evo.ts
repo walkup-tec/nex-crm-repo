@@ -1253,6 +1253,7 @@ export type ChatbotContactProfile = {
   dealReady: boolean;
   negotiatedCents: number | null;
   clientOwnerId: string;
+  nexClientId: string;
   note: string;
   document: string;
   rg: string;

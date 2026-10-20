@@ -341,6 +341,14 @@ export const setChatbotContactDealFn = createServerFn({ method: "POST" })
     return guard(() => setChatbotContactDeal(context.userId, data.contactId, data.cents));
   });
 
+export const registerChatbotNexClientFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { registerChatbotNexClient } = await import("@/server/chatbot.server");
+    return guard(() => registerChatbotNexClient(context.userId, data.contactId));
+  });
+
 export const registerChatbotClientFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string }) => data)

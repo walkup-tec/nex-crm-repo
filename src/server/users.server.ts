@@ -363,6 +363,63 @@ export async function createUser(
   }
 }
 
+export async function inviteClientAdmin(input: { fullName: string; email: string; whatsapp: string; organizationId: string }) {
+  const fullName = input.fullName.trim();
+  const email = input.email.trim().toLowerCase();
+  if (fullName.length < 2) fail("Informe o nome.");
+  if (!email.includes("@")) fail("Informe um e-mail válido.");
+  const contact = contactOf(input.whatsapp, email, email, true);
+  const { data: link, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: { redirectTo: `${appUrl()}/reset-password`, data: { full_name: fullName } },
+  });
+  if (linkError || !link.user) fail(emailTaken(linkError?.message) ? "Já existe um acesso com este e-mail." : "Não foi possível criar o acesso.");
+  const createdId = link.user.id;
+  const permissions = { campaigns: true, balance: true, credit: true, manage: true, chatbot: true };
+  try {
+    const { error: profileError } = await supabaseAdmin.from("profiles").insert({
+      id: createdId,
+      full_name: fullName,
+      email,
+      whatsapp: contact.whatsapp,
+      finance_email: contact.financeEmail,
+      finance_email_same: true,
+      organization_id: input.organizationId,
+      owner_id: null,
+    });
+    if (profileError) fail(profileError.message);
+    const { error: roleError } = await supabaseAdmin.from("user_roles").insert({ user_id: createdId, role: "client_admin" });
+    if (roleError) fail(roleError.message);
+    const { error: permissionError } = await supabaseAdmin.from("user_permissions").insert({
+      user_id: createdId,
+      can_view_campaigns: permissions.campaigns,
+      can_view_meta_balance: permissions.balance,
+      can_add_meta_credit: permissions.credit,
+      can_manage_users: permissions.manage,
+      can_use_chatbot: permissions.chatbot,
+    });
+    if (permissionError) fail(permissionError.message);
+    const actionLink = link.properties?.action_link;
+    if (!actionLink) fail("O convite foi criado sem o link de primeiro acesso.");
+    let accessEmail = false;
+    try {
+      await sendInviteEmail(email, fullName);
+      accessEmail = true;
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== "InviteMailError") throw error;
+    }
+    const accessWhatsapp = await sendInviteWhatsapp(contact.whatsapp, fullName, email);
+    return { id: createdId, accessEmail, accessWhatsapp };
+  } catch (error) {
+    await supabaseAdmin.from("user_permissions").delete().eq("user_id", createdId);
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", createdId);
+    await supabaseAdmin.from("profiles").delete().eq("id", createdId);
+    await supabaseAdmin.auth.admin.deleteUser(createdId);
+    throw error;
+  }
+}
+
 export async function resendInvite(userId: string, targetId: string) {
   const actor = await actorOf(userId);
   const target = await targetOf(targetId);

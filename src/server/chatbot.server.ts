@@ -2445,6 +2445,14 @@ async function latestContracting(organizationId: string, contactId: string) {
   };
 }
 
+async function nexClientIdForDocument(document: string) {
+  const digits = document.replace(/\D/g, "");
+  if (digits.length !== 11 && digits.length !== 14) return "";
+  const found = await table("organizations").select("id").eq("document", digits).maybeSingle();
+  if (found.error || !found.data) return "";
+  return cell(found.data, "id");
+}
+
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
   const { organizationId } = await membership(userId, "inbox");
   const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake] = await Promise.all([
@@ -2500,6 +2508,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     dealReady: contact.dealReady,
     negotiatedCents: contact.dealReady ? contact.negotiated : null,
     clientOwnerId: contact.dealReady ? contact.clientOwnerId : "",
+    nexClientId: await nexClientIdForDocument(intake?.cnpj ?? ""),
     note: contact.note,
     document: contact.document,
     rg: contact.rg,
@@ -2629,6 +2638,127 @@ export async function registerChatbotClient(userId: string, contactId: string) {
     return { ownerId: kept };
   }
   return { ownerId: cell(updated.data, "client_owner_id") || userId };
+}
+
+export async function registerChatbotNexClient(userId: string, contactId: string) {
+  const { organizationId } = await membership(userId, "inbox");
+  const owner = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+  if (owner.error) fail(schemaMessage(owner.error.message));
+  if (!keepsAccessWithoutPayment(cell(owner.data, "legal_name"))) fail("Só o MMS Master cadastra clientes da NEX.");
+  const contact = await ownedContact(organizationId, contactId);
+  const intake = await latestContracting(organizationId, contactId);
+  if (!intake) fail("Este contato ainda não enviou o formulário de contratação.");
+  const document = intake.cnpj.replace(/\D/g, "");
+  const existing = await table("organizations").select("id").eq("document", document).maybeSingle();
+  if (existing.error) fail(schemaMessage(existing.error.message));
+  if (existing.data) fail("Já existe um cliente com este CPF ou CNPJ.");
+  const productLinks = await rowsOrMissing(
+    table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId),
+  );
+  const products = await rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId));
+  const selected = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
+  const names = products.rows.filter((row) => selected.has(cell(row, "id"))).map((row) => cell(row, "name"));
+  const { adsFromProductNames, brazilToday, chatbotClientTerms, chatbotDelinquencyCents, chatbotSchedulingMessage } = await import("@/lib/chatbot-client");
+  const ads = adsFromProductNames(names);
+  if (!ads.adsMeta && !ads.adsGoogle) fail("Marque Meta Ads ou Google Ads em Produtos e serviços.");
+  const deal = await table("chatbot_contacts").select("negotiated_cents").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (deal.error) fail(schemaMessage(deal.error.message));
+  const cents = Number(deal.data?.["negotiated_cents"]);
+  if (!Number.isInteger(cents) || cents <= 0) fail("Informe o valor negociado.");
+  const phone = whatsappNumber(cell(contact, "phone"));
+  if (!phone) fail("Esse contato não tem um telefone válido.");
+  if (!intake.representativeName.trim() || !mailbox(intake.representativeEmail)) {
+    fail("O formulário precisa do nome e do e-mail do representante legal.");
+  }
+  const today = brazilToday();
+  const terms = chatbotClientTerms(today);
+  if (!terms) fail("Não foi possível definir a vigência do contrato.");
+  const { provisionClientCharges, provisionClientShell, removeProvisionedClient } = await import("@/server/clients.server");
+  const { inviteClientAdmin } = await import("@/server/users.server");
+  const created = await provisionClientShell({
+    legalName: intake.legalName,
+    document: intake.cnpj,
+    responsibleName: intake.representativeName,
+    responsibleEmail: intake.representativeEmail,
+    whatsapp: phone.slice(2),
+    sameFinancePhone: true,
+    billingProvider: "cora",
+    adsMeta: ads.adsMeta,
+    adsGoogle: ads.adsGoogle,
+    monthlyFee: String(cents),
+    dueDay: terms.dueDay,
+    startsOn: terms.startsOn,
+    endsOn: terms.endsOn,
+    finePercent: "",
+    interestPercent: "",
+    asaasSubscriptionId: "",
+    promoEnabled: false,
+    promoStartsOn: "",
+    promoEndsOn: "",
+    afterPromoFee: "",
+    delinquencyMode: "amount",
+    delinquencyAmount: String(chatbotDelinquencyCents),
+  });
+  let invitedId = "";
+  try {
+    const invited = await inviteClientAdmin({
+      fullName: intake.representativeName,
+      email: intake.representativeEmail,
+      whatsapp: phone.slice(2),
+      organizationId: created.id,
+    });
+    invitedId = invited.id;
+    await provisionClientCharges(created.id, created.parsed, today);
+    const noticeSent = await sendSchedulingNotice(organizationId, contactId, phone, chatbotSchedulingMessage);
+    return { organizationId: created.id, accessEmail: invited.accessEmail, accessWhatsapp: invited.accessWhatsapp, noticeSent };
+  } catch (error) {
+    if (invitedId) {
+      await supabaseAdmin.from("user_permissions").delete().eq("user_id", invitedId);
+      await supabaseAdmin.from("user_roles").delete().eq("user_id", invitedId);
+      await supabaseAdmin.from("profiles").delete().eq("id", invitedId);
+      await supabaseAdmin.auth.admin.deleteUser(invitedId);
+    }
+    await removeProvisionedClient(created.id);
+    throw error;
+  }
+}
+
+async function sendSchedulingNotice(organizationId: string, contactId: string, phone: string, text: string) {
+  try {
+    const conversation = await table("chatbot_conversations")
+      .select("id, connection_id")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (conversation.error || !conversation.data) return false;
+    const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+    if (cell(connection, "status") !== "connected") return false;
+    const sent = await evo(
+      `/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`,
+      "POST",
+      whatsappTextPayload(phone, text),
+    );
+    const conversationId = cell(conversation.data, "id");
+    const saved = await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text,
+        direction: "out",
+        status: "sent",
+        external_id: readMessageId(sent) || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (saved.error) return false;
+    await table("chatbot_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+    return true;
+  } catch (error) {
+    console.error("chatbot_schedule_notice", error instanceof Error ? error.message : "falha");
+    return false;
+  }
 }
 
 export async function listChatbotClients(userId: string): Promise<ChatbotClientRow[]> {

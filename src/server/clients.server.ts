@@ -445,12 +445,11 @@ async function rememberPromotion(organizationId: string, parsed: ReturnType<type
   if (saved.error) fail(migrationMessage(saved.error.message));
 }
 
-async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>) {
+async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>, today = new Date().toISOString().slice(0, 10)) {
   if (parsed.billingProvider !== "cora" || !parsed.endsOn || !parsed.delinquencyMode) return;
   const existing = await supabaseAdmin.from("invoices").select("id").eq("organization_id", organizationId).limit(1);
   if (existing.error) fail(migrationMessage(existing.error.message));
   if ((existing.data ?? []).length) return;
-  const today = new Date().toISOString().slice(0, 10);
   const dues = contractDueDates(parsed.startsOn, parsed.endsOn, parsed.dueDay, today);
   if (!dues.length) fail("Não há vencimento futuro até o término do contrato.");
   const promo =
@@ -504,6 +503,62 @@ async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeo
     const savedNotices = await supabaseAdmin.from("billing_notices").insert(notices);
     if (savedNotices.error) fail(migrationMessage(savedNotices.error.message));
   }
+}
+
+export async function provisionClientShell(input: ClientDraft) {
+  const parsed = parseDraft(input);
+  const { data: org, error: orgError } = await supabaseAdmin
+    .from("organizations")
+    .insert({
+      legal_name: parsed.legalName,
+      document: parsed.document,
+      responsible_name: parsed.responsibleName,
+      responsible_email: parsed.responsibleEmail,
+      responsible_phone: parsed.whatsapp,
+      finance_phone: parsed.financePhone,
+      ads_meta: parsed.adsMeta,
+      ads_google: parsed.adsGoogle,
+      status: "active",
+    })
+    .select("id")
+    .single();
+  if (orgError || !org) {
+    fail(
+      orgError && duplicateDocument(orgError.message, orgError.code)
+        ? "Já existe um cliente com este CPF ou CNPJ."
+        : migrationMessage(orgError?.message || "Não foi possível criar o cliente."),
+    );
+  }
+  try {
+    await saveContract(org.id, parsed);
+  } catch (error) {
+    await supabaseAdmin.from("organizations").delete().eq("id", org.id);
+    throw error;
+  }
+  return { id: org.id, parsed };
+}
+
+export async function provisionClientCharges(
+  organizationId: string,
+  parsed: Awaited<ReturnType<typeof provisionClientShell>>["parsed"],
+  today?: string,
+) {
+  await issueCoraCharges(organizationId, parsed, today);
+}
+
+export async function removeProvisionedClient(organizationId: string) {
+  const invoices = await supabaseAdmin.from("invoices").select("external_charge_id").eq("organization_id", organizationId);
+  for (const invoice of invoices.data ?? []) {
+    const charge = invoice.external_charge_id ?? "";
+    if (!charge.startsWith("inv_")) continue;
+    try {
+      const { cancelCoraInvoice } = await import("@/server/cora.server");
+      await cancelCoraInvoice(charge);
+    } catch (error) {
+      console.error("cora_client_rollback", error instanceof Error ? error.message : "falha");
+    }
+  }
+  await supabaseAdmin.from("organizations").delete().eq("id", organizationId);
 }
 
 export async function createClient(userId: string, input: ClientDraft) {

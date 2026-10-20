@@ -230,6 +230,8 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app select.contact-stage:focus{outline:none;border-color:#6F02FD}
 .chatbot-app select.contact-stage:disabled{opacity:.6}
 .chatbot-app .contact-register{margin-top:16px;width:100%}
+.chatbot-app .contact-register-row{display:flex;gap:8px;margin-top:16px}
+.chatbot-app .contact-register-row .contact-register{flex:1;min-width:0;margin-top:0;padding-inline:8px;font-size:13px}
 .chatbot-app .contact-refresh-section{padding-top:12px;padding-bottom:12px}
 .chatbot-app .contact-refresh{width:100%}
 .chatbot-app .transfer-form{display:grid;gap:14px}

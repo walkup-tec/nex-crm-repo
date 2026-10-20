@@ -122,6 +122,14 @@ export const sendChatbotMinutaFn = createServerFn({ method: "POST" })
     return guard(() => sendChatbotMinuta(context.userId, data.conversationId));
   });
 
+export const sendChatbotAssinaturaFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { sendChatbotAssinatura } = await import("@/server/chatbot.server");
+    return guard(() => sendChatbotAssinatura(context.userId, data.conversationId));
+  });
+
 export const sendChatbotCadastroFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string }) => data)

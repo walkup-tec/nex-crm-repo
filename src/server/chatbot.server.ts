@@ -132,6 +132,9 @@ function schemaMessage(message: string) {
   if (/contracting_intakes|contracting_intake_files/i.test(message)) {
     return "A migração da contratação ainda não foi aplicada no Supabase.";
   }
+  if (/contract_signatures/i.test(message)) {
+    return "A migração da assinatura ainda não foi aplicada no Supabase.";
+  }
   if (/chatbot_teams|chatbot_team_members|chatbot_team_channels/i.test(message)) {
     return "A migração das equipes ainda não foi aplicada no Supabase.";
   }
@@ -961,7 +964,100 @@ export async function sendChatbotMinuta(userId: string, conversationId: string) 
   if (assigned.error) fail(schemaMessage(assigned.error.message));
 }
 
-async function requireVisibleConversation(userId: string, conversationId: string) {
+function mailbox(value: string) {
+  const email = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+export async function sendChatbotAssinatura(userId: string, conversationId: string) {
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contactId = cell(conversation.data, "contact_id");
+  const contact = await ownedContact(organizationId, contactId);
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(conversation.data, "connection_id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  const intake = await latestContracting(organizationId, contactId);
+  if (!intake) fail("Este contato ainda não enviou o formulário de contratação.");
+  const clientEmail = mailbox(intake.representativeEmail);
+  const witnessEmail = mailbox(intake.witnessEmail);
+  if (!clientEmail || !witnessEmail || !intake.representativeName.trim() || !intake.witnessName.trim()) {
+    fail("O formulário precisa do nome e do e-mail do representante e da testemunha.");
+  }
+  const { createContractSignature } = await import("@/server/autentique.server");
+  await createContractSignature({
+    organizationId,
+    contactId,
+    clientName: cell(contact, "name") || intake.representativeName,
+    signerName: intake.representativeName,
+    clientEmail,
+    witnessName: intake.witnessName,
+    witnessEmail,
+    pdfBase64: minutaPdfBase64(),
+  });
+  const saved = await table("chatbot_messages")
+    .insert({
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      text: "Contrato enviado para assinatura.",
+      direction: "out",
+      status: "sent",
+    })
+    .select("id")
+    .maybeSingle();
+  if (saved.error) fail(schemaMessage(saved.error.message));
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (assigned.error) fail(schemaMessage(assigned.error.message));
+}
+
+export async function sendContractSignedWhatsApp(input: { organizationId: string; contactId: string; name: string }) {
+  const { contractSignedMessage } = await import("@/lib/autentique");
+  const text = contractSignedMessage(input.name);
+  const contact = await table("chatbot_contacts").select("phone").eq("id", input.contactId).eq("organization_id", input.organizationId).maybeSingle();
+  if (contact.error) throw new Error("Não foi possível ler o telefone do contato.");
+  const phone = whatsappNumber(cell(contact.data, "phone")) ?? cell(contact.data, "phone");
+  if (!phone) throw new Error("Esse contato não tem um telefone válido.");
+  const conversation = await table("chatbot_conversations")
+    .select("id, connection_id")
+    .eq("organization_id", input.organizationId)
+    .eq("contact_id", input.contactId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (conversation.error || !conversation.data) throw new Error("Não foi possível achar a conversa do contato.");
+  const connection = await ownedConnection(input.organizationId, cell(conversation.data, "connection_id"));
+  if (cell(connection, "status") !== "connected") throw new Error("O WhatsApp dessa conversa não está conectado.");
+  const sent = await evo(
+    `/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`,
+    "POST",
+    whatsappTextPayload(phone, text),
+  );
+  const saved = await table("chatbot_messages")
+    .insert({
+      organization_id: input.organizationId,
+      conversation_id: cell(conversation.data, "id"),
+      text,
+      direction: "out",
+      status: "sent",
+      external_id: readMessageId(sent) || null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (saved.error) throw new Error("A mensagem de assinatura não foi gravada na conversa.");
+}
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")

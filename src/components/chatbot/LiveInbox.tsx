@@ -10,6 +10,7 @@ import {
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
   sendChatbotArtesFn,
+  sendChatbotAssinaturaFn,
   sendChatbotCadastroFn,
   sendChatbotMinutaFn,
   sendChatbotMessageFn,
@@ -626,6 +627,38 @@ export function LiveInbox() {
     }
   }
 
+  async function sendAssinatura() {
+    if (!selected || !contact || !data?.contractingForm || sending.current) return;
+    setQuickOpen(false);
+    setBotsOpen(false);
+    const preview: OutgoingPreview = {
+      id: `local-${Date.now()}`,
+      conversationId: selected,
+      text: "Contrato enviado para assinatura.",
+      createdAt: new Date().toISOString(),
+    };
+    sending.current = true;
+    setOutgoing((current) => [...current, preview]);
+    setPending(true);
+    try {
+      const result = await sendChatbotAssinaturaFn({ data: { conversationId: selected } });
+      if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      void load();
+    } catch {
+      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+      setMessage("Não foi possível enviar o contrato para assinatura.");
+    } finally {
+      sending.current = false;
+      setPending(false);
+      composerRef.current?.focus();
+    }
+  }
+
   async function sendMinuta() {
     if (!selected || !contact || !data?.contractingForm || sending.current) return;
     setQuickOpen(false);
@@ -959,6 +992,11 @@ export function LiveInbox() {
                     {data?.contractingForm ? (
                       <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendForm()}>
                         Form
+                      </Button>
+                    ) : null}
+                    {data?.contractingForm ? (
+                      <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendAssinatura()}>
+                        Assinatura Ctt
                       </Button>
                     ) : null}
                   </div>

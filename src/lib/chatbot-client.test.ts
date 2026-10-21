@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { contractDueDates } from "./billing-plan";
-import { adsFromProductNames, chatbotClientTerms, chatbotDelinquencyCents, chatbotSchedulingMessage, monthlyDueDay } from "./chatbot-client";
+import { adsFromProductNames, chatbotClientTerms, chatbotDelinquencyCents, chatbotSchedulingMessage, firstBusinessDueDate, monthlyDueDay } from "./chatbot-client";
 
 assert.deepEqual(adsFromProductNames(["Meta Ads"]), { adsMeta: true, adsGoogle: false });
 assert.deepEqual(adsFromProductNames(["Google Ads", "Site"]), { adsMeta: false, adsGoogle: true });
@@ -44,6 +44,8 @@ assert.equal(contractDueDates("2026-10-16", "2027-01-16", 19, "2026-10-16")[0], 
 const holiday = chatbotClientTerms("2026-04-20");
 assert.equal(holiday?.dueDay, "22");
 assert.equal(monthlyDueDay("2026-04-20"), "22");
+assert.equal(firstBusinessDueDate("2026-10-21"), "2026-10-22");
+assert.equal(monthlyDueDay("2026-10-21"), "22");
 
 const lateMonth = chatbotClientTerms("2026-10-28");
 assert.equal(lateMonth?.dueDay, "3");

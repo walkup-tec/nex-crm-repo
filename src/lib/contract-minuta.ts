@@ -1,4 +1,4 @@
-import { monthlyDueDay } from "./chatbot-client";
+import { firstBusinessDueDate, monthlyDueDay } from "./chatbot-client";
 import { readZip, writeZip } from "./docx-zip";
 
 export type ContractMinutaFields = {
@@ -124,6 +124,7 @@ export function contractMinutaReplacements(fields: ContractMinutaFields) {
   };
   const replacements: (readonly [string, string])[] = [
     ["TESTEMUNHA 1: [NOME DA TESTEMUNHA]", "TESTEMUNHA 2: [NOME DA TESTEMUNHA]"],
+    ["Primeira competência e vencimento: [DATA COMEÇO VIGÊNCIA CLIENTE]", `Primeira competência e vencimento: ${contractDate(firstBusinessDueDate(fields.startsOn))}`],
     ...tokens.map((token) => [token, values[token]] as const),
   ];
   const platforms = contractPlatformPhrase(fields);

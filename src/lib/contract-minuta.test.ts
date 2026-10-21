@@ -53,6 +53,7 @@ assert.match(text, /\(Mil e quatrocentos Reais\)/);
 assert.equal(text.includes("DESCRIÇÃO DO VALOR"), false);
 assert.match(text, /20\/10\/2026/);
 assert.match(text, /dia 21 de cada mês/);
+assert.match(text, /Primeira competência e vencimento: 21\/10\/2026/);
 assert.match(text, /representante legal/);
 assert.match(text, /João Lima/);
 assert.match(text, /529\.982\.247-25/);

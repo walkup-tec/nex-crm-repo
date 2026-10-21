@@ -84,15 +84,20 @@ function isBusinessDay(iso: string) {
   return !nationalHolidays(parts.year).has(iso);
 }
 
-export function monthlyDueDay(startsOn: string) {
+export function firstBusinessDueDate(startsOn: string) {
   if (!isoDate(startsOn)) return "";
   let cursor = addIsoDays(startsOn, 1);
   for (let guard = 0; guard < 14 && cursor; guard += 1) {
     const day = Number(cursor.slice(8, 10));
-    if (day >= 1 && day <= 28 && isBusinessDay(cursor)) return String(day);
+    if (day >= 1 && day <= 28 && isBusinessDay(cursor)) return cursor;
     cursor = addIsoDays(cursor, 1);
   }
-  return "1";
+  return "";
+}
+
+export function monthlyDueDay(startsOn: string) {
+  const due = firstBusinessDueDate(startsOn);
+  return due ? String(Number(due.slice(8, 10))) : "";
 }
 
 export function chatbotClientTerms(today: string) {

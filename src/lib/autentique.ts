@@ -4,6 +4,8 @@ export function contractDocumentName(contactId: string) {
   return `Contrato NEX — ${contactId.trim()}`;
 }
 
+export const contractCompanyWitnessEmail = "obotmoney@gmail.com";
+
 export function contractSignedMessage(name: string) {
   const clean = name.trim().replace(/\s+/g, " ") || "cliente";
   return `Oi ${clean}! identificamos a assinatura do seu contrato. Por favor, me informe se já recebeu as instruções para acesso da plataforma NEX?`;
@@ -23,9 +25,13 @@ export function contractFullySigned(
 ) {
   const client = clientEmail.trim().toLowerCase();
   const witness = witnessEmail.trim().toLowerCase();
+  const company = contractCompanyWitnessEmail.trim().toLowerCase();
   if (!client || !witness) return false;
+  const present = new Set(signatures.map((item) => item.email.trim().toLowerCase()));
+  const required = [client, witness];
+  if (company && company !== client && company !== witness && present.has(company)) required.push(company);
   const done = (email: string) => signatures.some((item) => item.email.trim().toLowerCase() === email && signatureDone(item.signed));
-  return done(client) && done(witness);
+  return required.every(done);
 }
 
 export function autentiqueSignatureMatches(secret: string, rawBody: string, header: string) {

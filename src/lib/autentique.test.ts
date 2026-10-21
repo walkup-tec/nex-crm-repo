@@ -32,6 +32,30 @@ assert.equal(
   ),
   true,
 );
+assert.equal(
+  contractFullySigned(
+    [
+      { email: "ana@empresa.com", signed: { created_at: "2026-10-19T12:00:00.000Z" } },
+      { email: "bia@empresa.com", signed: "2026-10-19T12:05:00.000Z" },
+      { email: "obotmoney@gmail.com", signed: null },
+    ],
+    "ana@empresa.com",
+    "bia@empresa.com",
+  ),
+  false,
+);
+assert.equal(
+  contractFullySigned(
+    [
+      { email: "ana@empresa.com", signed: { created_at: "2026-10-19T12:00:00.000Z" } },
+      { email: "bia@empresa.com", signed: "2026-10-19T12:05:00.000Z" },
+      { email: "obotmoney@gmail.com", signed: "2026-10-19T12:06:00.000Z" },
+    ],
+    "ana@empresa.com",
+    "bia@empresa.com",
+  ),
+  true,
+);
 const finished = autentiqueEvent({
   event: {
     type: "document.finished",

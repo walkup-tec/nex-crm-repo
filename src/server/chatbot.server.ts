@@ -1110,10 +1110,6 @@ export async function sendContractSignedWhatsApp(input: { organizationId: string
   await moveContactToKanbanStage(input.organizationId, input.contactId, wonKanbanStage);
   const { contractSignedMessage } = await import("@/lib/autentique");
   const text = contractSignedMessage(input.name);
-  const contact = await table("chatbot_contacts").select("phone").eq("id", input.contactId).eq("organization_id", input.organizationId).maybeSingle();
-  if (contact.error) throw new Error("Não foi possível ler o telefone do contato.");
-  const phone = whatsappNumber(cell(contact.data, "phone")) ?? cell(contact.data, "phone");
-  if (!phone) throw new Error("Esse contato não tem um telefone válido.");
   const conversation = await table("chatbot_conversations")
     .select("id, connection_id")
     .eq("organization_id", input.organizationId)
@@ -1122,6 +1118,18 @@ export async function sendContractSignedWhatsApp(input: { organizationId: string
     .limit(1)
     .maybeSingle();
   if (conversation.error || !conversation.data) throw new Error("Não foi possível achar a conversa do contato.");
+  await table("chatbot_messages").insert({
+    organization_id: input.organizationId,
+    conversation_id: cell(conversation.data, "id"),
+    text: "Contrato assinado pelo cliente e pela testemunha.",
+    direction: "out",
+    status: "sent",
+    internal: true,
+  });
+  const contact = await table("chatbot_contacts").select("phone").eq("id", input.contactId).eq("organization_id", input.organizationId).maybeSingle();
+  if (contact.error) throw new Error("Não foi possível ler o telefone do contato.");
+  const phone = whatsappNumber(cell(contact.data, "phone")) ?? cell(contact.data, "phone");
+  if (!phone) throw new Error("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(input.organizationId, cell(conversation.data, "connection_id"));
   if (cell(connection, "status") !== "connected") throw new Error("O WhatsApp dessa conversa não está conectado.");
   const sent = await evo(
@@ -2564,7 +2572,15 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     negotiatedCents: contact.dealReady ? contact.negotiated : null,
     clientOwnerId: contact.dealReady ? contact.clientOwnerId : "",
     nexClientId: await nexClientIdForDocument(intake?.cnpj ?? ""),
-    contractSigned: await contractWasSigned(organizationId, contactId),
+    contractSigned: await (async () => {
+      try {
+        const { syncContractSignature } = await import("@/server/autentique.server");
+        await syncContractSignature(organizationId, contactId);
+      } catch (error) {
+        console.error("contract_signed_sync", error instanceof Error ? error.message : "fail");
+      }
+      return contractWasSigned(organizationId, contactId);
+    })(),
     note: contact.note,
     document: contact.document,
     rg: contact.rg,

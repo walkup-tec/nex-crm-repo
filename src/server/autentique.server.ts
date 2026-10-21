@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractDispatch, contractDocumentName, contractFullySigned, contractLookupState } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, contractCompanyWitnessEmail, contractDispatch, contractDocumentName, contractFullySigned, contractLookupState } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -45,7 +45,7 @@ export async function createContractSignature(input: {
   pdfBase64: string;
 }) {
   const existing = await signatures()
-    .select("id, status, autentique_document_id")
+    .select("id, status, autentique_document_id, client_name, client_email, witness_email")
     .eq("organization_id", input.organizationId)
     .eq("contact_id", input.contactId)
     .order("created_at", { ascending: false })
@@ -64,7 +64,19 @@ export async function createContractSignature(input: {
     const remote = await findContract(documentIdOnFile);
     const action = contractDispatch(status, remote.state);
     if (action === "consult") throw new Error(remote.reason ? `Não foi possível consultar o contrato na Autentique. ${remote.reason}` : "Não foi possível consultar o contrato na Autentique.");
-    if (action === "resend") await deleteContract(documentIdOnFile);
+    if (action === "resend") {
+      const listed = await documentSignatures(documentIdOnFile);
+      if (contractFullySigned(listed, cell(existing.data, "client_email"), cell(existing.data, "witness_email"))) {
+        await confirmSignedContract({
+          id: cell(existing.data, "id"),
+          organizationId: input.organizationId,
+          contactId: input.contactId,
+          name: cell(existing.data, "client_name"),
+        });
+        throw new Error("O contrato deste contato já foi assinado.");
+      }
+      await deleteContract(documentIdOnFile);
+    }
     await removeSignature(cell(existing.data, "id"));
   }
   const documentId = await uploadContract(input);
@@ -82,6 +94,18 @@ export async function createContractSignature(input: {
   return { documentId, resent: false };
 }
 
+function contractSigners(clientEmail: string, witnessEmail: string) {
+  const client = clientEmail.trim().toLowerCase();
+  const witness = witnessEmail.trim().toLowerCase();
+  const company = contractCompanyWitnessEmail.trim().toLowerCase();
+  const signers = [
+    { email: client, action: "SIGN" },
+    { email: witness, action: "SIGN_AS_A_WITNESS" },
+  ];
+  if (company && company !== client && company !== witness) signers.push({ email: company, action: "SIGN_AS_A_WITNESS" });
+  return signers;
+}
+
 async function uploadContract(input: {
   contactId: string;
   clientEmail: string;
@@ -97,10 +121,7 @@ async function uploadContract(input: {
       query: "mutation CreateDocumentMutation($document: DocumentInput!, $signers: [SignerInput!]!, $file: Upload!) { createDocument(document: $document, signers: $signers, file: $file) { id signatures { email } } }",
       variables: {
         document: { name: contractDocumentName(input.contactId) },
-        signers: [
-          { email: input.clientEmail, action: "SIGN" },
-          { email: input.witnessEmail, action: "SIGN_AS_A_WITNESS" },
-        ],
+        signers: contractSigners(input.clientEmail, input.witnessEmail),
         file: null,
       },
     }),
@@ -131,9 +152,9 @@ async function uploadContract(input: {
   const linked = new Set(
     (signatures ?? []).flatMap((item) => (typeof item.email === "string" && item.email.trim() ? [item.email.trim().toLowerCase()] : [])),
   );
-  if (!response.ok || !documentId || !Array.isArray(signatures) || !linked.has(input.clientEmail) || !linked.has(input.witnessEmail)) {
+  if (!response.ok || !documentId || !Array.isArray(signatures) || contractSigners(input.clientEmail, input.witnessEmail).some((signer) => !linked.has(signer.email))) {
     console.error("autentique_create", response.status, reason);
-    if (documentId && Array.isArray(signatures)) throw new Error("A Autentique não vinculou os e-mails do representante e da testemunha.");
+    if (documentId && Array.isArray(signatures)) throw new Error("A Autentique não vinculou os e-mails do representante e das testemunhas.");
     throw new Error(reason ? `A Autentique não concluiu o envio do contrato. ${reason}` : "A Autentique não concluiu o envio do contrato.");
   }
   return documentId;
@@ -231,6 +252,47 @@ async function documentSignatures(documentId: string) {
   );
 }
 
+async function confirmSignedContract(input: { id: string; organizationId: string; contactId: string; name: string }) {
+  const claimed = await signatures()
+    .update({ status: "signed", notified_at: new Date().toISOString() })
+    .eq("id", input.id)
+    .is("notified_at", null)
+    .select("id")
+    .maybeSingle();
+  if (claimed.error || !claimed.data) return;
+  try {
+    const { sendContractSignedWhatsApp } = await import("@/server/chatbot.server");
+    await sendContractSignedWhatsApp({
+      organizationId: input.organizationId,
+      contactId: input.contactId,
+      name: input.name,
+    });
+  } catch (error) {
+    console.error("contract_signed_notice", error instanceof Error ? error.message : "fail");
+  }
+}
+
+export async function syncContractSignature(organizationId: string, contactId: string) {
+  const existing = await signatures()
+    .select("id, status, autentique_document_id, client_name, client_email, witness_email, notified_at")
+    .eq("organization_id", organizationId)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing.error || !existing.data || cell(existing.data, "notified_at")) return cell(existing.data, "status") === "signed";
+  if (cell(existing.data, "status") !== "pending") return false;
+  const listed = await documentSignatures(cell(existing.data, "autentique_document_id"));
+  if (!contractFullySigned(listed, cell(existing.data, "client_email"), cell(existing.data, "witness_email"))) return false;
+  await confirmSignedContract({
+    id: cell(existing.data, "id"),
+    organizationId,
+    contactId,
+    name: cell(existing.data, "client_name"),
+  });
+  return true;
+}
+
 export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: string) {
   const secret = process.env.AUTENTIQUE_WEBHOOK_SECRET?.trim() ?? "";
   if (secret && !autentiqueSignatureMatches(secret, rawBody, signatureHeader)) return;
@@ -252,22 +314,10 @@ export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: s
     ? contractFullySigned(listed, cell(found.data, "client_email"), cell(found.data, "witness_email"))
     : event.type === "document.finished";
   if (!ready) return;
-  const claimed = await signatures()
-    .update({ status: "signed", notified_at: new Date().toISOString() })
-    .eq("id", cell(found.data, "id"))
-    .is("notified_at", null)
-    .select("id")
-    .maybeSingle();
-  if (claimed.error || !claimed.data) return;
-  try {
-    const { sendContractSignedWhatsApp } = await import("@/server/chatbot.server");
-    await sendContractSignedWhatsApp({
-      organizationId: cell(found.data, "organization_id"),
-      contactId: cell(found.data, "contact_id"),
-      name: cell(found.data, "client_name"),
-    });
-  } catch (error) {
-    await signatures().update({ status: "pending", notified_at: null }).eq("id", cell(found.data, "id")).select("id").maybeSingle();
-    throw error;
-  }
+  await confirmSignedContract({
+    id: cell(found.data, "id"),
+    organizationId: cell(found.data, "organization_id"),
+    contactId: cell(found.data, "contact_id"),
+    name: cell(found.data, "client_name"),
+  });
 }

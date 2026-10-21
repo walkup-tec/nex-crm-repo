@@ -199,7 +199,7 @@ async function findContract(documentId: string) {
 async function resendContract(signerIds: string[]) {
   if (!signerIds.length) throw new Error("O contrato está na Autentique, mas não há signatários para receber o e-mail.");
   const result = await autentiqueGraphql(
-    "mutation ($ids: [String!]!) { resendSignatures(public_ids: $ids) }",
+    "mutation ($ids: [UUID!]!) { resendSignatures(public_ids: $ids) }",
     { ids: signerIds },
   );
   const reason = autentiqueReason(result.body);

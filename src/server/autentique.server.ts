@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractDispatch, contractFullySigned, contractLookupState } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, contractDispatch, contractDocumentName, contractFullySigned, contractLookupState } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -39,7 +39,6 @@ export async function createContractSignature(input: {
   organizationId: string;
   contactId: string;
   clientName: string;
-  signerName: string;
   clientEmail: string;
   witnessName: string;
   witnessEmail: string;
@@ -87,7 +86,7 @@ export async function createContractSignature(input: {
 }
 
 async function uploadContract(input: {
-  signerName: string;
+  contactId: string;
   clientEmail: string;
   witnessName: string;
   witnessEmail: string;
@@ -100,7 +99,7 @@ async function uploadContract(input: {
     JSON.stringify({
       query: "mutation CreateDocumentMutation($document: DocumentInput!, $signers: [SignerInput!]!, $file: Upload!) { createDocument(document: $document, signers: $signers, file: $file) { id signatures { email } } }",
       variables: {
-        document: { name: `Contrato NEX — ${input.signerName}` },
+        document: { name: contractDocumentName(input.contactId) },
         signers: [
           { email: input.clientEmail, action: "SIGN" },
           { email: input.witnessEmail, action: "SIGN_AS_A_WITNESS" },

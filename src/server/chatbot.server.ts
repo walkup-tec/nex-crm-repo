@@ -1054,6 +1054,15 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
   });
   if (conflict) fail(conflict);
   const terms = await clientContractTerms(organizationId, contactId, intake.cnpj.replace(/\D/g, ""));
+  const productLinks = await rowsOrMissing(
+    table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId),
+  );
+  const products = await rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId));
+  const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
+  const productNames = products.rows.filter((row) => selectedProducts.has(cell(row, "id"))).map((row) => cell(row, "name"));
+  const { adsFromProductNames } = await import("@/lib/chatbot-client");
+  const ads = adsFromProductNames(productNames);
+  if (!ads.adsMeta && !ads.adsGoogle) fail("Marque Meta Ads ou Google Ads em Produtos e serviços.");
   const { filledContractPdf } = await import("@/server/contract-minuta.server");
   const pdfBase64 = filledContractPdf({
     legalName: intake.legalName,
@@ -1065,13 +1074,14 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     witnessDocument: intake.witnessDocument,
     monthlyFeeCents: terms.monthlyFeeCents,
     startsOn: terms.startsOn,
+    adsMeta: ads.adsMeta,
+    adsGoogle: ads.adsGoogle,
   });
   const { createContractSignature } = await import("@/server/autentique.server");
   const signature = await createContractSignature({
     organizationId,
     contactId,
     clientName: cell(contact, "name") || intake.representativeName,
-    signerName: intake.representativeName,
     clientEmail,
     witnessName: intake.witnessName,
     witnessEmail,

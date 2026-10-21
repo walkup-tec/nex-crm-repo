@@ -1,5 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+export function contractDocumentName(contactId: string) {
+  return `Contrato NEX — ${contactId.trim()}`;
+}
+
 export function contractSignedMessage(name: string) {
   const clean = name.trim().replace(/\s+/g, " ") || "cliente";
   return `Oi ${clean}! identificamos a assinatura do seu contrato. Por favor, me informe se já recebeu as instruções para acesso da plataforma NEX?`;

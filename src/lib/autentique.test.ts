@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { autentiqueEvent, contractDispatch, contractFullySigned, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
+import { autentiqueEvent, contractDispatch, contractDocumentName, contractFullySigned, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
 
+assert.equal(contractDocumentName("  8f3c1a20-1111-2222-3333-444455556666  "), "Contrato NEX — 8f3c1a20-1111-2222-3333-444455556666");
 assert.equal(
   contractSignedMessage("  Marcelo   Mozart "),
   "Oi Marcelo Mozart! identificamos a assinatura do seu contrato. Por favor, me informe se já recebeu as instruções para acesso da plataforma NEX?",

@@ -84,26 +84,25 @@ function isBusinessDay(iso: string) {
   return !nationalHolidays(parts.year).has(iso);
 }
 
-function nextBusinessDueDay(clickIso: string) {
-  let cursor = addIsoDays(clickIso, 1);
+export function monthlyDueDay(startsOn: string) {
+  if (!isoDate(startsOn)) return "";
+  let cursor = addIsoDays(startsOn, 1);
   for (let guard = 0; guard < 14 && cursor; guard += 1) {
     const day = Number(cursor.slice(8, 10));
-    if (day >= 1 && day <= 28 && isBusinessDay(cursor)) return day;
+    if (day >= 1 && day <= 28 && isBusinessDay(cursor)) return String(day);
     cursor = addIsoDays(cursor, 1);
   }
-  return 1;
+  return "1";
 }
 
 export function chatbotClientTerms(today: string) {
   if (!isoDate(today)) return null;
-  const tomorrow = addIsoDays(today, 1);
   const endsOn = addIsoMonths(today, 3);
-  if (!tomorrow || !endsOn) return null;
-  const clickDay = Number(today.slice(8, 10));
-  const tomorrowDay = Number(tomorrow.slice(8, 10));
+  const dueDay = monthlyDueDay(today);
+  if (!endsOn || !dueDay) return null;
   return {
     startsOn: brazilianDate(today),
     endsOn: brazilianDate(endsOn),
-    dueDay: String(clickDay >= 29 ? nextBusinessDueDay(today) : tomorrowDay > 28 ? 28 : tomorrowDay),
+    dueDay,
   };
 }

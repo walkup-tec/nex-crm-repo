@@ -235,21 +235,22 @@ async function documentSignatures(documentId: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${autentiqueKey()}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: "query ($id: UUID!) { document(id: $id) { signatures { email signed { created_at } } } }",
+      query: "query ($id: UUID!) { document(id: $id) { signatures { email user { email } signed { created_at } } } }",
       variables: { id: documentId },
     }),
     signal: AbortSignal.timeout(20000),
   });
   const raw = await response.text();
-  let body: { data?: { document?: { signatures?: { email?: string; signed?: unknown }[] } } } = {};
+  let body: { data?: { document?: { signatures?: { email?: string; user?: { email?: string }; signed?: unknown }[] } } } = {};
   try {
     body = raw ? JSON.parse(raw) : {};
   } catch {
     body = {};
   }
-  return (body.data?.document?.signatures ?? []).flatMap((item) =>
-    typeof item.email === "string" ? [{ email: item.email, signed: item.signed }] : [],
-  );
+  return (body.data?.document?.signatures ?? []).flatMap((item) => {
+    const email = typeof item.email === "string" && item.email.trim() ? item.email : item.user?.email;
+    return typeof email === "string" && email.trim() ? [{ email, signed: item.signed }] : [];
+  });
 }
 
 async function confirmSignedContract(input: { id: string; organizationId: string; contactId: string; name: string }) {
@@ -309,10 +310,13 @@ export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: s
     .eq("autentique_document_id", event.documentId)
     .maybeSingle();
   if (found.error || !found.data || found.data.notified_at) return;
-  const listed = event.signatures.length ? event.signatures : await documentSignatures(event.documentId);
-  const ready = listed.length
-    ? contractFullySigned(listed, cell(found.data, "client_email"), cell(found.data, "witness_email"))
-    : event.type === "document.finished";
+  const clientEmail = cell(found.data, "client_email");
+  const witnessEmail = cell(found.data, "witness_email");
+  let ready = event.signatures.length > 0 && contractFullySigned(event.signatures, clientEmail, witnessEmail);
+  if (!ready) {
+    const remote = await documentSignatures(event.documentId);
+    ready = contractFullySigned(remote, clientEmail, witnessEmail) || (event.type === "document.finished" && remote.length === 0);
+  }
   if (!ready) return;
   await confirmSignedContract({
     id: cell(found.data, "id"),

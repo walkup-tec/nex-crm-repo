@@ -69,6 +69,11 @@ export function contractLookupState(input: { ok: boolean; reason: string; docume
   return "unknown";
 }
 
+export function autentiqueDocumentId(value: string) {
+  const id = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || /^[A-Za-z0-9]{8,128}$/.test(id);
+}
+
 export function autentiqueEvent(body: unknown) {
   if (!body || typeof body !== "object") return null;
   const event = (body as { event?: unknown }).event;
@@ -78,7 +83,7 @@ export function autentiqueEvent(body: unknown) {
   if (typeof type !== "string" || !data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
   const documentId = type.startsWith("signature.") ? record.document : record.id;
-  if (typeof documentId !== "string" || !/^[A-Za-z0-9]{8,128}$/.test(documentId)) return null;
+  if (typeof documentId !== "string" || !autentiqueDocumentId(documentId)) return null;
   const signatures = Array.isArray(record.signatures)
     ? record.signatures.flatMap((item) => {
         if (!item || typeof item !== "object") return [];

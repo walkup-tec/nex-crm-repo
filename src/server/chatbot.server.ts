@@ -2497,6 +2497,14 @@ async function nexClientIdForDocument(document: string) {
 
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
   const { organizationId } = await membership(userId, "inbox");
+  const signedSync = (async () => {
+    try {
+      const { syncContractSignature } = await import("@/server/autentique.server");
+      await syncContractSignature(organizationId, contactId);
+    } catch (error) {
+      console.error("contract_signed_sync", error instanceof Error ? error.message : "fail");
+    }
+  })();
   const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake] = await Promise.all([
     contactCardRow(organizationId, contactId),
     rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
@@ -2507,6 +2515,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     rowsOrMissing(table("chatbot_stages").select("name, position").eq("organization_id", organizationId).order("position", { ascending: true })),
     organizationCard(organizationId),
     latestContracting(organizationId, contactId),
+    Promise.race([signedSync, new Promise((resolve) => setTimeout(resolve, 1500))]),
   ]);
   const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
   const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
@@ -2551,15 +2560,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     negotiatedCents: contact.dealReady ? contact.negotiated : null,
     clientOwnerId: contact.dealReady ? contact.clientOwnerId : "",
     nexClientId: await nexClientIdForDocument(intake?.cnpj ?? ""),
-    contractSigned: await (async () => {
-      try {
-        const { syncContractSignature } = await import("@/server/autentique.server");
-        await syncContractSignature(organizationId, contactId);
-      } catch (error) {
-        console.error("contract_signed_sync", error instanceof Error ? error.message : "fail");
-      }
-      return contractWasSigned(organizationId, contactId);
-    })(),
+    contractSigned: await contractWasSigned(organizationId, contactId),
     note: contact.note,
     document: contact.document,
     rg: contact.rg,

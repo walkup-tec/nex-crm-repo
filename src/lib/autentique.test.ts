@@ -68,6 +68,12 @@ const finished = autentiqueEvent({
 assert.equal(finished?.type, "document.finished");
 assert.equal(finished?.documentId, "abc123def456");
 assert.equal(finished?.signatures[0]?.email, "ana@empresa.com");
+assert.equal(
+  autentiqueEvent({
+    event: { type: "document.finished", data: { id: "9dcc028f-b4b8-4c79-b3cd-851b7d39bec9" } },
+  })?.documentId,
+  "9dcc028f-b4b8-4c79-b3cd-851b7d39bec9",
+);
 assert.equal(autentiqueEvent({ event: { type: "signature.accepted", data: { document: "curto" } } }), null);
 assert.equal(contractDispatch("", "missing"), "create");
 assert.equal(contractDispatch("signed", "missing"), "create");

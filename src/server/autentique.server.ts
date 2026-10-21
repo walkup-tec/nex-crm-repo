@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractCompanyWitnessEmail, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, autentiqueUuid, contractCompanyWitnessEmail, contractContactId, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractOwnerEmail } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -95,14 +95,16 @@ export async function createContractSignature(input: {
 }
 
 function contractSigners(clientEmail: string, witnessEmail: string) {
-  const client = clientEmail.trim().toLowerCase();
-  const witness = witnessEmail.trim().toLowerCase();
-  const company = contractCompanyWitnessEmail.trim().toLowerCase();
-  const signers = [
-    { email: client, action: "SIGN" },
-    { email: witness, action: "SIGN_AS_A_WITNESS" },
-  ];
-  if (company && company !== client && company !== witness) signers.push({ email: company, action: "SIGN_AS_A_WITNESS" });
+  const signers: { email: string; action: string }[] = [];
+  const add = (email: string, action: string) => {
+    const clean = email.trim().toLowerCase();
+    if (!clean || signers.some((item) => item.email === clean)) return;
+    signers.push({ email: clean, action });
+  };
+  add(clientEmail, "SIGN");
+  add(contractOwnerEmail, "SIGN");
+  add(witnessEmail, "SIGN_AS_A_WITNESS");
+  add(contractCompanyWitnessEmail, "SIGN_AS_A_WITNESS");
   return signers;
 }
 
@@ -305,15 +307,21 @@ export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: s
   }
   const event = autentiqueEvent(parsed);
   if (!event || (event.type !== "document.finished" && event.type !== "signature.accepted")) return;
-  const found = await signatures()
-    .select("id, organization_id, contact_id, client_name, client_email, witness_email, status, notified_at")
-    .eq("autentique_document_id", event.documentId)
-    .maybeSingle();
+  const columns = "id, organization_id, contact_id, client_name, client_email, witness_email, status, notified_at";
+  let found = await signatures().select(columns).eq("autentique_document_id", event.documentId).maybeSingle();
+  if ((found.error || !found.data) && contractContactId(event.documentName)) {
+    found = await signatures()
+      .select(columns)
+      .eq("contact_id", contractContactId(event.documentName))
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+  }
   if (found.error || !found.data || found.data.notified_at) return;
   const clientEmail = cell(found.data, "client_email");
   const witnessEmail = cell(found.data, "witness_email");
   let ready = event.signatures.length > 0 && contractFullySigned(event.signatures, clientEmail, witnessEmail);
-  if (!ready) {
+  if (!ready && autentiqueUuid(event.documentId)) {
     const remote = await documentSignatures(event.documentId);
     ready = contractFullySigned(remote, clientEmail, witnessEmail) || (event.type === "document.finished" && remote.length === 0);
   }

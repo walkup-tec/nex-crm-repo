@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { autentiqueEvent, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
+import { autentiqueEvent, contractContactId, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
 
 assert.equal(contractDocumentName("  8f3c1a20-1111-2222-3333-444455556666  "), "Contrato NEX — 8f3c1a20-1111-2222-3333-444455556666");
 assert.equal(
@@ -50,11 +50,12 @@ assert.equal(
       { email: "ana@empresa.com", signed: { created_at: "2026-10-19T12:00:00.000Z" } },
       { email: "bia@empresa.com", signed: "2026-10-19T12:05:00.000Z" },
       { email: "obotmoney@gmail.com", signed: "2026-10-19T12:06:00.000Z" },
+      { email: "walkup@walkuptec.com.br", signed: null },
     ],
     "ana@empresa.com",
     "bia@empresa.com",
   ),
-  true,
+  false,
 );
 const finished = autentiqueEvent({
   event: {
@@ -68,6 +69,25 @@ const finished = autentiqueEvent({
 assert.equal(finished?.type, "document.finished");
 assert.equal(finished?.documentId, "abc123def456");
 assert.equal(finished?.signatures[0]?.email, "ana@empresa.com");
+const official = autentiqueEvent({
+  event: {
+    type: "document.finished",
+    data: {
+      object: {
+        id: "89c7d2ab31f9f5a13b3d20ecf53319af387e54d240ae7be993",
+        name: "Contrato NEX — 9dcc028f-b4b8-4c79-b3cd-851b7d39bec9",
+        signatures: [
+          { email: "mozart.hotmart@gmail.com", signed: "2026-10-21T18:15:00.000000Z" },
+          { email: "walkup@walkuptec.com.br", signed: "2026-10-21T18:16:00.000000Z" },
+        ],
+      },
+    },
+  },
+});
+assert.equal(official?.documentId, "89c7d2ab31f9f5a13b3d20ecf53319af387e54d240ae7be993");
+assert.equal(contractContactId(official?.documentName ?? ""), "9dcc028f-b4b8-4c79-b3cd-851b7d39bec9");
+assert.equal(official?.signatures[1]?.email, "walkup@walkuptec.com.br");
+assert.equal(signatureDone(official?.signatures[1]?.signed), true);
 assert.equal(
   autentiqueEvent({
     event: { type: "document.finished", data: { id: "9dcc028f-b4b8-4c79-b3cd-851b7d39bec9" } },

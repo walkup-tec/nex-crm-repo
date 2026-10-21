@@ -5,6 +5,7 @@ export function contractDocumentName(contactId: string) {
 }
 
 export const contractCompanyWitnessEmail = "obotmoney@gmail.com";
+export const contractOwnerEmail = "walkup@walkuptec.com.br";
 
 export function contractSignedMessage(name: string) {
   const clean = name.trim().replace(/\s+/g, " ") || "cliente";
@@ -26,10 +27,13 @@ export function contractFullySigned(
   const client = clientEmail.trim().toLowerCase();
   const witness = witnessEmail.trim().toLowerCase();
   const company = contractCompanyWitnessEmail.trim().toLowerCase();
+  const owner = contractOwnerEmail.trim().toLowerCase();
   if (!client || !witness) return false;
   const present = new Set(signatures.map((item) => item.email.trim().toLowerCase()));
   const required = [client, witness];
-  if (company && company !== client && company !== witness && present.has(company)) required.push(company);
+  for (const email of [owner, company]) {
+    if (email && email !== client && email !== witness && present.has(email) && !required.includes(email)) required.push(email);
+  }
   const done = (email: string) => signatures.some((item) => item.email.trim().toLowerCase() === email && signatureDone(item.signed));
   return required.every(done);
 }
@@ -69,28 +73,50 @@ export function contractLookupState(input: { ok: boolean; reason: string; docume
   return "unknown";
 }
 
+export function contractContactId(documentName: string) {
+  const match = documentName.match(/Contrato NEX — ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  return match?.[1] ?? "";
+}
+
+export function autentiqueUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
 export function autentiqueDocumentId(value: string) {
   const id = value.trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || /^[A-Za-z0-9]{8,128}$/.test(id);
+  return autentiqueUuid(id) || /^[A-Za-z0-9]{8,128}$/.test(id);
 }
 
 export function autentiqueEvent(body: unknown) {
-  if (!body || typeof body !== "object") return null;
-  const event = (body as { event?: unknown }).event;
-  if (!event || typeof event !== "object") return null;
-  const type = (event as { type?: unknown }).type;
-  const data = (event as { data?: unknown }).data;
-  if (typeof type !== "string" || !data || typeof data !== "object") return null;
-  const record = data as Record<string, unknown>;
-  const documentId = type.startsWith("signature.") ? record.document : record.id;
-  if (typeof documentId !== "string" || !autentiqueDocumentId(documentId)) return null;
-  const signatures = Array.isArray(record.signatures)
-    ? record.signatures.flatMap((item) => {
-        if (!item || typeof item !== "object") return [];
-        const email = (item as { user?: { email?: unknown }; email?: unknown }).user?.email ?? (item as { email?: unknown }).email;
-        if (typeof email !== "string") return [];
-        return [{ email, signed: (item as { signed?: unknown }).signed }];
-      })
-    : [];
-  return { type, documentId, signatures };
+  const event = nestedEvent(body);
+  if (!event) return null;
+  const type = event.type;
+  if (typeof type !== "string") return null;
+  const data = record(event.data);
+  if (!data) return null;
+  const object = record(data.object);
+  const documentId = [data.document, data.id, object?.id, object?.document].find((item) => typeof item === "string" && autentiqueDocumentId(item));
+  if (typeof documentId !== "string") return null;
+  const documentName = typeof object?.name === "string" ? object.name : typeof data.name === "string" ? data.name : "";
+  const source = Array.isArray(object?.signatures) ? object.signatures : Array.isArray(data.signatures) ? data.signatures : [];
+  const signatures = source.flatMap((item) => {
+    const row = record(item);
+    if (!row) return [];
+    const user = record(row.user);
+    const email = typeof row.email === "string" ? row.email : user && typeof user.email === "string" ? user.email : "";
+    return email.trim() ? [{ email, signed: row.signed }] : [];
+  });
+  return { type, documentId, documentName, signatures };
+}
+
+function record(value: unknown) {
+  return value && typeof value === "object" ? value as Record<string, unknown> : null;
+}
+
+function nestedEvent(body: unknown) {
+  const root = record(body);
+  if (!root) return null;
+  const nested = record(root.event);
+  if (nested && typeof nested.type === "string") return nested;
+  return typeof root.type === "string" ? root : null;
 }

@@ -166,12 +166,12 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .contact-identity{display:flex;align-items:center;gap:10px}
 .chatbot-app .contact-heading{display:flex;flex:1;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
 .chatbot-app .contact-signed-block{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;max-width:100%}
-.chatbot-app .contact-signed{display:inline-flex;align-items:center;gap:6px;margin:0;color:#3DDC84;font-size:11px;font-weight:600}
-.chatbot-app .contact-signed svg{width:10px;height:10px}
-.chatbot-app .contact-signed-id{display:flex;align-items:flex-start;gap:6px;margin:0;max-width:100%;color:#3DDC84;font-size:10px;line-height:1.35;font-weight:600}
-.chatbot-app .contact-signed-id span{min-width:0;overflow-wrap:anywhere}
-.chatbot-app .contact-signed-id button{display:grid;place-items:center;width:16px;height:16px;flex:none;margin-top:1px;border:0;padding:0;background:transparent;color:#3DDC84;cursor:pointer}
-.chatbot-app .contact-signed-id button svg{width:12px;height:12px}
+.chatbot-app .contact-section p.contact-signed{display:inline-flex;align-items:center;gap:6px;margin:0;color:#3DDC84;font-size:11px;font-weight:600;line-height:1.35}
+.chatbot-app .contact-section p.contact-signed svg{width:10px;height:10px;color:#3DDC84}
+.chatbot-app .contact-section p.contact-signed-id{display:flex;align-items:flex-start;gap:6px;margin:0;max-width:100%;color:#3DDC84;font-size:10px;line-height:1.35;font-weight:600}
+.chatbot-app .contact-section p.contact-signed-id span{min-width:0;overflow-wrap:anywhere;color:#3DDC84}
+.chatbot-app .contact-section p.contact-signed-id button{display:grid;place-items:center;width:16px;height:16px;flex:none;margin-top:1px;border:0;padding:0;background:transparent;color:#3DDC84;cursor:pointer}
+.chatbot-app .contact-section p.contact-signed-id button svg{width:12px;height:12px;color:#3DDC84}
 .chatbot-app .contact-identity .contact-name,.chatbot-app .contact-identity .contact-name-edit{flex:1;min-width:0;width:auto}
 .chatbot-app .contact-name{display:block;width:100%;border:0;background:transparent;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:700;color:var(--foreground);cursor:pointer}
 .chatbot-app .contact-name-edit{display:flex;align-items:center;gap:6px}

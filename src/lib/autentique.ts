@@ -50,7 +50,7 @@ export function contractDispatch(status: string, remote: RemoteContract) {
   if (status === "signed") {
     if (remote === "missing") return "create" as const;
     if (remote === "unknown") return "consult" as const;
-    return "signed" as const;
+    return "replace" as const;
   }
   if (status !== "pending") return "create" as const;
   if (remote === "found") return "resend" as const;

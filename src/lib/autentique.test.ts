@@ -71,7 +71,7 @@ assert.equal(finished?.signatures[0]?.email, "ana@empresa.com");
 assert.equal(autentiqueEvent({ event: { type: "signature.accepted", data: { document: "curto" } } }), null);
 assert.equal(contractDispatch("", "missing"), "create");
 assert.equal(contractDispatch("signed", "missing"), "create");
-assert.equal(contractDispatch("signed", "found"), "signed");
+assert.equal(contractDispatch("signed", "found"), "replace");
 assert.equal(contractDispatch("signed", "unknown"), "consult");
 assert.equal(contractDispatch("pending", "found"), "resend");
 assert.equal(contractDispatch("pending", "missing"), "create");

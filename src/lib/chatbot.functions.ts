@@ -9,6 +9,7 @@ function publicMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   console.error("chatbot_action", /apikey|EVO_API_KEY|service_role/i.test(message) ? "redacted" : message);
   if (/apikey|EVO_API_KEY|service_role/i.test(message)) return "Não foi possível concluir a operação do atendimento.";
+  if (/^(A minuta|A Autentique|A assinatura|O contrato|O formulário|Informe |Cadastre |Esse contato|Esta conversa)/.test(message)) return message;
   if (/migração/.test(message)) return message;
   if (/Evolution API/.test(message)) return message;
   if (!message || /postgres|PGRST|JWT|fetch failed/i.test(message)) {
@@ -126,8 +127,10 @@ export const sendChatbotAssinaturaFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { conversationId: string }) => data)
   .handler(async ({ context, data }) => {
-    const { sendChatbotAssinatura } = await import("@/server/chatbot.server");
-    return guard(() => sendChatbotAssinatura(context.userId, data.conversationId));
+    const { sendChatbotAssinatura, recordChatbotAssinaturaFailure } = await import("@/server/chatbot.server");
+    const result = await guard(() => sendChatbotAssinatura(context.userId, data.conversationId));
+    if (!result.ok) await recordChatbotAssinaturaFailure(context.userId, data.conversationId, result.message).catch(() => undefined);
+    return result;
   });
 
 export const sendChatbotCadastroFn = createServerFn({ method: "POST" })

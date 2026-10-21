@@ -99,12 +99,17 @@ async function uploadContract(input: {
   );
   form.append("map", JSON.stringify({ file: ["variables.file"] }));
   form.append("file", new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), "MINUTA NEX.pdf");
-  const response = await fetch(autentiqueEndpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${autentiqueKey()}` },
-    body: form,
-    signal: AbortSignal.timeout(60000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(autentiqueEndpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${autentiqueKey()}` },
+      body: form,
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch {
+    throw new Error("A Autentique não concluiu o envio do contrato.");
+  }
   const raw = await response.text();
   let body: { data?: { createDocument?: { id?: string } }; errors?: { message?: string }[] } = {};
   try {
@@ -114,8 +119,15 @@ async function uploadContract(input: {
   }
   const documentId = body.data?.createDocument?.id ?? "";
   if (!response.ok || !documentId) {
-    console.error("autentique_create", response.status);
-    throw new Error("A Autentique não concluiu o envio do contrato.");
+    const reason = (body.errors ?? [])
+      .map((item) => item.message ?? "")
+      .join(" ")
+      .replace(/bearer\s+\S+/gi, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+    console.error("autentique_create", response.status, reason);
+    throw new Error(reason ? `A Autentique não concluiu o envio do contrato. ${reason}` : "A Autentique não concluiu o envio do contrato.");
   }
   return documentId;
 }

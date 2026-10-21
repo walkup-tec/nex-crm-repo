@@ -399,7 +399,7 @@ export function LiveInbox() {
     const box = historyRef.current;
     if (!box || !stickToBottom.current) return;
     box.scrollTop = box.scrollHeight;
-  }, [messages.length, selected]);
+  }, [messages.length, selected, signatureError]);
 
   function labelFor(conversationId: string) {
     const current = data?.conversations.find((item) => item.id === conversationId);
@@ -589,11 +589,16 @@ export function LiveInbox() {
     sending.current = true;
     setBotsOpen(false);
     setPending(true);
-    const result = await startChatbotFlowFn({ data: { conversationId: selected, flowId } });
-    sending.current = false;
-    setPending(false);
-    setMessage(result.ok ? "Bot enviado nesta conversa." : result.message);
-    if (result.ok) await load();
+    try {
+      const result = await startChatbotFlowFn({ data: { conversationId: selected, flowId } });
+      setMessage(result.ok ? "Bot enviado nesta conversa." : result.message);
+      if (result.ok) await load();
+    } catch {
+      setMessage("Não foi possível enviar o bot nesta conversa.");
+    } finally {
+      sending.current = false;
+      setPending(false);
+    }
   }
 
   async function sendArtes() {
@@ -629,13 +634,24 @@ export function LiveInbox() {
   }
 
   async function sendAssinatura() {
-    if (!selected || !contact || !data?.contractingForm || sending.current) return;
+    if (!selected || !contact) {
+      setSignatureError("Abra a conversa do contato antes de enviar o contrato para assinatura.");
+      return;
+    }
+    if (!data?.contractingForm) {
+      setSignatureError("A assinatura do contrato não está disponível nesta conta.");
+      return;
+    }
+    if (sending.current) {
+      setSignatureError("Aguarde o envio que já está em andamento.");
+      return;
+    }
     setQuickOpen(false);
     setBotsOpen(false);
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
       conversationId: selected,
-      text: "Contrato enviado para assinatura.",
+      text: "Enviando o contrato para assinatura…",
       createdAt: new Date().toISOString(),
     };
     sending.current = true;
@@ -646,7 +662,8 @@ export function LiveInbox() {
       const result = await sendChatbotAssinaturaFn({ data: { conversationId: selected } });
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-        setSignatureError(result.message);
+        setSignatureError(result.message || "Não foi possível enviar o contrato para assinatura.");
+        void load();
         return;
       }
       setSignatureError("");
@@ -922,6 +939,12 @@ export function LiveInbox() {
                     </div>
                   ),
                 )}
+                {signatureError ? (
+                  <div className="internal-note signature-failure">
+                    <span>Assinatura</span>
+                    <p>{signatureError}</p>
+                  </div>
+                ) : null}
               </div>
               {conversation.open || conversation.mine ? (
               <form
@@ -975,7 +998,7 @@ export function LiveInbox() {
                     ))}
                   </div>
                 ) : null}
-                {signatureError ? <p className="info-note">{signatureError}</p> : null}
+                {signatureError ? <p className="composer-error">{signatureError}</p> : null}
                 <footer className="composer-actions">
                   <div className="composer-tools">
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>

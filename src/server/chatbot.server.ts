@@ -996,6 +996,26 @@ function mailbox(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
 }
 
+export async function recordChatbotAssinaturaFailure(userId: string, conversationId: string, message: string) {
+  const text = message.replace(/\s+/g, " ").trim().slice(0, 460);
+  if (!text) return;
+  const { organizationId } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error || !conversation.data) return;
+  await table("chatbot_messages").insert({
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    text: `Assinatura não enviada: ${text}`,
+    direction: "out",
+    status: "sent",
+    internal: true,
+  });
+}
+
 export async function sendChatbotAssinatura(userId: string, conversationId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")

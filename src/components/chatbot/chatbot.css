@@ -79,6 +79,10 @@
 .chatbot-app .composer-menu button:hover{background:var(--accent)}
 .chatbot-app .composer-menu p{margin:0;padding:8px 10px;font-size:12px;color:var(--muted-foreground)}
 .chatbot-app .composer-hint{margin:6px 0 0;font-size:11px;line-height:1.4;color:var(--muted-foreground)}
+.chatbot-app .composer-error{margin:8px 0 0;padding:10px 12px;border-radius:6px;background:#fee2e2;color:#7f1d1d;font-size:12px;line-height:1.45}
+.dark .chatbot-app .composer-error,.chatbot-app .dark .composer-error{background:#7f1d1d;color:#fee2e2}
+.chatbot-app .signature-failure{background:color-mix(in srgb,#fecaca 42%,var(--card));border-color:#f87171}
+.chatbot-app .signature-failure span{color:#b91c1c}
 .chatbot-app .message-text{display:block;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .chatbot-app .avatar{overflow:hidden}
 .chatbot-app .avatar img{width:100%;height:100%;object-fit:cover;display:block}

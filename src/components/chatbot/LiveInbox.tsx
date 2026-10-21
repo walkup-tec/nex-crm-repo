@@ -13,6 +13,7 @@ import {
   sendChatbotAssinaturaFn,
   sendChatbotCadastroFn,
   sendChatbotMinutaFn,
+  sendChatbotPropostaFn,
   sendChatbotMessageFn,
   startChatbotFlowFn,
   listChatbotQuickRepliesFn,
@@ -23,7 +24,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -679,6 +680,40 @@ export function LiveInbox() {
     }
   }
 
+  async function sendProposta() {
+    if (!selected || !contact || !data?.contractingForm || sending.current) return;
+    setQuickOpen(false);
+    setBotsOpen(false);
+    const started = Date.now();
+    const previews: OutgoingPreview[] = [propostaFileName, ...propostaMessages].map((text, index) => ({
+      id: `local-${started}-${index}`,
+      conversationId: selected,
+      text,
+      createdAt: new Date(started + index).toISOString(),
+    }));
+    sending.current = true;
+    setOutgoing((current) => [...current, ...previews]);
+    setPending(true);
+    try {
+      const result = await sendChatbotPropostaFn({ data: { conversationId: selected } });
+      if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => !previews.some((preview) => preview.id === item.id)));
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      setSavedMedia((value) => value + 1);
+      void load();
+    } catch {
+      setOutgoing((current) => current.filter((item) => !previews.some((preview) => preview.id === item.id)));
+      setMessage("Não foi possível enviar a proposta.");
+    } finally {
+      sending.current = false;
+      setPending(false);
+      composerRef.current?.focus();
+    }
+  }
+
   async function sendMinuta() {
     if (!selected || !contact || !data?.contractingForm || sending.current) return;
     setQuickOpen(false);
@@ -1010,6 +1045,11 @@ export function LiveInbox() {
                     {data?.contractingForm ? (
                       <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendArtes()}>
                         Artes
+                      </Button>
+                    ) : null}
+                    {data?.contractingForm ? (
+                      <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendProposta()}>
+                        Proposta
                       </Button>
                     ) : null}
                     {data?.contractingForm ? (

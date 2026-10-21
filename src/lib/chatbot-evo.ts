@@ -290,6 +290,11 @@ export function whatsappCadastroButton(phone: string, url: string) {
 }
 
 export const minutaFileName = "MINUTA NEX.pdf";
+export const propostaFileName = "NEX_Apresentacao.pdf";
+export const propostaMessages = [
+  "Conforme combinado segue a proposta da NEX.",
+  "Quando posso retornar para darmos continuidade?",
+] as const;
 
 export function whatsappDocumentPayload(phone: string, fileName: string, base64: string) {
   return {

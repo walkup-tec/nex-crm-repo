@@ -53,6 +53,8 @@ import {
   artesFileNames,
   artesMime,
   minutaFileName,
+  propostaFileName,
+  propostaMessages,
   whatsappCadastroButton,
   whatsappDocumentPayload,
   whatsappImagePayload,
@@ -896,8 +898,8 @@ export async function sendChatbotArtes(userId: string, conversationId: string) {
   return { count: sent };
 }
 
-function minutaPdfBase64() {
-  const paths = [join(process.cwd(), "assets", "minuta-nex.pdf"), "/app/assets/minuta-nex.pdf"];
+function assetPdfBase64(fileName: string, missing: string) {
+  const paths = [join(process.cwd(), "assets", fileName), join("/app/assets", fileName)];
   for (const path of paths) {
     try {
       const bytes = readFileSync(path);
@@ -906,7 +908,11 @@ function minutaPdfBase64() {
       continue;
     }
   }
-  fail("A minuta não está disponível no servidor.");
+  fail(missing);
+}
+
+function minutaPdfBase64() {
+  return assetPdfBase64("minuta-nex.pdf", "A minuta não está disponível no servidor.");
 }
 
 export async function sendChatbotMinuta(userId: string, conversationId: string) {
@@ -963,6 +969,70 @@ export async function sendChatbotMinuta(userId: string, conversationId: string) 
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
   await moveContactToKanbanStage(organizationId, contactId, "Contrato");
+}
+
+export async function sendChatbotProposta(userId: string, conversationId: string) {
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contact = await table("chatbot_contacts")
+    .select("phone")
+    .eq("id", cell(conversation.data, "contact_id"))
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (contact.error) fail(schemaMessage(contact.error.message));
+  const storedPhone = cell(contact.data, "phone");
+  const phone = whatsappNumber(storedPhone) ?? storedPhone;
+  if (!phone) fail("Esse contato não tem um telefone válido.");
+  const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
+  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  const pdf = assetPdfBase64("nex-apresentacao.pdf", "A proposta não está disponível no servidor.");
+  const document = await evo(`/message/sendMedia/${instance}`, "POST", whatsappDocumentPayload(phone, propostaFileName, pdf), 90000);
+  const savedDocument = await table("chatbot_messages")
+    .insert({
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      text: propostaFileName,
+      direction: "out",
+      status: "sent",
+      external_id: readMessageId(document) || null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (savedDocument.error) fail(schemaMessage(savedDocument.error.message));
+  for (const text of propostaMessages) {
+    const sent = await evo(`/message/sendText/${instance}`, "POST", whatsappTextPayload(phone, text));
+    const saved = await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text,
+        direction: "out",
+        status: "sent",
+        external_id: readMessageId(sent) || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (saved.error) fail(schemaMessage(saved.error.message));
+  }
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (assigned.error) fail(schemaMessage(assigned.error.message));
 }
 
 async function clientContractTerms(organizationId: string, contactId: string, documentDigits: string) {

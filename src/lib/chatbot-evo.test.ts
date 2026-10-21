@@ -52,6 +52,8 @@ import {
   artesFileNames,
   artesMime,
   minutaFileName,
+  propostaFileName,
+  propostaMessages,
   whatsappImagePayload,
   whatsappCadastroButton,
   whatsappDocumentPayload,
@@ -827,6 +829,12 @@ assert.deepEqual(whatsappTextPayload("5547992082637", "https://app.nexmeta.com.b
 });
 assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.displayText, "Cadastro");
 assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.type, "url");
+const proposta = whatsappDocumentPayload("5547992082637", propostaFileName, "QUJERg==");
+assert.equal(proposta.fileName, "NEX_Apresentacao.pdf");
+assert.deepEqual([...propostaMessages], [
+  "Conforme combinado segue a proposta da NEX.",
+  "Quando posso retornar para darmos continuidade?",
+]);
 const minuta = whatsappDocumentPayload("5547992082637", minutaFileName, "QUJERg==");
 assert.equal(minuta.mediatype, "document");
 assert.equal(minuta.mimetype, "application/pdf");

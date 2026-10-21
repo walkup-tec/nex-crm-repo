@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { autentiqueEvent, contractDispatch, contractFullySigned, contractSignedMessage, signatureDone } from "./autentique";
+import { autentiqueEvent, contractDispatch, contractFullySigned, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
 
 assert.equal(
   contractSignedMessage("  Marcelo   Mozart "),
@@ -49,5 +49,10 @@ assert.equal(contractDispatch("signed", "missing"), "signed");
 assert.equal(contractDispatch("pending", "found"), "resend");
 assert.equal(contractDispatch("pending", "missing"), "create");
 assert.equal(contractDispatch("pending", "unknown"), "consult");
+assert.equal(contractLookupState({ ok: true, reason: "document_not_found Document not found", documentId: "" }), "missing");
+assert.equal(contractLookupState({ ok: true, reason: "Documento não encontrado", documentId: "" }), "missing");
+assert.equal(contractLookupState({ ok: true, reason: "", documentId: "" }), "missing");
+assert.equal(contractLookupState({ ok: true, reason: "", documentId: "abc123def456" }), "found");
+assert.equal(contractLookupState({ ok: false, reason: 'Variable "$id" of type "ID!" used in position expecting type "UUID!".', documentId: "" }), "unknown");
 
 console.log("autentique tests ok");

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractDispatch, contractFullySigned } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, contractDispatch, contractFullySigned, contractLookupState } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -64,7 +64,7 @@ export async function createContractSignature(input: {
   if (status === "pending") {
     const remote = await findContract(documentIdOnFile);
     const action = contractDispatch(status, remote.state);
-    if (action === "consult") throw new Error("Não foi possível consultar o contrato na Autentique.");
+    if (action === "consult") throw new Error(remote.reason ? `Não foi possível consultar o contrato na Autentique. ${remote.reason}` : "Não foi possível consultar o contrato na Autentique.");
     if (action === "resend") {
       await resendContract(remote.signerIds);
       return { documentId: documentIdOnFile, resent: true };
@@ -184,17 +184,17 @@ async function autentiqueGraphql(query: string, variables: Record<string, unknow
 }
 
 async function findContract(documentId: string) {
-  if (!documentId.trim()) return { state: "missing" as const, signerIds: [] as string[] };
+  if (!documentId.trim()) return { state: "missing" as const, signerIds: [] as string[], reason: "" };
   const result = await autentiqueGraphql(
-    "query ($id: ID!) { document(id: $id) { id signatures { public_id } } }",
+    "query ($id: UUID!) { document(id: $id) { id signatures { public_id } } }",
     { id: documentId },
   );
   const reason = autentiqueReason(result.body);
-  if (/document_not_found|document not found/i.test(reason)) return { state: "missing" as const, signerIds: [] as string[] };
   const document = result.body.data?.document;
-  if (!document?.id) return { state: result.ok && !reason ? "missing" as const : "unknown" as const, signerIds: [] as string[] };
-  const signerIds = (document.signatures ?? []).flatMap((item) => (typeof item.public_id === "string" && item.public_id.trim() ? [item.public_id] : []));
-  return { state: "found" as const, signerIds };
+  const state = contractLookupState({ ok: result.ok, reason, documentId: document?.id ?? "" });
+  if (state !== "found") return { state, signerIds: [] as string[], reason };
+  const signerIds = (document?.signatures ?? []).flatMap((item) => (typeof item.public_id === "string" && item.public_id.trim() ? [item.public_id] : []));
+  return { state, signerIds, reason };
 }
 
 async function resendContract(signerIds: string[]) {
@@ -222,7 +222,7 @@ async function documentSignatures(documentId: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${autentiqueKey()}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: "query ($id: ID!) { document(id: $id) { signatures { email signed { created_at } } } }",
+      query: "query ($id: UUID!) { document(id: $id) { signatures { email signed { created_at } } } }",
       variables: { id: documentId },
     }),
     signal: AbortSignal.timeout(20000),

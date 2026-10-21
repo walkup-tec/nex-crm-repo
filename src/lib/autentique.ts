@@ -44,6 +44,13 @@ export function contractDispatch(status: string, remote: RemoteContract) {
   return "consult" as const;
 }
 
+export function contractLookupState(input: { ok: boolean; reason: string; documentId: string }): RemoteContract {
+  if (/document_not_found|not found|não encontrado|nao encontrado/i.test(input.reason)) return "missing";
+  if (input.documentId.trim()) return "found";
+  if (input.ok && !input.reason.trim()) return "missing";
+  return "unknown";
+}
+
 export function autentiqueEvent(body: unknown) {
   if (!body || typeof body !== "object") return null;
   const event = (body as { event?: unknown }).event;

@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Circle, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -143,6 +143,7 @@ export function ContactRecord({
   contactRef.current = contactId;
   const [extraOpen, setExtraOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [idCopied, setIdCopied] = useState(false);
   const [contractingUrl, setContractingUrl] = useState("");
   const [mediaOpen, setMediaOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
@@ -161,6 +162,7 @@ export function ContactRecord({
     setNoteDraft(data.note.replace(/\s+/g, " ").trim().slice(0, 300));
     setDeal(negotiatedLabel(data.negotiatedCents));
     setLinkCopied(false);
+    setIdCopied(false);
   }
 
   useEffect(() => {
@@ -171,6 +173,7 @@ export function ContactRecord({
     setNoteDraft("");
     setExtraOpen(false);
     setLinkCopied(false);
+    setIdCopied(false);
     setMediaOpen(false);
     setRefreshing(false);
     setRefreshed(false);
@@ -464,10 +467,27 @@ export function ContactRecord({
                 </button>
               )}
               {profile.contractSigned ? (
-                <p className="contact-signed">
-                  <Check />
-                  Ctt Assinado
-                </p>
+                <div className="contact-signed-block">
+                  <p className="contact-signed">
+                    <Circle fill="currentColor" strokeWidth={0} />
+                    Ctt Assinado
+                  </p>
+                  <p className="contact-signed-id">
+                    <span>{profile.id}</span>
+                    <button
+                      type="button"
+                      aria-label={idCopied ? "ID copiado" : "Copiar ID do contato"}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(profile.id).then(() => {
+                          setIdCopied(true);
+                          window.setTimeout(() => setIdCopied(false), 1600);
+                        }).catch(() => setIdCopied(false));
+                      }}
+                    >
+                      {idCopied ? <Check /> : <Copy />}
+                    </button>
+                  </p>
+                </div>
               ) : null}
             </div>
           </section>

@@ -160,8 +160,6 @@ export function ContactRecord({
     setRgDraft(applyMask("rg", data.rg));
     setNoteDraft(data.note.replace(/\s+/g, " ").trim().slice(0, 300));
     setDeal(negotiatedLabel(data.negotiatedCents));
-    setExtraOpen(Boolean(data.contracting));
-    setMediaOpen(Boolean(data.contracting));
     setLinkCopied(false);
   }
 
@@ -198,7 +196,6 @@ export function ContactRecord({
     void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
       if (!active || !result.ok) return;
       setProfile(result.data);
-      setMediaOpen((open) => open || Boolean(result.data.contracting));
     });
     return () => {
       active = false;
@@ -251,8 +248,6 @@ export function ContactRecord({
     );
     setDocumentDraft(applyMask("doc", data.document));
     setRgDraft(applyMask("rg", data.rg));
-    setExtraOpen((open) => open || Boolean(data.contracting || data.document || data.rg));
-    setMediaOpen((open) => open || data.files.length > 0);
     setRefreshed(true);
   }
 

@@ -64,10 +64,7 @@ export async function createContractSignature(input: {
     const remote = await findContract(documentIdOnFile);
     const action = contractDispatch(status, remote.state);
     if (action === "consult") throw new Error(remote.reason ? `Não foi possível consultar o contrato na Autentique. ${remote.reason}` : "Não foi possível consultar o contrato na Autentique.");
-    if (action === "resend") {
-      await resendContract(remote.signerIds);
-      return { documentId: documentIdOnFile, resent: true };
-    }
+    if (action === "resend") await deleteContract(documentIdOnFile);
     await removeSignature(cell(existing.data, "id"));
   }
   const documentId = await uploadContract(input);
@@ -145,8 +142,8 @@ async function uploadContract(input: {
 type AutentiqueBody = {
   data?: {
     document?: { id?: string; signatures?: { public_id?: string }[] } | null;
-    resendSignatures?: boolean;
     createDocument?: { id?: string; signatures?: { email?: string }[] };
+    deleteDocument?: boolean;
   };
   errors?: { message?: string; extensions?: { code?: string } }[];
 };
@@ -196,18 +193,14 @@ async function findContract(documentId: string) {
   return { state, signerIds, reason };
 }
 
-async function resendContract(signerIds: string[]) {
-  if (!signerIds.length) throw new Error("O contrato está na Autentique, mas não há signatários para receber o e-mail.");
+async function deleteContract(documentId: string) {
   const result = await autentiqueGraphql(
-    "mutation ($ids: [UUID!]!) { resendSignatures(public_ids: $ids) }",
-    { ids: signerIds },
+    "mutation ($id: UUID!) { deleteDocument(id: $id) }",
+    { id: documentId },
   );
   const reason = autentiqueReason(result.body);
-  if (/too_many_resent_emails/i.test(reason)) {
-    throw new Error("A Autentique já enviou os e-mails deste contrato há pouco. Confira o spam dos dois endereços antes de tentar de novo.");
-  }
-  if (!result.ok || result.body.data?.resendSignatures !== true) {
-    throw new Error(reason ? `A Autentique não reenviou o contrato. ${reason}` : "A Autentique não reenviou o contrato.");
+  if (!result.ok || result.body.data?.deleteDocument !== true) {
+    throw new Error(reason ? `A Autentique não excluiu o contrato anterior. ${reason}` : "A Autentique não excluiu o contrato anterior.");
   }
 }
 

@@ -15,7 +15,9 @@ export function contractSignedMessage(name: string) {
 export function signatureDone(signed: unknown) {
   if (!signed) return false;
   if (typeof signed === "string") return signed.trim().length > 0;
-  if (typeof signed === "object" && "created_at" in signed) return Boolean((signed as { created_at?: unknown }).created_at);
+  if (typeof signed === "object") {
+    return Object.values(signed as Record<string, unknown>).some((value) => typeof value === "string" && value.trim().length > 0);
+  }
   return false;
 }
 
@@ -74,7 +76,7 @@ export function contractLookupState(input: { ok: boolean; reason: string; docume
 }
 
 export function contractContactId(documentName: string) {
-  const match = documentName.match(/Contrato NEX — ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  const match = documentName.match(/Contrato NEX\s*[—–-]\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
   return match?.[1] ?? "";
 }
 

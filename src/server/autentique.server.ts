@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, autentiqueUuid, contractCompanyWitnessEmail, contractContactId, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractOwnerEmail } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, contractCompanyWitnessEmail, contractContactId, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractOwnerEmail } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -296,6 +296,40 @@ export async function syncContractSignature(organizationId: string, contactId: s
   return true;
 }
 
+async function pendingContracts() {
+  const result = await (supabaseAdmin as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          is: (column: string, value: null) => {
+            order: (column: string, options: { ascending: boolean }) => {
+              limit: (count: number) => Promise<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>;
+            };
+          };
+        };
+      };
+    };
+  }).from("contract_signatures")
+    .select("id, organization_id, contact_id, autentique_document_id, client_name, client_email, witness_email")
+    .eq("status", "pending")
+    .is("notified_at", null)
+    .order("created_at", { ascending: false })
+    .limit(8);
+  if (result.error || !result.data) return [];
+  return result.data;
+}
+
+async function confirmReadyContract(row: Record<string, unknown>) {
+  const listed = await documentSignatures(cell(row, "autentique_document_id"));
+  if (!contractFullySigned(listed, cell(row, "client_email"), cell(row, "witness_email"))) return false;
+  await confirmSignedContract({
+    id: cell(row, "id"),
+    organizationId: cell(row, "organization_id"),
+    contactId: cell(row, "contact_id"),
+    name: cell(row, "client_name"),
+  });
+  return true;
+}
 export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: string) {
   const secret = process.env.AUTENTIQUE_WEBHOOK_SECRET?.trim() ?? "";
   if (secret && !autentiqueSignatureMatches(secret, rawBody, signatureHeader)) return;
@@ -307,7 +341,7 @@ export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: s
   }
   const event = autentiqueEvent(parsed);
   if (!event || (event.type !== "document.finished" && event.type !== "signature.accepted")) return;
-  const columns = "id, organization_id, contact_id, client_name, client_email, witness_email, status, notified_at";
+  const columns = "id, organization_id, contact_id, autentique_document_id, client_name, client_email, witness_email, status, notified_at";
   let found = await signatures().select(columns).eq("autentique_document_id", event.documentId).maybeSingle();
   if ((found.error || !found.data) && contractContactId(event.documentName)) {
     found = await signatures()
@@ -317,19 +351,22 @@ export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: s
       .limit(1)
       .maybeSingle();
   }
-  if (found.error || !found.data || found.data.notified_at) return;
-  const clientEmail = cell(found.data, "client_email");
-  const witnessEmail = cell(found.data, "witness_email");
-  let ready = event.signatures.length > 0 && contractFullySigned(event.signatures, clientEmail, witnessEmail);
-  if (!ready && autentiqueUuid(event.documentId)) {
-    const remote = await documentSignatures(event.documentId);
-    ready = contractFullySigned(remote, clientEmail, witnessEmail) || (event.type === "document.finished" && remote.length === 0);
+  if (found.data && !found.data.notified_at) {
+    const clientEmail = cell(found.data, "client_email");
+    const witnessEmail = cell(found.data, "witness_email");
+    const ready = event.signatures.length > 0 && contractFullySigned(event.signatures, clientEmail, witnessEmail);
+    if (ready) {
+      await confirmSignedContract({
+        id: cell(found.data, "id"),
+        organizationId: cell(found.data, "organization_id"),
+        contactId: cell(found.data, "contact_id"),
+        name: cell(found.data, "client_name"),
+      });
+      return;
+    }
+    if (await confirmReadyContract(found.data)) return;
   }
-  if (!ready) return;
-  await confirmSignedContract({
-    id: cell(found.data, "id"),
-    organizationId: cell(found.data, "organization_id"),
-    contactId: cell(found.data, "contact_id"),
-    name: cell(found.data, "client_name"),
-  });
+  for (const row of await pendingContracts()) {
+    if (await confirmReadyContract(row)) return;
+  }
 }

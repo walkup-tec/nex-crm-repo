@@ -1067,7 +1067,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     startsOn: terms.startsOn,
   });
   const { createContractSignature } = await import("@/server/autentique.server");
-  await createContractSignature({
+  const signature = await createContractSignature({
     organizationId,
     contactId,
     clientName: cell(contact, "name") || intake.representativeName,
@@ -1081,7 +1081,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     .insert({
       organization_id: organizationId,
       conversation_id: conversationId,
-      text: "Contrato enviado para assinatura.",
+      text: signature.resent ? "Os e-mails de assinatura foram reenviados." : "Contrato enviado para assinatura.",
       direction: "out",
       status: "sent",
     })

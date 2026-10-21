@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { autentiqueEvent, contractFullySigned, contractSignedMessage, signatureDone } from "./autentique";
+import { autentiqueEvent, contractDispatch, contractFullySigned, contractSignedMessage, signatureDone } from "./autentique";
 
 assert.equal(
   contractSignedMessage("  Marcelo   Mozart "),
@@ -44,5 +44,10 @@ assert.equal(finished?.type, "document.finished");
 assert.equal(finished?.documentId, "abc123def456");
 assert.equal(finished?.signatures[0]?.email, "ana@empresa.com");
 assert.equal(autentiqueEvent({ event: { type: "signature.accepted", data: { document: "curto" } } }), null);
+assert.equal(contractDispatch("", "missing"), "create");
+assert.equal(contractDispatch("signed", "missing"), "signed");
+assert.equal(contractDispatch("pending", "found"), "resend");
+assert.equal(contractDispatch("pending", "missing"), "create");
+assert.equal(contractDispatch("pending", "unknown"), "consult");
 
 console.log("autentique tests ok");

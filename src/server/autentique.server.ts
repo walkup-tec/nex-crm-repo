@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractFullySigned } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, contractDispatch, contractFullySigned } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -19,6 +19,7 @@ function signatures() {
       select: (columns: string) => Chain;
       insert: (values: Record<string, unknown>) => Chain;
       update: (values: Record<string, unknown>) => Chain;
+      delete: () => { eq: (column: string, value: string) => Promise<{ error: { message: string } | null }> };
     };
   }).from("contract_signatures");
 }
@@ -45,7 +46,7 @@ export async function createContractSignature(input: {
   pdfBase64: string;
 }) {
   const existing = await signatures()
-    .select("id, status")
+    .select("id, status, autentique_document_id")
     .eq("organization_id", input.organizationId)
     .eq("contact_id", input.contactId)
     .order("created_at", { ascending: false })
@@ -57,8 +58,19 @@ export async function createContractSignature(input: {
     }
     throw new Error("Não foi possível consultar a assinatura do contrato.");
   }
-  if (existing.data?.status === "pending") throw new Error("O contrato deste contato já está em assinatura.");
-  if (existing.data?.status === "signed") throw new Error("O contrato deste contato já foi assinado.");
+  const status = cell(existing.data, "status");
+  const documentIdOnFile = cell(existing.data, "autentique_document_id");
+  if (status === "signed") throw new Error("O contrato deste contato já foi assinado.");
+  if (status === "pending") {
+    const remote = await findContract(documentIdOnFile);
+    const action = contractDispatch(status, remote.state);
+    if (action === "consult") throw new Error("Não foi possível consultar o contrato na Autentique.");
+    if (action === "resend") {
+      await resendContract(remote.signerIds);
+      return { documentId: documentIdOnFile, resent: true };
+    }
+    await removeSignature(cell(existing.data, "id"));
+  }
   const documentId = await uploadContract(input);
   const saved = await signatures().insert({
     organization_id: input.organizationId,
@@ -71,7 +83,7 @@ export async function createContractSignature(input: {
     status: "pending",
   }).select("id").maybeSingle();
   if (saved.error || !saved.data) throw new Error("O contrato foi enviado, mas o acompanhamento da assinatura não foi gravado.");
-  return { documentId };
+  return { documentId, resent: false };
 }
 
 async function uploadContract(input: {
@@ -86,12 +98,12 @@ async function uploadContract(input: {
   form.append(
     "operations",
     JSON.stringify({
-      query: "mutation CreateDocumentMutation($document: DocumentInput!, $signers: [SignerInput!]!, $file: Upload!) { createDocument(document: $document, signers: $signers, file: $file) { id } }",
+      query: "mutation CreateDocumentMutation($document: DocumentInput!, $signers: [SignerInput!]!, $file: Upload!) { createDocument(document: $document, signers: $signers, file: $file) { id signatures { email } } }",
       variables: {
         document: { name: `Contrato NEX — ${input.signerName}` },
         signers: [
-          { email: input.clientEmail, name: input.signerName, action: "SIGN" },
-          { email: input.witnessEmail, name: input.witnessName, action: "SIGN_AS_A_WITNESS" },
+          { email: input.clientEmail, action: "SIGN" },
+          { email: input.witnessEmail, action: "SIGN_AS_A_WITNESS" },
         ],
         file: null,
       },
@@ -111,25 +123,98 @@ async function uploadContract(input: {
     throw new Error("A Autentique não concluiu o envio do contrato.");
   }
   const raw = await response.text();
-  let body: { data?: { createDocument?: { id?: string } }; errors?: { message?: string }[] } = {};
+  let body: AutentiqueBody = {};
   try {
     body = raw ? JSON.parse(raw) : {};
   } catch {
     body = {};
   }
   const documentId = body.data?.createDocument?.id ?? "";
-  if (!response.ok || !documentId) {
-    const reason = (body.errors ?? [])
-      .map((item) => item.message ?? "")
-      .join(" ")
-      .replace(/bearer\s+\S+/gi, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 180);
+  const reason = autentiqueReason(body);
+  const signatures = body.data?.createDocument?.signatures;
+  const linked = new Set(
+    (signatures ?? []).flatMap((item) => (typeof item.email === "string" && item.email.trim() ? [item.email.trim().toLowerCase()] : [])),
+  );
+  if (!response.ok || !documentId || !Array.isArray(signatures) || !linked.has(input.clientEmail) || !linked.has(input.witnessEmail)) {
     console.error("autentique_create", response.status, reason);
+    if (documentId && Array.isArray(signatures)) throw new Error("A Autentique não vinculou os e-mails do representante e da testemunha.");
     throw new Error(reason ? `A Autentique não concluiu o envio do contrato. ${reason}` : "A Autentique não concluiu o envio do contrato.");
   }
   return documentId;
+}
+
+type AutentiqueBody = {
+  data?: {
+    document?: { id?: string; signatures?: { public_id?: string }[] } | null;
+    resendSignatures?: boolean;
+    createDocument?: { id?: string; signatures?: { email?: string }[] };
+  };
+  errors?: { message?: string; extensions?: { code?: string } }[];
+};
+
+function autentiqueReason(body: AutentiqueBody) {
+  return (body.errors ?? [])
+    .map((item) => `${item.extensions?.code ?? ""} ${item.message ?? ""}`)
+    .join(" ")
+    .replace(/bearer\s+\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+}
+
+async function autentiqueGraphql(query: string, variables: Record<string, unknown>) {
+  try {
+    const response = await fetch(autentiqueEndpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${autentiqueKey()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const raw = await response.text();
+    let body: AutentiqueBody = {};
+    try {
+      body = raw ? JSON.parse(raw) as AutentiqueBody : {};
+    } catch {
+      body = {};
+    }
+    return { ok: response.ok, body };
+  } catch {
+    return { ok: false, body: {} };
+  }
+}
+
+async function findContract(documentId: string) {
+  if (!documentId.trim()) return { state: "missing" as const, signerIds: [] as string[] };
+  const result = await autentiqueGraphql(
+    "query ($id: ID!) { document(id: $id) { id signatures { public_id } } }",
+    { id: documentId },
+  );
+  const reason = autentiqueReason(result.body);
+  if (/document_not_found|document not found/i.test(reason)) return { state: "missing" as const, signerIds: [] as string[] };
+  const document = result.body.data?.document;
+  if (!document?.id) return { state: result.ok && !reason ? "missing" as const : "unknown" as const, signerIds: [] as string[] };
+  const signerIds = (document.signatures ?? []).flatMap((item) => (typeof item.public_id === "string" && item.public_id.trim() ? [item.public_id] : []));
+  return { state: "found" as const, signerIds };
+}
+
+async function resendContract(signerIds: string[]) {
+  if (!signerIds.length) throw new Error("O contrato está na Autentique, mas não há signatários para receber o e-mail.");
+  const result = await autentiqueGraphql(
+    "mutation ($ids: [String!]!) { resendSignatures(public_ids: $ids) }",
+    { ids: signerIds },
+  );
+  const reason = autentiqueReason(result.body);
+  if (/too_many_resent_emails/i.test(reason)) {
+    throw new Error("A Autentique já enviou os e-mails deste contrato há pouco. Confira o spam dos dois endereços antes de tentar de novo.");
+  }
+  if (!result.ok || result.body.data?.resendSignatures !== true) {
+    throw new Error(reason ? `A Autentique não reenviou o contrato. ${reason}` : "A Autentique não reenviou o contrato.");
+  }
+}
+
+async function removeSignature(id: string) {
+  const removed = await signatures().delete().eq("id", id);
+  if (removed.error) throw new Error("Não foi possível liberar o contrato deste contato para um novo envio.");
 }
 
 async function documentSignatures(documentId: string) {

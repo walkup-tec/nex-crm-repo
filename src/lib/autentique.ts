@@ -34,6 +34,16 @@ export function autentiqueSignatureMatches(secret: string, rawBody: string, head
   return timingSafeEqual(left, right);
 }
 
+export type RemoteContract = "missing" | "found" | "unknown";
+
+export function contractDispatch(status: string, remote: RemoteContract) {
+  if (status === "signed") return "signed" as const;
+  if (status !== "pending") return "create" as const;
+  if (remote === "found") return "resend" as const;
+  if (remote === "missing") return "create" as const;
+  return "consult" as const;
+}
+
 export function autentiqueEvent(body: unknown) {
   if (!body || typeof body !== "object") return null;
   const event = (body as { event?: unknown }).event;

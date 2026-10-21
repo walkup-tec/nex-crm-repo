@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractCompanyWitnessEmail, contractDispatch, contractDocumentName, contractFullySigned, contractLookupState } from "@/lib/autentique";
+import { autentiqueEvent, autentiqueSignatureMatches, contractCompanyWitnessEmail, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState } from "@/lib/autentique";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -219,10 +219,10 @@ async function deleteContract(documentId: string) {
     "mutation ($id: UUID!) { deleteDocument(id: $id) }",
     { id: documentId },
   );
+  if (result.body.data?.deleteDocument === true) return;
   const reason = autentiqueReason(result.body);
-  if (!result.ok || result.body.data?.deleteDocument !== true) {
-    throw new Error(reason ? `A Autentique não excluiu o contrato anterior. ${reason}` : "A Autentique não excluiu o contrato anterior.");
-  }
+  if (contractGone(reason)) return;
+  throw new Error(reason ? `A Autentique não excluiu o contrato anterior. ${reason}` : "A Autentique não excluiu o contrato anterior.");
 }
 
 async function removeSignature(id: string) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { autentiqueEvent, contractDispatch, contractDocumentName, contractFullySigned, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
+import { autentiqueEvent, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractSignedMessage, signatureDone } from "./autentique";
 
 assert.equal(contractDocumentName("  8f3c1a20-1111-2222-3333-444455556666  "), "Contrato NEX — 8f3c1a20-1111-2222-3333-444455556666");
 assert.equal(
@@ -74,7 +74,10 @@ assert.equal(contractDispatch("signed", "missing"), "signed");
 assert.equal(contractDispatch("pending", "found"), "resend");
 assert.equal(contractDispatch("pending", "missing"), "create");
 assert.equal(contractDispatch("pending", "unknown"), "consult");
+assert.equal(contractGone("signature_not_found"), true);
+assert.equal(contractGone("without_permission"), false);
 assert.equal(contractLookupState({ ok: true, reason: "document_not_found Document not found", documentId: "" }), "missing");
+assert.equal(contractLookupState({ ok: false, reason: "signature_not_found", documentId: "abc123def456" }), "missing");
 assert.equal(contractLookupState({ ok: true, reason: "Documento não encontrado", documentId: "" }), "missing");
 assert.equal(contractLookupState({ ok: true, reason: "", documentId: "" }), "missing");
 assert.equal(contractLookupState({ ok: true, reason: "", documentId: "abc123def456" }), "found");

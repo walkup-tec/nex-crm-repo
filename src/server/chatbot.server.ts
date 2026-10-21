@@ -1108,47 +1108,26 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
 
 export async function sendContractSignedWhatsApp(input: { organizationId: string; contactId: string; name: string }) {
   await moveContactToKanbanStage(input.organizationId, input.contactId, wonKanbanStage);
-  const { contractSignedMessage } = await import("@/lib/autentique");
-  const text = contractSignedMessage(input.name);
   const conversation = await table("chatbot_conversations")
-    .select("id, connection_id")
+    .select("id")
     .eq("organization_id", input.organizationId)
     .eq("contact_id", input.contactId)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (conversation.error || !conversation.data) throw new Error("Não foi possível achar a conversa do contato.");
-  await table("chatbot_messages").insert({
-    organization_id: input.organizationId,
-    conversation_id: cell(conversation.data, "id"),
-    text: "Contrato assinado pelo cliente e pela testemunha.",
-    direction: "out",
-    status: "sent",
-    internal: true,
-  });
-  const contact = await table("chatbot_contacts").select("phone").eq("id", input.contactId).eq("organization_id", input.organizationId).maybeSingle();
-  if (contact.error) throw new Error("Não foi possível ler o telefone do contato.");
-  const phone = whatsappNumber(cell(contact.data, "phone")) ?? cell(contact.data, "phone");
-  if (!phone) throw new Error("Esse contato não tem um telefone válido.");
-  const connection = await ownedConnection(input.organizationId, cell(conversation.data, "connection_id"));
-  if (cell(connection, "status") !== "connected") throw new Error("O WhatsApp dessa conversa não está conectado.");
-  const sent = await evo(
-    `/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`,
-    "POST",
-    whatsappTextPayload(phone, text),
-  );
   const saved = await table("chatbot_messages")
     .insert({
       organization_id: input.organizationId,
       conversation_id: cell(conversation.data, "id"),
-      text,
+      text: "Contrato assinado pelo cliente e pela testemunha.",
       direction: "out",
       status: "sent",
-      external_id: readMessageId(sent) || null,
+      internal: true,
     })
     .select("id")
     .maybeSingle();
-  if (saved.error) throw new Error("A mensagem de assinatura não foi gravada na conversa.");
+  if (saved.error) throw new Error("A nota da assinatura não foi gravada na conversa.");
 }
 
 async function requireVisibleConversation(userId: string, conversationId: string) {

@@ -59,11 +59,11 @@ export async function createContractSignature(input: {
   }
   const status = cell(existing.data, "status");
   const documentIdOnFile = cell(existing.data, "autentique_document_id");
-  if (status === "signed") throw new Error("O contrato deste contato já foi assinado.");
-  if (status === "pending") {
+  if (status === "signed" || status === "pending") {
     const remote = await findContract(documentIdOnFile);
     const action = contractDispatch(status, remote.state);
     if (action === "consult") throw new Error(remote.reason ? `Não foi possível consultar o contrato na Autentique. ${remote.reason}` : "Não foi possível consultar o contrato na Autentique.");
+    if (action === "signed") throw new Error("O contrato deste contato já foi assinado.");
     if (action === "resend") {
       const listed = await documentSignatures(documentIdOnFile);
       if (contractFullySigned(listed, cell(existing.data, "client_email"), cell(existing.data, "witness_email"))) {

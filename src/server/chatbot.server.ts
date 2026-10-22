@@ -982,9 +982,10 @@ export async function sendChatbotProposta(userId: string, conversationId: string
   if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
   const assignee = cell(conversation.data, "assignee_id");
   if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contactId = cell(conversation.data, "contact_id");
   const contact = await table("chatbot_contacts")
     .select("phone")
-    .eq("id", cell(conversation.data, "contact_id"))
+    .eq("id", contactId)
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (contact.error) fail(schemaMessage(contact.error.message));
@@ -1033,6 +1034,7 @@ export async function sendChatbotProposta(userId: string, conversationId: string
     updated_at: new Date().toISOString(),
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
+  await moveContactToKanbanStage(organizationId, contactId, "Proposta");
 }
 
 async function clientContractTerms(organizationId: string, contactId: string, documentDigits: string) {

@@ -12,7 +12,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia, flowMenuButtonText,
-  flowMenuOptions, flowSourceHandle, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+  flowMenuOptions, flowSourceHandle, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -28,6 +28,9 @@ import {
   evolutionInstanceNameOf,
   evolutionNumberInUse,
   evolutionContactIdentity,
+  evolutionMessageKey,
+  evolutionResolvedPhone,
+  incomingMessageInstant,
   evolutionConversationPhone,
   evolutionGroupSubject,
   groupInboundText,
@@ -1771,12 +1774,28 @@ async function contactIdForMessage(organizationId: string, phone: string, name: 
   return cell(retry, "id");
 }
 
+async function resolveLidPhone(instanceName: string, lid: string) {
+  if (!instanceName || !lid.endsWith("@lid")) return "";
+  const instance = encodeURIComponent(instanceName);
+  const listed = await evo(`/chat/findContacts/${instance}`, "POST", { where: { remoteJid: lid } }, 8000).catch(() => null);
+  const fromList = evolutionResolvedPhone(listed);
+  if (fromList) return fromList;
+  const profile = await evo(`/chat/fetchProfile/${instance}`, "POST", { number: lid }, 8000).catch(() => null);
+  return evolutionResolvedPhone(profile);
+}
+
 async function storeIncoming(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}) {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
   const key = (rawKey && typeof rawKey === "object" ? rawKey : {}) as Record<string, unknown>;
   if (key["fromMe"] === true) return;
-  const phone = incomingPhone(key, knownLids);
+  const mergedKey = evolutionMessageKey(record, key);
+  let phone = incomingPhone(mergedKey, knownLids);
+  const lid = evolutionContactIdentity(mergedKey).lid;
+  if (!phone && lid) {
+    phone = knownLidPhones[lid] || (await resolveLidPhone(cell(connection, "instance_name"), lid));
+    if (phone) knownLidPhones[lid] = phone;
+  }
   const externalId = cell(key, "id");
   const content = evolutionMessageContent(record);
   const text = content.mediaKind ? content.text : evolutionMessageText(record["message"]);
@@ -1821,6 +1840,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
       conversationId = cell(created.data, "id");
     }
   }
+  const createdAt = incomingMessageInstant(record["messageTimestamp"]);
   const messageRow = {
     organization_id: organizationId,
     conversation_id: conversationId,
@@ -1828,6 +1848,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     direction: "in",
     status: "sent",
     external_id: externalId,
+    ...(createdAt ? { created_at: createdAt } : {}),
   };
   const saved = await table("chatbot_messages")
     .insert(content.mediaKind ? { ...messageRow, media_kind: content.mediaKind, media_mime: content.mediaMime } : messageRow)
@@ -3597,18 +3618,14 @@ async function showBotPresence(instanceName: string, number: string, text: strin
 }
 
 async function sendFlowText(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, skipPresence = false) {
-  if (!text || cell(connection, "status") !== "connected") return;
+  if (!text || cell(connection, "status") !== "connected") return false;
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
-  if (!phone) return;
-  const delay = skipPresence ? 0 : botPresenceCue({ text }).delay;
-  const sent = await evo(
-    `/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`,
-    "POST",
-    whatsappFlowTextPayload(phone, text, delay),
-    delay + 20000,
-  );
+  if (!phone) return false;
+  if (!skipPresence) await showBotPresence(cell(connection, "instance_name"), phone, text);
+  const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", whatsappFlowTextPayload(phone, text));
   await insertFlowMessage(organizationId, conversationId, text, readMessageId(sent));
+  return true;
 }
 
 async function insertFlowMessage(organizationId: string, conversationId: string, text: string, externalId: string, media?: { kind: FlowMedia["kind"]; mime: string }) {
@@ -3671,22 +3688,22 @@ function flowMediaMime(name: string, mime: string) {
 }
 
 async function sendFlowMedia(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, media: FlowMedia) {
-  if (cell(connection, "status") !== "connected") return;
-  if (!media.path.startsWith(`${organizationId}/flows/`)) return;
+  if (cell(connection, "status") !== "connected") return false;
+  if (!media.path.startsWith(`${organizationId}/flows/`)) return false;
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
-  if (!phone) return;
+  if (!phone) return false;
   const downloaded = await supabaseAdmin.storage.from(mediaBucket).download(media.path);
-  if (downloaded.error || !downloaded.data) return;
+  if (downloaded.error || !downloaded.data) return false;
   const base64 = Buffer.from(await downloaded.data.arrayBuffer()).toString("base64");
   const instanceName = cell(connection, "instance_name");
   const instance = encodeURIComponent(instanceName);
   if (media.kind === "audio") {
-    const delay = botPresenceCue({ audio: true }).delay;
-    const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(phone, base64, delay), delay + 60000);
+    await showBotPresence(instanceName, phone, text, true);
+    const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(phone, base64), 60000);
     await insertFlowMessage(organizationId, conversationId, "[áudio]", readMessageId(sent), { kind: "audio", mime: media.mime });
     if (text.trim() && text.trim() !== media.name.trim()) await sendFlowText(connection, organizationId, conversationId, contactId, text);
-    return;
+    return true;
   }
   await showBotPresence(instanceName, phone, text);
   const sent = await evo(
@@ -3699,6 +3716,7 @@ async function sendFlowMedia(connection: Record<string, unknown>, organizationId
     kind: media.kind,
     mime: media.mime,
   });
+  return true;
 }
 
 async function addFlowTag(organizationId: string, contactId: string, name: string) {
@@ -3819,10 +3837,10 @@ async function flowVariableValues(organizationId: string, contactId: string) {
 }
 
 async function sendFlowMenu(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, options: FlowMenuOption[]) {
-  if (!text || !options.length || cell(connection, "status") !== "connected") return;
+  if (!text || !options.length || cell(connection, "status") !== "connected") return false;
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
-  if (!phone) return;
+  if (!phone) return false;
   const instanceName = cell(connection, "instance_name");
   const instance = encodeURIComponent(instanceName);
   const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
@@ -3830,22 +3848,27 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
   const menuText = flowMenuButtonText(text);
   const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: menuText.title, description: menuText.description, footer: menuText.footer, buttons }).catch(() => null);
   if (!sent || isGhostButtonResponse(sent)) {
-    await sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
-    return;
+    return sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
   }
   await insertFlowMessage(organizationId, conversationId, [text, ...options.map((option) => option.label)].join("\n"), readMessageId(sent));
+  return true;
 }
 
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {
   const values = actions.some((action) => action.type === "send" || action.type === "menu") ? await flowVariableValues(organizationId, contactId) : {};
+  let delivered = 0;
   for (const action of actions) {
     try {
       if (action.type === "send") {
         const text = fillFlowVariables(action.text, values);
-        if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, text, action.media);
-        else await sendFlowText(connection, organizationId, conversationId, contactId, text);
+        const sent = action.media
+          ? await sendFlowMedia(connection, organizationId, conversationId, contactId, text, action.media)
+          : await sendFlowText(connection, organizationId, conversationId, contactId, text);
+        if (sent) delivered += 1;
       }
-      if (action.type === "menu") await sendFlowMenu(connection, organizationId, conversationId, contactId, fillFlowVariables(action.text, values), action.options);
+      if (action.type === "menu" && (await sendFlowMenu(connection, organizationId, conversationId, contactId, fillFlowVariables(action.text, values), action.options))) {
+        delivered += 1;
+      }
       if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
       if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
       if (action.type === "stage") await assignFlowStage(organizationId, contactId, action.name);
@@ -3874,6 +3897,7 @@ async function applyFlowActions(connection: Record<string, unknown>, organizatio
       console.error("chatbot_flow", error instanceof Error ? error.message : "falha");
     }
   }
+  return delivered;
 }
 
 function flowRunPatch(organizationId: string, conversationId: string, run: FlowRun) {
@@ -3908,6 +3932,14 @@ async function claimFlowRun(organizationId: string, conversationId: string, seen
     .maybeSingle();
   if (updated.error) return true;
   return Boolean(updated.data);
+}
+
+async function rememberFlowRun(organizationId: string, conversationId: string, seen: FlowRun | null, next: FlowRun) {
+  if (await claimFlowRun(organizationId, conversationId, seen, next)) return;
+  const patch = flowRunPatch(organizationId, conversationId, next);
+  const updated = await table("chatbot_flow_runs").update(patch).eq("conversation_id", conversationId).eq("organization_id", organizationId).select("conversation_id").maybeSingle();
+  if (updated.data || updated.error) return;
+  await table("chatbot_flow_runs").insert(patch);
 }
 
 async function organizationBusinessHours(organizationId: string) {
@@ -3954,15 +3986,20 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
       storedRun.status === step.run.status &&
       !step.actions.length,
   );
-  if (samePlace) return { sent: false, owned: true };
+  if (samePlace && !manual) return { sent: false, owned: true, plannedSend: false };
   if (step.run) {
-    const claimed = await claimFlowRun(organizationId, conversationId, storedRun, step.run);
-    if (!claimed) return { sent: false, owned: true };
+    if (manual) await rememberFlowRun(organizationId, conversationId, storedRun, step.run);
+    else {
+      const claimed = await claimFlowRun(organizationId, conversationId, storedRun, step.run);
+      if (!claimed) return { sent: false, owned: true, plannedSend: false };
+    }
   }
-  await applyFlowActions(connection, organizationId, conversationId, contactId, step.actions);
+  const delivered = await applyFlowActions(connection, organizationId, conversationId, contactId, step.actions);
+  const plannedSend = step.actions.some((action) => action.type === "send" || action.type === "menu");
   return {
-    sent: step.actions.some((action) => action.type === "send"),
-    owned: step.actions.length > 0 || step.run?.status === "waiting" || step.run?.status === "delay",
+    sent: delivered > 0,
+    plannedSend,
+    owned: delivered > 0 || (!plannedSend && (step.actions.length > 0 || step.run?.status === "waiting" || step.run?.status === "delay")),
   };
 }
 
@@ -4087,7 +4124,9 @@ export async function startChatbotFlow(userId: string, conversationId: string, f
   const saved = await savedFlowById(organizationId, flowId);
   if (!saved) fail("Esse bot não está salvo.");
   const started = await executeConversationFlow(connection, organizationId, conversationId, contactId, "", flowId);
-  if (!started || (!started.sent && !started.owned)) fail("Esse bot não tem uma ação ligada ao gatilho.");
+  if (!started) fail("Esse bot não tem uma ação ligada ao gatilho.");
+  const notice = manualFlowNotice({ plannedSend: started.plannedSend === true, delivered: started.sent, owned: started.owned });
+  if (notice) fail(notice);
   return { started: true as const };
 }
 
@@ -4151,7 +4190,8 @@ async function launchScheduledReturn(row: Record<string, unknown>) {
   const saved = await savedFlowById(organizationId, cell(row, "flow_id"));
   if (!saved) throw new Error("bot ausente");
   const started = await executeConversationFlow(connection.data, organizationId, conversationId, contactId, "", saved.id);
-  if (!started || (!started.sent && !started.owned)) throw new Error("bot sem ação");
+  if (!started) throw new Error("bot sem ação");
+  if (manualFlowNotice({ plannedSend: started.plannedSend === true, delivered: started.sent, owned: started.owned })) throw new Error("bot sem mensagem");
 }
 
 let returnRunnerStarted = false;

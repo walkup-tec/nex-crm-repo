@@ -346,7 +346,7 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
   const trigger = startNode(flow.graph, { text: input.text, manual });
   if (!trigger) return emptyStep;
   if (trigger.label === "Fora do expediente") {
-    const target = hoursTarget(flow.graph, trigger.id, input.outsideHours);
+    const target = hoursTarget(flow.graph, trigger.id, input.outsideHours) || (manual ? soleHoursTarget(flow.graph, trigger.id) : "");
     return walk(flow, target ? [target] : [], "", input);
   }
   return walk(flow, outgoing(flow.graph, trigger.id), "", input);
@@ -357,6 +357,18 @@ function menuTarget(graph: FlowGraph, node: FlowNode, text: string) {
   const matched = flowMenuOptions(node.options).find((option) => option.id === text.trim() || option.label.toLocaleLowerCase("pt-BR") === answer);
   if (!matched) return null;
   return graph.edges.find((edge) => edge.source === node.id && edge.sourceHandle === matched.id)?.target ?? "";
+}
+
+function soleHoursTarget(graph: FlowGraph, id: string) {
+  const edges = graph.edges.filter((edge) => edge.source === id);
+  const tagged = edges.filter((edge) => edge.sourceHandle === "sim" || edge.sourceHandle === "nao");
+  return tagged.length === 1 ? tagged[0]?.target ?? "" : "";
+}
+
+export function manualFlowNotice(input: { plannedSend: boolean; delivered: boolean; owned: boolean }) {
+  if (input.plannedSend && !input.delivered) return "O bot não conseguiu enviar a mensagem no WhatsApp.";
+  if (!input.delivered && !input.owned) return "Esse bot não tem uma ação ligada ao gatilho.";
+  return "";
 }
 
 function hoursTarget(graph: FlowGraph, id: string, outside: boolean) {

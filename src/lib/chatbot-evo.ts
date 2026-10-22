@@ -674,8 +674,54 @@ export function evolutionQrImage(payload: unknown): string {
   return "";
 }
 
+export function evolutionMessageKey(record: Record<string, unknown>, key: Record<string, unknown>) {
+  const merged: Record<string, unknown> = { ...key };
+  for (const field of ["remoteJidAlt", "senderPn", "participantPn", "participantAlt"]) {
+    if (typeof record[field] === "string" && typeof merged[field] !== "string") merged[field] = record[field];
+  }
+  return merged;
+}
+
+const resolvedPhoneFields = ["remoteJidAlt", "senderPn", "participantPn", "participantAlt", "wuid", "ownerJid", "jid", "id", "number"];
+
+export function evolutionResolvedPhone(payload: unknown) {
+  return readResolvedPhone(payload, 0);
+}
+
+function readResolvedPhone(value: unknown, depth: number): string {
+  if (!value || typeof value !== "object" || depth > 5) return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = readResolvedPhone(item, depth + 1);
+      if (found) return found;
+    }
+    return "";
+  }
+  const record = value as Record<string, unknown>;
+  for (const field of resolvedPhoneFields) {
+    const raw = record[field];
+    if (typeof raw !== "string" || raw.endsWith("@lid")) continue;
+    const digits = raw.includes("@") ? whatsappJidPhone(raw) : raw.replace(/\D/g, "");
+    if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) return digits;
+    if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  }
+  for (const nested of Object.values(record)) {
+    const found = readResolvedPhone(nested, depth + 1);
+    if (found) return found;
+  }
+  return "";
+}
+
+export function incomingMessageInstant(value: unknown, now = Date.now()) {
+  const raw = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isFinite(raw) || raw <= 0) return "";
+  const ms = raw < 10_000_000_000 ? raw * 1000 : raw;
+  if (ms > now + 120_000 || now - ms > 14 * 24 * 60 * 60 * 1000) return "";
+  return new Date(ms).toISOString();
+}
+
 export function evolutionContactIdentity(key: Record<string, unknown>) {
-  const fields = ["remoteJidAlt", "senderPn", "participantPn", "participant", "remoteJid"];
+  const fields = ["remoteJidAlt", "senderPn", "participantPn", "participantAlt", "participant", "remoteJid"];
   let phone = "";
   let lid = "";
   for (const field of fields) {

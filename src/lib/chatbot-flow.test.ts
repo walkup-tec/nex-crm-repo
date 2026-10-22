@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chooseFlow, clientFlowVariableTokens, cloneFlowSelection, crmSaveField, fillFlowVariables, flowDropPosition, flowMedia, flowMediaLabel, flowMenuButtonText,
-  flowMenuOptions, insertFlowVariable, businessHours, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+  flowMenuOptions, insertFlowVariable, businessHours, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -300,3 +300,11 @@ assert.equal(scheduled.run?.status, "waiting");
 assert.equal(scheduled.actions.some((action) => action.type === "queue"), false);
 const answeredReturn = stepFlow(returnFlow, scheduled.run, { text: "sim", at: noon + 1000, outsideHours: false });
 assert.equal(answeredReturn.actions.some((action) => action.type === "queue"), true);
+const closedManual = stepFlow(returnFlow, null, { text: "", at: night, outsideHours: true, manual: true });
+assert.equal(closedManual.actions[0]?.type === "send" ? closedManual.actions[0].text : "", "Olá, tudo bem! Marcelo aqui...");
+assert.equal(closedManual.actions[2]?.type === "send" ? closedManual.actions[2].text : "", "Podemos conversar hoje?");
+const closedAutomatic = stepFlow(returnFlow, null, { text: "oi", at: night, outsideHours: true });
+assert.equal(closedAutomatic.actions.length, 0);
+assert.equal(manualFlowNotice({ plannedSend: true, delivered: false, owned: true }), "O bot não conseguiu enviar a mensagem no WhatsApp.");
+assert.equal(manualFlowNotice({ plannedSend: false, delivered: false, owned: false }), "Esse bot não tem uma ação ligada ao gatilho.");
+assert.equal(manualFlowNotice({ plannedSend: true, delivered: true, owned: true }), "");

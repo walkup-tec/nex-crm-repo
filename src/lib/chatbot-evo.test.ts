@@ -6,6 +6,9 @@ import {
   evolutionContactAvatar,
   evolutionContactPhone,
   evolutionContactIdentity,
+  evolutionMessageKey,
+  evolutionResolvedPhone,
+  incomingMessageInstant,
   learnLidPhones,
   resolveIncomingPhone,
   composerSendsOnEnter,
@@ -628,6 +631,18 @@ assert.equal(learned[marceloLid], "5551999666841");
 assert.equal(resolveIncomingPhone({ remoteJid: marceloLid }, learned), "5551999666841");
 assert.equal(resolveIncomingPhone({ remoteJid: marceloLid }, {}), "");
 assert.equal(evolutionContactPhone({ remoteJid: marceloLid }), "");
+assert.equal(
+  evolutionContactIdentity(evolutionMessageKey({ senderPn: marceloPhone }, { remoteJid: marceloLid, fromMe: false, id: "ABC" })).phone,
+  "5551999666841",
+);
+assert.equal(
+  evolutionResolvedPhone({ id: marceloLid, remoteJid: marceloLid, wuid: marceloPhone }),
+  "5551999666841",
+);
+assert.equal(evolutionResolvedPhone([{ remoteJid: marceloLid }]), "");
+const sentAt = Date.parse("2026-10-22T13:31:00.000Z");
+assert.equal(incomingMessageInstant(Math.floor(sentAt / 1000), sentAt + 5 * 60_000), new Date(Math.floor(sentAt / 1000) * 1000).toISOString());
+assert.equal(incomingMessageInstant("texto", sentAt), "");
 assert.equal(evolutionContactIdentity({ remoteJid: marceloPhone, remoteJidAlt: marceloLid }).lid, marceloLid);
 assert.equal(evolutionMessageText("segunda mensagem"), "segunda mensagem");
 assert.equal(channelsAllConnected([{ status: "connected" }, { status: "connected" }]), true);

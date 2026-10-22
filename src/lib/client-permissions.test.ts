@@ -48,6 +48,8 @@ assert.equal(firstAllowedClientPath(noClientPermissions), "/minha-conta");
 const inboxOnly = allChatbotMenus(false);
 inboxOnly.inbox = true;
 assert.equal(clientUserCanSee("/chatbot", chatbotOnly, inboxOnly), true);
+assert.equal(clientUserCanSee("/chatbot/atendimento", chatbotOnly, inboxOnly), true);
+assert.equal(clientUserCanSee("/chatbot/atendimento#875c7078-553e-484b-9aa9-4232d0ef5c2c", chatbotOnly, inboxOnly), true);
 assert.equal(clientUserCanSee("/chatbot/fila", chatbotOnly, inboxOnly), false);
 assert.equal(clientUserCanSee("/chatbot/configuracoes", chatbotOnly, inboxOnly), false);
 assert.equal(clientUserCanSee("/chatbot/equipes", chatbotOnly, inboxOnly), false);

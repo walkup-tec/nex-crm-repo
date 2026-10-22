@@ -36,6 +36,7 @@ export function explicitChatbotMenus(value: unknown): ChatbotMenuMap | null {
 export function chatbotMenuForPath(path: string): ChatbotMenuKey | null {
   const bare = path.split("?")[0]?.split("#")[0] ?? "/";
   const clean = bare.length > 1 && bare.endsWith("/") ? bare.slice(0, -1) : bare || "/";
+  if (clean === "/chatbot/atendimento") return "inbox";
   return chatbotMenuItems.find((item) => item.path === clean)?.key ?? null;
 }
 

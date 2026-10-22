@@ -30,6 +30,7 @@ import { Route as AuthenticatedMinhaContaRouteImport } from './routes/_authentic
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as AuthenticatedChatbotIndexRouteImport } from './routes/_authenticated/chatbot.index'
+import { Route as AuthenticatedChatbotAtendimentoRouteImport } from './routes/_authenticated/chatbot.atendimento'
 import { Route as AuthenticatedChatbotAgendamentosRouteImport } from './routes/_authenticated/chatbot.agendamentos'
 import { Route as AuthenticatedChatbotAutomacoesRouteImport } from './routes/_authenticated/chatbot.automacoes'
 import { Route as AuthenticatedChatbotClientesRouteImport } from './routes/_authenticated/chatbot.clientes'
@@ -159,6 +160,12 @@ const AuthenticatedChatbotIndexRoute =
   AuthenticatedChatbotIndexRouteImport.update({
     id: '/',
     path: '/',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotAtendimentoRoute =
+  AuthenticatedChatbotAtendimentoRouteImport.update({
+    id: '/atendimento',
+    path: '/atendimento',
     getParentRoute: () => AuthenticatedChatbotRoute,
   } as any)
 const AuthenticatedChatbotAgendamentosRoute =
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/auth/': typeof AuthIndexRoute
+  '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
   '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
   '/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
@@ -364,6 +372,7 @@ export interface FileRoutesByTo {
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
   '/auth': typeof AuthIndexRoute
+  '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
   '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
   '/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
@@ -412,6 +421,7 @@ export interface FileRoutesById {
   '/_authenticated/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
   '/auth/': typeof AuthIndexRoute
+  '/_authenticated/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/_authenticated/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
   '/_authenticated/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
   '/_authenticated/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
@@ -460,6 +470,7 @@ export interface FileRouteTypes {
     | '/minha-conta'
     | '/usuarios'
     | '/auth/'
+    | '/chatbot/atendimento'
     | '/chatbot/agendamentos'
     | '/chatbot/automacoes'
     | '/chatbot/clientes'
@@ -503,6 +514,7 @@ export interface FileRouteTypes {
     | '/minha-conta'
     | '/usuarios'
     | '/auth'
+    | '/chatbot/atendimento'
     | '/chatbot/agendamentos'
     | '/chatbot/automacoes'
     | '/chatbot/clientes'
@@ -550,6 +562,7 @@ export interface FileRouteTypes {
     | '/_authenticated/minha-conta'
     | '/_authenticated/usuarios'
     | '/auth/'
+    | '/_authenticated/chatbot/atendimento'
     | '/_authenticated/chatbot/agendamentos'
     | '/_authenticated/chatbot/automacoes'
     | '/_authenticated/chatbot/clientes'
@@ -743,6 +756,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatbotIndexRouteImport
       parentRoute: typeof AuthenticatedChatbotRoute
     }
+    '/_authenticated/chatbot/atendimento': {
+      id: '/_authenticated/chatbot/atendimento'
+      path: '/atendimento'
+      fullPath: '/chatbot/atendimento'
+      preLoaderRoute: typeof AuthenticatedChatbotAtendimentoRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
     '/_authenticated/chatbot/agendamentos': {
       id: '/_authenticated/chatbot/agendamentos'
       path: '/agendamentos'
@@ -915,6 +935,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedChatbotRouteChildren {
+  AuthenticatedChatbotAtendimentoRoute: typeof AuthenticatedChatbotAtendimentoRoute
   AuthenticatedChatbotAgendamentosRoute: typeof AuthenticatedChatbotAgendamentosRoute
   AuthenticatedChatbotAutomacoesRoute: typeof AuthenticatedChatbotAutomacoesRoute
   AuthenticatedChatbotClientesRoute: typeof AuthenticatedChatbotClientesRoute
@@ -930,6 +951,7 @@ interface AuthenticatedChatbotRouteChildren {
 }
 
 const AuthenticatedChatbotRouteChildren: AuthenticatedChatbotRouteChildren = {
+  AuthenticatedChatbotAtendimentoRoute: AuthenticatedChatbotAtendimentoRoute,
   AuthenticatedChatbotAgendamentosRoute: AuthenticatedChatbotAgendamentosRoute,
   AuthenticatedChatbotAutomacoesRoute: AuthenticatedChatbotAutomacoesRoute,
   AuthenticatedChatbotClientesRoute: AuthenticatedChatbotClientesRoute,

@@ -4,7 +4,8 @@ import { ChatbotFrame } from "@/components/chatbot/frame";
 
 function inboxSearch(search: Record<string, unknown>) {
   const conversa = typeof search.conversa === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.conversa) ? search.conversa : "";
-  return { expandir: search.expandir === "1" || search.expandir === 1, conversa };
+  const expandir = search.expandir === true || search.expandir === 1 || search.expandir === "1" || search.expandir === "true";
+  return { expandir, conversa };
 }
 
 export const Route = createFileRoute("/_authenticated/chatbot/")({

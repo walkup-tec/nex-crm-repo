@@ -906,7 +906,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
           {expanded ? null : (
             <a
               className="chat-expand"
-              href={`/chatbot?expandir=1${selected ? `&conversa=${encodeURIComponent(selected)}` : ""}`}
+              href={selected ? `/chatbot/atendimento#${selected}` : "/chatbot/atendimento"}
               target="_blank"
               rel="noreferrer"
             >

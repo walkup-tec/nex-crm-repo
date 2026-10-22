@@ -28,6 +28,11 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
 import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
 
+function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
+  const all = rows ?? [];
+  return [...all].sort((left, right) => Number(right.status === "connected") - Number(left.status === "connected"));
+}
+
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
 type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" | "audio" };
@@ -383,12 +388,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         setData(next);
         setMessage((current) => (sending.current ? current : ""));
         setSelected((current) => {
-          const wanted = current || pendingOpen.current;
-          if (wanted && next.conversations.some((item) => item.id === wanted)) {
-            pendingOpen.current = "";
-            return wanted;
+          const pending = pendingOpen.current;
+          if (pending) {
+            if (next.conversations.some((item) => item.id === pending)) pendingOpen.current = "";
+            return pending;
           }
-          return next.conversations.some((item) => item.id === current) ? current : "";
+          return current && next.conversations.some((item) => item.id === current) ? current : "";
         });
         if (openId && conversations.some((item) => item.id === openId)) {
           void markChatbotConversationReadFn({ data: { conversationId: openId } }).then((marked) => {
@@ -436,6 +441,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setQuickOpen(false);
     setBotsOpen(false);
   }, [selected]);
+
+  useEffect(() => {
+    if (!newOpen) return;
+    const channels = startChannels(data?.connections);
+    setNewConnectionId((current) => (channels.some((item) => item.id === current) ? current : channels[0]?.id ?? ""));
+  }, [newOpen, data]);
 
   const conversation = data?.conversations.find((item) => item.id === selected);
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
@@ -997,10 +1008,10 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   }
 
   function openNewConversation() {
-    const connected = (data?.connections ?? []).filter((item) => item.status === "connected");
+    const channels = startChannels(data?.connections);
     setNewName("");
     setNewPhone("");
-    setNewConnectionId((current) => (connected.some((item) => item.id === current) ? current : connected[0]?.id ?? ""));
+    setNewConnectionId(channels[0]?.id ?? "");
     setNewError("");
     setNewOpen(true);
   }
@@ -1015,16 +1026,58 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       setNewError(result.message);
       return;
     }
+    const attendant = data?.conversations.find((item) => item.mine && item.assigneeName.trim())?.assigneeName ?? "";
     pendingOpen.current = result.data.conversationId;
+    selectedRef.current = result.data.conversationId;
     setSelected(result.data.conversationId);
-    setLane("atendimento");
+    setLane(attendant ? "atendimento" : "aguardando");
+    setDraft("");
+    setData((current) => {
+      if (!current || current.conversations.some((item) => item.id === result.data.conversationId)) return current;
+      const contacts = current.contacts.some((item) => item.id === result.data.contactId)
+        ? current.contacts
+        : [
+            {
+              id: result.data.contactId,
+              name: newName.trim(),
+              phone: newPhone,
+              avatarUrl: "",
+              botsDisabled: true,
+              tags: [],
+              products: [],
+              stage: "Atendimento",
+            },
+            ...current.contacts,
+          ];
+      return {
+        ...current,
+        contacts,
+        conversations: [
+          {
+            id: result.data.conversationId,
+            contactId: result.data.contactId,
+            connectionId: newConnectionId,
+            status: "active",
+            assigneeName: attendant,
+            botPaused: true,
+            updatedAt: new Date().toISOString(),
+            unreadCount: 0,
+            pinned: false,
+            mine: true,
+            open: false,
+          },
+          ...current.conversations,
+        ],
+      };
+    });
     setNewOpen(false);
     setNewName("");
     setNewPhone("");
     await load();
+    composerRef.current?.focus();
   }
 
-  const connectedChannels = (data?.connections ?? []).filter((item) => item.status === "connected");
+  const availableChannels = startChannels(data?.connections);
 
   return (
     <main className="page">
@@ -1408,11 +1461,11 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 WhatsApp
                 <input value={newPhone} inputMode="tel" disabled={newSaving} placeholder="(51) 99999-9999" aria-label="WhatsApp do contato" onChange={(event) => setNewPhone(whatsappMask(event.target.value))} />
               </label>
-              {connectedChannels.length > 1 ? (
+              {availableChannels.length > 1 ? (
                 <label>
                   Canal
                   <select className="transfer-agent" aria-label="Canal de WhatsApp" value={newConnectionId} disabled={newSaving} onChange={(event) => setNewConnectionId(event.target.value)}>
-                    {connectedChannels.map((item) => (
+                    {availableChannels.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name || "Canal"} {clientPhoneLabel(item.phone)}
                       </option>
@@ -1420,13 +1473,13 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                   </select>
                 </label>
               ) : null}
-              {connectedChannels.length ? null : <p className="info-note">Conecte um canal de WhatsApp antes de iniciar a conversa.</p>}
+              {availableChannels.length ? null : <p className="info-note">Conecte um canal de WhatsApp antes de iniciar a conversa.</p>}
               {newError ? <p className="info-note">{newError}</p> : null}
               <div className="modal-actions">
                 <Button type="button" variant="outline" onClick={() => setNewOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={newSaving || !connectedChannels.length || newName.trim().length < 2 || !attendancePhone(newPhone)}>
+                <Button type="submit" disabled={newSaving || !availableChannels.length || !newConnectionId || newName.trim().length < 2 || !attendancePhone(newPhone)}>
                   {newSaving ? "Iniciando" : "Iniciar conversa"}
                 </Button>
               </div>

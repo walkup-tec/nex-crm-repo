@@ -476,13 +476,15 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     configured: true,
     organizationId,
     contractingForm,
-    connections: connectionRows.map((row) => ({
-      id: cell(row, "id"),
-      name: cell(row, "display_name"),
-      phone: cell(row, "phone"),
-      status: cell(row, "status") as ChatbotConnectionStatus,
-      error: cell(row, "last_error"),
-    })),
+    connections: connectionRows
+      .filter((row) => !allowedConnections || allowedConnections.has(cell(row, "id")))
+      .map((row) => ({
+        id: cell(row, "id"),
+        name: cell(row, "display_name"),
+        phone: cell(row, "phone"),
+        status: cell(row, "status") as ChatbotConnectionStatus,
+        error: cell(row, "last_error"),
+      })),
     contacts: contactRows.map((row) => ({
       id: cell(row, "id"),
       name: cell(row, "name"),
@@ -3543,7 +3545,8 @@ export async function startChatbotConversation(userId: string, input: { name: st
     const allowed = await teamConnectionIds(userId, organizationId);
     if (!allowed.has(cell(connection, "id"))) fail("Esse canal não pertence a uma equipe sua.");
   }
-  if (cell(connection, "status") !== "connected") fail("Conecte o canal de WhatsApp antes de iniciar a conversa.");
+  const ready = cell(connection, "status") === "connected" ? connection : await promoteOpenConnection(connection);
+  if (cell(ready, "status") !== "connected") fail("Conecte o canal de WhatsApp antes de iniciar a conversa.");
   const contactId = await contactIdForMessage(organizationId, phone, name, false);
   if (!contactId) fail("Não foi possível criar o contato.");
   const existing = await table("chatbot_conversations")
@@ -3635,7 +3638,7 @@ export async function startChatbotConversation(userId: string, input: { name: st
   await done(
     table("chatbot_conversations").update({ bot_paused: true }).eq("organization_id", organizationId).eq("contact_id", contactId),
   );
-  return { conversationId };
+  return { conversationId, contactId };
 }
 
 export async function renameChatbotContact(userId: string, contactId: string, name: string) {

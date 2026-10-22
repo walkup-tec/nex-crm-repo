@@ -325,30 +325,35 @@ function flowHasInboundTrigger(flow: SavedFlow, text: string) {
   );
 }
 
+function freshFlowStep(flow: SavedFlow, input: { text: string; outsideHours: boolean; at: number }) {
+  return stepFlow(flow, null, { text: input.text, at: input.at, outsideHours: input.outsideHours });
+}
+
+function pickAutomaticFlow(flows: SavedFlow[], input: { text: string; outsideHours: boolean; at: number }) {
+  const preferred = chooseFlow(flows, { text: input.text, outsideHours: input.outsideHours, run: null });
+  const ordered = preferred ? [preferred, ...flows.filter((flow) => flow.id !== preferred.id)] : flows;
+  for (const flow of ordered) {
+    if (flow.launch === "manual") continue;
+    if (freshFlowStep(flow, input).actions.length) return flow;
+  }
+  const manuals = flows.filter((flow) => flow.launch === "manual" && flowHasInboundTrigger(flow, input.text));
+  return manuals.length === 1 && freshFlowStep(manuals[0], input).actions.length ? manuals[0] : null;
+}
+
 export function startInboundFlow(
   flows: SavedFlow[],
   input: { text: string; outsideHours: boolean; run: FlowRun | null; at: number },
 ): { flow: SavedFlow; step: FlowStep; restart: boolean } | null {
-  let chosen = chooseFlow(flows, { text: input.text, outsideHours: input.outsideHours, run: input.run });
-  if (!chosen && !input.run) {
-    const candidates = flows.filter((flow) => flowHasInboundTrigger(flow, input.text));
-    chosen = candidates.length === 1 ? (candidates[0] ?? null) : null;
+  const current = input.run && input.run.status !== "done" ? flows.find((flow) => flow.id === input.run?.flowId) : null;
+  if (current && input.run) {
+    const step = stepFlow(current, input.run, { text: input.text, at: input.at, outsideHours: input.outsideHours });
+    if (step.actions.length) return { flow: current, step, restart: false };
   }
-  if (!chosen) return null;
-  const bound = input.run && input.run.flowId === chosen.id ? input.run : null;
-  const step = stepFlow(chosen, bound, { text: input.text, at: input.at, outsideHours: input.outsideHours });
-  const menuStuck = Boolean(
-    bound &&
-      bound.status === "waiting" &&
-      nodeById(chosen.graph, bound.nodeId)?.label === "Menu" &&
-      !step.actions.length &&
-      step.run?.nodeId === bound.nodeId &&
-      step.run.status === "waiting",
-  );
-  if (!menuStuck) return step.actions.length || step.run ? { flow: chosen, step, restart: false } : null;
-  const fresh = stepFlow(chosen, null, { text: input.text, at: input.at, outsideHours: input.outsideHours });
-  if (!fresh.actions.length && !fresh.run) return { flow: chosen, step, restart: false };
-  return { flow: chosen, step: fresh, restart: true };
+  const flow = pickAutomaticFlow(flows, input);
+  if (!flow) return null;
+  const step = freshFlowStep(flow, input);
+  if (!step.actions.length) return null;
+  return { flow, step, restart: Boolean(input.run && input.run.status !== "done") };
 }
 
 function startNode(graph: FlowGraph, input: { text: string; manual: boolean }) {

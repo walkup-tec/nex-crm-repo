@@ -249,6 +249,22 @@ const startedManual = startInboundFlow([manualHours], { text: "oi", outsideHours
 assert.equal(startedManual?.restart, false);
 assert.equal(startedManual?.step.actions[0]?.type === "send" ? startedManual.step.actions[0].text : "", "Estamos abertos.");
 assert.equal(startInboundFlow([manualHours, { ...manualHours, id: "outro" }], { text: "oi", outsideHours: false, run: null, at: noon }), null);
+const emptyReceived: SavedFlow = {
+  id: "vazio",
+  name: "Vazio",
+  graph: { nodes: [{ id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" }], edges: [] },
+};
+const skippedEmpty = startInboundFlow([emptyReceived, hoursFlow], { text: "oi", outsideHours: false, run: null, at: noon });
+assert.equal(skippedEmpty?.flow.id, "hours");
+assert.equal(skippedEmpty?.step.actions[0]?.type === "send" ? skippedEmpty.step.actions[0].text : "", "Estamos abertos.");
+const duringWait = startInboundFlow([hoursFlow], {
+  text: "Oi",
+  outsideHours: false,
+  run: { flowId: "hours", nodeId: "h", status: "delay", waitUntil: noon + 60_000, lastAnswer: "" },
+  at: noon,
+});
+assert.equal(duringWait?.restart, true);
+assert.equal(duringWait?.step.actions[0]?.type === "send" ? duringWait.step.actions[0].text : "", "Estamos abertos.");
 const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
 assert.equal(ignored.run?.nodeId, "menu");
 assert.equal(ignored.actions.length, 0);

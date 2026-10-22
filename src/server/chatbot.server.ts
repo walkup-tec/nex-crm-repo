@@ -4161,13 +4161,8 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
 
 async function runIncomingFlow(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
   try {
-    const conversation = await table("chatbot_conversations").select("assignee_id").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
-    if (conversation.error) return false;
-    const stored = await table("chatbot_flow_runs").select("status").eq("conversation_id", conversationId).maybeSingle();
-    if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
-    const status = cell(stored.data, "status");
-    const openRun = status === "waiting" || status === "delay";
-    if (!openRun && cell(conversation.data, "assignee_id")) return false;
+    const conversation = await table("chatbot_conversations").select("id").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+    if (conversation.error || !conversation.data) return false;
     const result = await executeConversationFlow(connection, organizationId, conversationId, contactId, text);
     return result.sent || result.owned;
   } catch {

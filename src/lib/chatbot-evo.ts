@@ -579,6 +579,17 @@ export function evolutionConnectionStatus(state: string): ChatbotConnectionStatu
   return "waiting";
 }
 
+export const evolutionInactiveMessage = "A conexão não está ativa na API do WhatsApp.";
+
+export function evolutionReportedStatus(input: { state: string; instancePresent: boolean; removed: boolean; qrReady: boolean }): ChatbotConnectionStatus {
+  if (!input.instancePresent || input.removed) return "disconnected";
+  const observed = evolutionConnectionStatus(input.state);
+  if (observed === "connected") return "connected";
+  if (input.qrReady) return "qr";
+  if (!input.state.trim()) return "disconnected";
+  return observed;
+}
+
 export function evolutionInstanceNameOf(record: Record<string, unknown>) {
   const nested = record["instance"];
   const nestedRecord = nested && typeof nested === "object" ? (nested as Record<string, unknown>) : null;

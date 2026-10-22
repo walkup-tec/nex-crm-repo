@@ -50,13 +50,14 @@ export const createChatbotConnectionFn = createServerFn({ method: "POST" })
 
 export const refreshChatbotConnectionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { connectionId: string; withQr?: boolean }) => ({
-    connectionId: data.connectionId,
+  .validator((data: { connectionId?: string; phone?: string; withQr?: boolean }) => ({
+    connectionId: typeof data.connectionId === "string" ? data.connectionId.trim() : "",
+    phone: typeof data.phone === "string" ? data.phone : "",
     withQr: data.withQr === true,
   }))
   .handler(async ({ context, data }) => {
     const { refreshChatbotConnection } = await import("@/server/chatbot.server");
-    return guard(() => refreshChatbotConnection(context.userId, data.connectionId, data.withQr));
+    return guard(() => refreshChatbotConnection(context.userId, data.connectionId, data.withQr, data.phone));
   });
 
 export const deleteChatbotConnectionFn = createServerFn({ method: "POST" })

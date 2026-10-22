@@ -3,6 +3,7 @@ import { chatbotProfileLabel, chatbotProfilesFromStorage, defaultChatbotProfiles
 import { allChatbotMenus } from "./chatbot-menus";
 import {
   evolutionConnectionStatus,
+  evolutionReportedStatus,
   evolutionContactAvatar,
   evolutionContactPhone,
   evolutionContactIdentity,
@@ -603,6 +604,10 @@ assert.equal(clientPhoneLabel(grupo), "Grupo");
 assert.equal(clientPhoneLabel("5511999999999"), "(11) 99999-9999");
 assert.equal(evolutionConnectionStatus("open"), "connected");
 assert.equal(evolutionConnectionStatus("close"), "disconnected");
+assert.equal(evolutionReportedStatus({ state: "open", instancePresent: true, removed: false, qrReady: false }), "connected");
+assert.equal(evolutionReportedStatus({ state: "close", instancePresent: true, removed: false, qrReady: false }), "disconnected");
+assert.equal(evolutionReportedStatus({ state: "", instancePresent: false, removed: false, qrReady: false }), "disconnected");
+assert.equal(evolutionReportedStatus({ state: "close", instancePresent: true, removed: false, qrReady: true }), "qr");
 assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");
 assert.equal(evolutionMessageText({ buttonsResponseMessage: { selectedButtonId: "1", selectedDisplayText: "Vendas" } }), "Vendas");
 assert.equal(evolutionMessageText({ imageMessage: { url: "x" } }), "[imagem]");

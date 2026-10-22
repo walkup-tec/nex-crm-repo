@@ -155,7 +155,7 @@ export function Connections() {
       setLoading(false);
       const refreshed = await Promise.all(
         result.data.connections.map(async (row) => {
-          const current = await refreshChatbotConnectionFn({ data: { connectionId: row.id, withQr: false } });
+          const current = await refreshChatbotConnectionFn({ data: { connectionId: row.id, phone: row.phone, withQr: false } });
           return current.ok ? { id: row.id, status: current.data.status, error: current.data.error } : null;
         }),
       );
@@ -171,8 +171,9 @@ export function Connections() {
 
   useEffect(() => {
     if (!active) return;
+    const phone = rows.find((row) => row.id === active)?.phone ?? "";
     const timer = window.setInterval(() => {
-      void refreshChatbotConnectionFn({ data: { connectionId: active, withQr: false } }).then((result) => {
+      void refreshChatbotConnectionFn({ data: { connectionId: active, phone, withQr: false } }).then((result) => {
         if (!result.ok) return;
         applyStatus(active, result.data.status, result.data.error);
         if (result.data.status === "connected") {
@@ -182,7 +183,7 @@ export function Connections() {
       });
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, [active, rows]);
 
   async function create() {
     setPending(true);
@@ -205,7 +206,8 @@ export function Connections() {
     setMessage("");
     qrIssuedAt.current = Date.now();
     setActive(connectionId);
-    const result = await refreshChatbotConnectionFn({ data: { connectionId, withQr: true } });
+    const phone = rows.find((row) => row.id === connectionId)?.phone ?? "";
+    const result = await refreshChatbotConnectionFn({ data: { connectionId, phone, withQr: true } });
     if (!result.ok) {
       setMessage(result.message);
       return;

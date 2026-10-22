@@ -24,6 +24,8 @@ import {
   shouldSyncEvolution,
   queueByKey,
   evolutionConnectionStatus,
+  evolutionInactiveMessage,
+  evolutionReportedStatus,
   evolutionInstanceClosed,
   evolutionInstanceNameOf,
   evolutionNumberInUse,
@@ -560,30 +562,72 @@ export async function createChatbotConnection(userId: string, name: string, phon
   return { id: cell(inserted.data, "id"), qrCode: qr };
 }
 
-export async function refreshChatbotConnection(userId: string, connectionId: string, withQr = false) {
-  const { organizationId } = await membership(userId, "connection");
-  const current = await ownedConnection(organizationId, connectionId);
-  const instanceName = cell(current, "instance_name");
-  const stateBody = await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
-  const listed = await findEvolutionInstance(instanceName);
+async function readEvolutionConnection(instanceName: string) {
+  let listed: unknown = null;
+  try {
+    listed = await evo("/instance/fetchInstances", "GET");
+  } catch {
+    return { known: false, record: null as Record<string, unknown> | null, state: "" };
+  }
+  if (!Array.isArray(listed)) return { known: false, record: null, state: "" };
+  const found = listed.find(
+    (item) => item && typeof item === "object" && evolutionInstanceNameOf(item as Record<string, unknown>) === instanceName,
+  );
+  const record = found && typeof found === "object" ? (found as Record<string, unknown>) : null;
+  if (!record) return { known: true, record: null, state: "" };
+  let state = cell(record, "connectionStatus");
+  try {
+    state = readState(await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET")) || state;
+  } catch {
+    return { known: true, record, state };
+  }
+  return { known: true, record, state };
+}
+
+async function openConnectionQr(instanceName: string, phone: string) {
+  const number = attendancePhone(phone);
+  await evo("/instance/create", "POST", {
+    instanceName,
+    qrcode: true,
+    integration: "WHATSAPP-BAILEYS",
+    ...(number ? { number } : {}),
+  }).catch(() => null);
   await ensureWebhook(instanceName);
-  const listedState = cell(listed, "connectionStatus");
-  const liveState = readState(stateBody);
-  const observed = evolutionConnectionStatus(liveState || listedState);
-  const removed = (liveState === "close" || listedState === "close") && whatsappDeviceRemoved(listed?.["disconnectionReasonCode"]);
+  const connected = await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET").catch(() => null);
+  return evolutionQrImage(connected);
+}
+
+export async function refreshChatbotConnection(userId: string, connectionId: string, withQr = false, phone = "") {
+  const { organizationId } = await membership(userId, "connection");
+  const current = await ownedConnection(organizationId, connectionId, phone);
+  const instanceName = cell(current, "instance_name");
+  const savedId = cell(current, "id");
+  const live = await readEvolutionConnection(instanceName);
+  if (!live.known) fail("A Evolution API não concluiu a operação.");
+  const removed = Boolean(live.record) && (live.state === "close" || cell(live.record, "connectionStatus") === "close") && whatsappDeviceRemoved(live.record?.["disconnectionReasonCode"]);
   const previous = cell(current, "status");
-  const qrCode = withQr && observed !== "connected" ? evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET")) : "";
-  const live = removed ? "disconnected" : observed === "connected" ? "connected" : qrCode ? "qr" : observed;
-  const next = !removed && previous === "connected" && live !== "connected" && !withQr ? "connected" : live;
-  const lastError = next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : cell(current, "last_error");
+  let qrCode = "";
+  if (withQr && (!live.record || evolutionConnectionStatus(live.state) !== "connected")) {
+    qrCode = await openConnectionQr(instanceName, cell(current, "phone"));
+  } else if (live.record) {
+    await ensureWebhook(instanceName);
+  }
+  const next = evolutionReportedStatus({
+    state: live.state,
+    instancePresent: Boolean(live.record) || Boolean(qrCode),
+    removed,
+    qrReady: Boolean(qrCode),
+  });
+  const lastError = next === "connected" || next === "qr" ? "" : removed ? whatsappDeviceRemovedMessage : next === "disconnected" ? evolutionInactiveMessage : cell(current, "last_error");
   if (next === "connected" && previous !== "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
     .update({ status: next, last_error: lastError, updated_at: new Date().toISOString() })
-    .eq("id", connectionId)
+    .eq("id", savedId)
     .eq("organization_id", organizationId)
     .select("*")
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
+  if (withQr && next !== "connected" && !qrCode) fail("A API do WhatsApp não entregou o QR Code. Tente de novo.");
   return { status: next, qrCode, error: lastError };
 }
 
@@ -1514,7 +1558,7 @@ export async function ingestEvolutionWebhook(request: Request) {
     const status = evolutionConnectionStatus(readState(payload["data"] ?? payload));
     const previous = cell(found.data, "status");
     const removed = status === "disconnected" && whatsappDeviceRemoved(connectionStatusReason(payload));
-    const next = status === "disconnected" && previous === "connected" && !removed ? previous : status;
+    const next = status;
     const sender = payload["sender"];
     const senderPhone = whatsappJidPhone(typeof sender === "string" ? sender : "");
     const phone = preferredWhatsappPhone(cell(found.data, "phone"), senderPhone);
@@ -1524,7 +1568,7 @@ export async function ingestEvolutionWebhook(request: Request) {
         status: next,
         ...(phone ? { phone } : {}),
         updated_at: new Date().toISOString(),
-        last_error: next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : cell(found.data, "last_error"),
+        last_error: next === "connected" ? "" : removed ? whatsappDeviceRemovedMessage : next === "disconnected" ? evolutionInactiveMessage : cell(found.data, "last_error"),
       })
       .eq("id", cell(found.data, "id"));
   }
@@ -1994,15 +2038,19 @@ async function noticeOfflineWaiting(connection: Record<string, unknown>, organiz
   }
 }
 
-async function ownedConnection(organizationId: string, connectionId: string) {
-  const current = await table("chatbot_connections")
-    .select("*")
-    .eq("id", connectionId)
-    .eq("organization_id", organizationId)
-    .maybeSingle();
+async function ownedConnection(organizationId: string, connectionId: string, phone = "") {
+  const current = connectionId
+    ? await table("chatbot_connections").select("*").eq("id", connectionId).eq("organization_id", organizationId).maybeSingle()
+    : { data: null, error: null };
   if (current.error) fail(schemaMessage(current.error.message));
-  if (!current.data) fail("Essa conexão não pertence à sua empresa.");
-  return current.data;
+  if (current.data) return current.data;
+  const wanted = attendancePhone(phone);
+  if (wanted) {
+    const saved = await rows(table("chatbot_connections").select("*").eq("organization_id", organizationId));
+    const found = saved.find((row) => sameWhatsappAccount(cell(row, "phone"), wanted));
+    if (found) return found;
+  }
+  fail("Essa conexão não pertence à sua empresa.");
 }
 
 async function rows(query: Query) {

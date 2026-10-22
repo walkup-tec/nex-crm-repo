@@ -7,6 +7,9 @@
 # no modo host e mantém um arquivo do Traefik apontando para http://172.17.0.1:<porta>/.
 #
 # Portas de host proibidas: 3000, 30180, 30181, 30300, 30310.
+# O 404 "page not found" aparece quando o router declara web/websecure e o
+# Traefik escuta http/https, ou o contrário. O arquivo persistente usa o
+# nome que o processo realmente escuta e PathPrefix(`/`) para todo caminho.
 #
 # Uso (root, no VPS):
 #   nex-traefik-persist.sh --once
@@ -132,12 +135,45 @@ ensure_host_publish() {
   log "porta ${host_port} publicada em ${svc}"
 }
 
+detect_entrypoints() {
+  local svc
+  svc="$(docker service ls --format '{{.Name}}' 2>/dev/null | grep -Ei 'traefik' | head -1 || true)"
+  if [[ -z "$svc" ]]; then
+    printf 'http\nhttps\nfallback\n'
+    return 0
+  fi
+  if docker service inspect "$svc" --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' 2>/dev/null | python3 -c '
+import re, sys
+http_ep = https_ep = ""
+for line in sys.stdin:
+    match = re.match(r"TRAEFIK_ENTRYPOINTS_([A-Za-z0-9]+)_ADDRESS=(.+)", line.strip())
+    if not match:
+        continue
+    name, addr = match.group(1).lower(), match.group(2)
+    if addr.rstrip("/").endswith(":443"):
+        https_ep = name
+    elif addr.rstrip("/").endswith(":80"):
+        http_ep = name
+if not http_ep or not https_ep:
+    sys.exit(1)
+print(http_ep)
+print(https_ep)
+print("detected")
+'; then
+    return 0
+  fi
+  printf 'http\nhttps\nfallback\n'
+}
+
 write_traefik() {
-  python3 - "$MAIN" "$PERSIST_FILE" "$GATEWAY" "$APP_HOST_PORT" "$SITE_HOST_PORT" "$CORBAN_HOST_PORT" "$CONFIG_DIR/nex-pv-corban.yaml" << 'PY'
+  local http_ep="$1"
+  local https_ep="$2"
+  local detected="$3"
+  python3 - "$MAIN" "$PERSIST_FILE" "$GATEWAY" "$APP_HOST_PORT" "$SITE_HOST_PORT" "$CORBAN_HOST_PORT" "$CONFIG_DIR/nex-pv-corban.yaml" "$http_ep" "$https_ep" "$detected" "$CONFIG_DIR" << 'PY'
 import json, sys
 from pathlib import Path
 
-main_path, persist_path, gateway, app_port, site_port, corban_port, corban_extra = sys.argv[1:]
+main_path, persist_path, gateway, app_port, site_port, corban_port, corban_extra, http_ep, https_ep, detected, config_dir = sys.argv[1:]
 main_file = Path(main_path)
 text = main_file.read_text(encoding="utf-8") if main_file.exists() else ""
 data = None
@@ -154,8 +190,8 @@ if text.strip():
         except Exception:
             data = None
 
-http_ep = "http"
-https_ep = "https"
+http_ep = http_ep or "http"
+https_ep = https_ep or "https"
 cert_resolver = "letsencrypt"
 if isinstance(data, dict):
     routers = ((data.get("http") or {}).get("routers") or {})
@@ -167,9 +203,13 @@ if isinstance(data, dict):
             cert_resolver = str(tls["certResolver"])
             break
 
-app_rule = "Host(`app.nexmeta.com.br`) || Host(`nex-crm.achpyp.easypanel.host`)"
-site_rule = "Host(`nexmeta.com.br`) || Host(`nex-site.achpyp.easypanel.host`)"
-corban_rule = "Host(`corban.nexmeta.com.br`) || Host(`nex-pv-corban.achpyp.easypanel.host`)"
+def covered(hosts):
+    joined = " || ".join(f"Host(`{host}`)" for host in hosts)
+    return f"({joined}) && PathPrefix(`/`)"
+
+app_rule = covered(["app.nexmeta.com.br", "nex-crm.achpyp.easypanel.host"])
+site_rule = covered(["nexmeta.com.br", "nex-site.achpyp.easypanel.host"])
+corban_rule = covered(["corban.nexmeta.com.br", "nex-pv-corban.achpyp.easypanel.host"])
 persist = f"""http:
   routers:
     nex-persist-app-http:
@@ -251,6 +291,72 @@ if new != text:
         backup.write_text(text, encoding="utf-8")
     main_file.write_text(new, encoding="utf-8")
     print(f"main.yaml app={app_n} site={site_n} corban={corban_n}")
+
+if detected == "detected":
+    import re
+    http_aliases = {"web", "http"}
+    https_aliases = {"websecure", "https"}
+
+    def align_entrypoints(original):
+        total = 0
+        def repl(match):
+            nonlocal total
+            inner = match.group(2)
+            def token(item):
+                nonlocal total
+                name = item.group(1)
+                low = name.lower()
+                if low in https_aliases and low != https_ep:
+                    total += 1
+                    return f'"{https_ep}"'
+                if low in http_aliases and low != http_ep:
+                    total += 1
+                    return f'"{http_ep}"'
+                return item.group(0)
+            return match.group(1) + re.sub(r'["\']([A-Za-z0-9_-]+)["\']', token, inner) + match.group(3)
+        updated = re.sub(r'("entryPoints"\s*:\s*\[)(.*?)(\])', repl, original, flags=re.S)
+        lines = updated.splitlines(keepends=True)
+        out = []
+        in_ep = False
+        for line in lines:
+            if re.match(r"^\s*entryPoints\s*:\s*$", line):
+                in_ep = True
+                out.append(line)
+                continue
+            if in_ep:
+                item = re.match(r"^(\s*-\s*)(websecure|web|https|http)\s*$", line.strip("\r"), re.I)
+                if item:
+                    name = item.group(2).lower()
+                    chosen = https_ep if name in https_aliases else http_ep
+                    if chosen != name:
+                        total += 1
+                    ending = "\n" if line.endswith("\n") else ""
+                    out.append(f"{item.group(1)}{chosen}{ending}")
+                    continue
+                in_ep = False
+            out.append(line)
+        return "".join(out), total
+
+    folder = Path(config_dir)
+    if folder.is_dir():
+        for path in sorted(folder.iterdir()):
+            if not path.is_file() or path.suffix.lower() not in {".yaml", ".yml", ".json"} or "bak" in path.name:
+                continue
+            original = path.read_text(encoding="utf-8", errors="replace")
+            if original.count("{") != original.count("}"):
+                print(f"SKIP {path.name}: chaves desbalanceadas")
+                continue
+            updated, count = align_entrypoints(original)
+            if count == 0 or updated == original:
+                continue
+            if updated.count("{") != original.count("{"):
+                print(f"ABORT {path.name}: alteração desbalanceou chaves")
+                continue
+            backup = path.with_name(path.name + ".bak-nex-entrypoint")
+            if not backup.exists():
+                backup.write_text(original, encoding="utf-8")
+            path.write_text(updated, encoding="utf-8")
+            print(f"entrypoints {path.name}={count} http={http_ep} https={https_ep}")
 PY
 }
 
@@ -280,7 +386,8 @@ reconcile() {
     ensure_host_publish "$APP_SVC" "$APP_HOST_PORT" "$app_target" || true
     ensure_host_publish "$SITE_SVC" "$SITE_HOST_PORT" "$site_target" || true
     ensure_host_publish "$CORBAN_SVC" "$CORBAN_HOST_PORT" "$corban_target" || true
-    write_traefik || log "falha ao gravar o Traefik"
+    mapfile -t eps < <(detect_entrypoints)
+    write_traefik "${eps[0]:-http}" "${eps[1]:-https}" "${eps[2]:-fallback}" || log "falha ao gravar o Traefik"
   ) 9>"$LOCK_FILE"
 }
 
@@ -312,13 +419,23 @@ EOF
   log "serviço nex-traefik-persist ativo"
 }
 
+plain_traefik_404() {
+  local url="$1"
+  local body
+  body="$(curl -sk --max-time 8 "$url" || true)"
+  printf '%s' "$body" | head -n 1 | grep -qx "404 page not found"
+}
+
 route_missing() {
   local code
   code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 "https://app.nexmeta.com.br/health" || echo 000)"
   case "$code" in
     000|404|502|503|504) return 0 ;;
-    *) return 1 ;;
   esac
+  plain_traefik_404 "https://app.nexmeta.com.br/chatbot" && return 0
+  plain_traefik_404 "https://app.nexmeta.com.br/chatbot/atendimento" && return 0
+  plain_traefik_404 "https://app.nexmeta.com.br/chatbot?expandir=false&conversa=" && return 0
+  return 1
 }
 
 watch() {
@@ -350,6 +467,8 @@ case "${1:-}" in
     install_service
     reconcile
     probe app "https://app.nexmeta.com.br/auth"
+    probe inbox "https://app.nexmeta.com.br/chatbot"
+    probe atendimento "https://app.nexmeta.com.br/chatbot/atendimento"
     probe site "https://nexmeta.com.br/"
     probe corban "https://corban.nexmeta.com.br/"
     ;;
@@ -359,6 +478,8 @@ case "${1:-}" in
   --once|"")
     reconcile
     probe app "https://app.nexmeta.com.br/auth"
+    probe inbox "https://app.nexmeta.com.br/chatbot"
+    probe atendimento "https://app.nexmeta.com.br/chatbot/atendimento"
     probe painel "https://nex-crm.achpyp.easypanel.host/auth"
     probe site "https://nexmeta.com.br/"
     probe corban "https://corban.nexmeta.com.br/"

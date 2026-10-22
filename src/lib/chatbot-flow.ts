@@ -381,6 +381,9 @@ function hoursTarget(graph: FlowGraph, id: string, outside: boolean) {
   const handle = outside ? "sim" : "nao";
   const tagged = edges.find((edge) => edge.sourceHandle === handle);
   if (tagged) return tagged.target;
+  const other = outside ? "nao" : "sim";
+  const rest = edges.filter((edge) => edge.sourceHandle !== other);
+  if (rest.length === 1 && rest[0]) return rest[0].target;
   if (edges.some((edge) => edge.sourceHandle === "sim" || edge.sourceHandle === "nao")) return "";
   return outside ? (edges[0]?.target ?? "") : (edges[1]?.target ?? "");
 }

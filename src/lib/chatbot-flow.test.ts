@@ -154,6 +154,30 @@ const closedPath = stepFlow(hoursFlow, null, { text: "oi", at: night, outsideHou
 assert.equal(closedPath.actions[0]?.type === "send" ? closedPath.actions[0].text : "", "Estamos fechados.");
 const openPath = stepFlow(hoursFlow, null, { text: "oi", at: noon, outsideHours: false });
 assert.equal(openPath.actions[0]?.type === "send" ? openPath.actions[0].text : "", "Estamos abertos.");
+const openUntagged = stepFlow(
+  {
+    ...hoursFlow,
+    graph: {
+      ...hoursFlow.graph,
+      edges: [
+        { source: "h", target: "yes", sourceHandle: "sim" },
+        { source: "h", target: "no" },
+      ],
+    },
+  },
+  null,
+  { text: "oi", at: noon, outsideHours: false },
+);
+assert.equal(openUntagged.actions[0]?.type === "send" ? openUntagged.actions[0].text : "", "Estamos abertos.");
+const closedOnly = stepFlow(
+  {
+    ...hoursFlow,
+    graph: { ...hoursFlow.graph, edges: [{ source: "h", target: "yes", sourceHandle: "sim" }] },
+  },
+  null,
+  { text: "oi", at: noon, outsideHours: false },
+);
+assert.equal(closedOnly.actions.length, 0);
 const closedPreview = previewFlowTurns(hoursFlow.graph, ["oi"], true, night);
 assert.equal(closedPreview.turns.find((turn) => turn.from === "bot")?.text, "Estamos fechados.");
 const openPreview = previewFlowTurns(hoursFlow.graph, ["oi"], false, noon);

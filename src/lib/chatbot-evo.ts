@@ -510,7 +510,7 @@ export function flowSendAddresses(phone: string, lids: ReadonlyMap<string, strin
   const lid = entries.find(([known, value]) => value.endsWith("@lid") && sameWhatsappAccount(known, phone))?.[1] ?? "";
   const digits = phone.replace(/\D/g, "");
   const normalized = (digits.length === 12 || digits.length === 13) && digits.startsWith("55") ? digits : attendancePhone(phone) || digits;
-  return [lid, normalized].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
+  return [normalized, lid].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
 }
 
 export function whatsappJidPhone(jid: string) {

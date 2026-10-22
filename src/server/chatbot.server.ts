@@ -3713,9 +3713,9 @@ async function sendFlowText(connection: Record<string, unknown>, organizationId:
   const instanceName = cell(connection, "instance_name");
   let sent: unknown = null;
   for (const number of flowDestinations(phone)) {
-    if (!skipPresence) await showBotPresence(instanceName, number, text);
+    if (!skipPresence) void showBotPresence(instanceName, number, text);
     try {
-      sent = await evo(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", whatsappFlowTextPayload(number, text));
+      sent = await evo(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", whatsappTextPayload(number, text));
       break;
     } catch {
       sent = null;
@@ -4073,36 +4073,42 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   const flows = manualFlow ? [...active, manualFlow] : active;
   if (!flows.length) return { sent: false, owned: false };
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
-  if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
+  if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return { sent: false, owned: false };
   const storedRun = readFlowRun(stored.data);
-  const run = inboundFlowRun(storedRun, await conversationHasOutbound(conversationId));
+  const hasOutbound = await conversationHasOutbound(conversationId);
+  const manual = Boolean(manualFlowId);
+  let seen = storedRun;
+  if (!manual && !hasOutbound && storedRun) {
+    await restoreFlowRun(organizationId, conversationId, null);
+    seen = null;
+  }
+  const run = inboundFlowRun(seen, hasOutbound);
   const hours = await organizationBusinessHours(organizationId);
   const outsideHours = outsideBusinessHours(Date.now(), hours);
   const chosen = chooseFlow(flows, { text, outsideHours, run, manualFlowId });
   if (!chosen) return { sent: false, owned: false };
-  const manual = Boolean(manualFlowId);
   const step = stepFlow(chosen, manual ? null : run && run.flowId === chosen.id ? run : null, { text, at: Date.now(), outsideHours, manual });
   if (!step.actions.length && !step.run) return { sent: false, owned: false };
   const samePlace = Boolean(
-    storedRun &&
+    seen &&
       step.run &&
-      storedRun.flowId === step.run.flowId &&
-      storedRun.nodeId === step.run.nodeId &&
-      storedRun.status === step.run.status &&
+      seen.flowId === step.run.flowId &&
+      seen.nodeId === step.run.nodeId &&
+      seen.status === step.run.status &&
       !step.actions.length,
   );
   if (samePlace && !manual) return { sent: false, owned: true, plannedSend: false };
   if (step.run) {
-    if (manual) await rememberFlowRun(organizationId, conversationId, storedRun, step.run);
+    if (manual) await rememberFlowRun(organizationId, conversationId, seen, step.run);
     else {
-      const claimed = await claimFlowRun(organizationId, conversationId, storedRun, step.run);
-      if (!claimed) return { sent: false, owned: true, plannedSend: false };
+      const claimed = await claimFlowRun(organizationId, conversationId, seen, step.run);
+      if (!claimed) await rememberFlowRun(organizationId, conversationId, seen, step.run);
     }
   }
   const delivered = await applyFlowActions(connection, organizationId, conversationId, contactId, step.actions);
   const plannedSend = step.actions.some((action) => action.type === "send" || action.type === "menu");
   if (plannedSend && delivered === 0) {
-    await restoreFlowRun(organizationId, conversationId, storedRun);
+    await restoreFlowRun(organizationId, conversationId, seen);
     return { sent: false, plannedSend: true, owned: false };
   }
   return {

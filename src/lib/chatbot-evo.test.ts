@@ -7,6 +7,7 @@ import {
   evolutionContactAvatar,
   evolutionContactPhone,
   evolutionContactIdentity,
+  flowSendAddresses,
   evolutionMessageKey,
   evolutionResolvedPhone,
   incomingMessageInstant,
@@ -649,6 +650,10 @@ const sentAt = Date.parse("2026-10-22T13:31:00.000Z");
 assert.equal(incomingMessageInstant(Math.floor(sentAt / 1000), sentAt + 5 * 60_000), new Date(Math.floor(sentAt / 1000) * 1000).toISOString());
 assert.equal(incomingMessageInstant("texto", sentAt), "");
 assert.equal(evolutionContactIdentity({ remoteJid: marceloPhone, remoteJidAlt: marceloLid }).lid, marceloLid);
+assert.deepEqual(flowSendAddresses("5551999666841", { "5551999666841": marceloLid }), [marceloLid, "5551999666841"]);
+assert.deepEqual(flowSendAddresses("(51) 99966-6841", new Map([["51999666841", marceloLid]])), [marceloLid, "5551999666841"]);
+assert.deepEqual(flowSendAddresses("5551999666841", {}), ["5551999666841"]);
+assert.deepEqual(flowSendAddresses("120363000000000000@g.us", { "5551999666841": marceloLid }), ["120363000000000000@g.us"]);
 assert.equal(evolutionMessageText("segunda mensagem"), "segunda mensagem");
 assert.equal(channelsAllConnected([{ status: "connected" }, { status: "connected" }]), true);
 assert.equal(channelsAllConnected([{ status: "connected" }, { status: "disconnected" }]), false);

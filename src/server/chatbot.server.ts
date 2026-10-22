@@ -11,7 +11,7 @@ import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia, flowMenuButtonText,
+import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia,
   flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
@@ -30,6 +30,7 @@ import {
   evolutionInstanceNameOf,
   evolutionNumberInUse,
   evolutionContactIdentity,
+  flowSendAddresses,
   evolutionMessageKey,
   evolutionResolvedPhone,
   incomingMessageInstant,
@@ -1840,6 +1841,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     phone = knownLidPhones[lid] || (await resolveLidPhone(cell(connection, "instance_name"), lid));
     if (phone) knownLidPhones[lid] = phone;
   }
+  if (phone && lid.endsWith("@lid")) phoneLids.set(phone, lid);
   const externalId = cell(key, "id");
   const content = evolutionMessageContent(record);
   const text = content.mediaKind ? content.text : evolutionMessageText(record["message"]);
@@ -3699,13 +3701,27 @@ async function showBotPresence(instanceName: string, number: string, text: strin
   }
 }
 
+function flowDestinations(phone: string) {
+  return flowSendAddresses(phone, phoneLids);
+}
+
 async function sendFlowText(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, skipPresence = false) {
   if (!text || cell(connection, "status") !== "connected") return false;
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
   if (!phone) return false;
-  if (!skipPresence) await showBotPresence(cell(connection, "instance_name"), phone, text);
-  const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", whatsappFlowTextPayload(phone, text));
+  const instanceName = cell(connection, "instance_name");
+  let sent: unknown = null;
+  for (const number of flowDestinations(phone)) {
+    if (!skipPresence) await showBotPresence(instanceName, number, text);
+    try {
+      sent = await evo(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", whatsappFlowTextPayload(number, text));
+      break;
+    } catch {
+      sent = null;
+    }
+  }
+  if (!sent) return false;
   await insertFlowMessage(organizationId, conversationId, text, readMessageId(sent));
   return true;
 }
@@ -3780,20 +3796,32 @@ async function sendFlowMedia(connection: Record<string, unknown>, organizationId
   const base64 = Buffer.from(await downloaded.data.arrayBuffer()).toString("base64");
   const instanceName = cell(connection, "instance_name");
   const instance = encodeURIComponent(instanceName);
+  let sent: unknown = null;
+  for (const number of flowDestinations(phone)) {
+    try {
+      if (media.kind === "audio") {
+        await showBotPresence(instanceName, number, text, true);
+        sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(number, base64), 60000);
+      } else {
+        await showBotPresence(instanceName, number, text);
+        sent = await evo(
+          `/message/sendMedia/${instance}`,
+          "POST",
+          { number, mediatype: media.kind, mimetype: media.mime, caption: text, media: base64, fileName: media.name },
+          60000,
+        );
+      }
+      break;
+    } catch {
+      sent = null;
+    }
+  }
+  if (!sent) return false;
   if (media.kind === "audio") {
-    await showBotPresence(instanceName, phone, text, true);
-    const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(phone, base64), 60000);
     await insertFlowMessage(organizationId, conversationId, "[áudio]", readMessageId(sent), { kind: "audio", mime: media.mime });
-    if (text.trim() && text.trim() !== media.name.trim()) await sendFlowText(connection, organizationId, conversationId, contactId, text);
+    if (text.trim() && text.trim() !== media.name.trim()) await sendFlowText(connection, organizationId, conversationId, contactId, text, true);
     return true;
   }
-  await showBotPresence(instanceName, phone, text);
-  const sent = await evo(
-    `/message/sendMedia/${instance}`,
-    "POST",
-    { number: phone, mediatype: media.kind, mimetype: media.mime, caption: text, media: base64, fileName: media.name },
-    60000,
-  );
   await insertFlowMessage(organizationId, conversationId, text || (media.kind === "video" ? "[vídeo]" : "[imagem]"), readMessageId(sent), {
     kind: media.kind,
     mime: media.mime,
@@ -3920,20 +3948,7 @@ async function flowVariableValues(organizationId: string, contactId: string) {
 
 async function sendFlowMenu(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, options: FlowMenuOption[]) {
   if (!text || !options.length || cell(connection, "status") !== "connected") return false;
-  const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  const phone = cell(contact.data, "phone");
-  if (!phone) return false;
-  const instanceName = cell(connection, "instance_name");
-  const instance = encodeURIComponent(instanceName);
-  const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
-  await showBotPresence(instanceName, phone, text);
-  const menuText = flowMenuButtonText(text);
-  const sent = await evo(`/message/sendButtons/${instance}`, "POST", { number: phone, title: menuText.title, description: menuText.description, footer: menuText.footer, buttons }).catch(() => null);
-  if (!sent || isGhostButtonResponse(sent)) {
-    return sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"), true);
-  }
-  await insertFlowMessage(organizationId, conversationId, [text, ...options.map((option) => option.label)].join("\n"), readMessageId(sent));
-  return true;
+  return sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"));
 }
 
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {

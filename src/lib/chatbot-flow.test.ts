@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chooseFlow,
   inboundFlowRun, clientFlowVariableTokens, cloneFlowSelection, crmSaveField, fillFlowVariables, flowDropPosition, flowMedia, flowMediaLabel, flowMenuButtonText,
-  flowMenuOptions, insertFlowVariable, businessHours, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
+  flowMenuOptions, insertFlowVariable, businessHours, manualFlowNotice, outsideBusinessHours, previewFlowTurns, startInboundFlow, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
 
 const graph: FlowGraph = {
@@ -236,6 +236,19 @@ const support = stepFlow(menuFlow, menuStep.run, { text: "2", at: noon, outsideH
 assert.equal(support.actions[0]?.type === "send" ? support.actions[0].text : "", "Time de suporte.");
 const numbered = stepFlow(menuFlow, menuStep.run, { text: "2 - Suporte", at: noon, outsideHours: false });
 assert.equal(numbered.actions[0]?.type === "send" ? numbered.actions[0].text : "", "Time de suporte.");
+const menuWaiting = menuStep.run;
+const ignoredMenu = startInboundFlow([menuFlow], { text: "Oi", outsideHours: false, run: menuWaiting, at: noon });
+assert.equal(ignoredMenu?.restart, true);
+assert.equal(ignoredMenu?.step.actions[0]?.type, "menu");
+const tappedMenu = startInboundFlow([menuFlow], { text: "Suporte", outsideHours: false, run: menuWaiting, at: noon });
+assert.equal(tappedMenu?.restart, false);
+assert.equal(tappedMenu?.step.actions[0]?.type === "send" ? tappedMenu.step.actions[0].text : "", "Time de suporte.");
+const manualHours: SavedFlow = { ...hoursFlow, id: "manual-hours", launch: "manual" };
+assert.equal(chooseFlow([manualHours], { text: "oi", outsideHours: false, run: null }), null);
+const startedManual = startInboundFlow([manualHours], { text: "oi", outsideHours: false, run: null, at: noon });
+assert.equal(startedManual?.restart, false);
+assert.equal(startedManual?.step.actions[0]?.type === "send" ? startedManual.step.actions[0].text : "", "Estamos abertos.");
+assert.equal(startInboundFlow([manualHours, { ...manualHours, id: "outro" }], { text: "oi", outsideHours: false, run: null, at: noon }), null);
 const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
 assert.equal(ignored.run?.nodeId, "menu");
 assert.equal(ignored.actions.length, 0);

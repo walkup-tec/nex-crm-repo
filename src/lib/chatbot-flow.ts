@@ -319,6 +319,38 @@ export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHou
   return automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;
 }
 
+function flowHasInboundTrigger(flow: SavedFlow, text: string) {
+  return triggers(flow.graph).some(
+    (node) => node.label === "Mensagem recebida" || node.label === "Fora do expediente" || (node.label === "Palavra-chave" && includesTerm(text, node.content)),
+  );
+}
+
+export function startInboundFlow(
+  flows: SavedFlow[],
+  input: { text: string; outsideHours: boolean; run: FlowRun | null; at: number },
+): { flow: SavedFlow; step: FlowStep; restart: boolean } | null {
+  let chosen = chooseFlow(flows, { text: input.text, outsideHours: input.outsideHours, run: input.run });
+  if (!chosen && !input.run) {
+    const candidates = flows.filter((flow) => flowHasInboundTrigger(flow, input.text));
+    chosen = candidates.length === 1 ? (candidates[0] ?? null) : null;
+  }
+  if (!chosen) return null;
+  const bound = input.run && input.run.flowId === chosen.id ? input.run : null;
+  const step = stepFlow(chosen, bound, { text: input.text, at: input.at, outsideHours: input.outsideHours });
+  const menuStuck = Boolean(
+    bound &&
+      bound.status === "waiting" &&
+      nodeById(chosen.graph, bound.nodeId)?.label === "Menu" &&
+      !step.actions.length &&
+      step.run?.nodeId === bound.nodeId &&
+      step.run.status === "waiting",
+  );
+  if (!menuStuck) return step.actions.length || step.run ? { flow: chosen, step, restart: false } : null;
+  const fresh = stepFlow(chosen, null, { text: input.text, at: input.at, outsideHours: input.outsideHours });
+  if (!fresh.actions.length && !fresh.run) return { flow: chosen, step, restart: false };
+  return { flow: chosen, step: fresh, restart: true };
+}
+
 function startNode(graph: FlowGraph, input: { text: string; manual: boolean }) {
   const roots = triggers(graph);
   if (input.manual) return roots[0];

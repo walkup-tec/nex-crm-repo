@@ -12,7 +12,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia,
-  flowMenuButtonText, flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+  flowMenuButtonText, flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, startInboundFlow, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -4115,9 +4115,20 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   const run = inboundFlowRun(seen, hasOutbound);
   const hours = await organizationBusinessHours(organizationId);
   const outsideHours = outsideBusinessHours(Date.now(), hours);
-  const chosen = chooseFlow(flows, { text, outsideHours, run, manualFlowId });
+  const at = Date.now();
+  let chosen = manual ? chooseFlow(flows, { text, outsideHours, run, manualFlowId }) : null;
+  let step = chosen ? stepFlow(chosen, null, { text, at, outsideHours, manual: true }) : { actions: [], run: null };
+  if (!manual) {
+    const started = startInboundFlow(flows, { text, outsideHours, run, at });
+    if (!started) return { sent: false, owned: false };
+    chosen = started.flow;
+    step = started.step;
+    if (started.restart) seen = null;
+    if (!run || started.restart) {
+      await table("chatbot_conversations").update({ bot_paused: false }).eq("id", conversationId).eq("organization_id", organizationId);
+    }
+  }
   if (!chosen) return { sent: false, owned: false };
-  const step = stepFlow(chosen, manual ? null : run && run.flowId === chosen.id ? run : null, { text, at: Date.now(), outsideHours, manual });
   if (!step.actions.length && !step.run) return { sent: false, owned: false };
   const samePlace = Boolean(
     seen &&
@@ -4150,16 +4161,13 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
 
 async function runIncomingFlow(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
   try {
-    const conversation = await table("chatbot_conversations").select("assignee_id, bot_paused, status").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+    const conversation = await table("chatbot_conversations").select("assignee_id").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
     if (conversation.error) return false;
     const stored = await table("chatbot_flow_runs").select("status").eq("conversation_id", conversationId).maybeSingle();
     if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
     const status = cell(stored.data, "status");
     const openRun = status === "waiting" || status === "delay";
     if (!openRun && cell(conversation.data, "assignee_id")) return false;
-    const paused = conversation.data?.["bot_paused"] === true;
-    if (!openRun && paused && cell(conversation.data, "status") === "queue") return false;
-    if (!openRun && paused && status !== "done") return false;
     const result = await executeConversationFlow(connection, organizationId, conversationId, contactId, text);
     return result.sent || result.owned;
   } catch {

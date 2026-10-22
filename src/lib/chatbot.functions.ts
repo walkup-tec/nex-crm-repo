@@ -517,6 +517,18 @@ export const callChatbotContactFn = createServerFn({ method: "POST" })
     return guard(() => callChatbotContact(context.userId, data.contactId));
   });
 
+export const startChatbotConversationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { name: string; phone: string; connectionId: string }) => ({
+    name: typeof data.name === "string" ? data.name : "",
+    phone: typeof data.phone === "string" ? data.phone : "",
+    connectionId: typeof data.connectionId === "string" ? data.connectionId : "",
+  }))
+  .handler(async ({ context, data }) => {
+    const { startChatbotConversation } = await import("@/server/chatbot.server");
+    return guard(() => startChatbotConversation(context.userId, data));
+  });
+
 export const renameChatbotContactFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; name: string }) => data)

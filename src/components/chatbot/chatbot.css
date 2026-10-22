@@ -396,7 +396,12 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app.chatbot-expanded .chat-area{display:grid;grid-template-rows:auto minmax(0,1fr) auto}
 .chatbot-app.chatbot-expanded .contact-panel{display:flex}
 .chatbot-app .list-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.chatbot-app .list-title{display:flex;align-items:center;gap:8px;min-width:0}
+.chatbot-app .list-add{display:grid;place-items:center;width:28px;height:28px;flex:none;border:0;border-radius:6px;background:var(--primary);color:var(--primary-foreground);cursor:pointer}
+.chatbot-app .list-add:hover{filter:brightness(1.08)}
 .chatbot-app .list-head h2{margin:0}
+.chatbot-app .transfer-form input{height:36px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);font-size:13px}
+.chatbot-app .transfer-form input:focus{outline:none;border-color:#6F02FD}
 .chatbot-app .list-filter{display:grid;place-items:center;width:32px;height:32px;flex:none;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--muted-foreground);cursor:pointer}
 .chatbot-app .list-filter.active,.chatbot-app .list-filter[aria-expanded=true]{color:var(--primary);border-color:var(--primary);background:var(--accent)}
 .chatbot-app .list-search{display:block;margin-top:12px}

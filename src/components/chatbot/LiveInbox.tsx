@@ -1,4 +1,4 @@
-import { MessageSquare, Bot, ExternalLink, Filter, Pause, Pin, Play, Search, Send, UserRound } from "lucide-react";
+import { MessageSquare, Bot, ExternalLink, Filter, Pause, Pin, Play, Plus, Search, Send, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +15,7 @@ import {
   sendChatbotMinutaFn,
   sendChatbotPropostaFn,
   sendChatbotMessageFn,
+  startChatbotConversationFn,
   startChatbotFlowFn,
   listChatbotQuickRepliesFn,
   listChatbotFlowsFn,
@@ -308,6 +309,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const [savedMedia, setSavedMedia] = useState(0);
   const [lane, setLane] = useState<InboxLane>("atendimento");
+  const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newConnectionId, setNewConnectionId] = useState("");
+  const [newSaving, setNewSaving] = useState(false);
+  const [newError, setNewError] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [listFilters, setListFilters] = useState<InboxListFilters>({ products: [], tags: [], stages: [] });
@@ -989,6 +996,36 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     );
   }
 
+  function openNewConversation() {
+    const connected = (data?.connections ?? []).filter((item) => item.status === "connected");
+    setNewName("");
+    setNewPhone("");
+    setNewConnectionId((current) => (connected.some((item) => item.id === current) ? current : connected[0]?.id ?? ""));
+    setNewError("");
+    setNewOpen(true);
+  }
+
+  async function startNewConversation() {
+    if (newSaving) return;
+    setNewSaving(true);
+    setNewError("");
+    const result = await startChatbotConversationFn({ data: { name: newName, phone: newPhone, connectionId: newConnectionId } });
+    setNewSaving(false);
+    if (!result.ok) {
+      setNewError(result.message);
+      return;
+    }
+    pendingOpen.current = result.data.conversationId;
+    setSelected(result.data.conversationId);
+    setLane("atendimento");
+    setNewOpen(false);
+    setNewName("");
+    setNewPhone("");
+    await load();
+  }
+
+  const connectedChannels = (data?.connections ?? []).filter((item) => item.status === "connected");
+
   return (
     <main className="page">
       {message ? <p className="info-note mb-5">{message}</p> : null}
@@ -996,9 +1033,14 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         <section className="conversation-list">
           <div className="list-tools">
             <div className="list-head">
-              <h2>
-                Conversas <span className="count">{visibleConversations.length}</span>
-              </h2>
+              <div className="list-title">
+                <button type="button" className="list-add" aria-label="Nova conversa" onClick={openNewConversation}>
+                  <Plus size={16} />
+                </button>
+                <h2>
+                  Conversas <span className="count">{visibleConversations.length}</span>
+                </h2>
+              </div>
               <button
                 type="button"
                 className={`list-filter${filtersOn ? " active" : ""}`}
@@ -1341,6 +1383,51 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 </Button>
                 <Button type="submit" disabled={returnSaving || !returnFlowId || !returnInstant({ date: returnDate, hour: returnHour, minute: returnMinute })}>
                   {returnSaving ? "Agendando" : "Agendar retorno"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={newOpen} onOpenChange={setNewOpen}>
+          <DialogContent className="chatbot-app sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Nova conversa</DialogTitle>
+            </DialogHeader>
+            <form
+              className="transfer-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void startNewConversation();
+              }}
+            >
+              <label>
+                Nome
+                <input value={newName} maxLength={80} disabled={newSaving} placeholder="Nome do contato" aria-label="Nome do contato" onChange={(event) => setNewName(event.target.value)} />
+              </label>
+              <label>
+                WhatsApp
+                <input value={newPhone} inputMode="tel" disabled={newSaving} placeholder="(51) 99999-9999" aria-label="WhatsApp do contato" onChange={(event) => setNewPhone(event.target.value)} />
+              </label>
+              {connectedChannels.length > 1 ? (
+                <label>
+                  Canal
+                  <select className="transfer-agent" aria-label="Canal de WhatsApp" value={newConnectionId} disabled={newSaving} onChange={(event) => setNewConnectionId(event.target.value)}>
+                    {connectedChannels.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name || "Canal"} {clientPhoneLabel(item.phone)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {connectedChannels.length ? null : <p className="info-note">Conecte um canal de WhatsApp antes de iniciar a conversa.</p>}
+              {newError ? <p className="info-note">{newError}</p> : null}
+              <div className="modal-actions">
+                <Button type="button" variant="outline" onClick={() => setNewOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={newSaving || !connectedChannels.length || !newName.trim() || !newPhone.trim()}>
+                  {newSaving ? "Iniciando" : "Iniciar conversa"}
                 </Button>
               </div>
             </form>

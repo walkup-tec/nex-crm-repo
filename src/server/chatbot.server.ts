@@ -3505,6 +3505,138 @@ export async function callChatbotContact(userId: string, contactId: string) {
   return { conversationId: cell(again.data, "id") };
 }
 
+async function grantContactTag(organizationId: string, contactId: string, tagName: string, color: string) {
+  const tags = await rowsOrMissing(table("chatbot_tags").select("id, name").eq("organization_id", organizationId));
+  if (tags.missing) fail("As etiquetas do chatbot ainda não estão disponíveis.");
+  const found = tags.rows.find((row) => cell(row, "name").localeCompare(tagName, "pt-BR", { sensitivity: "accent" }) === 0);
+  let tagId = cell(found, "id");
+  if (!tagId) {
+    const inserted = await table("chatbot_tags")
+      .insert({ organization_id: organizationId, name: tagName, color })
+      .select("id")
+      .maybeSingle();
+    if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
+    tagId = cell(inserted.data, "id");
+    if (!tagId) {
+      const again = await table("chatbot_tags").select("id").eq("organization_id", organizationId).eq("name", tagName).maybeSingle();
+      if (again.error) fail(schemaMessage(again.error.message));
+      tagId = cell(again.data, "id");
+    }
+  }
+  if (!tagId) fail("Não foi possível marcar o contato como Lead adicionado.");
+  const linked = await table("chatbot_contact_tags")
+    .insert({ contact_id: contactId, tag_id: tagId, organization_id: organizationId })
+    .select("contact_id")
+    .maybeSingle();
+  if (linked.error && !duplicate(linked.error)) fail(schemaMessage(linked.error.message));
+}
+
+export async function startChatbotConversation(userId: string, input: { name: string; phone: string; connectionId: string }) {
+  const name = catalogName(input.name, 80);
+  if (!name) fail("Informe o nome do contato.");
+  const phone = attendancePhone(input.phone);
+  if (!phone) fail("Informe um WhatsApp com DDD.");
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const connection = await ownedConnection(organizationId, input.connectionId);
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Esse canal não pertence a uma equipe sua.");
+  }
+  if (cell(connection, "status") !== "connected") fail("Conecte o canal de WhatsApp antes de iniciar a conversa.");
+  const contactId = await contactIdForMessage(organizationId, phone, name, false);
+  if (!contactId) fail("Não foi possível criar o contato.");
+  const existing = await table("chatbot_conversations")
+    .select("id, assignee_id")
+    .eq("organization_id", organizationId)
+    .eq("connection_id", cell(connection, "id"))
+    .eq("contact_id", contactId)
+    .maybeSingle();
+  if (existing.error) fail(schemaMessage(existing.error.message));
+  const currentAssignee = cell(existing.data, "assignee_id");
+  if (existing.data && currentAssignee && currentAssignee !== userId) fail("Essa conversa já está com outro atendente.");
+  const bots = await table("chatbot_contacts")
+    .update({ bots_disabled: true })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (bots.error) fail(schemaMessage(bots.error.message));
+  if (!bots.data) fail("Esse contato não pertence à sua empresa.");
+  const owner = await table("chatbot_contacts").select("client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (owner.error) fail(schemaMessage(owner.error.message));
+  if (!cell(owner.data, "client_owner_id")) {
+    const registered = await table("chatbot_contacts")
+      .update({ client_owner_id: userId, client_registered_at: new Date().toISOString() })
+      .eq("id", contactId)
+      .eq("organization_id", organizationId)
+      .is("client_owner_id", null)
+      .select("client_owner_id")
+      .maybeSingle();
+    if (registered.error) fail(schemaMessage(registered.error.message));
+    if (!registered.data) {
+      const again = await table("chatbot_contacts").select("client_owner_id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+      if (again.error) fail(schemaMessage(again.error.message));
+      if (!cell(again.data, "client_owner_id")) fail("Não foi possível listar o contato em Clientes.");
+    }
+  }
+  await grantContactTag(organizationId, contactId, "Lead adicionado", "#D97706");
+  await moveContactToKanbanStage(organizationId, contactId, "Atendimento");
+  const staged = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (staged.error) fail(schemaMessage(staged.error.message));
+  if (cell(staged.data, "stage_name").localeCompare("Atendimento", "pt-BR", { sensitivity: "accent" }) !== 0) {
+    fail("Não foi possível colocar o contato na etapa Atendimento.");
+  }
+  const credited = await table("chatbot_contacts")
+    .update({ stage_set_by: userId })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (credited.error && !/stage_set_by/i.test(credited.error.message)) fail(schemaMessage(credited.error.message));
+  let conversationId = cell(existing.data, "id");
+  if (conversationId) {
+    const updated = await assignConversation(conversationId, organizationId, userId, {
+      status: "active",
+      bot_paused: true,
+      updated_at: new Date().toISOString(),
+    });
+    if (updated.error) fail(schemaMessage(updated.error.message));
+  } else {
+    const conversationInsert = {
+      organization_id: organizationId,
+      contact_id: contactId,
+      connection_id: cell(connection, "id"),
+      status: "active",
+      assignee_id: userId,
+      assumed_by: userId,
+      bot_paused: true,
+    };
+    let created = await table("chatbot_conversations").insert(conversationInsert).select("id").maybeSingle();
+    if (created.error && /assumed_by/i.test(created.error.message)) {
+      const { assumed_by: _assumedBy, ...withoutCredit } = conversationInsert;
+      created = await table("chatbot_conversations").insert(withoutCredit).select("id").maybeSingle();
+    }
+    conversationId = cell(created.data, "id");
+    if (!conversationId && duplicate(created.error)) {
+      const again = await table("chatbot_conversations")
+        .select("id, assignee_id")
+        .eq("connection_id", cell(connection, "id"))
+        .eq("contact_id", contactId)
+        .maybeSingle();
+      if (again.error) fail(schemaMessage(again.error.message));
+      const assignee = cell(again.data, "assignee_id");
+      if (!again.data || (assignee && assignee !== userId)) fail("Essa conversa já está com outro atendente.");
+      conversationId = cell(again.data, "id");
+    } else if (!conversationId) {
+      fail(schemaMessage(created.error?.message ?? ""));
+    }
+  }
+  await done(
+    table("chatbot_conversations").update({ bot_paused: true }).eq("organization_id", organizationId).eq("contact_id", contactId),
+  );
+  return { conversationId };
+}
+
 export async function renameChatbotContact(userId: string, contactId: string, name: string) {
   const clean = catalogName(name, 80);
   if (!clean) fail("Informe o nome do contato.");

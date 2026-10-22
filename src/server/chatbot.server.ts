@@ -12,7 +12,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia, flowMenuButtonText,
-  flowMenuOptions, flowSourceHandle, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+  flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -1916,7 +1916,10 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   } else if (saved.error) {
     return;
   }
-  if (!inserted) return;
+  if (!inserted) {
+    await retryUnansweredBot(connection, organizationId, conversationId, contactId, text);
+    return;
+  }
   const scored = content.mediaKind ? false : await acceptRatingReply(organizationId, conversationId, contactId, text);
   if (scored) {
     await table("chatbot_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
@@ -1930,8 +1933,39 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   if (!botsDisabled) await restartExpiredBotAttendance(organizationId, conversationId);
   await table("chatbot_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
   if (!botsDisabled) await resumeDueFlows(organizationId, conversationId);
-  const flowReplied = botsDisabled ? false : await runIncomingFlow(connection, organizationId, conversationId, contactId, text);
-  if (!botsDisabled && !flowReplied) await noticeOfflineWaiting(connection, organizationId, conversationId, contactId);
+  const ready = await promoteOpenConnection(connection);
+  const flowReplied = botsDisabled ? false : await runIncomingFlow(ready, organizationId, conversationId, contactId, text);
+  if (!botsDisabled && !flowReplied) await noticeOfflineWaiting(ready, organizationId, conversationId, contactId);
+}
+
+async function conversationHasOutbound(conversationId: string) {
+  const outbound = await table("chatbot_messages").select("id").eq("conversation_id", conversationId).eq("direction", "out").limit(1).maybeSingle();
+  return Boolean(outbound.data);
+}
+
+async function promoteOpenConnection(connection: Record<string, unknown>) {
+  if (cell(connection, "status") === "connected") return connection;
+  const instanceName = cell(connection, "instance_name");
+  if (!instanceName) return connection;
+  let state = "";
+  try {
+    state = readState(await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET"));
+  } catch {
+    return connection;
+  }
+  if (evolutionConnectionStatus(state) !== "connected") return connection;
+  await table("chatbot_connections")
+    .update({ status: "connected", last_error: "", updated_at: new Date().toISOString() })
+    .eq("id", cell(connection, "id"));
+  await ensureWebhook(instanceName);
+  return { ...connection, status: "connected" };
+}
+
+async function retryUnansweredBot(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
+  if (await conversationHasOutbound(conversationId)) return;
+  if (await contactBotsDisabled(organizationId, contactId)) return;
+  const ready = await promoteOpenConnection(connection);
+  await runIncomingFlow(ready, organizationId, conversationId, contactId, text);
 }
 
 async function thankForRating(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string) {
@@ -3982,6 +4016,14 @@ async function claimFlowRun(organizationId: string, conversationId: string, seen
   return Boolean(updated.data);
 }
 
+async function restoreFlowRun(organizationId: string, conversationId: string, seen: FlowRun | null) {
+  if (!seen) {
+    await table("chatbot_flow_runs").delete().eq("conversation_id", conversationId).eq("organization_id", organizationId);
+    return;
+  }
+  await table("chatbot_flow_runs").update(flowRunPatch(organizationId, conversationId, seen)).eq("conversation_id", conversationId).eq("organization_id", organizationId);
+}
+
 async function rememberFlowRun(organizationId: string, conversationId: string, seen: FlowRun | null, next: FlowRun) {
   if (await claimFlowRun(organizationId, conversationId, seen, next)) return;
   const patch = flowRunPatch(organizationId, conversationId, next);
@@ -4018,7 +4060,7 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
   if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
   const storedRun = readFlowRun(stored.data);
-  const run = storedRun?.status === "done" ? null : storedRun;
+  const run = inboundFlowRun(storedRun, await conversationHasOutbound(conversationId));
   const hours = await organizationBusinessHours(organizationId);
   const outsideHours = outsideBusinessHours(Date.now(), hours);
   const chosen = chooseFlow(flows, { text, outsideHours, run, manualFlowId });
@@ -4044,6 +4086,10 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   }
   const delivered = await applyFlowActions(connection, organizationId, conversationId, contactId, step.actions);
   const plannedSend = step.actions.some((action) => action.type === "send" || action.type === "menu");
+  if (plannedSend && delivered === 0) {
+    await restoreFlowRun(organizationId, conversationId, storedRun);
+    return { sent: false, plannedSend: true, owned: false };
+  }
   return {
     sent: delivered > 0,
     plannedSend,

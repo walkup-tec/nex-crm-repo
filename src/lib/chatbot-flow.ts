@@ -298,6 +298,11 @@ function doneRun(flowId: string, nodeId: string, lastAnswer: string): FlowRun {
   return { flowId, nodeId, status: "done", waitUntil: 0, lastAnswer };
 }
 
+export function inboundFlowRun(stored: FlowRun | null, hasOutbound: boolean) {
+  if (!stored || !hasOutbound || stored.status === "done") return null;
+  return stored;
+}
+
 export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHours: boolean; run: FlowRun | null; manualFlowId?: string }) {
   if (input.manualFlowId) return flows.find((flow) => flow.id === input.manualFlowId) ?? null;
   if (input.run && input.run.status !== "done") {

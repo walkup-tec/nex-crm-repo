@@ -248,7 +248,27 @@ assert.equal(chooseFlow([manualHours], { text: "oi", outsideHours: false, run: n
 const startedManual = startInboundFlow([manualHours], { text: "oi", outsideHours: false, run: null, at: noon });
 assert.equal(startedManual?.restart, false);
 assert.equal(startedManual?.step.actions[0]?.type === "send" ? startedManual.step.actions[0].text : "", "Estamos abertos.");
-assert.equal(startInboundFlow([manualHours, { ...manualHours, id: "outro" }], { text: "oi", outsideHours: false, run: null, at: noon }), null);
+const amongManuals = startInboundFlow([manualHours, { ...manualHours, id: "outro" }], { text: "oi", outsideHours: false, run: null, at: noon });
+assert.equal(amongManuals?.flow.id, "manual-hours");
+assert.equal(amongManuals?.step.actions[0]?.type === "send" ? amongManuals.step.actions[0].text : "", "Estamos abertos.");
+const renamedHours: SavedFlow = {
+  id: "renomeado",
+  name: "Renomeado",
+  launch: "manual",
+  graph: {
+    nodes: [
+      { id: "h", label: "Horário", kind: "Gatilho", content: "" },
+      { id: "yes", label: "Enviar mensagem", kind: "Ação", content: "Estamos fechados." },
+      { id: "no", label: "Enviar mensagem", kind: "Ação", content: "Estamos abertos." },
+    ],
+    edges: [
+      { source: "h", target: "yes", sourceHandle: "sim" },
+      { source: "h", target: "no", sourceHandle: "nao" },
+    ],
+  },
+};
+const renamed = startInboundFlow([renamedHours], { text: "oi", outsideHours: false, run: null, at: noon });
+assert.equal(renamed?.step.actions[0]?.type === "send" ? renamed.step.actions[0].text : "", "Estamos abertos.");
 const emptyReceived: SavedFlow = {
   id: "vazio",
   name: "Vazio",

@@ -3684,11 +3684,20 @@ function readFlowRun(row: Record<string, unknown> | null | undefined): FlowRun |
 }
 
 async function loadActiveFlows(organizationId: string): Promise<SavedFlow[]> {
-  const loaded = await rowsOrMissing(
-    table("chatbot_flows").select("id, name, graph").eq("organization_id", organizationId).eq("active", true).order("name", { ascending: true }),
-  );
+  return loadOrganizationFlows(organizationId, true);
+}
+
+async function loadSavedFlows(organizationId: string): Promise<SavedFlow[]> {
+  return loadOrganizationFlows(organizationId, false);
+}
+
+async function loadOrganizationFlows(organizationId: string, activeOnly: boolean): Promise<SavedFlow[]> {
+  const query = table("chatbot_flows").select("id, name, graph, active").eq("organization_id", organizationId).order("updated_at", { ascending: false });
+  const loaded = await rowsOrMissing(activeOnly ? query.eq("active", true) : query);
   if (loaded.missing) return [];
-  return loaded.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), launch: flowLaunch(row["graph"]), graph: flowGraph(row["graph"]) }));
+  return loaded.rows
+    .filter((row) => !activeOnly || row["active"] === true)
+    .map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), launch: flowLaunch(row["graph"]), graph: flowGraph(row["graph"]) }));
 }
 
 async function showBotPresence(instanceName: string, number: string, text: string, audio = false) {
@@ -4104,9 +4113,9 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
     const saved = await savedFlowById(organizationId, storedRun.flowId);
     if (saved) flows.push(saved);
   }
-  if (!flows.length) return { sent: false, owned: false };
-  const hasOutbound = await conversationHasOutbound(conversationId);
   const manual = Boolean(manualFlowId);
+  if (!flows.length && manual) return { sent: false, owned: false };
+  const hasOutbound = await conversationHasOutbound(conversationId);
   let seen = storedRun;
   if (!manual && !hasOutbound && storedRun) {
     await restoreFlowRun(organizationId, conversationId, null);
@@ -4119,7 +4128,12 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   let chosen = manual ? chooseFlow(flows, { text, outsideHours, run, manualFlowId }) : null;
   let step = chosen ? stepFlow(chosen, null, { text, at, outsideHours, manual: true }) : { actions: [], run: null };
   if (!manual) {
-    const started = startInboundFlow(flows, { text, outsideHours, run, at });
+    let started = startInboundFlow(flows, { text, outsideHours, run, at });
+    if (!started) {
+      const saved = await loadSavedFlows(organizationId);
+      const extras = saved.filter((flow) => !flows.some((item) => item.id === flow.id));
+      started = startInboundFlow(extras, { text, outsideHours, run: null, at });
+    }
     if (!started) return { sent: false, owned: false };
     chosen = started.flow;
     step = started.step;

@@ -319,10 +319,23 @@ export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHou
   return automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;
 }
 
-function flowHasInboundTrigger(flow: SavedFlow, text: string) {
-  return triggers(flow.graph).some(
-    (node) => node.label === "Mensagem recebida" || node.label === "Fora do expediente" || (node.label === "Palavra-chave" && includesTerm(text, node.content)),
-  );
+function hasHoursEdges(graph: FlowGraph, id: string) {
+  return graph.edges.some((edge) => edge.source === id && (edge.sourceHandle === "sim" || edge.sourceHandle === "nao"));
+}
+
+function inboundRank(flow: SavedFlow) {
+  const labels = triggers(flow.graph).map((node) => node.label);
+  const hours = labels.includes("Fora do expediente") || triggers(flow.graph).some((node) => hasHoursEdges(flow.graph, node.id));
+  const received = labels.includes("Mensagem recebida");
+  if (flow.launch !== "manual" && hours) return 0;
+  if (flow.launch !== "manual" && received) return 1;
+  if (hours) return 2;
+  if (received) return 3;
+  return 4;
+}
+
+function stepSends(step: FlowStep) {
+  return step.actions.some((action) => action.type === "send" || action.type === "menu");
 }
 
 function freshFlowStep(flow: SavedFlow, input: { text: string; outsideHours: boolean; at: number }) {
@@ -330,14 +343,8 @@ function freshFlowStep(flow: SavedFlow, input: { text: string; outsideHours: boo
 }
 
 function pickAutomaticFlow(flows: SavedFlow[], input: { text: string; outsideHours: boolean; at: number }) {
-  const preferred = chooseFlow(flows, { text: input.text, outsideHours: input.outsideHours, run: null });
-  const ordered = preferred ? [preferred, ...flows.filter((flow) => flow.id !== preferred.id)] : flows;
-  for (const flow of ordered) {
-    if (flow.launch === "manual") continue;
-    if (freshFlowStep(flow, input).actions.length) return flow;
-  }
-  const manuals = flows.filter((flow) => flow.launch === "manual" && flowHasInboundTrigger(flow, input.text));
-  return manuals.length === 1 && freshFlowStep(manuals[0], input).actions.length ? manuals[0] : null;
+  const ranked = [...flows].sort((left, right) => inboundRank(left) - inboundRank(right));
+  return ranked.find((flow) => stepSends(freshFlowStep(flow, input))) ?? null;
 }
 
 export function startInboundFlow(
@@ -352,7 +359,7 @@ export function startInboundFlow(
   const flow = pickAutomaticFlow(flows, input);
   if (!flow) return null;
   const step = freshFlowStep(flow, input);
-  if (!step.actions.length) return null;
+  if (!stepSends(step)) return null;
   return { flow, step, restart: Boolean(input.run && input.run.status !== "done") };
 }
 
@@ -361,7 +368,7 @@ function startNode(graph: FlowGraph, input: { text: string; manual: boolean }) {
   if (input.manual) return roots[0];
   const keyword = roots.find((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content));
   if (keyword) return keyword;
-  return roots.find((node) => node.label === "Mensagem recebida") ?? roots.find((node) => node.label === "Fora do expediente");
+  return roots.find((node) => node.label === "Mensagem recebida") ?? roots.find((node) => node.label === "Fora do expediente") ?? roots.find((node) => hasHoursEdges(graph, node.id));
 }
 
 export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: string; at: number; outsideHours: boolean; manual?: boolean }): FlowStep {
@@ -387,7 +394,7 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
   }
   const trigger = startNode(flow.graph, { text: input.text, manual });
   if (!trigger) return emptyStep;
-  if (trigger.label === "Fora do expediente") {
+  if (trigger.label === "Fora do expediente" || hasHoursEdges(flow.graph, trigger.id)) {
     const target = hoursTarget(flow.graph, trigger.id, input.outsideHours) || (manual ? soleHoursTarget(flow.graph, trigger.id) : "");
     return walk(flow, target ? [target] : [], "", input);
   }

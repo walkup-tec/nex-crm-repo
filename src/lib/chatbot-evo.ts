@@ -364,6 +364,16 @@ export function whatsappTextPayload(phone: string, text: string) {
   return { number: phone, text, linkPreview: false };
 }
 
+export function whatsappFlowTextPayload(phone: string, text: string, delay = 0) {
+  const payload = whatsappTextPayload(phone, text);
+  return delay > 0 ? { ...payload, delay } : payload;
+}
+
+export function whatsappFlowAudioPayload(phone: string, audio: string, delay = 0) {
+  const payload = { number: phone, audio, encoding: true as const };
+  return delay > 0 ? { ...payload, delay } : payload;
+}
+
 export function whatsappCadastroButton(phone: string, url: string) {
   return {
     number: phone,

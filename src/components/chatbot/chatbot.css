@@ -151,7 +151,7 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .pin-toggle.pinned{color:#6F02FD}
 .chatbot-app .chat-top{height:auto;min-height:65px;flex-wrap:wrap;gap:8px;padding:12px 20px}
 .chatbot-app .chat-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
-.chatbot-app .chat-actions > button:not(.bot-block){box-sizing:border-box;height:32px;min-height:32px;padding:0 12px;border-radius:6px;font-size:12px;line-height:1}
+.chatbot-app .chat-actions > button:not(.bot-block){box-sizing:border-box;height:32px;min-height:32px;padding:0 12px;font-size:12px;line-height:1;border-radius:6px;box-shadow:none}
 .chatbot-app .bot-block{display:grid;place-items:center;width:32px;height:32px;flex:none;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--muted-foreground);cursor:pointer}
 .chatbot-app .bot-block:disabled{opacity:.6;cursor:default}
 .chatbot-app .bot-block.blocked{border-color:var(--destructive);background:color-mix(in srgb,var(--destructive) 16%,transparent);color:var(--destructive)}

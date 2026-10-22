@@ -67,6 +67,8 @@ import {
   whatsappImagePayload,
   whatsappCadastroButton,
   whatsappDocumentPayload,
+  whatsappFlowAudioPayload,
+  whatsappFlowTextPayload,
   whatsappTextPayload,
   preferredWhatsappPhone,
   sameWhatsappAccount,
@@ -863,6 +865,14 @@ assert.deepEqual(whatsappTextPayload("5547992082637", "https://app.nexmeta.com.b
   text: "https://app.nexmeta.com.br/contratacao?contato=9dcc028f-b4b8-4c79-b3cd-851b7d39bec9",
   linkPreview: false,
 });
+assert.deepEqual(whatsappFlowTextPayload("5547992082637", "Olá, tudo bem! Marcelo aqui...", 1800), {
+  number: "5547992082637",
+  text: "Olá, tudo bem! Marcelo aqui...",
+  linkPreview: false,
+  delay: 1800,
+});
+assert.equal(whatsappFlowTextPayload("5547992082637", "Podemos conversar hoje?").linkPreview, false);
+assert.deepEqual(whatsappFlowAudioPayload("5547992082637", "QQ==", 2800), { number: "5547992082637", audio: "QQ==", encoding: true, delay: 2800 });
 assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.displayText, "Cadastro");
 assert.equal(whatsappCadastroButton("5547992082637", "https://app.nexmeta.com.br/c/exemplo").buttons[0]?.type, "url");
 const proposta = whatsappDocumentPayload("5547992082637", propostaFileName, "QUJERg==");

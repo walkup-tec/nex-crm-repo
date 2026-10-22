@@ -61,6 +61,8 @@ import {
   whatsappCadastroButton,
   whatsappDocumentPayload,
   whatsappImagePayload,
+  whatsappFlowAudioPayload,
+  whatsappFlowTextPayload,
   whatsappTextPayload,
   clientPhoneLabel,
   catalogName,
@@ -3599,8 +3601,13 @@ async function sendFlowText(connection: Record<string, unknown>, organizationId:
   const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   const phone = cell(contact.data, "phone");
   if (!phone) return;
-  if (!skipPresence) await showBotPresence(cell(connection, "instance_name"), phone, text);
-  const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", { number: phone, text });
+  const delay = skipPresence ? 0 : botPresenceCue({ text }).delay;
+  const sent = await evo(
+    `/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`,
+    "POST",
+    whatsappFlowTextPayload(phone, text, delay),
+    delay + 20000,
+  );
   await insertFlowMessage(organizationId, conversationId, text, readMessageId(sent));
 }
 
@@ -3675,10 +3682,10 @@ async function sendFlowMedia(connection: Record<string, unknown>, organizationId
   const instanceName = cell(connection, "instance_name");
   const instance = encodeURIComponent(instanceName);
   if (media.kind === "audio") {
-    await showBotPresence(instanceName, phone, text, true);
-    const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", { number: phone, audio: base64, encoding: true }, 60000);
+    const delay = botPresenceCue({ audio: true }).delay;
+    const sent = await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(phone, base64, delay), delay + 60000);
     await insertFlowMessage(organizationId, conversationId, "[áudio]", readMessageId(sent), { kind: "audio", mime: media.mime });
-    if (text) await sendFlowText(connection, organizationId, conversationId, contactId, text);
+    if (text.trim() && text.trim() !== media.name.trim()) await sendFlowText(connection, organizationId, conversationId, contactId, text);
     return;
   }
   await showBotPresence(instanceName, phone, text);
@@ -3832,35 +3839,39 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {
   const values = actions.some((action) => action.type === "send" || action.type === "menu") ? await flowVariableValues(organizationId, contactId) : {};
   for (const action of actions) {
-    if (action.type === "send") {
-      const text = fillFlowVariables(action.text, values);
-      if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, text, action.media);
-      else await sendFlowText(connection, organizationId, conversationId, contactId, text);
-    }
-    if (action.type === "menu") await sendFlowMenu(connection, organizationId, conversationId, contactId, fillFlowVariables(action.text, values), action.options);
-    if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
-    if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
-    if (action.type === "stage") await assignFlowStage(organizationId, contactId, action.name);
-    if (action.type === "queue") {
-      const patch: Record<string, unknown> = {
-        status: "queue",
-        assignee_id: null,
-        bot_paused: true,
-        queued_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const updated = await table("chatbot_conversations").update(patch).eq("id", conversationId).eq("organization_id", organizationId).select("id").maybeSingle();
-        if (!updated.error) break;
-        const missing = updated.error.message.match(/queued_at|bot_paused/i);
-        if (!missing) break;
-        const key = missing[0].toLowerCase();
-        if (!(key in patch)) break;
-        delete patch[key];
+    try {
+      if (action.type === "send") {
+        const text = fillFlowVariables(action.text, values);
+        if (action.media) await sendFlowMedia(connection, organizationId, conversationId, contactId, text, action.media);
+        else await sendFlowText(connection, organizationId, conversationId, contactId, text);
       }
-    }
-    if (action.type === "pause") {
-      await table("chatbot_conversations").update({ bot_paused: true, updated_at: new Date().toISOString() }).eq("id", conversationId).eq("organization_id", organizationId);
+      if (action.type === "menu") await sendFlowMenu(connection, organizationId, conversationId, contactId, fillFlowVariables(action.text, values), action.options);
+      if (action.type === "tag") await addFlowTag(organizationId, contactId, action.name);
+      if (action.type === "save") await saveFlowAnswer(organizationId, contactId, action.field, action.text);
+      if (action.type === "stage") await assignFlowStage(organizationId, contactId, action.name);
+      if (action.type === "queue") {
+        const patch: Record<string, unknown> = {
+          status: "queue",
+          assignee_id: null,
+          bot_paused: true,
+          queued_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const updated = await table("chatbot_conversations").update(patch).eq("id", conversationId).eq("organization_id", organizationId).select("id").maybeSingle();
+          if (!updated.error) break;
+          const missing = updated.error.message.match(/queued_at|bot_paused/i);
+          if (!missing) break;
+          const key = missing[0].toLowerCase();
+          if (!(key in patch)) break;
+          delete patch[key];
+        }
+      }
+      if (action.type === "pause") {
+        await table("chatbot_conversations").update({ bot_paused: true, updated_at: new Date().toISOString() }).eq("id", conversationId).eq("organization_id", organizationId);
+      }
+    } catch (error) {
+      console.error("chatbot_flow", error instanceof Error ? error.message : "falha");
     }
   }
 }
@@ -4088,6 +4099,7 @@ export async function scheduleChatbotReturn(
   if (!runAt) fail("Escolha uma data e um horário que ainda não passaram.");
   const { organizationId, conversation } = await requireVisibleConversation(userId, input.conversationId);
   const contactId = cell(conversation, "contact_id");
+  if (await contactBotsDisabled(organizationId, contactId)) fail("Os bots estão desativados para este contato.");
   const flowId = input.flowId.trim();
   const saved = await savedFlowById(organizationId, flowId);
   if (!saved) fail("Escolha um bot configurado.");
@@ -4119,23 +4131,6 @@ export async function scheduleChatbotReturn(
   return { id: cell(inserted.data, "id"), runAt };
 }
 
-async function enableContactBots(organizationId: string, contactId: string) {
-  const updated = await table("chatbot_contacts")
-    .update({ bots_disabled: false })
-    .eq("id", contactId)
-    .eq("organization_id", organizationId)
-    .select("id")
-    .maybeSingle();
-  if (updated.error) throw new Error(updated.error.message);
-  if (!updated.data) throw new Error("contato ausente");
-  const paused = await table("chatbot_conversations")
-    .update({ bot_paused: false })
-    .eq("organization_id", organizationId)
-    .eq("contact_id", contactId)
-    .is("assignee_id", null);
-  if (paused.error) throw new Error(paused.error.message);
-}
-
 async function launchScheduledReturn(row: Record<string, unknown>) {
   const organizationId = cell(row, "organization_id");
   const conversationId = cell(row, "conversation_id");
@@ -4146,7 +4141,7 @@ async function launchScheduledReturn(row: Record<string, unknown>) {
     .maybeSingle();
   if (conversation.error || !conversation.data) throw new Error("conversa ausente");
   const contactId = cell(conversation.data, "contact_id");
-  if (await contactBotsDisabled(organizationId, contactId)) await enableContactBots(organizationId, contactId);
+  if (await contactBotsDisabled(organizationId, contactId)) throw new Error("bots desativados");
   const connection = await table("chatbot_connections")
     .select("*")
     .eq("id", cell(conversation.data, "connection_id"))

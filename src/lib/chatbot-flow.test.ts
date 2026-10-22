@@ -269,3 +269,34 @@ const legacyBoard = stepFlow(
   { text: "oi", at: noon, outsideHours: false },
 );
 assert.equal(legacyBoard.actions[1]?.type, "stage");
+
+const returnAudio = { kind: "audio" as const, name: "retorno.mp3", mime: "audio/mpeg", path: "11111111-1111-4111-8111-111111111111/flows/33333333-3333-4333-8333-333333333333.mp3" };
+const returnFlow: SavedFlow = {
+  id: "retorno",
+  name: "Retorno",
+  graph: {
+    nodes: [
+      { id: "h", label: "Fora do expediente", kind: "Gatilho", content: "" },
+      { id: "hi", label: "Enviar mensagem", kind: "Ação", content: "Olá, tudo bem! Marcelo aqui..." },
+      { id: "au", label: "Enviar mensagem", kind: "Ação", content: "Áudio retorno (online-audio-converter.com).mp3", media: returnAudio },
+      { id: "ask", label: "Fazer pergunta", kind: "Ação", content: "Podemos conversar hoje?" },
+      { id: "queue", label: "Encaminhar à fila", kind: "Ação", content: "" },
+      { id: "end", label: "Encerrar fluxo", kind: "Ação", content: "" },
+    ],
+    edges: [
+      { source: "h", target: "hi", sourceHandle: "nao" },
+      { source: "hi", target: "au" },
+      { source: "au", target: "ask" },
+      { source: "ask", target: "queue" },
+      { source: "queue", target: "end" },
+    ],
+  },
+};
+const scheduled = stepFlow(returnFlow, null, { text: "", at: noon, outsideHours: false, manual: true });
+assert.equal(scheduled.actions[0]?.type === "send" ? scheduled.actions[0].text : "", "Olá, tudo bem! Marcelo aqui...");
+assert.equal(scheduled.actions[1]?.type === "send" ? scheduled.actions[1].media?.kind : "", "audio");
+assert.equal(scheduled.actions[2]?.type === "send" ? scheduled.actions[2].text : "", "Podemos conversar hoje?");
+assert.equal(scheduled.run?.status, "waiting");
+assert.equal(scheduled.actions.some((action) => action.type === "queue"), false);
+const answeredReturn = stepFlow(returnFlow, scheduled.run, { text: "sim", at: noon + 1000, outsideHours: false });
+assert.equal(answeredReturn.actions.some((action) => action.type === "queue"), true);

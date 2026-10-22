@@ -1,4 +1,4 @@
-import { MessageSquare, Bot, Pause, Pin, Play, Send, UserRound } from "lucide-react";
+import { MessageSquare, Bot, ExternalLink, Pause, Pin, Play, Send, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -247,9 +247,9 @@ function ContactAvatar({ name, avatarUrl }: { name: string; avatarUrl: string })
   );
 }
 
-export function LiveInbox() {
+export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?: boolean; conversationId?: string }) {
   const [data, setData] = useState<ChatbotSnapshot | null>(null);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(conversationId);
   const [draft, setDraft] = useState("");
   const [message, setMessage] = useState("");
   const [signatureError, setSignatureError] = useState("");
@@ -347,7 +347,7 @@ export function LiveInbox() {
   }
 
   useEffect(() => {
-    pendingOpen.current = sessionStorage.getItem("nex-kanban-conversation") ?? "";
+    pendingOpen.current = sessionStorage.getItem("nex-kanban-conversation") || conversationId;
     if (pendingOpen.current) {
       sessionStorage.removeItem("nex-kanban-conversation");
       setSelected(pendingOpen.current);
@@ -903,6 +903,17 @@ export function LiveInbox() {
           )}
         </section>
         <section className="chat-area">
+          {expanded ? null : (
+            <a
+              className="chat-expand"
+              href={`/chatbot?expandir=1${selected ? `&conversa=${encodeURIComponent(selected)}` : ""}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Expandir
+              <ExternalLink aria-hidden="true" />
+            </a>
+          )}
           <div className="chat-top">
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSelected("")}>
               Conversas

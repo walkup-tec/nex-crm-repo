@@ -1024,7 +1024,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 ["aguardando", "Aguardando"],
                 ["robo", "Robô"],
               ] as const).map(([key, label]) => (
-                <button key={key} type="button" role="tab" aria-selected={lane === key} onClick={() => setLane(key)}>
+                <button key={key} type="button" role="tab" aria-selected={lane === key} className={key === "aguardando" && laneCount(key) > 0 ? "has-waiting" : undefined} onClick={() => setLane(key)}>
                   {label}
                   <span>{laneCount(key)}</span>
                 </button>

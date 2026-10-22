@@ -359,7 +359,10 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
 
 function menuTarget(graph: FlowGraph, node: FlowNode, text: string) {
   const answer = text.trim().toLocaleLowerCase("pt-BR");
-  const matched = flowMenuOptions(node.options).find((option) => option.id === text.trim() || option.label.toLocaleLowerCase("pt-BR") === answer);
+  const matched = flowMenuOptions(node.options).find((option) => {
+    const label = option.label.toLocaleLowerCase("pt-BR");
+    return option.id === text.trim() || label === answer || answer === `${option.id} - ${label}`;
+  });
   if (!matched) return null;
   return graph.edges.find((edge) => edge.source === node.id && edge.sourceHandle === matched.id)?.target ?? "";
 }

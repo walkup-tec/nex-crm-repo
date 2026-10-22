@@ -234,6 +234,8 @@ const sales = stepFlow(menuFlow, menuStep.run, { text: "Vendas", at: noon, outsi
 assert.equal(sales.actions[0]?.type === "send" ? sales.actions[0].text : "", "Time de vendas.");
 const support = stepFlow(menuFlow, menuStep.run, { text: "2", at: noon, outsideHours: false });
 assert.equal(support.actions[0]?.type === "send" ? support.actions[0].text : "", "Time de suporte.");
+const numbered = stepFlow(menuFlow, menuStep.run, { text: "2 - Suporte", at: noon, outsideHours: false });
+assert.equal(numbered.actions[0]?.type === "send" ? numbered.actions[0].text : "", "Time de suporte.");
 const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
 assert.equal(ignored.run?.nodeId, "menu");
 assert.equal(ignored.actions.length, 0);

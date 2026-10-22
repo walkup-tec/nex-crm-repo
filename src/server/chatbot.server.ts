@@ -12,7 +12,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia,
-  flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+  flowMenuButtonText, flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
 import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
@@ -3948,7 +3948,33 @@ async function flowVariableValues(organizationId: string, contactId: string) {
 
 async function sendFlowMenu(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, options: FlowMenuOption[]) {
   if (!text || !options.length || cell(connection, "status") !== "connected") return false;
-  return sendFlowText(connection, organizationId, conversationId, contactId, [text, "", ...options.map((option) => `${option.id} - ${option.label}`)].join("\n"));
+  const contact = await table("chatbot_contacts").select("phone").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  const phone = cell(contact.data, "phone");
+  if (!phone) return false;
+  const instanceName = cell(connection, "instance_name");
+  const menuText = flowMenuButtonText(text);
+  const buttons = options.map((option) => ({ type: "reply", displayText: option.label, id: option.id }));
+  let sent: unknown = null;
+  for (const number of flowDestinations(phone)) {
+    try {
+      const response = await evo(`/message/sendButtons/${encodeURIComponent(instanceName)}`, "POST", {
+        number,
+        title: menuText.title,
+        description: menuText.description,
+        footer: menuText.footer,
+        buttons,
+      });
+      if (response && !isGhostButtonResponse(response)) {
+        sent = response;
+        break;
+      }
+    } catch {
+      sent = null;
+    }
+  }
+  if (!sent) return false;
+  await insertFlowMessage(organizationId, conversationId, [text, ...options.map((option) => option.label)].join("\n"), readMessageId(sent));
+  return true;
 }
 
 async function applyFlowActions(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, actions: FlowAction[]) {
@@ -4070,11 +4096,15 @@ async function savedFlowById(organizationId: string, flowId: string) {
 async function executeConversationFlowOnce(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
   const active = await loadActiveFlows(organizationId);
   const manualFlow = manualFlowId && !active.some((flow) => flow.id === manualFlowId) ? await savedFlowById(organizationId, manualFlowId) : null;
-  const flows = manualFlow ? [...active, manualFlow] : active;
-  if (!flows.length) return { sent: false, owned: false };
+  const flows = manualFlow ? [...active, manualFlow] : [...active];
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
   if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return { sent: false, owned: false };
   const storedRun = readFlowRun(stored.data);
+  if (storedRun && !flows.some((flow) => flow.id === storedRun.flowId)) {
+    const saved = await savedFlowById(organizationId, storedRun.flowId);
+    if (saved) flows.push(saved);
+  }
+  if (!flows.length) return { sent: false, owned: false };
   const hasOutbound = await conversationHasOutbound(conversationId);
   const manual = Boolean(manualFlowId);
   let seen = storedRun;
@@ -4121,13 +4151,15 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
 async function runIncomingFlow(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
   try {
     const conversation = await table("chatbot_conversations").select("assignee_id, bot_paused, status").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
-    if (conversation.error || cell(conversation.data, "assignee_id")) return false;
-    const paused = conversation.data?.["bot_paused"] === true;
-    if (paused && cell(conversation.data, "status") === "queue") return false;
+    if (conversation.error) return false;
     const stored = await table("chatbot_flow_runs").select("status").eq("conversation_id", conversationId).maybeSingle();
     if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return false;
     const status = cell(stored.data, "status");
-    if (paused && status !== "done") return false;
+    const openRun = status === "waiting" || status === "delay";
+    if (!openRun && cell(conversation.data, "assignee_id")) return false;
+    const paused = conversation.data?.["bot_paused"] === true;
+    if (!openRun && paused && cell(conversation.data, "status") === "queue") return false;
+    if (!openRun && paused && status !== "done") return false;
     const result = await executeConversationFlow(connection, organizationId, conversationId, contactId, text);
     return result.sent || result.owned;
   } catch {
@@ -4144,8 +4176,8 @@ async function resumeDueFlows(organizationId: string, exceptConversationId = "")
     for (const row of due.rows) {
       const conversationId = cell(row, "conversation_id");
       if (!conversationId || conversationId === exceptConversationId) continue;
-      const conversation = await table("chatbot_conversations").select("contact_id, connection_id, assignee_id, bot_paused").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
-      if (conversation.error || cell(conversation.data, "assignee_id") || conversation.data?.["bot_paused"] === true) continue;
+      const conversation = await table("chatbot_conversations").select("contact_id, connection_id").eq("id", conversationId).eq("organization_id", organizationId).maybeSingle();
+      if (conversation.error || !conversation.data) continue;
       const connection = await table("chatbot_connections").select("*").eq("id", cell(conversation.data, "connection_id")).eq("organization_id", organizationId).maybeSingle();
       if (connection.error || !connection.data) continue;
       await executeConversationFlow(connection.data, organizationId, conversationId, cell(conversation.data, "contact_id"), "");

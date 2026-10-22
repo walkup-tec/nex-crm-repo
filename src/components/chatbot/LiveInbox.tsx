@@ -26,7 +26,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -1406,7 +1406,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
               </label>
               <label>
                 WhatsApp
-                <input value={newPhone} inputMode="tel" disabled={newSaving} placeholder="(51) 99999-9999" aria-label="WhatsApp do contato" onChange={(event) => setNewPhone(event.target.value)} />
+                <input value={newPhone} inputMode="tel" disabled={newSaving} placeholder="(51) 99999-9999" aria-label="WhatsApp do contato" onChange={(event) => setNewPhone(whatsappMask(event.target.value))} />
               </label>
               {connectedChannels.length > 1 ? (
                 <label>
@@ -1426,7 +1426,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 <Button type="button" variant="outline" onClick={() => setNewOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={newSaving || !connectedChannels.length || !newName.trim() || !newPhone.trim()}>
+                <Button type="submit" disabled={newSaving || !connectedChannels.length || newName.trim().length < 2 || !attendancePhone(newPhone)}>
                   {newSaving ? "Iniciando" : "Iniciar conversa"}
                 </Button>
               </div>

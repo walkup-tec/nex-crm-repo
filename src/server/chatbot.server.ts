@@ -791,7 +791,8 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (contact.error) fail(schemaMessage(contact.error.message));
-  const phone = cell(contact.data, "phone");
+  const storedPhone = cell(contact.data, "phone");
+  const phone = whatsappGroupJid(storedPhone) || whatsappNumber(storedPhone) || "";
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
   if (!admin) {
@@ -3534,7 +3535,7 @@ async function grantContactTag(organizationId: string, contactId: string, tagNam
 export async function startChatbotConversation(userId: string, input: { name: string; phone: string; connectionId: string }) {
   const name = catalogName(input.name, 80);
   if (!name) fail("Informe o nome do contato.");
-  const phone = attendancePhone(input.phone);
+  const phone = whatsappNumber(input.phone);
   if (!phone) fail("Informe um WhatsApp com DDD.");
   const { organizationId, admin } = await membership(userId, "inbox");
   const connection = await ownedConnection(organizationId, input.connectionId);

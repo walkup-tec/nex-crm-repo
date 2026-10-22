@@ -375,6 +375,64 @@ export function whatsappCadastroButton(phone: string, url: string) {
 }
 
 export const minutaFileName = "MINUTA NEX.pdf";
+export const altoPotencialTag = "Alto Potencial";
+
+export function tagGrantedByMinuta(mmsMaster: boolean) {
+  return mmsMaster ? altoPotencialTag : "";
+}
+
+export function saoPauloToday(now = Date.now()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+}
+
+export function defaultReturnSlot(now = Date.now()) {
+  const soon = new Date(now + 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(soon);
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return { date: `${read("year")}-${read("month")}-${read("day")}`, hour: Number(read("hour")), minute: 0 };
+}
+
+export function returnInstant(input: { date: string; hour: number; minute: number }, now = Date.now()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return "";
+  if (!Number.isInteger(input.hour) || input.hour < 0 || input.hour > 23) return "";
+  if (!Number.isInteger(input.minute) || input.minute < 0 || input.minute > 59) return "";
+  const hour = String(input.hour).padStart(2, "0");
+  const minute = String(input.minute).padStart(2, "0");
+  const parsed = Date.parse(`${input.date}T${hour}:${minute}:00-03:00`);
+  if (!Number.isFinite(parsed) || parsed < now + 60_000 || parsed > now + 366 * 24 * 60 * 60 * 1000) return "";
+  const back = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(parsed));
+  if (!back.startsWith(`${input.date}, ${hour}:${minute}`) && !back.startsWith(`${input.date} ${hour}:${minute}`)) return "";
+  return new Date(parsed).toISOString();
+}
+
+export function returnMonthCells(month: string) {
+  if (!/^\d{4}-\d{2}$/.test(month)) return [];
+  const [year, mon] = month.split("-").map(Number);
+  if (!year || !mon || mon < 1 || mon > 12) return [];
+  const count = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+  const first = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" }).format(new Date(`${month}-01T12:00:00-03:00`));
+  const offset = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(first);
+  const cells: string[] = Array.from({ length: offset < 0 ? 0 : offset }, () => "");
+  for (let day = 1; day <= count; day += 1) cells.push(`${month}-${String(day).padStart(2, "0")}`);
+  while (cells.length % 7 !== 0) cells.push("");
+  return cells;
+}
 export const propostaFileName = "NEX_Apresentacao.pdf";
 export const propostaMessages = [
   "Conforme combinado segue a proposta da NEX.",

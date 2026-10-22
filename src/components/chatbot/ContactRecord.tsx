@@ -20,6 +20,17 @@ import { contractingFormUrl } from "@/lib/contracting";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { clientPhoneLabel, contactExtraDataCount, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
+function RegisteredMark({ label }: { label: string }) {
+  return (
+    <p className="contact-registered">
+      <span className="contact-registered-mark" aria-hidden="true">
+        <Check strokeWidth={3} />
+      </span>
+      {label}
+    </p>
+  );
+}
+
 function SavedMediaName({
   file,
   onRenamed,
@@ -731,17 +742,29 @@ export function ContactRecord({
             </Collapsible>
             {profile.dealReady && profile.contractingLink ? (
               <div className="contact-register-row">
-                <Button type="button" className="contact-register" disabled={registering || creatingClient || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
-                  {profile.clientOwnerId ? "Lead cadastrado" : registering ? "Cadastrando" : "Cadastro Lead"}
-                </Button>
-                <Button type="button" className="contact-register" title={!profile.contracting ? "Grave o formulário de contratação neste contato." : profile.contractSigned ? undefined : "O cadastro libera depois que o cliente e a testemunha assinarem o contrato."} disabled={registering || creatingClient || Boolean(profile.nexClientId) || !profile.contracting || !profile.contractSigned} onClick={() => void createNexClient()}>
-                  {profile.nexClientId ? "Cliente cadastrado" : creatingClient ? "Cadastrando" : "Cadastro Clientes"}
-                </Button>
+                {profile.clientOwnerId ? (
+                  <RegisteredMark label="Lead Cadastrado" />
+                ) : (
+                  <Button type="button" className="contact-register" disabled={registering || creatingClient} onClick={() => void registerClient()}>
+                    {registering ? "Cadastrando" : "Cadastro Lead"}
+                  </Button>
+                )}
+                {profile.nexClientId ? (
+                  <RegisteredMark label="Cliente Cadastrado" />
+                ) : (
+                  <Button type="button" className="contact-register" title={!profile.contracting ? "Grave o formulário de contratação neste contato." : profile.contractSigned ? undefined : "O cadastro libera depois que o cliente e a testemunha assinarem o contrato."} disabled={registering || creatingClient || !profile.contracting || !profile.contractSigned} onClick={() => void createNexClient()}>
+                    {creatingClient ? "Cadastrando" : "Cadastro Clientes"}
+                  </Button>
+                )}
               </div>
             ) : profile.dealReady ? (
-              <Button type="button" className="contact-register" disabled={registering || Boolean(profile.clientOwnerId)} onClick={() => void registerClient()}>
-                {profile.clientOwnerId ? "Cliente cadastrado" : registering ? "Cadastrando" : "Cadastrar cliente"}
-              </Button>
+              profile.clientOwnerId ? (
+                <RegisteredMark label="Cliente Cadastrado" />
+              ) : (
+                <Button type="button" className="contact-register" disabled={registering} onClick={() => void registerClient()}>
+                  {registering ? "Cadastrando" : "Cadastrar cliente"}
+                </Button>
+              )
             ) : null}
           </section>
         </>

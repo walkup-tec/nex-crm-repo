@@ -54,6 +54,8 @@ import {
   artesFileNames,
   artesMime,
   minutaFileName,
+  returnInstant,
+  tagGrantedByMinuta,
   propostaFileName,
   propostaMessages,
   whatsappCadastroButton,
@@ -182,6 +184,9 @@ function schemaMessage(message: string) {
   }
   if (/chatbot_business_hours/i.test(message)) {
     return "A migração do expediente ainda não foi aplicada no Supabase.";
+  }
+  if (/chatbot_returns/i.test(message)) {
+    return "A migração do retorno ainda não foi aplicada no Supabase.";
   }
   if (/chatbot_flows|chatbot_flow_runs|bot_note/i.test(message)) {
     return "A migração dos bots ainda não foi aplicada no Supabase.";
@@ -990,6 +995,39 @@ export async function sendChatbotMinuta(userId: string, conversationId: string) 
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
   await moveContactToKanbanStage(organizationId, contactId, "Contrato");
+  await grantMinutaTag(organizationId, contactId);
+}
+
+async function grantMinutaTag(organizationId: string, contactId: string) {
+  try {
+    const org = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+    const tagName = tagGrantedByMinuta(!org.error && keepsAccessWithoutPayment(cell(org.data, "legal_name")));
+    if (!tagName) return;
+    const tags = await rowsOrMissing(table("chatbot_tags").select("id, name").eq("organization_id", organizationId));
+    if (tags.missing) return;
+    const found = tags.rows.find((row) => cell(row, "name").localeCompare(tagName, "pt-BR", { sensitivity: "accent" }) === 0);
+    let tagId = cell(found, "id");
+    if (!tagId) {
+      const inserted = await table("chatbot_tags")
+        .insert({ organization_id: organizationId, name: tagName, color: "#2563EB" })
+        .select("id")
+        .maybeSingle();
+      if (inserted.error && !duplicate(inserted.error)) return;
+      tagId = cell(inserted.data, "id");
+      if (!tagId) {
+        const again = await table("chatbot_tags").select("id").eq("organization_id", organizationId).eq("name", tagName).maybeSingle();
+        tagId = cell(again.data, "id");
+      }
+    }
+    if (!tagId) return;
+    const linked = await table("chatbot_contact_tags")
+      .insert({ contact_id: contactId, tag_id: tagId, organization_id: organizationId })
+      .select("contact_id")
+      .maybeSingle();
+    if (linked.error && !duplicate(linked.error)) return;
+  } catch (error) {
+    console.error("chatbot_tag", error instanceof Error ? error.message : "falha ao etiquetar minuta");
+  }
 }
 
 export async function sendChatbotProposta(userId: string, conversationId: string) {
@@ -4040,6 +4078,119 @@ export async function startChatbotFlow(userId: string, conversationId: string, f
   const started = await executeConversationFlow(connection, organizationId, conversationId, contactId, "", flowId);
   if (!started || (!started.sent && !started.owned)) fail("Esse bot não tem uma ação ligada ao gatilho.");
   return { started: true as const };
+}
+
+export async function scheduleChatbotReturn(
+  userId: string,
+  input: { conversationId: string; flowId: string; date: string; hour: number; minute: number },
+) {
+  const runAt = returnInstant({ date: input.date, hour: input.hour, minute: input.minute });
+  if (!runAt) fail("Escolha uma data e um horário que ainda não passaram.");
+  const { organizationId, conversation } = await requireVisibleConversation(userId, input.conversationId);
+  const contactId = cell(conversation, "contact_id");
+  if (await contactBotsDisabled(organizationId, contactId)) fail("Os bots estão desativados para este contato.");
+  const flowId = input.flowId.trim();
+  const saved = await savedFlowById(organizationId, flowId);
+  if (!saved) fail("Escolha um bot configurado.");
+  const pending = await table("chatbot_returns")
+    .select("id")
+    .eq("conversation_id", input.conversationId)
+    .eq("organization_id", organizationId)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (pending.error) fail(schemaMessage(pending.error.message));
+  const payload = { flow_id: flowId, run_at: runAt, contact_id: contactId, created_by: userId };
+  if (pending.data) {
+    const updated = await table("chatbot_returns")
+      .update(payload)
+      .eq("id", cell(pending.data, "id"))
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (updated.error) fail(schemaMessage(updated.error.message));
+    if (!updated.data) fail("Não foi possível agendar o retorno.");
+    return { id: cell(updated.data, "id"), runAt };
+  }
+  const inserted = await table("chatbot_returns")
+    .insert({ ...payload, organization_id: organizationId, conversation_id: input.conversationId, status: "pending" })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error) fail(schemaMessage(inserted.error.message));
+  if (!inserted.data) fail("Não foi possível agendar o retorno.");
+  return { id: cell(inserted.data, "id"), runAt };
+}
+
+async function launchScheduledReturn(row: Record<string, unknown>) {
+  const organizationId = cell(row, "organization_id");
+  const conversationId = cell(row, "conversation_id");
+  const conversation = await table("chatbot_conversations")
+    .select("contact_id, connection_id")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error || !conversation.data) throw new Error("conversa ausente");
+  const contactId = cell(conversation.data, "contact_id");
+  if (await contactBotsDisabled(organizationId, contactId)) throw new Error("bots desativados");
+  const connection = await table("chatbot_connections")
+    .select("*")
+    .eq("id", cell(conversation.data, "connection_id"))
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (connection.error || !connection.data) throw new Error("canal ausente");
+  const saved = await savedFlowById(organizationId, cell(row, "flow_id"));
+  if (!saved) throw new Error("bot ausente");
+  const started = await executeConversationFlow(connection.data, organizationId, conversationId, contactId, "", saved.id);
+  if (!started || (!started.sent && !started.owned)) throw new Error("bot sem ação");
+}
+
+let returnRunnerStarted = false;
+let returnRunnerBusy = false;
+
+export function startChatbotReturnRunner() {
+  if (returnRunnerStarted) return;
+  returnRunnerStarted = true;
+  const tick = () => {
+    if (returnRunnerBusy) return;
+    returnRunnerBusy = true;
+    void dispatchDueReturns()
+      .catch((error: unknown) => {
+        console.error("chatbot_return", error instanceof Error ? error.message : "falha");
+      })
+      .finally(() => {
+        returnRunnerBusy = false;
+      });
+  };
+  setTimeout(tick, 15_000).unref();
+  setInterval(tick, 30_000).unref();
+}
+
+export async function dispatchDueReturns(now = new Date()) {
+  const due = await rowsOrMissing(
+    table("chatbot_returns")
+      .select("id, organization_id, conversation_id, flow_id")
+      .eq("status", "pending")
+      .lte("run_at", now.toISOString())
+      .order("run_at", { ascending: true })
+      .limit(20),
+  );
+  if (due.missing) return;
+  for (const row of due.rows) {
+    const id = cell(row, "id");
+    const claimed = await table("chatbot_returns")
+      .update({ status: "sending" })
+      .eq("id", id)
+      .eq("status", "pending")
+      .select("id, organization_id, conversation_id, flow_id")
+      .maybeSingle();
+    if (claimed.error || !claimed.data) continue;
+    try {
+      await launchScheduledReturn(claimed.data);
+      await table("chatbot_returns").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "sending");
+    } catch (error) {
+      console.error("chatbot_return", error instanceof Error ? error.message : "falha");
+      await table("chatbot_returns").update({ status: "failed", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "sending");
+    }
+  }
 }
 
 export async function listChatbotTags(userId: string): Promise<ChatbotTag[]> {

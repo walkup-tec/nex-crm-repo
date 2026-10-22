@@ -242,8 +242,25 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app select.contact-stage:focus{outline:none;border-color:#6F02FD}
 .chatbot-app select.contact-stage:disabled{opacity:.6}
 .chatbot-app .contact-register{margin-top:16px;width:100%}
-.chatbot-app .contact-register-row{display:flex;gap:8px;margin-top:16px}
+.chatbot-app .contact-register-row{display:flex;align-items:center;gap:8px;margin-top:16px}
 .chatbot-app .contact-register-row .contact-register{flex:1;min-width:0;margin-top:0;padding-inline:8px;font-size:13px}
+.chatbot-app .contact-section p.contact-registered{display:flex;align-items:center;gap:8px;flex:1;min-width:0;margin:16px 0 0;color:var(--foreground);font-size:12px;font-weight:700;line-height:1.2}
+.chatbot-app .contact-register-row p.contact-registered{margin-top:0}
+.chatbot-app .contact-section p.contact-registered .contact-registered-mark{display:grid;place-items:center;width:22px;height:22px;flex:none;border-radius:50%;background:#6F02FD;color:#fff}
+.chatbot-app .contact-section p.contact-registered .contact-registered-mark svg{width:13px;height:13px;color:#fff}
+.chatbot-app .return-form{display:grid;gap:14px}
+.chatbot-app .return-calendar{display:grid;gap:8px;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--background)}
+.chatbot-app .return-calendar-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.chatbot-app .return-calendar-bar strong{font-size:13px;font-weight:700;text-transform:capitalize}
+.chatbot-app .return-calendar-bar button{width:32px;height:32px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--foreground);font-size:18px;line-height:1;cursor:pointer}
+.chatbot-app .return-week,.chatbot-app .return-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.chatbot-app .return-week span{text-align:center;font-size:10px;font-weight:700;color:var(--muted-foreground)}
+.chatbot-app .return-days button{height:32px;border:0;border-radius:6px;background:transparent;color:var(--foreground);font-size:12px;font-weight:650;cursor:pointer}
+.chatbot-app .return-days button[aria-pressed=true]{background:#6F02FD;color:#fff}
+.chatbot-app .return-days button:disabled{color:var(--muted-foreground);opacity:.35;cursor:default}
+.chatbot-app .return-clock{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chatbot-app .return-clock select,.chatbot-app .return-form > label select{height:40px}
+.chatbot-app .return-when{margin:0;font-size:12px;font-weight:650;color:var(--foreground);text-transform:capitalize}
 .chatbot-app .contact-refresh-section{padding-top:12px;padding-bottom:12px}
 .chatbot-app .contact-refresh{width:100%}
 .chatbot-app .transfer-form{display:grid;gap:14px}

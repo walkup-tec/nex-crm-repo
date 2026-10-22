@@ -56,7 +56,12 @@ import {
   attendancePhone,
   artesFileNames,
   artesMime,
+  altoPotencialTag,
   minutaFileName,
+  defaultReturnSlot,
+  returnInstant,
+  returnMonthCells,
+  tagGrantedByMinuta,
   propostaFileName,
   propostaMessages,
   whatsappImagePayload,
@@ -866,6 +871,14 @@ assert.deepEqual([...propostaMessages], [
   "Conforme combinado segue a proposta da NEX.",
   "Quando posso retornar para darmos continuidade?",
 ]);
+assert.equal(tagGrantedByMinuta(true), altoPotencialTag);
+assert.equal(tagGrantedByMinuta(false), "");
+assert.equal(returnInstant({ date: "2026-10-23", hour: 15, minute: 30 }, Date.parse("2026-10-22T12:00:00-03:00")), "2026-10-23T18:30:00.000Z");
+assert.equal(returnInstant({ date: "2026-10-22", hour: 11, minute: 0 }, Date.parse("2026-10-22T12:00:00-03:00")), "");
+assert.equal(returnInstant({ date: "2026-02-31", hour: 10, minute: 0 }, Date.parse("2026-02-01T12:00:00-03:00")), "");
+assert.equal(returnMonthCells("2026-10").filter(Boolean).length, 31);
+assert.equal(returnMonthCells("2026-10")[3], "2026-10-01");
+assert.equal(defaultReturnSlot(Date.parse("2026-10-22T15:40:00-03:00")).hour, 16);
 const minuta = whatsappDocumentPayload("5547992082637", minutaFileName, "QUJERg==");
 assert.equal(minuta.mediatype, "document");
 assert.equal(minuta.mimetype, "application/pdf");

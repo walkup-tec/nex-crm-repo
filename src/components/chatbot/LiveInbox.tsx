@@ -19,12 +19,13 @@ import {
   listChatbotQuickRepliesFn,
   listChatbotFlowsFn,
   setChatbotContactBotsFn,
+  scheduleChatbotReturnFn,
   setChatbotConversationPinFn,
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -247,6 +248,43 @@ function ContactAvatar({ name, avatarUrl }: { name: string; avatarUrl: string })
   );
 }
 
+function ReturnCalendar({ value, onChange }: { value: string; onChange: (day: string) => void }) {
+  const [month, setMonth] = useState(() => (value || saoPauloToday()).slice(0, 7));
+  const today = saoPauloToday();
+  const cells = returnMonthCells(month);
+  const title = new Date(`${month}-01T12:00:00-03:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
+  function shift(delta: number) {
+    const [year, mon] = month.split("-").map(Number);
+    const next = new Date(Date.UTC(year ?? 2026, (mon ?? 1) - 1 + delta, 1));
+    setMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return (
+    <div className="return-calendar">
+      <div className="return-calendar-bar">
+        <button type="button" onClick={() => shift(-1)} aria-label="Mês anterior">‹</button>
+        <strong>{title}</strong>
+        <button type="button" onClick={() => shift(1)} aria-label="Próximo mês">›</button>
+      </div>
+      <div className="return-week">
+        {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => (
+          <span key={day}>{day}</span>
+        ))}
+      </div>
+      <div className="return-days">
+        {cells.map((day, index) =>
+          day ? (
+            <button key={day} type="button" disabled={day < today} aria-pressed={day === value} onClick={() => onChange(day)}>
+              {Number(day.slice(-2))}
+            </button>
+          ) : (
+            <span key={`vazio-${index}`} />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?: boolean; conversationId?: string }) {
   const [data, setData] = useState<ChatbotSnapshot | null>(null);
   const [selected, setSelected] = useState(conversationId);
@@ -273,6 +311,14 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [contactQuery, setContactQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [listFilters, setListFilters] = useState<InboxListFilters>({ products: [], tags: [], stages: [] });
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnDate, setReturnDate] = useState("");
+  const [returnHour, setReturnHour] = useState(9);
+  const [returnMinute, setReturnMinute] = useState(0);
+  const [returnFlowId, setReturnFlowId] = useState("");
+  const [returnFlows, setReturnFlows] = useState<{ id: string; name: string }[]>([]);
+  const [returnNote, setReturnNote] = useState("");
+  const [returnSaving, setReturnSaving] = useState(false);
   const selectedRef = useRef("");
   const pendingOpen = useRef("");
   const snapshotRequest = useRef(0);
@@ -573,6 +619,49 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     }
     setQuickReplies(result.data);
     setQuickNote(result.data.length ? "" : "Nenhuma resposta rápida cadastrada.");
+  }
+
+  async function openReturn() {
+    const slot = defaultReturnSlot();
+    setReturnDate(slot.date);
+    setReturnHour(slot.hour);
+    setReturnMinute(slot.minute);
+    setReturnFlowId("");
+    setReturnNote("");
+    setReturnOpen(true);
+    const result = await listChatbotFlowsFn();
+    if (!result.ok) {
+      setReturnFlows([]);
+      setReturnNote(result.message);
+      return;
+    }
+    const saved = result.data
+      .filter((item) => item.name.trim())
+      .map((item) => ({ id: item.id, name: item.name }))
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+    setReturnFlows(saved);
+    if (!saved.length) setReturnNote("Nenhum bot salvo.");
+  }
+
+  async function saveReturn() {
+    if (!selected || returnSaving) return;
+    setReturnSaving(true);
+    setReturnNote("");
+    try {
+      const result = await scheduleChatbotReturnFn({
+        data: { conversationId: selected, flowId: returnFlowId, date: returnDate, hour: returnHour, minute: returnMinute },
+      });
+      if (!result.ok) {
+        setReturnNote(result.message);
+        return;
+      }
+      setReturnOpen(false);
+      setMessage("Retorno agendado. O bot será enviado nesse horário.");
+    } catch {
+      setReturnNote("Não foi possível agendar o retorno.");
+    } finally {
+      setReturnSaving(false);
+    }
   }
 
   async function openBots() {
@@ -1043,6 +1132,9 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 >
                   <Bot size={16} />
                 </button>
+                <Button type="button" size="sm" variant="outline" onClick={() => void openReturn()}>
+                  Retorno
+                </Button>
                 {conversation.mine ? (
                   <Button type="button" size="sm" variant="outline" onClick={() => void openTransfer(conversation.id)}>
                     Transferir
@@ -1191,6 +1283,69 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
             </div>
           )}
         </section>
+        <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
+          <DialogContent className="chatbot-app return-dialog sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Retorno</DialogTitle>
+            </DialogHeader>
+            <form
+              className="return-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveReturn();
+              }}
+            >
+              <ReturnCalendar value={returnDate} onChange={setReturnDate} />
+              <div className="return-clock">
+                <label>
+                  Hora
+                  <select aria-label="Hora" value={returnHour} onChange={(event) => setReturnHour(Number(event.target.value))}>
+                    {Array.from({ length: 24 }, (_, hour) => (
+                      <option key={hour} value={hour}>
+                        {String(hour).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Minuto
+                  <select aria-label="Minuto" value={returnMinute} onChange={(event) => setReturnMinute(Number(event.target.value))}>
+                    {Array.from({ length: 60 }, (_, minute) => (
+                      <option key={minute} value={minute}>
+                        {String(minute).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="return-when">
+                {returnInstant({ date: returnDate, hour: returnHour, minute: returnMinute })
+                  ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(returnInstant({ date: returnDate, hour: returnHour, minute: returnMinute })))
+                  : "Escolha uma data e um horário que ainda não passaram."}
+              </p>
+              <label>
+                Bot
+                <select aria-label="Bot" value={returnFlowId} disabled={!returnFlows.length || returnSaving} onChange={(event) => setReturnFlowId(event.target.value)}>
+                  <option value="">{returnFlows.length ? "Escolha o bot" : "Nenhum bot salvo"}</option>
+                  {returnFlows.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {returnNote ? <p className="composer-error">{returnNote}</p> : null}
+              <div className="modal-actions">
+                <Button type="button" variant="outline" onClick={() => setReturnOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={returnSaving || !returnFlowId || !returnInstant({ date: returnDate, hour: returnHour, minute: returnMinute })}>
+                  {returnSaving ? "Agendando" : "Agendar retorno"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
           <DialogContent className="chatbot-app sm:max-w-md">
             <DialogHeader>

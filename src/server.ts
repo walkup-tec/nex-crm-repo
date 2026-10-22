@@ -1,4 +1,5 @@
 import { startBillingNoticeRunner } from "./server/billing-notices.server";
+import { startChatbotReturnRunner } from "./server/chatbot.server";
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
@@ -84,4 +85,10 @@ try {
   startBillingNoticeRunner();
 } catch (error) {
   console.error("billing_notices", error instanceof Error ? error.message : "falha");
+}
+
+try {
+  startChatbotReturnRunner();
+} catch (error) {
+  console.error("chatbot_return", error instanceof Error ? error.message : "falha");
 }

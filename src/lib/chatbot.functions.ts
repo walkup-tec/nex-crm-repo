@@ -677,6 +677,20 @@ export const startChatbotFlowFn = createServerFn({ method: "POST" })
     return guard(() => startChatbotFlow(context.userId, data.conversationId, data.flowId));
   });
 
+export const scheduleChatbotReturnFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId?: string; flowId?: string; date?: string; hour?: number; minute?: number }) => ({
+    conversationId: typeof data.conversationId === "string" ? data.conversationId : "",
+    flowId: typeof data.flowId === "string" ? data.flowId : "",
+    date: typeof data.date === "string" ? data.date : "",
+    hour: typeof data.hour === "number" ? data.hour : -1,
+    minute: typeof data.minute === "number" ? data.minute : -1,
+  }))
+  .handler(async ({ context, data }) => {
+    const { scheduleChatbotReturn } = await import("@/server/chatbot.server");
+    return guard(() => scheduleChatbotReturn(context.userId, data));
+  });
+
 export const listChatbotProductsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

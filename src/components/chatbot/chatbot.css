@@ -377,4 +377,17 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app.chatbot-expanded .inbox-layout.chat-selected .conversation-list{display:flex}
 .chatbot-app.chatbot-expanded .chat-area{display:grid;grid-template-rows:auto minmax(0,1fr) auto}
 .chatbot-app.chatbot-expanded .contact-panel{display:flex}
+.chatbot-app .list-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.chatbot-app .list-head h2{margin:0}
+.chatbot-app .list-filter{display:grid;place-items:center;width:32px;height:32px;flex:none;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--muted-foreground);cursor:pointer}
+.chatbot-app .list-filter.active,.chatbot-app .list-filter[aria-expanded=true]{color:var(--primary);border-color:var(--primary);background:var(--accent)}
+.chatbot-app .list-search{display:block;margin-top:12px}
+.chatbot-app .list-lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:10px}
+.chatbot-app .list-lanes button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;height:42px;padding:4px 2px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted-foreground);font-size:10px;font-weight:700;line-height:1.15;cursor:pointer}
+.chatbot-app .list-lanes button[aria-selected=true]{background:var(--accent);color:var(--primary)}
+.chatbot-app .list-filter-panel{display:grid;gap:12px;margin-top:10px;max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--card);padding:12px}
+.chatbot-app .list-filter-panel strong{display:block;margin:0 0 6px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground)}
+.chatbot-app .list-filter-panel label{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:12px;font-weight:600;color:var(--foreground)}
+.chatbot-app .list-filter-panel p{margin:0;font-size:11px;color:var(--muted-foreground)}
+.chatbot-app .list-filter-panel > button{justify-self:start;height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--primary);font-size:11px;font-weight:700;cursor:pointer}
 

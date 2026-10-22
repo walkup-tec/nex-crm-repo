@@ -1,4 +1,4 @@
-import { MessageSquare, Bot, ExternalLink, Pause, Pin, Play, Send, UserRound } from "lucide-react";
+import { MessageSquare, Bot, ExternalLink, Filter, Pause, Pin, Play, Search, Send, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +24,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, stickToLatestMessage, tagInk, waitingForHuman, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
@@ -269,6 +269,10 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [transferring, setTransferring] = useState(false);
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const [savedMedia, setSavedMedia] = useState(0);
+  const [lane, setLane] = useState<InboxLane>("atendimento");
+  const [contactQuery, setContactQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [listFilters, setListFilters] = useState<InboxListFilters>({ products: [], tags: [], stages: [] });
   const selectedRef = useRef("");
   const pendingOpen = useRef("");
   const snapshotRequest = useRef(0);
@@ -315,6 +319,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         const conversations = result.data.conversations;
         appliedSnapshot.current = requestId;
         const next = { ...result.data, conversations };
+        const opening = pendingOpen.current;
+        if (opening) {
+          const opened = next.conversations.find((item) => item.id === opening);
+          const openedLane = opened ? inboxContactLane(next.conversations, opened.contactId) : "";
+          if (openedLane) setLane(openedLane);
+        }
         setOutgoing((current) => pendingOutgoing(next.messages, current));
         hasSnapshot.current = true;
         setData(next);
@@ -821,8 +831,19 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   }
 
   const conversations = data?.conversations ?? [];
-  const pinnedConversations = conversations.filter((item) => item.pinned);
-  const listedConversations = conversations.filter((item) => !item.pinned);
+  const visibleConversations = data ? inboxList(conversations, data.contacts, lane, contactQuery, listFilters) : [];
+  const pinnedConversations = visibleConversations.filter((item) => item.pinned);
+  const listedConversations = visibleConversations.filter((item) => !item.pinned);
+  const filtersOn = inboxFiltersActive(listFilters);
+  const laneCount = (key: InboxLane) => (data ? inboxList(conversations, data.contacts, key, contactQuery, listFilters).length : 0);
+
+  function toggleListFilter(kind: keyof InboxListFilters, name: string) {
+    setListFilters((current) => {
+      const values = current[kind];
+      const next = values.includes(name) ? values.filter((item) => item !== name) : [...values, name];
+      return { ...current, [kind]: next };
+    });
+  }
 
   function conversationCard(item: ChatbotSnapshot["conversations"][number]) {
     if (!data) return null;
@@ -885,15 +906,89 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       <div className={`inbox-layout${selected ? " chat-selected" : ""}`}>
         <section className="conversation-list">
           <div className="list-tools">
-            <h2>
-              Conversas <span className="count">{data?.conversations.length ?? 0}</span>
-            </h2>
+            <div className="list-head">
+              <h2>
+                Conversas <span className="count">{visibleConversations.length}</span>
+              </h2>
+              <button
+                type="button"
+                className={`list-filter${filtersOn ? " active" : ""}`}
+                aria-label="Filtrar conversas"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <Filter size={15} />
+              </button>
+            </div>
+            <label className="search-field list-search">
+              <Search size={14} />
+              <input
+                value={contactQuery}
+                onChange={(event) => setContactQuery(event.target.value)}
+                placeholder="Nome ou WhatsApp"
+                aria-label="Pesquisar contato por nome ou WhatsApp"
+              />
+            </label>
+            <div className="list-lanes" role="tablist" aria-label="Situação do atendimento">
+              {([
+                ["atendimento", "Atendimento"],
+                ["aguardando", "Aguardando"],
+                ["robo", "Robô"],
+              ] as const).map(([key, label]) => (
+                <button key={key} type="button" role="tab" aria-selected={lane === key} onClick={() => setLane(key)}>
+                  {label}
+                  <span>{laneCount(key)}</span>
+                </button>
+              ))}
+            </div>
+            {filtersOpen ? (
+              <div className="list-filter-panel">
+                {(
+                  [
+                    ["products", "Produto", data?.catalogs.products.map((name) => ({ name })) ?? []],
+                    ["tags", "Etiqueta", data?.catalogs.tags ?? []],
+                    ["stages", "Kanban", data?.catalogs.stages.map((name) => ({ name })) ?? []],
+                  ] as const
+                ).map(([kind, title, options]) => (
+                  <div key={kind}>
+                    <strong>{title}</strong>
+                    {options.length ? (
+                      options.map((option) => (
+                        <label key={option.name}>
+                          <input
+                            type="checkbox"
+                            checked={listFilters[kind].includes(option.name)}
+                            onChange={() => toggleListFilter(kind, option.name)}
+                          />
+                          {option.name}
+                        </label>
+                      ))
+                    ) : (
+                      <p>Nenhum cadastrado</p>
+                    )}
+                  </div>
+                ))}
+                {filtersOn ? (
+                  <button type="button" onClick={() => setListFilters({ products: [], tags: [], stages: [] })}>
+                    Limpar
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {conversations.length ? (
+            visibleConversations.length ? (
             <>
               {pinnedConversations.length ? <div className="conversation-pinned">{pinnedConversations.map((item) => conversationCard(item))}</div> : null}
               <div className="conversation-scroll">{listedConversations.map((item) => conversationCard(item))}</div>
             </>
+            ) : (
+              <div className="list-empty">
+                <MessageSquare size={27} />
+                <strong>{contactQuery.trim() || filtersOn ? "Nenhum contato encontrado" : "Nenhuma conversa nesta aba"}</strong>
+                <p>{contactQuery.trim() || filtersOn ? "A pesquisa e os filtros valem para a aba selecionada." : "Os contatos desta situação aparecem aqui."}</p>
+              </div>
+            )
           ) : (
             <div className="list-empty">
               <MessageSquare size={27} />

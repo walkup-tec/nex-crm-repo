@@ -44,6 +44,7 @@ import {
   evolutionQrImage,
   evolutionSameOwnerInstance,
   evolutionContactAvatar,
+  inboxContactNames,
   inboxContactTags,
   preferredWhatsappPhone,
   sameWhatsappAccount,
@@ -412,18 +413,36 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     times.push(cell(message, "created_at"));
     inboundAt.set(id, times);
   }
-  const tagLinks = await rowsOrMissing(table("chatbot_contact_tags").select("contact_id, tag_id").eq("organization_id", organizationId));
-  const tagCatalog = tagLinks.missing
-    ? []
-    : (await rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId))).rows.map((row) => ({
-        id: cell(row, "id"),
-        name: cell(row, "name"),
-        color: cell(row, "color"),
-      }));
+  const [tagLinks, productLinks, stageRows] = await Promise.all([
+    rowsOrMissing(table("chatbot_contact_tags").select("contact_id, tag_id").eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId)),
+    rowsOrMissing(table("chatbot_stages").select("name, position").eq("organization_id", organizationId).order("position", { ascending: true })),
+  ]);
+  const [tagRows, productRows] = await Promise.all([
+    tagLinks.missing ? Promise.resolve({ rows: [] as Record<string, unknown>[], missing: true }) : rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId)),
+    productLinks.missing ? Promise.resolve({ rows: [] as Record<string, unknown>[], missing: true }) : rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
+  ]);
+  const tagCatalog = tagRows.rows.map((row) => ({
+    id: cell(row, "id"),
+    name: cell(row, "name"),
+    color: cell(row, "color"),
+  }));
+  const productCatalog = productRows.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name") }));
   const tagsByContact = inboxContactTags(
     tagLinks.rows.map((row) => ({ contactId: cell(row, "contact_id"), tagId: cell(row, "tag_id") })),
     tagCatalog,
   );
+  const productsByContact = inboxContactNames(
+    productLinks.rows.map((row) => ({ contactId: cell(row, "contact_id"), itemId: cell(row, "product_id") })),
+    productCatalog,
+  );
+  const stageNames = (stageRows.missing ? defaultKanbanStages : stageRows.rows.map((row) => cell(row, "name"))).filter(Boolean);
+  const extraStages = contactRows.map((row) => cell(row, "stage_name")).filter((name) => name && !stageNames.includes(name));
+  const catalogs = {
+    products: [...new Set(productCatalog.map((item) => item.name).filter(Boolean))].sort((left, right) => left.localeCompare(right, "pt-BR")),
+    tags: [...tagCatalog].filter((item) => item.name.trim()).sort((left, right) => left.name.localeCompare(right.name, "pt-BR")),
+    stages: [...stageNames, ...extraStages],
+  };
   void refreshStaleAvatars(organizationId, connectionRows, contactRows, scopedConversations)
     .then((fresh) => {
       for (const [contactId, url] of fresh) avatarCache.set(contactId, url);
@@ -458,8 +477,10 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       avatarUrl: avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
       botsDisabled: row["bots_disabled"] === true,
       tags: tagsByContact.get(cell(row, "id")) ?? [],
+      products: productsByContact.get(cell(row, "id")) ?? [],
       stage: cell(row, "stage_name"),
     })),
+    catalogs,
     conversations: ordered.map(({ row, pinned, updatedAt }) => {
       const assigneeId = cell(row, "assignee_id");
       return {

@@ -17,7 +17,8 @@ export type ChatbotSnapshot = {
     status: ChatbotConnectionStatus;
     error: string;
   }[];
-  contacts: { id: string; name: string; phone: string; avatarUrl: string; botsDisabled: boolean; tags: InboxContactTag[]; stage: string }[];
+  contacts: { id: string; name: string; phone: string; avatarUrl: string; botsDisabled: boolean; tags: InboxContactTag[]; products: string[]; stage: string }[];
+  catalogs: { products: string[]; tags: InboxContactTag[]; stages: string[] };
   conversations: {
     id: string;
     contactId: string;
@@ -94,6 +95,90 @@ export function attendanceMark(input: { assigneeName: string; botPaused: boolean
 
 export function waitingForHuman(input: { assigneeName: string; botPaused: boolean; closed: boolean }) {
   return !input.closed && !input.assigneeName.trim() && input.botPaused;
+}
+
+export type InboxLane = "atendimento" | "aguardando" | "robo";
+
+export function inboxLane(input: { assigneeName: string; botPaused: boolean; closed: boolean }): InboxLane | "" {
+  if (input.closed) return "";
+  if (input.assigneeName.trim()) return "atendimento";
+  if (input.botPaused) return "aguardando";
+  return "robo";
+}
+
+const inboxLaneRank: Record<InboxLane, number> = { atendimento: 3, aguardando: 2, robo: 1 };
+
+export function inboxContactLane<T extends { contactId: string; assigneeName: string; botPaused: boolean; status: string }>(
+  conversations: T[],
+  contactId: string,
+): InboxLane | "" {
+  let winner: InboxLane | "" = "";
+  for (const item of conversations) {
+    if (item.contactId !== contactId) continue;
+    const lane = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+    if (!lane) continue;
+    if (!winner || inboxLaneRank[lane] > inboxLaneRank[winner]) winner = lane;
+  }
+  return winner;
+}
+
+export function inboxQueryMatch(query: string, name: string, phone: string) {
+  const clean = query.trim();
+  if (!clean) return true;
+  const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (fold(name).includes(fold(clean))) return true;
+  const digits = clean.replace(/\D/g, "");
+  return digits.length > 0 && phone.replace(/\D/g, "").includes(digits);
+}
+
+export type InboxListFilters = { products: string[]; tags: string[]; stages: string[] };
+
+export function inboxFiltersActive(filters: InboxListFilters) {
+  return filters.products.length > 0 || filters.tags.length > 0 || filters.stages.length > 0;
+}
+
+export function inboxFiltersMatch(
+  contact: { products: string[]; tags: { name: string }[]; stage: string },
+  filters: InboxListFilters,
+) {
+  if (filters.products.length && !filters.products.some((name) => contact.products.includes(name))) return false;
+  if (filters.tags.length && !filters.tags.some((name) => contact.tags.some((tag) => tag.name === name))) return false;
+  if (filters.stages.length && !filters.stages.includes(contact.stage)) return false;
+  return true;
+}
+
+export function inboxList<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string }>(
+  conversations: T[],
+  contacts: { id: string; name: string; phone: string; products: string[]; tags: { name: string }[]; stage: string }[],
+  lane: InboxLane,
+  query: string,
+  filters: InboxListFilters,
+) {
+  const people = new Map(contacts.map((item) => [item.id, item]));
+  return inboxOrder(
+    conversations.filter((item) => {
+      const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+      if (own !== lane || inboxContactLane(conversations, item.contactId) !== lane) return false;
+      const person = people.get(item.contactId);
+      if (!inboxQueryMatch(query, person?.name ?? "", person?.phone ?? "")) return false;
+      if (!inboxFiltersActive(filters)) return true;
+      return person ? inboxFiltersMatch(person, filters) : false;
+    }),
+  );
+}
+
+export function inboxContactNames(links: { contactId: string; itemId: string }[], catalog: { id: string; name: string }[]) {
+  const byId = new Map(catalog.filter((item) => item.id && item.name.trim()).map((item) => [item.id, item.name.trim()]));
+  const grouped = new Map<string, string[]>();
+  for (const link of links) {
+    const name = byId.get(link.itemId);
+    if (!name) continue;
+    const current = grouped.get(link.contactId) ?? [];
+    if (current.includes(name)) continue;
+    current.push(name);
+    grouped.set(link.contactId, current);
+  }
+  return grouped;
 }
 
 export function inboxVisible(input: { assigneeId: string; userId: string; admin: boolean }) {

@@ -30,6 +30,11 @@ import {
   tintQrPixel,
   attendanceLabel,
   attendanceMark,
+  inboxContactLane,
+  inboxFiltersMatch,
+  inboxLane,
+  inboxList,
+  inboxQueryMatch,
   waitingForHuman,
   keepAttendanceBotsPaused,
   headerAttendant,
@@ -505,6 +510,32 @@ assert.equal(waitingForHuman({ assigneeName: "", botPaused: true, closed: false 
 assert.equal(waitingForHuman({ assigneeName: "", botPaused: false, closed: false }), false);
 assert.equal(waitingForHuman({ assigneeName: "Marina Costa", botPaused: true, closed: false }), false);
 assert.equal(waitingForHuman({ assigneeName: "", botPaused: true, closed: true }), false);
+assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: false }), "atendimento");
+assert.equal(inboxLane({ assigneeName: "", botPaused: true, closed: false }), "aguardando");
+assert.equal(inboxLane({ assigneeName: "", botPaused: false, closed: false }), "robo");
+assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: true }), "");
+const lanes = [
+  { id: "human", contactId: "mozart", assigneeName: "Ana", botPaused: true, status: "active", pinned: false, updatedAt: "2026-10-22T12:00:00.000Z" },
+  { id: "bot", contactId: "mozart", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T12:05:00.000Z" },
+  { id: "wait", contactId: "paulo", assigneeName: "", botPaused: true, status: "queue", pinned: true, updatedAt: "2026-10-22T11:00:00.000Z" },
+  { id: "robot", contactId: "grupo", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T10:00:00.000Z" },
+  { id: "done", contactId: "grupo", assigneeName: "", botPaused: false, status: "closed", pinned: false, updatedAt: "2026-10-22T13:00:00.000Z" },
+];
+const people = [
+  { id: "mozart", name: "Mozart", phone: "5551999666841", products: ["Meta Ads"], tags: [{ name: "Suporte" }], stage: "Proposta" },
+  { id: "paulo", name: "Paulo", phone: "5515998007677", products: [], tags: [], stage: "" },
+  { id: "grupo", name: "Grupo V8", phone: "5551999999999", products: ["Google Ads"], tags: [{ name: "Curioso" }], stage: "Novos leads" },
+];
+const none = { products: [], tags: [], stages: [] };
+assert.equal(inboxContactLane(lanes, "mozart"), "atendimento");
+assert.deepEqual(inboxList(lanes, people, "atendimento", "", none).map((item) => item.id), ["human"]);
+assert.deepEqual(inboxList(lanes, people, "robo", "", none).map((item) => item.id), ["robot"]);
+assert.deepEqual(inboxList(lanes, people, "aguardando", "", none).map((item) => item.id), ["wait"]);
+assert.deepEqual(inboxList(lanes, people, "atendimento", "moz", none).map((item) => item.id), ["human"]);
+assert.deepEqual(inboxList(lanes, people, "aguardando", "98007677", none).map((item) => item.id), ["wait"]);
+assert.equal(inboxQueryMatch("José", "Jose Silva", ""), true);
+assert.equal(inboxFiltersMatch(people[0]!, { products: ["Meta Ads"], tags: ["Suporte"], stages: ["Proposta"] }), true);
+assert.equal(inboxFiltersMatch(people[0]!, { products: ["Google Ads"], tags: [], stages: [] }), false);
 assert.equal(keepAttendanceBotsPaused(true, false), true);
 assert.equal(keepAttendanceBotsPaused(true, true), true);
 assert.equal(keepAttendanceBotsPaused(false, true), true);

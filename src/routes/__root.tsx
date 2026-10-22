@@ -121,6 +121,11 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <style dangerouslySetInnerHTML={{ __html: NEX_DEPLOY_WATCH_STYLE }} />
         <script dangerouslySetInnerHTML={{ __html: NEX_DEPLOY_WATCH_SCRIPT }} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "try{if(localStorage.getItem('nex-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}",
+          }}
+        />
         <HeadContent />
       </head>
       <body>

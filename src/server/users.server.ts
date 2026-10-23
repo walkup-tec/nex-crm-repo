@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendInviteWhatsapp } from "@/server/evo.server";
 import { appUrl, sendInviteEmail } from "@/server/mail.server";
 
-import type { ListedUser, UserPermissions, UserRole } from "@/lib/user-access";
+import { metaConnectionBroken, type ListedUser, type MetaConnectionProblem, type UserPermissions, type UserRole } from "@/lib/user-access";
 
 type Role = UserRole;
 
@@ -193,6 +193,7 @@ function toListed(
     permissions: permissions.get(row.id) ?? defaultPermissions,
     canManage: canManage(actor, { id: row.id, role, ownerId: row.owner_id }),
     metaLinked: false,
+    metaProblem: false,
   };
 }
 
@@ -210,15 +211,58 @@ async function organizationsWithPortfolio() {
   return ids;
 }
 
+async function connectionRows() {
+  const { data, error } = await supabaseAdmin.from("meta_connections").select("organization_id, status, last_error, token_expires_at");
+  if (error) {
+    if (/meta_connections|token_expires_at|last_error/i.test(error.message)) return [];
+    fail(error.message);
+  }
+  return data ?? [];
+}
+
+function brokenOrganizationIds(rows: Awaited<ReturnType<typeof connectionRows>>, now = Date.now()) {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!row.organization_id) continue;
+    if (metaConnectionBroken({ status: row.status, lastError: row.last_error, expiresAt: row.token_expires_at }, now)) ids.add(row.organization_id);
+  }
+  return ids;
+}
+
+export async function listMetaConnectionProblems(userId: string): Promise<MetaConnectionProblem[]> {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") return [];
+  const broken = brokenOrganizationIds(await connectionRows());
+  if (!broken.size) return [];
+  const ids = [...broken];
+  const [orgs, people, roles] = await Promise.all([
+    supabaseAdmin.from("organizations").select("id, legal_name").in("id", ids),
+    supabaseAdmin.from("profiles").select("id, full_name, organization_id").in("organization_id", ids),
+    roleMap(),
+  ]);
+  if (orgs.error) fail(orgs.error.message);
+  if (people.error) fail(people.error.message);
+  const orgName = new Map((orgs.data ?? []).map((org) => [org.id, org.legal_name?.trim() || ""]));
+  const adminName = new Map<string, string>();
+  for (const person of people.data ?? []) {
+    if (!person.organization_id || roles.get(person.id) !== "client_admin") continue;
+    const name = person.full_name?.trim();
+    if (name) adminName.set(person.organization_id, name);
+  }
+  return ids.map((id) => ({ organizationId: id, name: adminName.get(id) || orgName.get(id) || "Cliente" }));
+}
+
 export async function listUsers(userId: string) {
   const actor = await actorOf(userId);
   await repairLegacyAttendantPermissions();
-  const [rows, roles, permissions, linked] = await Promise.all([
+  const [rows, roles, permissions, linked, connections] = await Promise.all([
     profiles(),
     roleMap(),
     permissionMap(),
     organizationsWithPortfolio(),
+    connectionRows(),
   ]);
+  const broken = brokenOrganizationIds(connections);
   const names = new Map(rows.map((row) => [row.id, row.full_name]));
   const ownPermissions = permissions.get(actor.id) ?? defaultPermissions;
   const visible = rows.filter((row) => {
@@ -231,6 +275,7 @@ export async function listUsers(userId: string) {
     users: visible.map((row) => {
       const listed = toListed(actor, row, roles, names, permissions);
       listed.metaLinked = Boolean(row.organization_id && linked.has(row.organization_id));
+      listed.metaProblem = Boolean(row.organization_id && broken.has(row.organization_id));
       return listed;
     }),
   };

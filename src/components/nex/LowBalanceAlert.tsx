@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { callChatbotContactFn, listChatbotQueueAlertsFn } from "@/lib/chatbot.functions";
 import { applyClearedNotices, clearVisibleNotices, type ClearedNotices } from "@/lib/notice-clear";
+import type { MetaConnectionProblem } from "@/lib/user-access";
 
 type QueueLead = { conversationId: string; contactId: string; name: string; waitingMinutes: number };
 
@@ -50,7 +51,7 @@ function WhatsAppIcon() {
   );
 }
 
-export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supervisor?: boolean }) {
+export function LowBalanceBell({ low, supervisor = false, connectionProblems = [] }: { low: boolean; supervisor?: boolean; connectionProblems?: MetaConnectionProblem[] }) {
   const navigate = useNavigate();
   const [incoming, setIncoming] = useState<QueueLead[]>([]);
   const [serverOffline, setServerOffline] = useState(false);
@@ -121,7 +122,9 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
   const waiting = supervisor && leads.length > 0;
   const unavailable = supervisor && offline;
   const showLow = view.low;
-  if (!showLow && !waiting && !unavailable) {
+  const broken = connectionProblems.length > 0;
+  const attention = waiting || unavailable || broken;
+  if (!showLow && !attention) {
     return (
       <Button variant="ghost" size="icon" aria-label="Notificações">
         <Bell />
@@ -135,12 +138,16 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
         <Button
           variant="ghost"
           size="icon"
-          aria-label={unavailable && waiting ? "Leads na fila e nenhum atendente online" : unavailable ? "Nenhum atendente online" : waiting ? "Leads aguardando além do tempo da fila" : "Saldo Meta baixo"}
-          className={waiting || unavailable ? "relative text-warning" : "relative text-destructive"}
+          aria-label={broken ? "Conexão da Meta com problema" : unavailable && waiting ? "Leads na fila e nenhum atendente online" : unavailable ? "Nenhum atendente online" : waiting ? "Leads aguardando além do tempo da fila" : "Saldo Meta baixo"}
+          className={attention ? "relative text-warning" : "relative text-destructive"}
         >
-          <span className={`absolute inset-1 rounded-full ${waiting || unavailable ? "animate-warning-wave" : "animate-balance-wave"}`} />
+          <span className={`absolute inset-1 rounded-full ${attention ? "animate-warning-wave" : "animate-balance-wave"}`} />
           <Bell />
-          {waiting ? (
+          {broken ? (
+            <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[10px] font-bold text-background">
+              {connectionProblems.length > 9 ? "9+" : connectionProblems.length}
+            </span>
+          ) : waiting ? (
             <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[10px] font-bold text-background">
               {leads.length > 9 ? "9+" : leads.length}
             </span>
@@ -150,9 +157,11 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
       <PopoverContent align="end" className="w-80">
         <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
           <p className="text-sm font-semibold">Notificações</p>
-          <Button type="button" variant="ghost" className="h-8 px-2 text-xs font-medium text-primary" onClick={clearAll}>
-            Limpar tudo
-          </Button>
+          {waiting || unavailable || showLow ? (
+            <Button type="button" variant="ghost" className="h-8 px-2 text-xs font-medium text-primary" onClick={clearAll}>
+              Limpar tudo
+            </Button>
+          ) : null}
         </div>
         {unavailable ? (
           <div className={waiting ? "mb-4 border-b pb-4" : ""}>
@@ -182,6 +191,22 @@ export function LowBalanceBell({ low, supervisor = false }: { low: boolean; supe
               </div>
             ))}
             {failure ? <p className="text-xs text-destructive">{failure}</p> : null}
+          </div>
+        ) : null}
+        {broken ? (
+          <div className={waiting || unavailable || showLow ? "mb-4 border-b pb-4" : ""}>
+            <p className="text-sm font-semibold text-warning">Conexão da Meta</p>
+            <div className="mt-3 grid gap-3">
+              {connectionProblems.map((item) => (
+                <div key={item.organizationId}>
+                  <p className="text-sm font-semibold">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">A conexão com a Meta expirou.</p>
+                </div>
+              ))}
+            </div>
+            <Button asChild className="mt-4 w-full" variant="outline">
+              <Link to="/usuarios">Abrir usuários</Link>
+            </Button>
           </div>
         ) : null}
         {showLow ? (

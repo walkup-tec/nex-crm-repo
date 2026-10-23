@@ -301,7 +301,7 @@ async function loadToken(organizationId: string) {
   return { connection, token: decryptToken(connection.access_token_encrypted) };
 }
 
-export async function startMetaConnect(userId: string, organizationId: string) {
+export async function startMetaConnect(userId: string, organizationId: string, redo = false) {
   await assertOrgAccess(userId, organizationId);
   const config = metaConfig();
   const state = randomBytes(32).toString("base64url");
@@ -321,6 +321,7 @@ export async function startMetaConnect(userId: string, organizationId: string) {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", SCOPES.join(","));
   url.searchParams.set("display", "popup");
+  if (redo) url.searchParams.set("auth_type", "reauthenticate");
   return { url: url.toString() };
 }
 
@@ -433,7 +434,21 @@ export async function completeMetaOAuth(
     .from("meta_connections")
     .upsert(payload, { onConflict: "organization_id" });
   if (saveError) schemaFail(saveError.message);
+  await proveMetaToken(row.organization_id, exchanged.version, exchanged.token);
   return { organizationId: row.organization_id, purpose: "connect" as const };
+}
+
+async function proveMetaToken(organizationId: string, version: string, token: string) {
+  try {
+    await graphGet(version, "/me/businesses", token, { fields: "id", limit: "1" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "A conexão com a Meta expirou. Conecte novamente.";
+    await supabaseAdmin
+      .from("meta_connections")
+      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
+      .eq("organization_id", organizationId);
+    throw error;
+  }
 }
 
 export async function getMetaConnection(
@@ -533,11 +548,23 @@ export async function listMetaBusinesses(
   organizationId: string,
 ): Promise<MetaBusinessView[]> {
   await assertOrgAccess(userId, organizationId);
-  const { token } = await loadToken(organizationId);
-  const rows = await collectPages(graphVersion(), token, "/me/businesses", {
-    fields: "id,name",
-    limit: "50",
-  });
+  const { connection, token } = await loadToken(organizationId);
+  let rows: NonNullable<GraphBody["data"]>;
+  try {
+    rows = await collectPages(graphVersion(), token, "/me/businesses", {
+      fields: "id,name",
+      limit: "50",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "A conexão com a Meta expirou. Conecte novamente.";
+    if (/expirou|precisa ser refeita/i.test(message)) {
+      await supabaseAdmin
+        .from("meta_connections")
+        .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
+        .eq("id", connection.id);
+    }
+    throw error;
+  }
   const found: MetaBusinessView[] = [];
   for (const row of rows) {
     if (!row.id || !/^\d+$/.test(row.id) || found.some((item) => item.id === row.id)) continue;

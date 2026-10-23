@@ -1,6 +1,6 @@
 import { useRouteContext } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check, CircleAlert, Plus } from "lucide-react";
 import { AppShell } from "@/components/nex/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -221,7 +221,7 @@ export function UsersAdmin() {
                       {role === "master" && <TableCell>{user.ownerName ?? "—"}</TableCell>}
                       {role === "master" && (
                         <TableCell>
-                          <MetaAccountMark linked={user.metaLinked} />
+                          <MetaAccountMark linked={user.metaLinked} problem={user.metaProblem} />
                         </TableCell>
                       )}
                       <TableCell>
@@ -252,7 +252,7 @@ export function UsersAdmin() {
                   {role === "master" && (
                     <p className="mt-2 flex items-center gap-2 text-sm">
                       Conta META
-                      <MetaAccountMark linked={user.metaLinked} />
+                      <MetaAccountMark linked={user.metaLinked} problem={user.metaProblem} />
                     </p>
                   )}
                   {permissionSummary(user) && <p className="mt-1 text-xs text-muted-foreground">{permissionSummary(user)}</p>}
@@ -313,7 +313,16 @@ export function UsersAdmin() {
   );
 }
 
-function MetaAccountMark({ linked }: { linked: boolean }) {
+function MetaAccountMark({ linked, problem }: { linked: boolean; problem: boolean }) {
+  if (problem) {
+    return (
+      <span className="relative inline-flex size-4 items-center justify-center text-warning" title="Conexão com a Meta com problema">
+        <span className="absolute inset-0 rounded-full animate-warning-wave" />
+        <CircleAlert className="relative size-4" />
+        <span className="sr-only">Conexão com a Meta com problema</span>
+      </span>
+    );
+  }
   return (
     <span className={`inline-flex items-center ${linked ? "text-success" : "text-destructive"}`} title={linked ? "BM vinculada" : "BM não vinculada"}>
       <Check className="size-4" />

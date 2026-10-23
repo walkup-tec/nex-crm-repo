@@ -104,6 +104,9 @@ export function MetaConnect({
     const listed = await listMetaBusinessesFn({ data: { organizationId: org } });
     if (!listed.ok) {
       setError(listed.message);
+      if (/expirou|precisa ser refeita/i.test(listed.message)) {
+        setView((current) => ({ ...current, status: "error", lastError: listed.message }));
+      }
       return;
     }
     setBusinesses(listed.data);
@@ -152,7 +155,7 @@ export function MetaConnect({
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  const connect = () => {
+  const connect = (redo = false) => {
     setError("");
     const width = 520;
     const height = 720;
@@ -180,7 +183,7 @@ export function MetaConnect({
       }
       orgRef.current = target;
       setOrgId(target);
-      const result = await startMetaConnectFn({ data: { organizationId: target } });
+      const result = await startMetaConnectFn({ data: { organizationId: target, redo } });
       if (!result.ok) {
         popup.close();
         setPending("");
@@ -252,7 +255,8 @@ export function MetaConnect({
   };
 
   const connected = view.status === "connected" || view.status === "error";
-  const connectionDone = view.status === "connected";
+  const tokenRejected = /expirou|precisa ser refeita/i.test(`${error} ${view.lastError ?? ""}`);
+  const connectionDone = view.status === "connected" && !tokenRejected;
   const informedLink = normalizeBalanceLink(balanceUrl);
   const accountSaved = Boolean(
     connectionDone &&
@@ -373,11 +377,16 @@ export function MetaConnect({
       )}
       {view.lastError && <p className="text-sm text-destructive">{view.lastError}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {(!connectionDone || (connected && orgId && !accountSaved)) && (
+      {(!connectionDone || connected) && (
         <div className="flex flex-wrap gap-2">
-          {!connectionDone && (
-            <Button type="button" onClick={connect} disabled={pending !== ""}>
+          {!connected && (
+            <Button type="button" onClick={() => connect(false)} disabled={pending !== ""}>
               {pending === "connect" ? "Abrindo a Meta..." : "Conexão META"}
+            </Button>
+          )}
+          {connected && (
+            <Button type="button" variant="outline" onClick={() => connect(true)} disabled={pending !== ""}>
+              {pending === "connect" ? "Abrindo a Meta..." : "Refazer conexão"}
             </Button>
           )}
           {connected && orgId && !accountSaved && (

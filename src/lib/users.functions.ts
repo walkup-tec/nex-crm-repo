@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { UserPermissions, UsersSnapshot } from "@/lib/user-access";
+import type { MetaConnectionProblem, UserPermissions, UsersSnapshot } from "@/lib/user-access";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -32,6 +32,13 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
     return { ok: false, message: publicMessage(error) };
   }
 }
+
+export const listMetaConnectionProblemsFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<Result<MetaConnectionProblem[]>> => {
+    const { listMetaConnectionProblems } = await import("@/server/users.server");
+    return guard(() => listMetaConnectionProblems(context.userId));
+  });
 
 export const listUsersFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

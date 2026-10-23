@@ -23,7 +23,23 @@ export type ListedUser = {
   permissions: UserPermissions;
   canManage: boolean;
   metaLinked: boolean;
+  metaProblem: boolean;
 };
+
+export type MetaConnectionProblem = {
+  organizationId: string;
+  name: string;
+};
+
+export function metaConnectionBroken(
+  row: { status?: string | null; lastError?: string | null; expiresAt?: string | null },
+  now = Date.now(),
+) {
+  if (!row.status || row.status === "missing" || row.status === "disconnected") return false;
+  if (row.status === "error" || Boolean(row.lastError?.trim())) return true;
+  const expires = row.expiresAt ? Date.parse(row.expiresAt) : Number.NaN;
+  return Number.isFinite(expires) && expires < now;
+}
 
 export type RegisteredClient = {
   id: string;

@@ -37,10 +37,13 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
 
 export const startMetaConnectFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { organizationId: string }) => data)
+  .validator((data: { organizationId: string; redo?: boolean }) => ({
+    organizationId: data.organizationId,
+    redo: data.redo === true,
+  }))
   .handler(async ({ context, data }) => {
     const { startMetaConnect } = await import("@/server/meta.server");
-    return guard(() => startMetaConnect(context.userId, data.organizationId));
+    return guard(() => startMetaConnect(context.userId, data.organizationId, data.redo));
   });
 
 export const completeMetaOAuthFn = createServerFn({ method: "POST" })

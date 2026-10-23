@@ -4117,7 +4117,7 @@ async function sendFlowMenu(connection: Record<string, unknown>, organizationId:
     try {
       const response = await evo(`/message/sendButtons/${encodeURIComponent(instanceName)}`, "POST", {
         number,
-        title: menuText.title,
+        ...(menuText.title ? { title: menuText.title } : {}),
         description: menuText.description,
         footer: menuText.footer,
         buttons,

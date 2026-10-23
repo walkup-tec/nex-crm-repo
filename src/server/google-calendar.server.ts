@@ -10,6 +10,7 @@ import {
   googleCalendarScopes,
   googleFailure,
   meetingGuests,
+  meetingOnContactCard,
   meetingRecordId,
   meetingSlot,
   meetingTimeZone,
@@ -602,12 +603,16 @@ export async function listLeadMeetings(userId: string, leadId = "") {
   if (leadId) await leadInOrg(gate.organizationId, leadId);
   await syncQuietly(gate.organizationId, userId, gate.manager);
   let query = from("lead_meetings").select("*").eq("organization_id", gate.organizationId);
-  if (leadId) query = query.eq("lead_id", leadId).order("start_at", { ascending: false }).limit(20);
+  if (leadId) query = query.eq("lead_id", leadId).eq("status", "scheduled").order("start_at", { ascending: false }).limit(20);
   else {
     query = query.eq("status", "scheduled").gte("end_at", new Date().toISOString()).order("start_at", { ascending: true }).limit(50);
     if (!gate.manager) query = query.eq("user_id", userId);
   }
-  return decorate((await rows(query)).filter((row) => cell(row, "status") !== "failed"), userId, gate.manager);
+  return decorate(
+    (await rows(query)).filter((row) => (leadId ? meetingOnContactCard(cell(row, "status")) : cell(row, "status") !== "failed")),
+    userId,
+    gate.manager,
+  );
 }
 
 export async function listMeetingCalendar(userId: string) {

@@ -9,7 +9,7 @@ import {
   listMeetingCalendarFn,
   startGoogleCalendarConnectFn,
 } from "@/lib/google-calendar.functions";
-import { meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView, type MeetingCalendarDay } from "@/lib/google-calendar";
+import { meetingOnContactCard, meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView, type MeetingCalendarDay } from "@/lib/google-calendar";
 
 function MeetingCards({ meetings, empty, onChanged }: { meetings: LeadMeetingView[]; empty: string; onChanged: () => void }) {
   const [editing, setEditing] = useState<LeadMeetingView | null>(null);
@@ -119,7 +119,7 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
   return (
     <>
       {note ? <p className="composer-error">{note}</p> : null}
-      <MeetingCards meetings={meetings} empty="Nenhuma reunião agendada." onChanged={() => setVersion((value) => value + 1)} />
+      <MeetingCards meetings={meetings.filter((meeting) => meetingOnContactCard(meeting.status))} empty="Nenhuma reunião agendada." onChanged={() => setVersion((value) => value + 1)} />
     </>
   );
 }

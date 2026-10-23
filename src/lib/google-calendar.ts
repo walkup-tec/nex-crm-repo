@@ -16,6 +16,10 @@ export const googleCalendarScopes = [
 
 export type MeetingStatus = "scheduled" | "cancelled" | "failed";
 
+export function meetingOnContactCard(status: string) {
+  return status === "scheduled";
+}
+
 export type LeadMeetingView = {
   id: string;
   leadId: string;

@@ -8,6 +8,7 @@ import {
   googleFailure,
   meetingFields,
   meetingGuests,
+  meetingOnContactCard,
   meetingLength,
   meetingSlot,
   meetingWhen,
@@ -108,6 +109,9 @@ assert.equal(
   "https://meet.google.com/xyz",
 );
 assert.equal(meetUrlFromEvent({ hangoutLink: "javascript:alert(1)" }), "");
+assert.equal(meetingOnContactCard("scheduled"), true);
+assert.equal(meetingOnContactCard("cancelled"), false);
+assert.equal(meetingOnContactCard("failed"), false);
 
 const current = {
   startAt: "2026-10-23T18:00:00.000Z",

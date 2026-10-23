@@ -127,3 +127,10 @@ export const cancelLeadMeetingFn = createServerFn({ method: "POST" })
     const { cancelLeadMeeting } = await import("@/server/google-calendar.server");
     return guard(() => cancelLeadMeeting(context.userId, data.meetingId));
   });
+
+export const publicMeetingCardFn = createServerFn({ method: "POST" })
+  .validator((data: { meetingId?: string }) => ({ meetingId: text(data.meetingId, 80) }))
+  .handler(async ({ data }) => {
+    const { publicMeetingCard } = await import("@/server/google-calendar.server");
+    return guard(() => publicMeetingCard(data.meetingId));
+  });

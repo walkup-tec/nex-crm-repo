@@ -18,6 +18,9 @@ import {
   remoteMeetingPatch,
   standardMeetingDescription,
   standardMeetingTitle,
+  meetingConfirmButton,
+  meetingConfirmUrl,
+  meetingNoticeMessages,
   agendaEmailList,
   markMeetingCalendar,
   meetingCalendar,
@@ -35,6 +38,11 @@ assert.equal(standardMeetingTitle, "Apresentação NEX Mkt Digital");
 assert.equal(cleanMeetingTitle(standardMeetingTitle), standardMeetingTitle);
 assert.equal(standardMeetingDescription.startsWith("Muito obrigado pelo seu tempo!"), true);
 assert.equal(cleanMeetingDescription(standardMeetingDescription), standardMeetingDescription);
+assert.equal(meetingNoticeMessages({ name: "Marcelo", when: "26/10/2026 13:00–14:00", email: "ana@empresa.com", meetUrl: "https://meet.google.com/abc" })[0], "Marcelo, segue os dados da nossa agenda.");
+assert.equal(meetingNoticeMessages({ name: "  ", when: "", email: "", meetUrl: "" })[0], "Olá, segue os dados da nossa agenda.");
+assert.equal(meetingNoticeMessages({ name: "Marcelo", when: "26/10/2026 13:00–14:00", email: "ana@empresa.com", meetUrl: "" })[2].includes("E-mail: ana@empresa.com"), true);
+assert.equal(meetingConfirmUrl("9dcc028f-b4b8-4c79-b3cd-851b7d39bec9"), "https://app.nexmeta.com.br/agenda/9dcc028f-b4b8-4c79-b3cd-851b7d39bec9");
+assert.equal(meetingConfirmButton("5511999999999", "https://app.nexmeta.com.br/agenda/1").buttons[0]?.displayText, "Confirmar Agendamento");
 assert.equal(cleanMeetingTitle("  Reunião  inicial "), "Reunião inicial");
 assert.equal(cleanMeetingTitle("A"), "");
 assert.equal(cleanMeetingDescription("  pauta "), "pauta");

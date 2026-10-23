@@ -1,6 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { botPresenceCue, whatsappGroupJid, whatsappTextPayload } from "@/lib/chatbot-evo";
 import { chatbotMenuAllowed, chatbotMenusFromStorage } from "@/lib/chatbot-menus";
+import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
+import { evolutionRuntime } from "@/server/evo.server";
 import {
   canReadAvailability,
   googleCalendarForMms,
@@ -10,6 +13,7 @@ import {
   meetingRecordId,
   meetingSlot,
   meetingTimeZone,
+  meetingWhen,
   meetingCalendar,
   markMeetingCalendar,
   agendaEmailList,
@@ -18,6 +22,9 @@ import {
   remoteMeetingPatch,
   standardMeetingDescription,
   standardMeetingTitle,
+  meetingConfirmButton,
+  meetingConfirmUrl,
+  meetingNoticeMessages,
   type GoogleCalendarConnectionView,
   type GoogleEventShape,
   type LeadMeetingView,
@@ -681,6 +688,115 @@ function storedEvent(event: GoogleEventShape) {
   };
 }
 
+function readSentId(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "";
+  const key = (payload as Row)["key"];
+  if (!key || typeof key !== "object") return "";
+  const id = (key as Row)["id"];
+  return typeof id === "string" ? id : "";
+}
+
+async function evolutionPost(path: string, payload: unknown, timeoutMs = 20000) {
+  const { base, key } = evolutionRuntime();
+  if (!base || !key) return null;
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", apikey: key },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const raw = await response.text();
+  let body: unknown = null;
+  if (raw) {
+    try {
+      body = JSON.parse(raw) as unknown;
+    } catch {
+      body = null;
+    }
+  }
+  if (!response.ok) return null;
+  return body;
+}
+
+async function showTyping(instanceName: string, number: string, text: string) {
+  const cue = botPresenceCue({ text });
+  try {
+    await evolutionPost(
+      `/chat/sendPresence/${encodeURIComponent(instanceName)}`,
+      { number, presence: cue.presence, delay: cue.delay },
+      cue.delay + 8000,
+    );
+  } catch {
+    return;
+  }
+}
+
+async function storeChatMessage(organizationId: string, conversationId: string, text: string, externalId: string) {
+  await from("chatbot_messages").insert({
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    text,
+    direction: "out",
+    status: "sent",
+    external_id: externalId || null,
+  });
+}
+
+async function sendMeetingNotices(organizationId: string, leadId: string, meetingId: string, when: string, email: string, meetUrl: string) {
+  try {
+    const lead = await from("chatbot_contacts").select("name, phone").eq("id", leadId).eq("organization_id", organizationId).maybeSingle();
+    if (lead.error || !lead.data) return;
+    const storedPhone = cell(lead.data, "phone");
+    const phone = whatsappGroupJid(storedPhone) || whatsappNumber(storedPhone) || "";
+    if (!phone) return;
+    const conversations = await from("chatbot_conversations").select("id, connection_id").eq("organization_id", organizationId).eq("contact_id", leadId).order("updated_at", { ascending: false }).limit(1);
+    const conversation = conversations.data?.[0];
+    if (conversations.error || !conversation) return;
+    const connection = await from("chatbot_connections").select("instance_name, status").eq("id", cell(conversation, "connection_id")).eq("organization_id", organizationId).maybeSingle();
+    if (connection.error || cell(connection.data, "status") !== "connected") return;
+    const instanceName = cell(connection.data, "instance_name");
+    if (!instanceName) return;
+    const conversationId = cell(conversation, "id");
+    for (const text of meetingNoticeMessages({ name: cell(lead.data, "name"), when, email, meetUrl })) {
+      await showTyping(instanceName, phone, text);
+      const sent = await evolutionPost(`/message/sendText/${encodeURIComponent(instanceName)}`, whatsappTextPayload(phone, text));
+      if (sent) await storeChatMessage(organizationId, conversationId, text, readSentId(sent));
+    }
+    const url = meetingConfirmUrl(meetingId);
+    const label = "Confirmar Agendamento";
+    await showTyping(instanceName, phone, label);
+    const button = await evolutionPost(`/message/sendButtons/${encodeURIComponent(instanceName)}`, meetingConfirmButton(phone, url));
+    const stored = button && !isGhostButtonResponse(button) ? `${label}\n${url}` : "";
+    if (stored) {
+      await storeChatMessage(organizationId, conversationId, stored, readSentId(button));
+    } else {
+      const text = `${label}\n${url}`;
+      const sent = await evolutionPost(`/message/sendText/${encodeURIComponent(instanceName)}`, whatsappTextPayload(phone, text));
+      if (sent) await storeChatMessage(organizationId, conversationId, text, readSentId(sent));
+    }
+    await from("chatbot_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId).eq("organization_id", organizationId);
+  } catch (error) {
+    console.error("meeting_notice", error instanceof Error ? error.name : "error");
+  }
+}
+
+export async function publicMeetingCard(meetingId: string) {
+  if (!meetingRecordId(meetingId)) return null;
+  const meeting = await from("lead_meetings").select("title, start_at, end_at, status, meet_url, calendar_url, attendee_email, lead_id").eq("id", meetingId).maybeSingle();
+  if (meeting.error || !meeting.data || cell(meeting.data, "status") !== "scheduled") return null;
+  const lead = await from("chatbot_contacts").select("name").eq("id", cell(meeting.data, "lead_id")).maybeSingle();
+  const calendarUrl = cell(meeting.data, "calendar_url");
+  const meetUrl = cell(meeting.data, "meet_url");
+  return {
+    name: lead.error ? "" : cell(lead.data, "name"),
+    title: cell(meeting.data, "title") || standardMeetingTitle,
+    when: meetingWhen(cell(meeting.data, "start_at"), cell(meeting.data, "end_at")),
+    email: cell(meeting.data, "attendee_email"),
+    meetUrl: /^https:\/\//.test(meetUrl) ? meetUrl : "",
+    calendarUrl: /^https:\/\//.test(calendarUrl) ? calendarUrl : "",
+  };
+}
+
 export async function createLeadMeeting(userId: string, input: {
   leadId: string;
   requestId: string;
@@ -779,7 +895,9 @@ export async function createLeadMeeting(userId: string, input: {
       google_connection_id: cell(connection, "id"),
     }).eq("id", cell(reserved, "id")).eq("organization_id", gate.organizationId).select("*").maybeSingle();
     if (updated.error || !updated.data) schemaFail(updated.error?.message || "lead_meetings");
-    return shown(await decorate([updated.data], userId, gate.manager));
+    const view = await decorate([updated.data], userId, gate.manager);
+    await sendMeetingNotices(gate.organizationId, cell(lead, "id"), cell(updated.data, "id"), meetingWhen(slot.start, slot.end), guests.lead, meetUrlFromEvent(event));
+    return shown(view);
   } catch (error) {
     await from("lead_meetings").update({ status: "failed", updated_at: new Date().toISOString() }).eq("id", cell(reserved, "id")).eq("organization_id", gate.organizationId).is("google_event_id", null);
     throw error;

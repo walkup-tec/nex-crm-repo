@@ -79,6 +79,36 @@ export const standardMeetingDescription = [
   "Em breve teremos um momento produtivo, aonde você poderá conhecer melhor a NEX e retirar todas as dúvidas a respeito das ações de marketing digital que irão impulsionar o seu negócio.",
 ].join("\n");
 
+export function meetingConfirmUrl(meetingId: string) {
+  return `https://app.nexmeta.com.br/agenda/${meetingId}`;
+}
+
+export function meetingNoticeMessages(input: { name: string; when: string; email: string; meetUrl: string }) {
+  const name = input.name.trim() || "Olá";
+  const details = [
+    "Dados do agendamento",
+    `Assunto: ${standardMeetingTitle}`,
+    input.when ? `Quando: ${input.when}` : "",
+    input.email ? `E-mail: ${input.email}` : "",
+    input.meetUrl ? `Google Meet: ${input.meetUrl}` : "",
+  ].filter(Boolean);
+  return [
+    `${name}, segue os dados da nossa agenda.`,
+    "É muito importante que você entre no seu e-mail para confirmar o nosso horário, dessa forma você está reservando um horário onde o nosso especialista estará, inteiramente, à sua disposição.",
+    details.join("\n"),
+  ];
+}
+
+export function meetingConfirmButton(phone: string, url: string) {
+  return {
+    number: phone,
+    title: "Agendamento",
+    description: "Toque no botão para abrir o horário e confirmar.",
+    footer: "",
+    buttons: [{ type: "url", displayText: "Confirmar Agendamento", url }],
+  };
+}
+
 export function cleanMeetingTitle(value: string) {
   const title = value.trim().replace(/\s+/g, " ");
   if (title.length < 2 || title.length > 120) return "";

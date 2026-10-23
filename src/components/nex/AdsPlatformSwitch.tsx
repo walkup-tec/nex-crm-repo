@@ -25,13 +25,16 @@ const options = [
 export function AdsPlatformSwitch({
   value,
   onChange,
+  order = ["meta", "google"],
 }: {
   value: AdsPlatform;
   onChange: (value: AdsPlatform) => void;
+  order?: readonly AdsPlatform[];
 }) {
+  const listed = order.flatMap((id) => options.filter((option) => option.id === id));
   return (
     <div role="tablist" aria-label="Rede de anúncios" className="flex items-end">
-      {options.map((option, index) => {
+      {listed.map((option, index) => {
         const Icon = option.icon;
         const selected = value === option.id;
         return (

@@ -52,6 +52,22 @@ export type RegisteredClient = {
   adsGoogle: boolean;
 };
 
+export const commercialWhatsApp = "555197979224";
+
+export function adsDashboardOrder(flags: { adsMeta: boolean; adsGoogle: boolean }) {
+  if (flags.adsGoogle && !flags.adsMeta) return ["google", "meta"] as const;
+  return ["meta", "google"] as const;
+}
+
+export function commercialOffer(platform: "meta" | "google") {
+  const product = platform === "meta" ? "Meta Ads" : "Google Ads";
+  return {
+    product,
+    message: `Para impulsionar ainda mais o seu negócio, solicite ao comercial da NEX uma proposta para o ${product}`,
+    href: `https://wa.me/${commercialWhatsApp}`,
+  };
+}
+
 export function adsConnectionSections(flags: { adsMeta?: boolean; adsGoogle?: boolean } | null | undefined) {
   if (!flags) return { meta: true, google: false };
   return { meta: flags.adsMeta === true, google: flags.adsGoogle === true };

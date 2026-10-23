@@ -64,12 +64,23 @@ export const Route = createFileRoute("/_authenticated")({
     }
     const { master, roles } = await readMasterRoles(data.user.id);
     let calendarMenu = false;
+    let adsMeta = true;
+    let adsGoogle = false;
     if (profile?.organization_id) {
-      const { data: org } = await supabase
+      const full = await supabase
         .from("organizations")
-        .select("status, legal_name")
+        .select("status, legal_name, ads_meta, ads_google")
         .eq("id", profile.organization_id)
         .maybeSingle();
+      const orgQuery =
+        full.error && /ads_meta|ads_google/i.test(full.error.message)
+          ? await supabase.from("organizations").select("status, legal_name").eq("id", profile.organization_id).maybeSingle()
+          : full;
+      const org = orgQuery.data;
+      if (!full.error && full.data) {
+        adsMeta = full.data.ads_meta === true;
+        adsGoogle = full.data.ads_google === true;
+      }
       calendarMenu = keepsAccessWithoutPayment(org?.legal_name ?? "");
       const closed =
         org?.status === "disabled" || org?.status === "blocked" || org?.status === "contract_ended";
@@ -87,7 +98,7 @@ export const Route = createFileRoute("/_authenticated")({
       const next = firstAllowedClientPath(permissions, chatbotMenus);
       if (next !== location.pathname) throw redirect({ to: next });
     }
-    return { user: data.user, master, role, permissions, chatbotMenus, calendarMenu };
+    return { user: data.user, master, role, permissions, chatbotMenus, calendarMenu, adsMeta, adsGoogle };
   },
   component: function AuthenticatedLayout() {
     return (

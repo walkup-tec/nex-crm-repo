@@ -109,6 +109,7 @@ export function waitingForHuman(input: { assigneeName: string; botPaused: boolea
 }
 
 export type InboxLane = "atendimento" | "aguardando" | "robo";
+export type InboxTab = InboxLane | "todos";
 
 export function inboxLane(input: { assigneeName: string; botPaused: boolean; closed: boolean }): InboxLane | "" {
   if (input.closed) return "";
@@ -161,15 +162,17 @@ export function inboxFiltersMatch(
 export function inboxList<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string }>(
   conversations: T[],
   contacts: { id: string; name: string; phone: string; products: string[]; tags: { name: string }[]; stage: string }[],
-  lane: InboxLane,
+  lane: InboxTab,
   query: string,
   filters: InboxListFilters,
 ) {
   const people = new Map(contacts.map((item) => [item.id, item]));
   return inboxOrder(
     conversations.filter((item) => {
-      const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
-      if (own !== lane || inboxContactLane(conversations, item.contactId) !== lane) return false;
+      if (lane !== "todos") {
+        const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+        if (own !== lane || inboxContactLane(conversations, item.contactId) !== lane) return false;
+      }
       const person = people.get(item.contactId);
       if (!inboxQueryMatch(query, person?.name ?? "", person?.phone ?? "")) return false;
       if (!inboxFiltersActive(filters)) return true;

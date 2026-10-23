@@ -563,6 +563,8 @@ assert.deepEqual(inboxList(lanes, people, "robo", "", none).map((item) => item.i
 assert.deepEqual(inboxList(lanes, people, "aguardando", "", none).map((item) => item.id), ["wait"]);
 assert.deepEqual(inboxList(lanes, people, "atendimento", "moz", none).map((item) => item.id), ["human"]);
 assert.deepEqual(inboxList(lanes, people, "aguardando", "98007677", none).map((item) => item.id), ["wait"]);
+assert.deepEqual(inboxList(lanes, people, "todos", "", none).map((item) => item.id), ["wait", "done", "bot", "human", "robot"]);
+assert.deepEqual(inboxList(lanes, people, "todos", "moz", none).map((item) => item.id), ["bot", "human"]);
 assert.equal(inboxQueryMatch("José", "Jose Silva", ""), true);
 assert.equal(inboxFiltersMatch(people[0]!, { products: ["Meta Ads"], tags: ["Suporte"], stages: ["Proposta"] }), true);
 assert.equal(inboxFiltersMatch(people[0]!, { products: ["Google Ads"], tags: [], stages: [] }), false);

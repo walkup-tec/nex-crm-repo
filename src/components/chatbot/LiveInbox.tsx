@@ -28,7 +28,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -315,7 +315,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [transferring, setTransferring] = useState(false);
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
   const [savedMedia, setSavedMedia] = useState(0);
-  const [lane, setLane] = useState<InboxLane>("atendimento");
+  const [lane, setLane] = useState<InboxTab>("atendimento");
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -946,7 +946,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const pinnedConversations = visibleConversations.filter((item) => item.pinned);
   const listedConversations = visibleConversations.filter((item) => !item.pinned);
   const filtersOn = inboxFiltersActive(listFilters);
-  const laneCount = (key: InboxLane) => (data ? inboxList(conversations, data.contacts, key, contactQuery, listFilters).length : 0);
+  const laneCount = (key: InboxTab) => (data ? inboxList(conversations, data.contacts, key, contactQuery, listFilters).length : 0);
 
   function toggleListFilter(kind: keyof InboxListFilters, name: string) {
     setListFilters((current) => {
@@ -1122,6 +1122,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 ["atendimento", "Atendimento"],
                 ["aguardando", "Aguardando"],
                 ["robo", "Robô"],
+                ["todos", "Todos"],
               ] as const).map(([key, label]) => (
                 <button key={key} type="button" role="tab" aria-selected={lane === key} className={key === "aguardando" && laneCount(key) > 0 ? "has-waiting" : undefined} onClick={() => setLane(key)}>
                   {label}

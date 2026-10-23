@@ -63,19 +63,22 @@ export const Route = createFileRoute("/_authenticated")({
       throw redirect({ to: "/auth" });
     }
     const { master, roles } = await readMasterRoles(data.user.id);
+    let calendarMenu = false;
     if (profile?.organization_id) {
       const { data: org } = await supabase
         .from("organizations")
         .select("status, legal_name")
         .eq("id", profile.organization_id)
         .maybeSingle();
+      calendarMenu = keepsAccessWithoutPayment(org?.legal_name ?? "");
       const closed =
         org?.status === "disabled" || org?.status === "blocked" || org?.status === "contract_ended";
-      if (!master && closed && !keepsAccessWithoutPayment(org?.legal_name ?? "")) {
+      if (!master && closed && !calendarMenu) {
         await supabase.auth.signOut();
         throw redirect({ href: "/auth?motivo=inativo" });
       }
     }
+    if (location.pathname === "/chatbot/agendamentos" && !calendarMenu) throw redirect({ to: "/chatbot" });
     const role: UserRole = master || roles.includes("master") ? "master" : roles.includes("client_admin") ? "client_admin" : "client_user";
     const loaded = role === "client_user" ? await readOwnPermissions(data.user.id) : null;
     const permissions = loaded?.permissions ?? null;
@@ -84,7 +87,7 @@ export const Route = createFileRoute("/_authenticated")({
       const next = firstAllowedClientPath(permissions, chatbotMenus);
       if (next !== location.pathname) throw redirect({ to: next });
     }
-    return { user: data.user, master, role, permissions, chatbotMenus };
+    return { user: data.user, master, role, permissions, chatbotMenus, calendarMenu };
   },
   component: function AuthenticatedLayout() {
     return (

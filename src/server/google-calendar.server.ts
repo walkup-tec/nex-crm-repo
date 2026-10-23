@@ -75,9 +75,9 @@ async function rows(query: PromiseLike<Page>) {
 }
 
 function calendarConfig() {
-  const clientId = process.env["GOOGLE_CALENDAR_CLIENT_ID"];
-  const clientSecret = process.env["GOOGLE_CALENDAR_CLIENT_SECRET"];
-  const redirectUri = process.env["GOOGLE_CALENDAR_REDIRECT_URI"] || "https://app.nexmeta.com.br/auth/google/callback";
+  const clientId = process.env["GOOGLE_CALENDAR_CLIENT_ID"] || process.env["GOOGLE_CLIENT_ID"];
+  const clientSecret = process.env["GOOGLE_CALENDAR_CLIENT_SECRET"] || process.env["GOOGLE_CLIENT_SECRET"];
+  const redirectUri = process.env["GOOGLE_CALENDAR_REDIRECT_URI"] || process.env["GOOGLE_REDIRECT_URI"] || "https://app.nexmeta.com.br/auth/google/callback";
   if (!clientId || !clientSecret) fail("A conexão com o Google Calendar não está configurada no servidor.");
   return { clientId, clientSecret, redirectUri };
 }
@@ -341,7 +341,7 @@ export async function startGoogleCalendarConnect(userId: string) {
   url.searchParams.set("scope", googleCalendarScopes.join(" "));
   url.searchParams.set("state", state);
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("prompt", "select_account consent");
   url.searchParams.set("include_granted_scopes", "true");
   return { url: url.toString() };
 }

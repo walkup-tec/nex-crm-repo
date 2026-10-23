@@ -30,6 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { applyMask } from "@/lib/masks";
 import type { ListedUser, RegisteredClient, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
+import { GoogleAdsConnect } from "@/components/nex/GoogleAdsConnect";
 import { MetaConnect } from "@/components/nex/MetaConnect";
 import { listClientsFn } from "@/lib/clients.functions";
 import { createUserFn, deleteUserFn, listUsersFn, resendInviteFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
@@ -608,18 +609,21 @@ function UserDialog({
             </fieldset>
           )}
           {((mode === "create" && actorRole === "master" && kind === "client") || (mode === "edit" && user?.role === "client_admin")) && (
-            <MetaConnect
-              organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId}
-              prepareOrganization={async () => {
-                if (mode !== "create") return null;
-                if (!clientId) {
-                  setFormError("Selecione o cliente.");
-                  return null;
-                }
-                setFormError("");
-                return clientId;
-              }}
-            />
+            <>
+              <MetaConnect
+                organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId}
+                prepareOrganization={async () => {
+                  if (mode !== "create") return null;
+                  if (!clientId) {
+                    setFormError("Selecione o cliente.");
+                    return null;
+                  }
+                  setFormError("");
+                  return clientId;
+                }}
+              />
+              <GoogleAdsConnect organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId} />
+            </>
           )}
           {showPermissions && (
             <fieldset className="space-y-3">

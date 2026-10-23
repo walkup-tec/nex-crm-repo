@@ -56,15 +56,3 @@ export function AdsPlatformSwitch({
   );
 }
 
-export function GoogleAdsOverview() {
-  return (
-    <div className="rounded-lg border bg-card p-5">
-      <p className="text-xs font-medium text-muted-foreground">Conta de anúncios</p>
-      <p className="mt-1 font-semibold">Conta Google Ads não vinculada</p>
-      <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-        Os indicadores do Google Ads entram nesta visão quando a conta estiver vinculada. A Meta
-        continua na outra opção.
-      </p>
-    </div>
-  );
-}

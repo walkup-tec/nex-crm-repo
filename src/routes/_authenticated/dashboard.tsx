@@ -1,10 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
-import {
-  AdsPlatformSwitch,
-  GoogleAdsOverview,
-  type AdsPlatform,
-} from "@/components/nex/AdsPlatformSwitch";
+import { AdsPlatformSwitch, type AdsPlatform } from "@/components/nex/AdsPlatformSwitch";
+import { GoogleAdsOverview } from "@/components/nex/GoogleAdsPerformance";
 import { AppShell } from "@/components/nex/AppShell";
 import { MetaPerformance } from "@/components/nex/MetaPerformance";
 

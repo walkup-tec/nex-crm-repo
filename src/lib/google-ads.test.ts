@@ -4,6 +4,7 @@ import {
   cleanCustomerId,
   customerClientQuery,
   googleAdsEnvNames,
+  adsLoadFailure,
   googleAdsFailure,
   missingGoogleAdsEnv,
   parseAccessibleCustomers,
@@ -54,5 +55,14 @@ assert.equal(customerClientQuery().includes("customer_client.manager = FALSE"), 
 assert.equal(campaignMetricsQuery().startsWith("SELECT"), true);
 assert.equal(campaignMetricsQuery().includes("UPDATE"), false);
 assert.equal(campaignMetricsQuery().includes("mutate"), false);
-assert.equal(googleAdsFailure(403, { error: { status: "PERMISSION_DENIED", details: [{ errors: [{ errorCode: { authorizationError: "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" } }] }] } }), "O projeto Google Cloud ainda não tem acesso Explorer ou superior para consultar contas reais.");
+assert.equal(
+  googleAdsFailure(403, { error: { status: "PERMISSION_DENIED", details: [{ errors: [{ errorCode: { authorizationError: "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" }, message: "The project is not approved." }] }] } }),
+  "O projeto Google Cloud ainda não tem acesso Explorer ou superior para consultar contas reais. PERMISSION_DENIED — CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION — The project is not approved.",
+);
+assert.equal(
+  googleAdsFailure(400, { error: { code: 400, status: "INVALID_ARGUMENT", message: "Request contains an invalid argument.", details: [{ errors: [{ errorCode: { queryError: "BAD_VALUE" } }] }] } }),
+  "Não foi possível consultar o Google Ads. HTTP 400 — INVALID_ARGUMENT — BAD_VALUE — Request contains an invalid argument.",
+);
 assert.equal(googleAdsFailure(401, { error: "invalid_grant" }), "A autorização do Google Ads expirou. Atualize o refresh token no servidor.");
+assert.equal(adsLoadFailure(new Error("Failed to fetch")), "Failed to fetch");
+assert.equal(adsLoadFailure(new Error("ya29.secret")), "A consulta das contas do Google Ads foi interrompida antes da resposta.");

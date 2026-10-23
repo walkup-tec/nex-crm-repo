@@ -61,24 +61,32 @@ async function assertReader(userId: string, organizationId = ""): Promise<Gate> 
   return { organizationId: ownOrganization, master: false };
 }
 
-async function googleFetch(url: string, init: RequestInit) {
+function callBudget() {
+  return AbortSignal.timeout(20000);
+}
+
+async function googleFetch(url: string, init: RequestInit, signal: AbortSignal) {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(20000) });
+    const response = await fetch(url, { ...init, signal });
+    const body = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, body };
   } catch (error) {
-    console.error("google_ads_network", error instanceof Error ? error.name : "error");
-    fail("O Google Ads não respondeu. Tente de novo.");
+    const name = error instanceof Error ? error.name : "error";
+    console.error("google_ads_network", name);
+    if (name === "TimeoutError" || name === "AbortError") fail("O Google Ads não respondeu. Tente de novo.");
+    fail("Não foi possível consultar o Google Ads.");
   }
 }
 
-async function renewAccessToken() {
+async function renewAccessToken(signal: AbortSignal) {
   const config = adsConfig();
-  const response = await googleFetch("https://oauth2.googleapis.com/token", {
+  const result = await googleFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: refreshTokenBody(config),
-  });
-  const body = (await response.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; scope?: string; error?: string };
-  if (!response.ok || !body.access_token) fail(googleAdsFailure(response.status, body));
+  }, signal);
+  const body = result.body as { access_token?: string; expires_in?: number; scope?: string };
+  if (!result.ok || !body.access_token) fail(googleAdsFailure(result.status, result.body));
   if (!refreshTokenUsable(body.scope)) fail("O refresh token configurado não tem o escopo do Google Ads.");
   cachedToken = {
     value: body.access_token,
@@ -87,34 +95,33 @@ async function renewAccessToken() {
   return cachedToken.value;
 }
 
-async function accessToken() {
+async function accessToken(signal: AbortSignal) {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  return renewAccessToken();
+  return renewAccessToken(signal);
 }
 
-async function adsFetch(path: string, init: { method: "GET" | "POST"; body?: unknown; loginCustomerId?: string }) {
+async function adsFetch(path: string, init: { method: "GET" | "POST"; body?: unknown; loginCustomerId?: string }, signal: AbortSignal) {
   const config = adsConfig();
-  const token = await accessToken();
+  const token = await accessToken(signal);
   const headers = new Headers({
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
   });
   if (init.loginCustomerId) headers.set("login-customer-id", init.loginCustomerId);
   if (init.body) headers.set("Content-Type", "application/json");
-  const response = await googleFetch(`https://googleads.googleapis.com/${config.version}${path}`, {
+  const result = await googleFetch(`https://googleads.googleapis.com/${config.version}${path}`, {
     method: init.method,
     headers,
     body: init.body ? JSON.stringify(init.body) : undefined,
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("google_ads", response.status);
-    fail(googleAdsFailure(response.status, body));
+  }, signal);
+  if (!result.ok) {
+    console.error("google_ads", result.status);
+    fail(googleAdsFailure(result.status, result.body));
   }
-  return body;
+  return result.body;
 }
 
-async function search(customerId: string, loginCustomerId: string, query: string) {
+async function search(customerId: string, loginCustomerId: string, query: string, signal: AbortSignal) {
   const pages: unknown[] = [];
   let pageToken = "";
   for (let page = 0; page < 4; page += 1) {
@@ -122,7 +129,7 @@ async function search(customerId: string, loginCustomerId: string, query: string
       method: "POST",
       loginCustomerId,
       body: { query, pageToken: pageToken || undefined },
-    });
+    }, signal);
     pages.push(body);
     const next = body && typeof body === "object" ? (body as { nextPageToken?: string }).nextPageToken : "";
     if (!next) break;
@@ -135,9 +142,10 @@ export async function listGoogleAdsAccounts(userId: string) {
   const gate = await assertReader(userId);
   if (!gate.master) fail("Somente o Master escolhe a conta de anúncios do Google Ads.");
   const config = adsConfig();
-  const accessible = parseAccessibleCustomers(await adsFetch("/customers:listAccessibleCustomers", { method: "GET" }));
+  const signal = callBudget();
+  const accessible = parseAccessibleCustomers(await adsFetch("/customers:listAccessibleCustomers", { method: "GET" }, signal));
   if (!accessible.includes(config.loginCustomerId)) fail("A conta administradora não está entre as contas autorizadas neste projeto.");
-  const pages = await search(config.loginCustomerId, config.loginCustomerId, customerClientQuery());
+  const pages = await search(config.loginCustomerId, config.loginCustomerId, customerClientQuery(), signal);
   return pages.flatMap((page) => parseCustomerClients(page));
 }
 
@@ -200,7 +208,7 @@ export async function readGoogleAdsCampaigns(userId: string, organizationId = ""
   if (!gate.organizationId) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], period: "Últimos 30 dias" };
   const account = await selectedAccount(gate.organizationId);
   if (!account) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], period: "Últimos 30 dias" };
-  const pages = await search(account.customerId, account.loginCustomerId, campaignMetricsQuery());
+  const pages = await search(account.customerId, account.loginCustomerId, campaignMetricsQuery(), callBudget());
   const campaigns = pages.flatMap((page) => parseCampaignMetrics(page)).map((campaign) => ({
     ...campaign,
     status: campaignStatusLabel(campaign.status),

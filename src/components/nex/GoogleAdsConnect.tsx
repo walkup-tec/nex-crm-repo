@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { googleAdsSelectionFn, listGoogleAdsAccountsFn, selectGoogleAdsAccountFn } from "@/lib/google-ads.functions";
-import type { GoogleAdsAccount } from "@/lib/google-ads";
+import { adsLoadFailure, type GoogleAdsAccount } from "@/lib/google-ads";
 
 export function GoogleAdsConnect({ organizationId }: { organizationId: string | null }) {
   const [accounts, setAccounts] = useState<GoogleAdsAccount[]>([]);
@@ -32,8 +32,8 @@ export function GoogleAdsConnect({ organizationId }: { organizationId: string | 
         if (!active) return;
         if (!listed.ok) setError(listed.message);
         else setAccounts(listed.data);
-      } catch {
-        if (active) setError("Não foi possível carregar as contas do Google Ads.");
+      } catch (error) {
+        if (active) setError(adsLoadFailure(error));
       } finally {
         if (active) setLoading(false);
       }

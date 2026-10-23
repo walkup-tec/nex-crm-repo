@@ -143,17 +143,47 @@ export function parseCampaignMetrics(body: unknown) {
   return campaigns;
 }
 
+function googleErrorDetail(body: unknown) {
+  const error = record(record(body).error);
+  const codes: string[] = [];
+  let apiMessage = text(error.message);
+  const details = Array.isArray(error.details) ? error.details : [];
+  for (const detail of details) {
+    const errors = record(detail).errors;
+    if (!Array.isArray(errors)) continue;
+    for (const item of errors) {
+      const errorCode = record(record(item).errorCode);
+      for (const name of Object.values(errorCode)) {
+        if (typeof name === "string" && name.trim()) codes.push(name.trim());
+      }
+      if (!apiMessage) apiMessage = text(record(item).message);
+    }
+  }
+  const http = typeof error.code === "number" ? `HTTP ${error.code}` : "";
+  const detail = [http, text(error.status), codes[0], apiMessage].filter(Boolean).join(" — ");
+  if (/access_token|refresh_token|client_secret|ya29\.|GOCSPX/i.test(detail)) return "";
+  return detail.slice(0, 400);
+}
+
 export function googleAdsFailure(status: number, body: unknown) {
   const raw = JSON.stringify(body ?? "");
+  let summary = "Não foi possível consultar o Google Ads.";
   if (/CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED|ACTION_NOT_PERMITTED/.test(raw)) {
-    return "O projeto Google Cloud ainda não tem acesso Explorer ou superior para consultar contas reais.";
+    summary = "O projeto Google Cloud ainda não tem acesso Explorer ou superior para consultar contas reais.";
+  } else if (status === 401 || /invalid_grant|UNAUTHENTICATED/.test(raw)) {
+    summary = "A autorização do Google Ads expirou. Atualize o refresh token no servidor.";
+  } else if (status === 403) summary = "O Google Ads recusou a consulta desta conta.";
+  else if (status === 429) summary = "O Google Ads limitou as consultas. Tente de novo em alguns minutos.";
+  const detail = googleErrorDetail(body);
+  return detail ? `${summary} ${detail}` : summary;
+}
+
+export function adsLoadFailure(error: unknown) {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (!message || message.length > 240 || /access_token|refresh_token|client_secret|ya29\.|GOCSPX|postgres|JWT/i.test(message)) {
+    return "A consulta das contas do Google Ads foi interrompida antes da resposta.";
   }
-  if (status === 401 || /invalid_grant|UNAUTHENTICATED/.test(raw)) {
-    return "A autorização do Google Ads expirou. Atualize o refresh token no servidor.";
-  }
-  if (status === 403) return "O Google Ads recusou a consulta desta conta.";
-  if (status === 429) return "O Google Ads limitou as consultas. Tente de novo em alguns minutos.";
-  return "Não foi possível consultar o Google Ads.";
+  return message;
 }
 
 export function campaignStatusLabel(status: string) {

@@ -194,7 +194,18 @@ function toListed(
     canManage: canManage(actor, { id: row.id, role, ownerId: row.owner_id }),
     metaLinked: false,
     metaProblem: false,
+    adsMeta: true,
+    adsGoogle: false,
   };
+}
+
+async function organizationPlatforms() {
+  const full = await supabaseAdmin.from("organizations").select("id, ads_meta, ads_google");
+  if (full.error && /ads_meta|ads_google/i.test(full.error.message)) return null;
+  if (full.error) fail(full.error.message);
+  return new Map(
+    (full.data ?? []).map((row) => [row.id, { adsMeta: row.ads_meta === true, adsGoogle: row.ads_google === true }]),
+  );
 }
 
 async function organizationsWithPortfolio() {
@@ -234,7 +245,9 @@ export async function listMetaConnectionProblems(userId: string): Promise<MetaCo
   if (actor.role !== "master") return [];
   const broken = brokenOrganizationIds(await connectionRows());
   if (!broken.size) return [];
-  const ids = [...broken];
+  const platforms = await organizationPlatforms();
+  const ids = [...broken].filter((id) => !platforms || platforms.get(id)?.adsMeta === true);
+  if (!ids.length) return [];
   const [orgs, people, roles] = await Promise.all([
     supabaseAdmin.from("organizations").select("id, legal_name").in("id", ids),
     supabaseAdmin.from("profiles").select("id, full_name, organization_id").in("organization_id", ids),
@@ -255,12 +268,13 @@ export async function listMetaConnectionProblems(userId: string): Promise<MetaCo
 export async function listUsers(userId: string) {
   const actor = await actorOf(userId);
   await repairLegacyAttendantPermissions();
-  const [rows, roles, permissions, linked, connections] = await Promise.all([
+  const [rows, roles, permissions, linked, connections, platforms] = await Promise.all([
     profiles(),
     roleMap(),
     permissionMap(),
     organizationsWithPortfolio(),
     connectionRows(),
+    organizationPlatforms(),
   ]);
   const broken = brokenOrganizationIds(connections);
   const names = new Map(rows.map((row) => [row.id, row.full_name]));
@@ -274,8 +288,11 @@ export async function listUsers(userId: string) {
     actor: { id: actor.id, role: actor.role, fullName: actor.fullName, organizationId: actor.organizationId },
     users: visible.map((row) => {
       const listed = toListed(actor, row, roles, names, permissions);
-      listed.metaLinked = Boolean(row.organization_id && linked.has(row.organization_id));
-      listed.metaProblem = Boolean(row.organization_id && broken.has(row.organization_id));
+      const platform = row.organization_id && platforms ? platforms.get(row.organization_id) : undefined;
+      listed.adsMeta = platforms ? platform?.adsMeta === true : true;
+      listed.adsGoogle = platforms ? platform?.adsGoogle === true : false;
+      listed.metaLinked = Boolean(listed.adsMeta && row.organization_id && linked.has(row.organization_id));
+      listed.metaProblem = Boolean(listed.adsMeta && row.organization_id && broken.has(row.organization_id));
       return listed;
     }),
   };

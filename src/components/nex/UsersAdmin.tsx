@@ -29,7 +29,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { applyMask } from "@/lib/masks";
-import type { ListedUser, RegisteredClient, UserPermissions, UserRole, UsersSnapshot } from "@/lib/user-access";
+import { adsConnectionSections, type ListedUser, type RegisteredClient, type UserPermissions, type UserRole, type UsersSnapshot } from "@/lib/user-access";
 import { GoogleAdsConnect } from "@/components/nex/GoogleAdsConnect";
 import { MetaConnect } from "@/components/nex/MetaConnect";
 import { listClientsFn } from "@/lib/clients.functions";
@@ -90,6 +90,8 @@ export function UsersAdmin() {
                   name: client.legalName,
                   email: client.responsibleEmail,
                   whatsapp: client.whatsapp,
+                  adsMeta: client.adsMeta,
+                  adsGoogle: client.adsGoogle,
                 }))
               : [],
           );
@@ -222,7 +224,7 @@ export function UsersAdmin() {
                       {role === "master" && <TableCell>{user.ownerName ?? "—"}</TableCell>}
                       {role === "master" && (
                         <TableCell>
-                          <MetaAccountMark linked={user.metaLinked} problem={user.metaProblem} />
+                          {user.role === "master" || !user.adsMeta ? "—" : <MetaAccountMark linked={user.metaLinked} problem={user.metaProblem} />}
                         </TableCell>
                       )}
                       <TableCell>
@@ -250,7 +252,7 @@ export function UsersAdmin() {
                     {roleLabel[user.role]}
                     {role === "master" && user.ownerName ? ` · atribuído a ${user.ownerName}` : ""}
                   </p>
-                  {role === "master" && (
+                  {role === "master" && user.role !== "master" && user.adsMeta && (
                     <p className="mt-2 flex items-center gap-2 text-sm">
                       Conta META
                       <MetaAccountMark linked={user.metaLinked} problem={user.metaProblem} />
@@ -394,6 +396,30 @@ function RowActions({
       </Button>
       {rowNotice && <p className="w-full text-right text-xs text-success">{rowNotice}</p>}
       {rowError && <p className="w-full text-right text-xs text-destructive">{rowError}</p>}
+    </div>
+  );
+}
+
+function AdsConnections({
+  organizationId,
+  user,
+  clients,
+  prepareOrganization,
+}: {
+  organizationId: string | null;
+  user: ListedUser | null;
+  clients: RegisteredClient[];
+  prepareOrganization: () => Promise<string | null>;
+}) {
+  if (!organizationId) return null;
+  const selected = clients.find((client) => client.id === organizationId);
+  const sections = adsConnectionSections(selected ?? (user?.organizationId === organizationId ? user : null));
+  if (!sections.meta && !sections.google) return null;
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">A conexão pode ser feita depois. O acesso é salvo sem ela.</p>
+      {sections.meta ? <MetaConnect organizationId={organizationId} prepareOrganization={prepareOrganization} /> : null}
+      {sections.google ? <GoogleAdsConnect organizationId={organizationId} /> : null}
     </div>
   );
 }
@@ -609,21 +635,20 @@ function UserDialog({
             </fieldset>
           )}
           {((mode === "create" && actorRole === "master" && kind === "client") || (mode === "edit" && user?.role === "client_admin")) && (
-            <>
-              <MetaConnect
-                organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId}
-                prepareOrganization={async () => {
-                  if (mode !== "create") return null;
-                  if (!clientId) {
-                    setFormError("Selecione o cliente.");
-                    return null;
-                  }
-                  setFormError("");
-                  return clientId;
-                }}
-              />
-              <GoogleAdsConnect organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId} />
-            </>
+            <AdsConnections
+              organizationId={mode === "edit" ? user?.organizationId ?? null : clientId || createdOrgId}
+              user={user}
+              clients={clients}
+              prepareOrganization={async () => {
+                if (mode !== "create") return null;
+                if (!clientId) {
+                  setFormError("Selecione o cliente.");
+                  return null;
+                }
+                setFormError("");
+                return clientId;
+              }}
+            />
           )}
           {showPermissions && (
             <fieldset className="space-y-3">

@@ -24,6 +24,8 @@ export type ListedUser = {
   canManage: boolean;
   metaLinked: boolean;
   metaProblem: boolean;
+  adsMeta: boolean;
+  adsGoogle: boolean;
 };
 
 export type MetaConnectionProblem = {
@@ -46,7 +48,14 @@ export type RegisteredClient = {
   name: string;
   email: string;
   whatsapp: string;
+  adsMeta: boolean;
+  adsGoogle: boolean;
 };
+
+export function adsConnectionSections(flags: { adsMeta?: boolean; adsGoogle?: boolean } | null | undefined) {
+  if (!flags) return { meta: true, google: false };
+  return { meta: flags.adsMeta === true, google: flags.adsGoogle === true };
+}
 
 export type UsersSnapshot = {
   actor: { id: string; role: UserRole; fullName: string; organizationId: string | null };

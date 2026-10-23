@@ -611,7 +611,7 @@ export async function listLeadMeetings(userId: string, leadId = "") {
 }
 
 export async function listMeetingCalendar(userId: string) {
-  const gate = await access(userId, "schedules");
+  const gate = await accessAny(userId, ["inbox", "schedules"]);
   if (!(await mmsCalendar(gate.organizationId))) return [];
   const days = meetingCalendar();
   const first = days[0];

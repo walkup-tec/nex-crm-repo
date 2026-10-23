@@ -211,10 +211,22 @@ export function meetingCalendar(now = Date.now(), count = 30): MeetingCalendarDa
   });
 }
 
-export function meetingChoices(now = Date.now()) {
-  return meetingCalendar(now)
+export function meetingChoices(now = Date.now(), days: MeetingCalendarDay[] = meetingCalendar(now)) {
+  return days
     .map((day) => ({ date: day.date, title: day.title, times: day.windows.filter((window) => window.state === "available").map((window) => window.time) }))
     .filter((day) => day.times.length > 0);
+}
+
+export function releaseMeetingSlot(days: MeetingCalendarDay[], startAt: string, endAt: string) {
+  const start = Date.parse(startAt);
+  const end = Date.parse(endAt);
+  return days.map((day) => ({
+    ...day,
+    windows: day.windows.map((window) => {
+      if (window.state !== "occupied" || Date.parse(window.start) !== start || Date.parse(window.end) !== end) return window;
+      return { ...window, state: "available" as const, note: "" };
+    }),
+  }));
 }
 
 export function markMeetingCalendar(days: MeetingCalendarDay[], busy: { start: string; end: string; note?: string }[]) {

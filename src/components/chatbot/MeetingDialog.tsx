@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { createLeadMeetingFn, leadMeetingContextFn, rescheduleLeadMeetingFn } from "@/lib/google-calendar.functions";
+import { createLeadMeetingFn, leadMeetingContextFn, listMeetingCalendarFn, rescheduleLeadMeetingFn } from "@/lib/google-calendar.functions";
 import {
   cleanEmail,
   meetingChoices,
   meetingFields,
   meetingSlot,
+  releaseMeetingSlot,
   type LeadMeetingView,
 } from "@/lib/google-calendar";
 
@@ -32,10 +33,11 @@ export function MeetingDialog({
   onSaved: () => void;
 }) {
   const requestId = useRef("");
-  const choices = meetingChoices();
+  const [choices, setChoices] = useState(meetingChoices);
+  const [slotsReady, setSlotsReady] = useState(false);
   const [email, setEmail] = useState("");
-  const [date, setDate] = useState(choices[0]?.date ?? "");
-  const [time, setTime] = useState(choices[0]?.times[0] ?? "");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
   const [attendees, setAttendees] = useState("");
   const [meet, setMeet] = useState(true);
   const [connected, setConnected] = useState(true);
@@ -49,28 +51,45 @@ export function MeetingDialog({
     requestId.current = crypto.randomUUID();
     setNote("");
     setSaving(false);
-    const nextChoices = meetingChoices();
-    const current = meeting ? meetingFields(meeting.startAt) : null;
-    const day = nextChoices.find((item) => item.date === current?.date && item.times.includes(current.time)) ?? nextChoices[0];
-    setDate(day?.date ?? "");
-    setTime(current && day?.times.includes(current.time) ? current.time : day?.times[0] ?? "");
-    if (meeting) return;
-    setAttendees("");
-    setMeet(true);
-    setEmail("");
-    setConnected(true);
-    if (!leadId) return;
+    setSlotsReady(false);
+    if (!meeting) {
+      setAttendees("");
+      setMeet(true);
+      setEmail("");
+      setConnected(true);
+    }
     let active = true;
-    void leadMeetingContextFn({ data: { leadId } }).then((result) => {
+    const currentMeeting = meeting;
+    void (async () => {
+      const [calendar, context] = await Promise.all([
+        listMeetingCalendarFn(),
+        currentMeeting || !leadId ? Promise.resolve(null) : leadMeetingContextFn({ data: { leadId } }),
+      ]);
       if (!active) return;
-      if (!result.ok) {
-        setNote(result.message);
+      if (calendar.ok) {
+        const days = currentMeeting ? releaseMeetingSlot(calendar.data, currentMeeting.startAt, currentMeeting.endAt) : calendar.data;
+        const next = meetingChoices(Date.now(), days);
+        const current = currentMeeting ? meetingFields(currentMeeting.startAt) : null;
+        const day = next.find((item) => item.date === current?.date && item.times.includes(current.time)) ?? next[0];
+        setChoices(next);
+        setDate(day?.date ?? "");
+        setTime(current && day?.times.includes(current.time) ? current.time : day?.times[0] ?? "");
+      } else {
+        setChoices([]);
+        setDate("");
+        setTime("");
+        setNote(calendar.message);
+      }
+      setSlotsReady(true);
+      if (!context) return;
+      if (!context.ok) {
+        setNote(context.message);
         return;
       }
-      if (result.data.email) setEmail(result.data.email);
-      if (result.data.attendees) setAttendees(result.data.attendees);
-      setConnected(result.data.connected);
-    });
+      if (context.data.email) setEmail(context.data.email);
+      if (context.data.attendees) setAttendees(context.data.attendees);
+      setConnected(context.data.connected);
+    })();
     return () => {
       active = false;
     };
@@ -119,7 +138,9 @@ export function MeetingDialog({
               <input value={email} type="email" maxLength={160} disabled={saving} aria-label="E-mail do lead" onChange={(event) => setEmail(event.target.value)} />
             </label>
           )}
-          {choices.length ? (
+          {!slotsReady ? (
+            <p className="meeting-zone">Carregando horários.</p>
+          ) : choices.length ? (
             <>
               <label>
                 Data

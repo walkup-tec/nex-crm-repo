@@ -1,14 +1,15 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
-  campaignMetricsQuery,
-  campaignStatusLabel,
+  accountDailyQuery,
+  fillAccountDays,
+  parseAccountDays,
+  saoPauloDate,
   cleanCustomerId,
   customerClientQuery,
   googleAdsApiVersion,
   googleAdsFailure,
   missingGoogleAdsEnv,
   parseAccessibleCustomers,
-  parseCampaignMetrics,
   parseCustomerClients,
   refreshTokenBody,
   refreshTokenUsable,
@@ -207,13 +208,10 @@ export async function readGoogleAdsCampaigns(userId: string, organizationId = ""
   const gate = await assertReader(userId, organizationId);
   if (!gate.organizationId) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], period: "Últimos 30 dias" };
   const account = await selectedAccount(gate.organizationId);
-  if (!account) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], period: "Últimos 30 dias" };
-  const pages = await search(account.customerId, account.loginCustomerId, campaignMetricsQuery(), callBudget());
-  const campaigns = pages.flatMap((page) => parseCampaignMetrics(page)).map((campaign) => ({
-    ...campaign,
-    status: campaignStatusLabel(campaign.status),
-  }));
-  return { linked: true as const, account, campaigns, period: "Últimos 30 dias" };
+  if (!account) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], days: [] as ReturnType<typeof parseAccountDays>, period: "Este mês" };
+  const pages = await search(account.customerId, account.loginCustomerId, accountDailyQuery(), callBudget());
+  const days = fillAccountDays(pages.flatMap((page) => parseAccountDays(page)), saoPauloDate());
+  return { linked: true as const, account, campaigns: [] as GoogleAdsCampaign[], days, period: "Este mês" };
 }
 
 export type { GoogleAdsAccount };

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import {
+  accountDailyQuery,
   campaignMetricsQuery,
+  fillAccountDays,
+  googleAdsMetricTotal,
+  parseAccountDays,
+  selectGoogleAdsMetric,
   cleanCustomerId,
   customerClientQuery,
   googleAdsEnvNames,
@@ -52,6 +57,31 @@ assert.equal(campaigns[0]?.clicks, 3);
 assert.equal(campaigns[0]?.cost, 2);
 assert.equal(campaigns[0]?.conversions, 1);
 assert.equal(customerClientQuery().includes("customer_client.manager = FALSE"), true);
+assert.equal(accountDailyQuery().startsWith("SELECT"), true);
+assert.equal(accountDailyQuery().includes("segments.date"), true);
+assert.equal(accountDailyQuery().includes("THIS_MONTH"), true);
+assert.equal(accountDailyQuery().includes("UPDATE"), false);
+assert.equal(accountDailyQuery().includes("mutate"), false);
+const days = parseAccountDays({
+  results: [
+    { segments: { date: "2026-10-02" }, metrics: { impressions: "4", clicks: "1", costMicros: "1000000" } },
+    { segments: { date: "2026-10-02" }, metrics: { impressions: 6, clicks: 1, costMicros: 500000 } },
+    { segments: { date: "2026-10-03" }, metrics: { impressions: 0, clicks: 0, costMicros: 0 } },
+  ],
+});
+assert.equal(days.length, 2);
+assert.equal(days[0]?.clicks, 2);
+assert.equal(days[0]?.impressions, 10);
+assert.equal(days[0]?.cost, 1.5);
+const month = fillAccountDays(days, "2026-10-03");
+assert.equal(month.length, 3);
+assert.equal(month[0]?.clicks, 0);
+assert.equal(googleAdsMetricTotal(days, "cpc"), 0.75);
+assert.equal(googleAdsMetricTotal(days, "clicks"), 2);
+assert.deepEqual(selectGoogleAdsMetric(["clicks"], "impressions"), ["clicks", "impressions"]);
+assert.deepEqual(selectGoogleAdsMetric(["clicks", "impressions"], "cost"), ["clicks", "cost"]);
+assert.deepEqual(selectGoogleAdsMetric(["clicks", "impressions"], "impressions"), ["clicks"]);
+assert.deepEqual(selectGoogleAdsMetric(["clicks"], "clicks"), ["clicks"]);
 assert.equal(campaignMetricsQuery().startsWith("SELECT"), true);
 assert.equal(campaignMetricsQuery().includes("UPDATE"), false);
 assert.equal(campaignMetricsQuery().includes("mutate"), false);

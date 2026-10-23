@@ -61,6 +61,24 @@ export function customerClientQuery() {
   ].join(" ");
 }
 
+export type GoogleAdsMetric = "clicks" | "impressions" | "cpc" | "cost";
+
+export type GoogleAdsDay = {
+  date: string;
+  clicks: number;
+  impressions: number;
+  cost: number;
+};
+
+export function accountDailyQuery() {
+  return [
+    "SELECT segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros",
+    "FROM customer",
+    "WHERE segments.date DURING THIS_MONTH",
+    "ORDER BY segments.date",
+  ].join(" ");
+}
+
 export function campaignMetricsQuery() {
   return [
     "SELECT campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions",
@@ -107,6 +125,70 @@ export function parseCustomerClients(body: unknown) {
     });
   }
   return accounts;
+}
+
+export function parseAccountDays(body: unknown) {
+  const results = record(body).results;
+  if (!Array.isArray(results)) return [];
+  const days: GoogleAdsDay[] = [];
+  for (const item of results) {
+    const row = record(item);
+    const date = text(record(row.segments).date).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const metrics = record(row.metrics);
+    const next = {
+      clicks: amount(metrics.clicks),
+      impressions: amount(metrics.impressions),
+      cost: amount(metrics.costMicros) / 1_000_000,
+    };
+    const existing = days.find((day) => day.date === date);
+    if (existing) {
+      existing.clicks += next.clicks;
+      existing.impressions += next.impressions;
+      existing.cost += next.cost;
+      continue;
+    }
+    days.push({ date, ...next });
+  }
+  return days.sort((left, right) => left.date.localeCompare(right.date));
+}
+
+export function saoPauloDate(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+export function fillAccountDays(days: GoogleAdsDay[], today: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (!match) return days;
+  const end = Number(match[3]);
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const filled: GoogleAdsDay[] = [];
+  for (let day = 1; day <= end; day += 1) {
+    const date = `${match[1]}-${match[2]}-${String(day).padStart(2, "0")}`;
+    filled.push(byDate.get(date) ?? { date, clicks: 0, impressions: 0, cost: 0 });
+  }
+  return filled;
+}
+
+export function googleAdsDayValue(day: GoogleAdsDay, metric: GoogleAdsMetric) {
+  if (metric === "cpc") return day.clicks > 0 ? day.cost / day.clicks : 0;
+  return day[metric];
+}
+
+export function googleAdsMetricTotal(days: GoogleAdsDay[], metric: GoogleAdsMetric) {
+  const clicks = days.reduce((sum, day) => sum + day.clicks, 0);
+  const impressions = days.reduce((sum, day) => sum + day.impressions, 0);
+  const cost = days.reduce((sum, day) => sum + day.cost, 0);
+  if (metric === "cpc") return clicks > 0 ? cost / clicks : 0;
+  if (metric === "impressions") return impressions;
+  if (metric === "cost") return cost;
+  return clicks;
+}
+
+export function selectGoogleAdsMetric(selected: GoogleAdsMetric[], metric: GoogleAdsMetric) {
+  if (selected.includes(metric)) return selected.length === 1 ? selected : selected.filter((item) => item !== metric);
+  if (selected.length < 2) return [...selected, metric];
+  return [selected[0], metric];
 }
 
 export function parseCampaignMetrics(body: unknown) {

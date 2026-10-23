@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { GoogleAdsAccount, GoogleAdsCampaign } from "@/lib/google-ads";
+import type { GoogleAdsAccount, GoogleAdsCampaign, GoogleAdsDay } from "@/lib/google-ads";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -8,6 +8,7 @@ type GoogleAdsRead = {
   linked: boolean;
   account: { customerId: string; name: string; currency: string; status: string } | null;
   campaigns: GoogleAdsCampaign[];
+  days?: GoogleAdsDay[];
   period?: string;
 };
 

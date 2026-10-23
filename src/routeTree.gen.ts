@@ -53,6 +53,7 @@ import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
 import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
 import { Route as ApiContratacaoRouteImport } from './routes/api/contratacao'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
+import { Route as AuthGoogleCallbackRouteImport } from './routes/auth.google.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
 
@@ -295,6 +296,11 @@ const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   path: '/meta/callback',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthGoogleCallbackRoute = AuthGoogleCallbackRouteImport.update({
+  id: '/google/callback',
+  path: '/google/callback',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthenticatedMasterFinanceiroOrgIdRoute =
   AuthenticatedMasterFinanceiroOrgIdRouteImport.update({
     id: '/$orgId',
@@ -350,6 +356,7 @@ export interface FileRoutesByFullPath {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/contratacao': typeof ApiContratacaoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -394,6 +401,7 @@ export interface FileRoutesByTo {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/contratacao': typeof ApiContratacaoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
   '/master': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -443,6 +451,7 @@ export interface FileRoutesById {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/contratacao': typeof ApiContratacaoRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
+  '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
   '/_authenticated/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -492,6 +501,7 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/contratacao'
     | '/auth/meta/callback'
+    | '/auth/google/callback'
     | '/chatbot/'
     | '/master/'
     | '/master/financeiro/$orgId'
@@ -536,6 +546,7 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/contratacao'
     | '/auth/meta/callback'
+    | '/auth/google/callback'
     | '/chatbot'
     | '/master'
     | '/master/financeiro/$orgId'
@@ -584,6 +595,7 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/contratacao'
     | '/auth/meta/callback'
+    | '/auth/google/callback'
     | '/_authenticated/chatbot/'
     | '/_authenticated/master/'
     | '/_authenticated/master/financeiro/$orgId'
@@ -917,6 +929,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthMetaCallbackRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/auth/google/callback': {
+      id: '/auth/google/callback'
+      path: '/google/callback'
+      fullPath: '/auth/google/callback'
+      preLoaderRoute: typeof AuthGoogleCallbackRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_authenticated/master/financeiro/$orgId': {
       id: '/_authenticated/master/financeiro/$orgId'
       path: '/$orgId'
@@ -1039,11 +1058,13 @@ const AuthenticatedRouteRouteWithChildren =
 interface AuthRouteChildren {
   AuthIndexRoute: typeof AuthIndexRoute
   AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
+  AuthGoogleCallbackRoute: typeof AuthGoogleCallbackRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthIndexRoute: AuthIndexRoute,
   AuthMetaCallbackRoute: AuthMetaCallbackRoute,
+  AuthGoogleCallbackRoute: AuthGoogleCallbackRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

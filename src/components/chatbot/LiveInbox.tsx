@@ -25,6 +25,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
+import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
 import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
 
@@ -324,6 +325,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [listFilters, setListFilters] = useState<InboxListFilters>({ products: [], tags: [], stages: [] });
   const [returnOpen, setReturnOpen] = useState(false);
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [meetingTick, setMeetingTick] = useState(0);
   const [returnDate, setReturnDate] = useState("");
   const [returnHour, setReturnHour] = useState(9);
   const [returnMinute, setReturnMinute] = useState(0);
@@ -1230,6 +1233,11 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 <Button type="button" size="sm" variant="outline" onClick={() => void openReturn()}>
                   Retorno
                 </Button>
+                {data?.contractingForm ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => setMeetingOpen(true)}>
+                    Agendar reunião
+                  </Button>
+                ) : null}
                 {conversation.mine ? (
                   <Button type="button" size="sm" variant="outline" onClick={() => void openTransfer(conversation.id)}>
                     Transferir
@@ -1378,6 +1386,15 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
             </div>
           )}
         </section>
+        {data?.contractingForm ? (
+          <MeetingDialog
+            open={meetingOpen}
+            leadId={contact?.id ?? ""}
+            leadName={contact?.name ?? ""}
+            onOpenChange={setMeetingOpen}
+            onSaved={() => setMeetingTick((value) => value + 1)}
+          />
+        ) : null}
         <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
           <DialogContent className="chatbot-app return-dialog sm:max-w-md">
             <DialogHeader>
@@ -1536,6 +1553,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         <ContactRecord
           contactId={contact?.id ?? ""}
           tick={savedMedia}
+          meetingTick={meetingTick}
+          showMeetings={data?.contractingForm === true}
           preview={contact ? { name: contact.name, phone: contact.phone, avatarUrl: contact.avatarUrl } : null}
           onRenamed={(contactId, name) =>
             setData((current) =>

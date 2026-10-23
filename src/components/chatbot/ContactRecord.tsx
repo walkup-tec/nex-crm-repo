@@ -18,6 +18,7 @@ import {
 } from "@/lib/chatbot.functions";
 import { contractingFormUrl } from "@/lib/contracting";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
+import { LeadMeetings } from "@/components/chatbot/CalendarMeetings";
 import { clientPhoneLabel, contactExtraDataCount, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
 
 function RegisteredMark({ label }: { label: string }) {
@@ -130,11 +131,15 @@ function ProfileAvatar({ name, avatarUrl }: { name: string; avatarUrl: string })
 export function ContactRecord({
   contactId,
   tick,
+  meetingTick = 0,
+  showMeetings = false,
   preview,
   onRenamed,
 }: {
   contactId: string;
   tick: number;
+  meetingTick?: number;
+  showMeetings?: boolean;
   preview: { name: string; phone: string; avatarUrl: string } | null;
   onRenamed: (contactId: string, name: string) => void;
 }) {
@@ -521,6 +526,12 @@ export function ContactRecord({
             />
             <p className="contact-note-count">{noteDraft.length}/300</p>
           </section>
+          {showMeetings ? (
+            <section className="contact-section">
+              <h3>Reuniões</h3>
+              <LeadMeetings leadId={profile.id} tick={meetingTick} />
+            </section>
+          ) : null}
           <section className="contact-section">
             <h3>Produtos e serviços</h3>
             {profile.catalogReady && profile.products.length ? (

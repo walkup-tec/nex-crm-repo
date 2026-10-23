@@ -25,6 +25,7 @@ import {
   transferChatbotConversationFn,
 } from "@/lib/chatbot.functions";
 import { ContactRecord } from "@/components/chatbot/ContactRecord";
+import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
 import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxLane, type InboxListFilters } from "@/lib/chatbot-evo";
@@ -1217,35 +1218,40 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 Nenhuma conversa selecionada
               </span>
             )}
-            {conversation ? (
+            {expanded || conversation ? (
               <div className="chat-actions">
-                <button
-                  type="button"
-                  className={`bot-block${contact?.botsDisabled ? " blocked" : ""}`}
-                  aria-pressed={contact?.botsDisabled === true}
-                  aria-label={contact?.botsDisabled ? "Reativar bots deste contato" : "Desativar bots deste contato"}
-                  title={contact?.botsDisabled ? "Bots desativados para este contato" : "Bots ativos para este contato"}
-                  disabled={blockingBots || !contact}
-                  onClick={() => contact && void toggleBots(contact.id, !contact.botsDisabled)}
-                >
-                  <Bot size={16} />
-                </button>
-                <Button type="button" size="sm" variant="outline" onClick={() => void openReturn()}>
-                  Retorno
-                </Button>
-                {data?.contractingForm ? (
-                  <Button type="button" size="sm" variant="outline" onClick={() => setMeetingOpen(true)}>
-                    Agendar reunião
-                  </Button>
+                {conversation ? (
+                  <>
+                    <button
+                      type="button"
+                      className={`bot-block${contact?.botsDisabled ? " blocked" : ""}`}
+                      aria-pressed={contact?.botsDisabled === true}
+                      aria-label={contact?.botsDisabled ? "Reativar bots deste contato" : "Desativar bots deste contato"}
+                      title={contact?.botsDisabled ? "Bots desativados para este contato" : "Bots ativos para este contato"}
+                      disabled={blockingBots || !contact}
+                      onClick={() => contact && void toggleBots(contact.id, !contact.botsDisabled)}
+                    >
+                      <Bot size={16} />
+                    </button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void openReturn()}>
+                      Retorno
+                    </Button>
+                    {data?.contractingForm ? (
+                      <Button type="button" size="sm" variant="outline" onClick={() => setMeetingOpen(true)}>
+                        Agendar reunião
+                      </Button>
+                    ) : null}
+                    {conversation.mine ? (
+                      <Button type="button" size="sm" variant="outline" onClick={() => void openTransfer(conversation.id)}>
+                        Transferir
+                      </Button>
+                    ) : null}
+                    <Button type="button" size="sm" disabled={finishing || !conversation.assigneeName.trim()} onClick={() => void finish(conversation.id)}>
+                      {finishing ? "Finalizando" : "Finalizar"}
+                    </Button>
+                  </>
                 ) : null}
-                {conversation.mine ? (
-                  <Button type="button" size="sm" variant="outline" onClick={() => void openTransfer(conversation.id)}>
-                    Transferir
-                  </Button>
-                ) : null}
-                <Button type="button" size="sm" disabled={finishing || !conversation.assigneeName.trim()} onClick={() => void finish(conversation.id)}>
-                  {finishing ? "Finalizando" : "Finalizar"}
-                </Button>
+                {expanded ? <WhatsAppChannelStatus enabled /> : null}
               </div>
             ) : null}
           </div>

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { GoogleAdsAccount, GoogleAdsCampaign, GoogleAdsDay } from "@/lib/google-ads";
+import type { GoogleAdsAccount, GoogleAdsCampaign, GoogleAdsDay, GoogleAdsPeriod } from "@/lib/google-ads";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -9,7 +9,7 @@ type GoogleAdsRead = {
   account: { customerId: string; name: string; currency: string; status: string } | null;
   campaigns: GoogleAdsCampaign[];
   days?: GoogleAdsDay[];
-  period?: string;
+  period?: GoogleAdsPeriod;
 };
 
 function publicMessage(error: unknown) {
@@ -58,8 +58,13 @@ export const selectGoogleAdsAccountFn = createServerFn({ method: "POST" })
 
 export const readGoogleAdsCampaignsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { organizationId?: string }) => ({ organizationId: (data.organizationId ?? "").trim() }))
+  .validator((data: { organizationId?: string; period?: string; since?: string; until?: string }) => ({
+    organizationId: (data.organizationId ?? "").trim(),
+    period: (data.period ?? "").trim(),
+    since: (data.since ?? "").trim(),
+    until: (data.until ?? "").trim(),
+  }))
   .handler(async ({ context, data }): Promise<Result<GoogleAdsRead>> => {
     const { readGoogleAdsCampaigns } = await import("@/server/google-ads.server");
-    return guard(() => readGoogleAdsCampaigns(context.userId, data.organizationId));
+    return guard(() => readGoogleAdsCampaigns(context.userId, data.organizationId, data));
   });

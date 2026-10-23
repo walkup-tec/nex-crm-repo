@@ -3,6 +3,8 @@ import {
   accountDailyQuery,
   campaignMetricsQuery,
   fillAccountDays,
+  googleAdsQueryWindow,
+  shiftIsoMonths,
   googleAdsMetricTotal,
   parseAccountDays,
   selectGoogleAdsMetric,
@@ -57,11 +59,19 @@ assert.equal(campaigns[0]?.clicks, 3);
 assert.equal(campaigns[0]?.cost, 2);
 assert.equal(campaigns[0]?.conversions, 1);
 assert.equal(customerClientQuery().includes("customer_client.manager = FALSE"), true);
-assert.equal(accountDailyQuery().startsWith("SELECT"), true);
-assert.equal(accountDailyQuery().includes("segments.date"), true);
-assert.equal(accountDailyQuery().includes("THIS_MONTH"), true);
-assert.equal(accountDailyQuery().includes("UPDATE"), false);
-assert.equal(accountDailyQuery().includes("mutate"), false);
+const daily = accountDailyQuery("2026-10-01", "2026-10-23");
+assert.equal(daily.startsWith("SELECT"), true);
+assert.equal(daily.includes("segments.date"), true);
+assert.equal(daily.includes("BETWEEN '2026-10-01' AND '2026-10-23'"), true);
+assert.equal(daily.includes("THIS_MONTH"), false);
+assert.equal(daily.includes("UPDATE"), false);
+assert.equal(daily.includes("mutate"), false);
+assert.equal(shiftIsoMonths("2026-10-23", -37), "2023-09-23");
+assert.equal(googleAdsQueryWindow({ period: "total" }, "2026-10-23").since, "2023-09-23");
+assert.equal(googleAdsQueryWindow({ period: "custom", since: "2026-10-01", until: "2026-10-23" }, "2026-10-23").until, "2026-10-23");
+assert.throws(() => googleAdsQueryWindow({ period: "custom", since: "2026-10-23", until: "2026-10-01" }, "2026-10-23"), /começar antes/);
+assert.throws(() => googleAdsQueryWindow({ period: "custom", since: "2026-10-01", until: "2026-10-24" }, "2026-10-23"), /futuro/);
+assert.throws(() => googleAdsQueryWindow({ period: "custom", since: "2020-01-01", until: "2026-10-23" }, "2026-10-23"), /37 meses/);
 const days = parseAccountDays({
   results: [
     { segments: { date: "2026-10-02" }, metrics: { impressions: "4", clicks: "1", costMicros: "1000000" } },
@@ -73,9 +83,12 @@ assert.equal(days.length, 2);
 assert.equal(days[0]?.clicks, 2);
 assert.equal(days[0]?.impressions, 10);
 assert.equal(days[0]?.cost, 1.5);
-const month = fillAccountDays(days, "2026-10-03");
+const month = fillAccountDays(days, "2026-10-01", "2026-10-03");
 assert.equal(month.length, 3);
+assert.equal(month[0]?.date, "2026-10-01");
 assert.equal(month[0]?.clicks, 0);
+assert.equal(month[1]?.clicks, 2);
+assert.equal(month[2]?.date, "2026-10-03");
 assert.equal(googleAdsMetricTotal(days, "cpc"), 0.75);
 assert.equal(googleAdsMetricTotal(days, "clicks"), 2);
 assert.deepEqual(selectGoogleAdsMetric(["clicks"], "impressions"), ["clicks", "impressions"]);
@@ -94,5 +107,5 @@ assert.equal(
   "Não foi possível consultar o Google Ads. HTTP 400 — INVALID_ARGUMENT — BAD_VALUE — Request contains an invalid argument.",
 );
 assert.equal(googleAdsFailure(401, { error: "invalid_grant" }), "A autorização do Google Ads expirou. Atualize o refresh token no servidor.");
-assert.equal(adsLoadFailure(new Error("Failed to fetch")), "Failed to fetch");
+assert.equal(adsLoadFailure(new Error("Failed to fetch")), "A conexão com o Google Ads caiu antes da resposta.");
 assert.equal(adsLoadFailure(new Error("ya29.secret")), "A consulta das contas do Google Ads foi interrompida antes da resposta.");

@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { readDashboardSnapshot, retryDroppedDashboard, writeDashboardSnapshot, type DashboardStorage } from "@/lib/dashboard-cache";
 import type { MetaCampaignRow, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
 import { getMetaPerformanceFn } from "@/lib/meta.functions";
 
@@ -52,6 +53,24 @@ function money(value: number, currency: string) {
 const initialPeriod: MetaPeriod = { mode: "total" };
 const noCampaigns: MetaCampaignRow[] = [];
 
+function browserStorage(): DashboardStorage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function isMetaSnapshot(value: unknown): value is MetaPerformanceView {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<MetaPerformanceView>;
+  return (row.period?.mode === "total" || row.period?.mode === "custom") && typeof row.canView === "boolean" && Array.isArray(row.campaigns);
+}
+
+function metaCacheKey(mode: string, organizationId: string) {
+  return `nex.dashboard.meta.${mode}.${organizationId || "self"}`;
+}
+
 export function MetaPerformance({
   mode,
   organizationId: organizationFromRoute = "",
@@ -59,15 +78,17 @@ export function MetaPerformance({
   mode: "overview" | "campaigns";
   organizationId?: string;
 }) {
-  const [period, setPeriod] = useState<MetaPeriod>(initialPeriod);
-  const [view, setView] = useState<MetaPerformanceView | null>(null);
+  const organizationId = organizationFromRoute || readOrg();
+  const cacheKey = metaCacheKey(mode, organizationId);
+  const cached = readDashboardSnapshot(browserStorage(), cacheKey, isMetaSnapshot);
+  const [period, setPeriod] = useState<MetaPeriod>(cached?.period ?? initialPeriod);
+  const [view, setView] = useState<MetaPerformanceView | null>(cached);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [campaignId, setCampaignId] = useState("all");
   const [chartId, setChartId] = useState<string | null>(null);
-  const organizationId = organizationFromRoute || readOrg();
 
   const load = async (nextPeriod: MetaPeriod) => {
     setLoading(true);
@@ -81,22 +102,23 @@ export function MetaPerformance({
     }
     if (organizationId) data.organizationId = organizationId;
     try {
-      const result = await getMetaPerformanceFn({ data });
-      setLoading(false);
+      const result = await retryDroppedDashboard(() => getMetaPerformanceFn({ data }));
       if (!result.ok) {
         setError(result.message);
         return;
       }
       setPeriod(result.data.period);
       setView(result.data);
+      writeDashboardSnapshot(browserStorage(), cacheKey, result.data);
     } catch {
+      setError(view ? "A conexão caiu. Os indicadores na tela são a última leitura." : "A conexão com a Meta caiu antes da resposta.");
+    } finally {
       setLoading(false);
-      setError("Não foi possível carregar os indicadores da Meta.");
     }
   };
 
   useEffect(() => {
-    void load(initialPeriod);
+    void load(period);
   }, []);
 
   const listedCampaigns = view?.campaigns ?? noCampaigns;
@@ -134,7 +156,11 @@ export function MetaPerformance({
           <p className="mt-1 text-sm font-semibold">
             {view?.accountName
               ? `${view.accountName}${view.accountId ? ` · ${view.accountId}` : ""}`
-              : "Conta de anúncio não vinculada"}
+              : view
+                ? "Conta de anúncio não vinculada"
+                : error
+                  ? "A conta não pôde ser lida agora"
+                  : "Lendo a conta de anúncios"}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">

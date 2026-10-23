@@ -56,6 +56,17 @@ export function headerAttendant(name: string) {
   return name.trim() || "Fila";
 }
 
+export function finishAttendanceGate(input: { status: string; assigneeId: string; userId: string; admin: boolean }) {
+  if (input.status === "closed") return "closed" as const;
+  const assignee = input.assigneeId.trim();
+  if (assignee && !input.admin && assignee !== input.userId) return "other" as const;
+  return "ok" as const;
+}
+
+export function finishAsksRating(assigneeId: string) {
+  return assigneeId.trim().length > 0;
+}
+
 export function negotiatedCents(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 13);
   if (!digits) return null;
@@ -196,6 +207,46 @@ export function shouldSyncEvolution(lastStartedAt: number, now: number) {
 }
 
 const queuedLanes = new Map<string, Promise<void>>();
+
+export function acceptsInboundMessageEvent(event: string) {
+  return event.trim().toLowerCase().replace(/_/g, ".") === "messages.upsert";
+}
+
+export function inboundStartsBot(input: { fromMe: boolean; event: string }) {
+  return !input.fromMe && acceptsInboundMessageEvent(input.event);
+}
+
+export function inboundBotAction(input: { inserted: boolean; source: "webhook" | "import" }) {
+  if (input.source === "import") return "store" as const;
+  return input.inserted ? "run" as const : "retry" as const;
+}
+
+export function sameInboundMessage(
+  left: { instance: string; externalId: string; fromMe: boolean },
+  right: { instance: string; externalId: string; fromMe: boolean },
+) {
+  return Boolean(left.externalId) && left.instance === right.instance && left.externalId === right.externalId && left.fromMe === right.fromMe;
+}
+
+export function flowClaimAllowsSend(claimed: boolean) {
+  return claimed;
+}
+
+export const freshFlowRunMs = 90_000;
+
+export function freshRunBlocksResend(input: { manual: boolean; hasOutbound: boolean; updatedAt: number | null; now: number; freshMs?: number }) {
+  if (input.manual || input.hasOutbound || input.updatedAt == null || !Number.isFinite(input.updatedAt)) return false;
+  return input.now - input.updatedAt < (input.freshMs ?? freshFlowRunMs);
+}
+
+export function shouldBlindResendAfterTimeout() {
+  return false;
+}
+
+export function panelRowsAreDistinct(rows: { externalId: string }[]) {
+  const ids = rows.map((row) => row.externalId).filter(Boolean);
+  return new Set(ids).size === ids.length;
+}
 
 export function queueByKey<T>(key: string, run: () => Promise<T>) {
   const previous = queuedLanes.get(key) ?? Promise.resolve();

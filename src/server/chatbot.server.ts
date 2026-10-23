@@ -22,8 +22,14 @@ import {
   inboxUnread,
   inboxVisible,
   keepAttendanceBotsPaused,
+  finishAttendanceGate,
+  finishAsksRating,
   shouldSyncEvolution,
   queueByKey,
+  acceptsInboundMessageEvent,
+  inboundBotAction,
+  flowClaimAllowsSend,
+  freshRunBlocksResend,
   evolutionConnectionStatus,
   evolutionInactiveMessage,
   evolutionReportedStatus,
@@ -1391,43 +1397,42 @@ export async function assumeChatbotConversation(userId: string, conversationId: 
 export async function finishChatbotConversation(userId: string, conversationId: string) {
   const { organizationId, admin, conversation } = await requireVisibleConversation(userId, conversationId);
   const assignee = cell(conversation, "assignee_id");
-  if (!assignee) return;
-  if (!admin && assignee !== userId) fail("Só quem está atendendo pode finalizar.");
+  const gate = finishAttendanceGate({ status: cell(conversation, "status"), assigneeId: assignee, userId, admin });
+  if (gate === "closed") fail("O atendimento já foi finalizado.");
+  if (gate === "other") fail("Só quem está atendendo pode finalizar.");
   const finished = Number(conversation["finished_count"]);
   const closedAt = new Date().toISOString();
   const patch: Record<string, unknown> = {
     status: "closed",
     assignee_id: null,
-    assumed_by: assignee,
     bot_paused: true,
     finished_count: (Number.isFinite(finished) ? finished : 0) + 1,
     updated_at: closedAt,
     closed_at: closedAt,
   };
-  let updated = await table("chatbot_conversations")
-    .update(patch)
-    .eq("id", conversationId)
-    .eq("organization_id", organizationId)
-    .eq("assignee_id", assignee)
-    .select("id")
-    .maybeSingle();
+  if (assignee) patch.assumed_by = assignee;
+  const writeFinish = () => {
+    let query = table("chatbot_conversations")
+      .update(patch)
+      .eq("id", conversationId)
+      .eq("organization_id", organizationId)
+      .neq("status", "closed");
+    query = assignee ? query.eq("assignee_id", assignee) : query.is("assignee_id", null);
+    return query.select("id").maybeSingle();
+  };
+  let updated = await writeFinish();
   for (let attempt = 0; updated.error && attempt < 2; attempt += 1) {
     const missing = updated.error.message.match(/closed_at|assumed_by/i);
     if (!missing) break;
     const key = missing[0].toLowerCase();
     if (!(key in patch)) break;
     delete patch[key];
-    updated = await table("chatbot_conversations")
-      .update(patch)
-      .eq("id", conversationId)
-      .eq("organization_id", organizationId)
-      .eq("assignee_id", assignee)
-      .select("id")
-      .maybeSingle();
+    updated = await writeFinish();
   }
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("O atendimento já foi finalizado.");
-  await requestChatbotRating(organizationId, conversation);
+  await forgetFlowRun(organizationId, conversationId);
+  if (finishAsksRating(assignee)) await requestChatbotRating(organizationId, conversation);
 }
 
 async function requestChatbotRating(organizationId: string, conversation: Record<string, unknown>) {
@@ -1577,11 +1582,11 @@ export async function ingestEvolutionWebhook(request: Request) {
       })
       .eq("id", cell(found.data, "id"));
   }
-  if (event.includes("messages")) {
+  if (acceptsInboundMessageEvent(event)) {
     const items = evolutionIncomingMessages(payload["data"]);
     const knownLids = rememberLidPhones(items);
     for (const item of items) {
-      await storeIncoming(found.data, item, knownLids);
+      await storeIncoming(found.data, item, knownLids, "webhook");
       void refreshMessageAvatar(found.data, item, knownLids).catch(() => null);
     }
   }
@@ -1794,7 +1799,7 @@ async function importEvolutionMessages(connection: Record<string, unknown>) {
     }
   }
   const knownLids = rememberLidPhones(items);
-  for (const item of items) await storeIncoming(connection, item, knownLids);
+  for (const item of items) await storeIncoming(connection, item, knownLids, "import");
 }
 
 async function refreshWhatsappName(organizationId: string, contactId: string, phone: string, name: string) {
@@ -1833,7 +1838,7 @@ async function resolveLidPhone(instanceName: string, lid: string) {
   return evolutionResolvedPhone(profile);
 }
 
-async function storeIncoming(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}) {
+async function storeIncoming(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}, source: "webhook" | "import" = "webhook") {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
   const key = (rawKey && typeof rawKey === "object" ? rawKey : {}) as Record<string, unknown>;
@@ -1922,7 +1927,10 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   } else if (saved.error) {
     return;
   }
-  if (!inserted) {
+  const action = inboundBotAction({ inserted, source });
+  console.log(JSON.stringify({ source: "nex.chatbot", ingest: source, instance: cell(connection, "instance_name"), externalId, conversationId, direction: "in", action }));
+  if (action === "store") return;
+  if (action === "retry") {
     await retryUnansweredBot(connection, organizationId, conversationId, contactId, text);
     return;
   }
@@ -1968,10 +1976,12 @@ async function promoteOpenConnection(connection: Record<string, unknown>) {
 }
 
 async function retryUnansweredBot(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string) {
-  if (await conversationHasOutbound(conversationId)) return;
-  if (await contactBotsDisabled(organizationId, contactId)) return;
-  const ready = await promoteOpenConnection(connection);
-  await runIncomingFlow(ready, organizationId, conversationId, contactId, text);
+  await queueByKey(`flow:${conversationId}`, async () => {
+    if (await conversationHasOutbound(conversationId)) return;
+    if (await contactBotsDisabled(organizationId, contactId)) return;
+    const ready = await promoteOpenConnection(connection);
+    await executeConversationFlowOnce(ready, organizationId, conversationId, contactId, text);
+  });
 }
 
 async function thankForRating(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string) {
@@ -4245,9 +4255,13 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   const active = await loadActiveFlows(organizationId);
   const manualFlow = manualFlowId && !active.some((flow) => flow.id === manualFlowId) ? await savedFlowById(organizationId, manualFlowId) : null;
   const flows = manualFlow ? [...active, manualFlow] : [...active];
-  const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle();
-  if (stored.error && /schema cache|does not exist|PGRST205/i.test(stored.error.message)) return { sent: false, owned: false };
-  const storedRun = readFlowRun(stored.data);
+  const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer, updated_at").eq("conversation_id", conversationId).maybeSingle();
+  const storedRow = stored.error && /updated_at/i.test(stored.error.message)
+    ? await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle()
+    : stored;
+  if (storedRow.error && /schema cache|does not exist|PGRST205/i.test(storedRow.error.message)) return { sent: false, owned: false };
+  const storedRun = readFlowRun(storedRow.data);
+  const storedAt = Date.parse(cell(storedRow.data, "updated_at"));
   if (storedRun && !flows.some((flow) => flow.id === storedRun.flowId)) {
     const saved = await savedFlowById(organizationId, storedRun.flowId);
     if (saved) flows.push(saved);
@@ -4255,6 +4269,9 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   const manual = Boolean(manualFlowId);
   if (!flows.length && manual) return { sent: false, owned: false };
   const hasOutbound = await conversationHasOutbound(conversationId);
+  if (freshRunBlocksResend({ manual, hasOutbound, updatedAt: Number.isFinite(storedAt) ? storedAt : null, now: Date.now() })) {
+    return { sent: false, owned: true, plannedSend: false };
+  }
   let seen = storedRun;
   if (!manual && !hasOutbound && storedRun) {
     await restoreFlowRun(organizationId, conversationId, null);
@@ -4296,7 +4313,7 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
     if (manual) await rememberFlowRun(organizationId, conversationId, seen, step.run);
     else {
       const claimed = await claimFlowRun(organizationId, conversationId, seen, step.run);
-      if (!claimed) await rememberFlowRun(organizationId, conversationId, seen, step.run);
+      if (!flowClaimAllowsSend(claimed)) return { sent: false, owned: true, plannedSend: false };
     }
   }
   const delivered = await applyFlowActions(connection, organizationId, conversationId, contactId, step.actions);

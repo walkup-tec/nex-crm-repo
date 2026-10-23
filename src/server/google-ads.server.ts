@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   accountDailyQuery,
   fillAccountDays,
+  googleAdsQueryWindow,
   parseAccountDays,
   saoPauloDate,
   cleanCustomerId,
@@ -204,14 +205,20 @@ export async function googleAdsSelection(userId: string, organizationId = "") {
   return { linked: Boolean(account), account, campaigns: [] as GoogleAdsCampaign[] };
 }
 
-export async function readGoogleAdsCampaigns(userId: string, organizationId = "") {
+export async function readGoogleAdsCampaigns(
+  userId: string,
+  organizationId = "",
+  input: { period?: string; since?: string; until?: string } = {},
+) {
   const gate = await assertReader(userId, organizationId);
-  if (!gate.organizationId) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], period: "Últimos 30 dias" };
+  const window = googleAdsQueryWindow(input, saoPauloDate());
+  const empty = fillAccountDays([], window.since, window.until);
+  if (!gate.organizationId) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], days: empty, period: window.period };
   const account = await selectedAccount(gate.organizationId);
-  if (!account) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], days: [] as ReturnType<typeof parseAccountDays>, period: "Este mês" };
-  const pages = await search(account.customerId, account.loginCustomerId, accountDailyQuery(), callBudget());
-  const days = fillAccountDays(pages.flatMap((page) => parseAccountDays(page)), saoPauloDate());
-  return { linked: true as const, account, campaigns: [] as GoogleAdsCampaign[], days, period: "Este mês" };
+  if (!account) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], days: empty, period: window.period };
+  const pages = await search(account.customerId, account.loginCustomerId, accountDailyQuery(window.since, window.until), callBudget());
+  const days = fillAccountDays(pages.flatMap((page) => parseAccountDays(page)), window.since, window.until);
+  return { linked: true as const, account, campaigns: [] as GoogleAdsCampaign[], days, period: window.period };
 }
 
 export type { GoogleAdsAccount };

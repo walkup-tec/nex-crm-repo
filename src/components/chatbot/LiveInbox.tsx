@@ -1246,7 +1246,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                         Transferir
                       </Button>
                     ) : null}
-                    <Button type="button" size="sm" disabled={finishing || !conversation.assigneeName.trim()} onClick={() => void finish(conversation.id)}>
+                    <Button type="button" size="sm" disabled={finishing || conversation.status === "closed"} onClick={() => void finish(conversation.id)}>
                       {finishing ? "Finalizando" : "Finalizar"}
                     </Button>
                   </>

@@ -70,11 +70,47 @@ export type GoogleAdsDay = {
   cost: number;
 };
 
-export function accountDailyQuery() {
+export type GoogleAdsPeriod = { mode: "total" } | { mode: "custom"; since: string; until: string };
+
+const dayKey = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export function shiftIsoMonths(iso: string, months: number) {
+  const match = dayKey.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextIsoDay(iso: string) {
+  const match = dayKey.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+export function googleAdsQueryWindow(input: { period?: string; since?: string; until?: string }, today: string) {
+  if (!dayKey.test(today)) throw new Error("Escolha o início e o fim do período.");
+  if (!input.period || input.period === "total") {
+    return { period: { mode: "total" } as GoogleAdsPeriod, since: shiftIsoMonths(today, -37), until: today };
+  }
+  if (input.period !== "custom") throw new Error("Escolha Total ou um período personalizado.");
+  const since = input.since ?? "";
+  const until = input.until ?? "";
+  if (!dayKey.test(since) || !dayKey.test(until)) throw new Error("Escolha o início e o fim do período.");
+  if (since > until) throw new Error("O período personalizado precisa começar antes de terminar.");
+  if (until > today) throw new Error("O período personalizado não pode terminar no futuro.");
+  if (since < shiftIsoMonths(until, -37)) throw new Error("O Google Ads só devolve até 37 meses nesse período.");
+  return { period: { mode: "custom", since, until } as GoogleAdsPeriod, since, until };
+}
+
+export function accountDailyQuery(since: string, until: string) {
+  if (!dayKey.test(since) || !dayKey.test(until)) throw new Error("Escolha o início e o fim do período.");
   return [
     "SELECT segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros",
     "FROM customer",
-    "WHERE segments.date DURING THIS_MONTH",
+    `WHERE segments.date BETWEEN '${since}' AND '${until}'`,
     "ORDER BY segments.date",
   ].join(" ");
 }
@@ -157,15 +193,14 @@ export function saoPauloDate(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-export function fillAccountDays(days: GoogleAdsDay[], today: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
-  if (!match) return days;
-  const end = Number(match[3]);
+export function fillAccountDays(days: GoogleAdsDay[], since: string, until: string) {
+  if (!dayKey.test(since) || !dayKey.test(until) || since > until) return [];
   const byDate = new Map(days.map((day) => [day.date, day]));
   const filled: GoogleAdsDay[] = [];
-  for (let day = 1; day <= end; day += 1) {
-    const date = `${match[1]}-${match[2]}-${String(day).padStart(2, "0")}`;
-    filled.push(byDate.get(date) ?? { date, clicks: 0, impressions: 0, cost: 0 });
+  let cursor = since;
+  while (cursor <= until && filled.length < 1200) {
+    filled.push(byDate.get(cursor) ?? { date: cursor, clicks: 0, impressions: 0, cost: 0 });
+    cursor = nextIsoDay(cursor);
   }
   return filled;
 }
@@ -262,6 +297,9 @@ export function googleAdsFailure(status: number, body: unknown) {
 
 export function adsLoadFailure(error: unknown) {
   const message = error instanceof Error ? error.message.trim() : "";
+  if (/failed to fetch|networkerror|network request failed|load failed|aborterror|timeout/i.test(message)) {
+    return "A conexão com o Google Ads caiu antes da resposta.";
+  }
   if (!message || message.length > 240 || /access_token|refresh_token|client_secret|ya29\.|GOCSPX|postgres|JWT/i.test(message)) {
     return "A consulta das contas do Google Ads foi interrompida antes da resposta.";
   }

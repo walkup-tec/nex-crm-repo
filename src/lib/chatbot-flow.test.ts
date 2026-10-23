@@ -387,3 +387,29 @@ assert.equal(closedAutomatic.actions.length, 0);
 assert.equal(manualFlowNotice({ plannedSend: true, delivered: false, owned: true }), "O bot não conseguiu enviar a mensagem no WhatsApp.");
 assert.equal(manualFlowNotice({ plannedSend: false, delivered: false, owned: false }), "Esse bot não tem uma ação ligada ao gatilho.");
 assert.equal(manualFlowNotice({ plannedSend: true, delivered: true, owned: true }), "");
+const repeatMenuFlow: SavedFlow = {
+  id: "menu",
+  name: "Entrada",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      { id: "menu", label: "Menu", kind: "Ação", content: "Para te atender melhor, informe:", options: [{ id: "1", label: "Já sou cliente" }, { id: "2", label: "Não sou cliente" }] },
+      { id: "ask", label: "Fazer pergunta", kind: "Ação", content: "Qual seu nome?" },
+    ],
+    edges: [
+      { source: "t", target: "menu" },
+      { source: "menu", target: "ask", sourceHandle: "2" },
+    ],
+  },
+};
+const opened = stepFlow(repeatMenuFlow, null, { text: "Olá", at: noon, outsideHours: false });
+assert.equal(opened.actions.filter((action) => action.type === "menu").length, 1);
+const waitingMenu = opened.run;
+const chosen = stepFlow(repeatMenuFlow, waitingMenu, { text: "Não sou cliente", at: noon + 1000, outsideHours: false });
+assert.equal(chosen.actions.some((action) => action.type === "menu"), false);
+assert.equal(chosen.actions[0]?.type === "send" ? chosen.actions[0].text : "", "Qual seu nome?");
+const repeated = stepFlow(repeatMenuFlow, chosen.run, { text: "Não sou cliente", at: noon + 2000, outsideHours: false });
+assert.equal(repeated.actions.some((action) => action.type === "menu"), false);
+assert.equal(repeated.actions.some((action) => action.type === "send" && action.text === "Qual seu nome?"), false);
+const secondHello = startInboundFlow([repeatMenuFlow], { text: "segunda mensagem", outsideHours: false, run: { flowId: "menu", nodeId: "ask", status: "done", waitUntil: 0, lastAnswer: "Ana" }, at: noon + 3000 });
+assert.equal(secondHello?.step.actions.filter((action) => action.type === "menu").length, 1);

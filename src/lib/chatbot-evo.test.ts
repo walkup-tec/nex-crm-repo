@@ -18,6 +18,15 @@ import {
   droppedChannels,
   shouldSyncEvolution,
   queueByKey,
+  acceptsInboundMessageEvent,
+  inboundStartsBot,
+  inboundBotAction,
+  sameInboundMessage,
+  flowClaimAllowsSend,
+  freshRunBlocksResend,
+  freshFlowRunMs,
+  shouldBlindResendAfterTimeout,
+  panelRowsAreDistinct,
   pendingOutgoing,
   messageClock,
   audioDurationLabel,
@@ -43,6 +52,8 @@ import {
   waitingForHuman,
   keepAttendanceBotsPaused,
   headerAttendant,
+  finishAttendanceGate,
+  finishAsksRating,
   negotiatedCents,
   negotiatedLabel,
   clientVisibleTo,
@@ -143,6 +154,13 @@ assert.equal(whatsappDeviceRemoved(401), true);
 assert.equal(whatsappDeviceRemoved(428), false);
 assert.equal(headerAttendant("  Marina Costa  "), "Marina Costa");
 assert.equal(headerAttendant("   "), "Fila");
+assert.equal(finishAttendanceGate({ status: "queue", assigneeId: "", userId: "ana", admin: false }), "ok");
+assert.equal(finishAttendanceGate({ status: "active", assigneeId: "ana", userId: "ana", admin: false }), "ok");
+assert.equal(finishAttendanceGate({ status: "active", assigneeId: "bia", userId: "ana", admin: false }), "other");
+assert.equal(finishAttendanceGate({ status: "active", assigneeId: "bia", userId: "ana", admin: true }), "ok");
+assert.equal(finishAttendanceGate({ status: "closed", assigneeId: "", userId: "ana", admin: true }), "closed");
+assert.equal(finishAsksRating(""), false);
+assert.equal(finishAsksRating("ana"), true);
 assert.equal(negotiatedCents(""), null);
 assert.equal(negotiatedCents("R$ 1.250,00"), 125000);
 assert.equal(negotiatedLabel(125000).replace(/\s/g, " "), "R$ 1.250,00");
@@ -946,3 +964,42 @@ assert.equal(
   }),
   6,
 );
+assert.equal(acceptsInboundMessageEvent("MESSAGES_UPSERT"), true);
+assert.equal(acceptsInboundMessageEvent("messages.update"), false);
+assert.equal(inboundStartsBot({ fromMe: false, event: "messages.upsert" }), true);
+assert.equal(inboundStartsBot({ fromMe: true, event: "messages.upsert" }), false);
+assert.equal(inboundBotAction({ inserted: true, source: "webhook" }), "run");
+assert.equal(inboundBotAction({ inserted: false, source: "webhook" }), "retry");
+assert.equal(inboundBotAction({ inserted: true, source: "import" }), "store");
+assert.equal(inboundBotAction({ inserted: false, source: "import" }), "store");
+assert.equal(sameInboundMessage({ instance: "nex", externalId: "A", fromMe: false }, { instance: "nex", externalId: "A", fromMe: false }), true);
+assert.equal(sameInboundMessage({ instance: "nex", externalId: "A", fromMe: false }, { instance: "nex", externalId: "B", fromMe: false }), false);
+assert.equal(flowClaimAllowsSend(true), true);
+assert.equal(flowClaimAllowsSend(false), false);
+const now = Date.parse("2026-10-23T18:12:00.000Z");
+assert.equal(freshRunBlocksResend({ manual: false, hasOutbound: false, updatedAt: now - 1000, now }), true);
+assert.equal(freshRunBlocksResend({ manual: false, hasOutbound: true, updatedAt: now - 1000, now }), false);
+assert.equal(freshRunBlocksResend({ manual: false, hasOutbound: false, updatedAt: now - freshFlowRunMs - 1, now }), false);
+assert.equal(shouldBlindResendAfterTimeout(), false);
+assert.equal(panelRowsAreDistinct([{ externalId: "A" }, { externalId: "A" }]), false);
+assert.equal(panelRowsAreDistinct([{ externalId: "A" }, { externalId: "B" }]), true);
+const seenIds = new Set<string>();
+function claimOnce(id: string) {
+  if (seenIds.has(id)) return false;
+  seenIds.add(id);
+  return true;
+}
+assert.equal([claimOnce("A"), claimOnce("A")].filter(flowClaimAllowsSend).length, 1);
+assert.equal([claimOnce("B"), claimOnce("C")].filter(flowClaimAllowsSend).length, 2);
+const orderedLane: number[] = [];
+await Promise.all([
+  queueByKey("ordem", async () => {
+    orderedLane.push(1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    orderedLane.push(2);
+  }),
+  queueByKey("ordem", async () => {
+    orderedLane.push(3);
+  }),
+]);
+assert.deepEqual(orderedLane, [1, 2, 3]);

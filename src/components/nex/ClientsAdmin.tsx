@@ -23,6 +23,7 @@ import {
   setClientStatusFn,
   addClientPromotionFn,
   updateClientFn,
+  updateClientProductsFn,
   updateClientPromotionEndFn,
   updateContractEndFn,
   updateContractScheduleFn,
@@ -840,6 +841,24 @@ function ClientForm({
 
   const set = (patch: Partial<ClientDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
+  const saveProducts = async () => {
+    if (!client) return;
+    setSaving(true);
+    setFormError("");
+    try {
+      const result = await updateClientProductsFn({ data: { id: client.id, adsMeta: draft.adsMeta, adsGoogle: draft.adsGoogle } });
+      if (!result.ok) {
+        setFormError(result.message);
+        return;
+      }
+      await onSaved("Anúncios atualizados.");
+    } catch {
+      setFormError("Não foi possível concluir. Tente de novo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submit = async () => {
     setSaving(true);
     setFormError("");
@@ -1119,13 +1138,21 @@ function ClientForm({
             Voltar
           </Button>
           {step < 2 ? (
-            <Button
-              type="button"
-              disabled={saving || !draft.billingProvider || (!draft.adsMeta && !draft.adsGoogle)}
-              onClick={() => setStep((current) => current + 1)}
-            >
-              Continuar
-            </Button>
+            <>
+              {client ? (
+                <Button type="button" disabled={saving || (!draft.adsMeta && !draft.adsGoogle)} onClick={() => void saveProducts()}>
+                  {saving ? "Salvando..." : "Salvar anúncios"}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant={client ? "outline" : "default"}
+                disabled={saving || !draft.billingProvider || (!draft.adsMeta && !draft.adsGoogle)}
+                onClick={() => setStep((current) => current + 1)}
+              >
+                Continuar
+              </Button>
+            </>
           ) : (
             <Button type="button" disabled={saving} onClick={() => void submit()}>
               {saving ? "Salvando..." : client ? "Salvar cliente" : "Criar cliente"}

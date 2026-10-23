@@ -54,6 +54,18 @@ export const createClientFn = createServerFn({ method: "POST" })
     return guard(() => createClient(context.userId, data));
   });
 
+export const updateClientProductsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string; adsMeta: boolean; adsGoogle: boolean }) => ({
+    id: data.id.trim(),
+    adsMeta: data.adsMeta === true,
+    adsGoogle: data.adsGoogle === true,
+  }))
+  .handler(async ({ context, data }): Promise<Result<SavedClient>> => {
+    const { updateClientProducts } = await import("@/server/clients.server");
+    return guard(() => updateClientProducts(context.userId, data.id, data));
+  });
+
 export const updateClientFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: ClientDraft & { id: string }) => data)

@@ -650,6 +650,21 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
   return { id };
 }
 
+export async function updateClientProducts(userId: string, id: string, input: { adsMeta: boolean; adsGoogle: boolean }) {
+  await requireMaster(userId);
+  if (!input.adsMeta && !input.adsGoogle) fail("Informe se o cliente usa Meta Ads, Google Ads ou os dois.");
+  const { data: current, error: currentError } = await supabaseAdmin.from("organizations").select("id").eq("id", id).maybeSingle();
+  if (currentError) fail(currentError.message);
+  if (!current) fail("Cliente não encontrado.");
+  const { error } = await supabaseAdmin
+    .from("organizations")
+    .update({ ads_meta: input.adsMeta, ads_google: input.adsGoogle, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) fail(migrationMessage(error.message));
+  await audit(userId, id, "client.products");
+  return { id };
+}
+
 async function promotionList(organizationId: string) {
   const { data, error } = await supabaseAdmin
     .from("client_promotions")

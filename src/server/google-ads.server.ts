@@ -61,9 +61,18 @@ async function assertReader(userId: string, organizationId = ""): Promise<Gate> 
   return { organizationId: ownOrganization, master: false };
 }
 
+async function googleFetch(url: string, init: RequestInit) {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(20000) });
+  } catch (error) {
+    console.error("google_ads_network", error instanceof Error ? error.name : "error");
+    fail("O Google Ads não respondeu. Tente de novo.");
+  }
+}
+
 async function renewAccessToken() {
   const config = adsConfig();
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await googleFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: refreshTokenBody(config),
@@ -83,16 +92,16 @@ async function accessToken() {
   return renewAccessToken();
 }
 
-async function adsFetch(path: string, init: { method: "GET" | "POST"; body?: unknown; loginCustomerId: string }) {
+async function adsFetch(path: string, init: { method: "GET" | "POST"; body?: unknown; loginCustomerId?: string }) {
   const config = adsConfig();
   const token = await accessToken();
   const headers = new Headers({
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
-    "login-customer-id": init.loginCustomerId,
   });
+  if (init.loginCustomerId) headers.set("login-customer-id", init.loginCustomerId);
   if (init.body) headers.set("Content-Type", "application/json");
-  const response = await fetch(`https://googleads.googleapis.com/${config.version}${path}`, {
+  const response = await googleFetch(`https://googleads.googleapis.com/${config.version}${path}`, {
     method: init.method,
     headers,
     body: init.body ? JSON.stringify(init.body) : undefined,
@@ -126,7 +135,7 @@ export async function listGoogleAdsAccounts(userId: string) {
   const gate = await assertReader(userId);
   if (!gate.master) fail("Somente o Master escolhe a conta de anúncios do Google Ads.");
   const config = adsConfig();
-  const accessible = parseAccessibleCustomers(await adsFetch("/customers:listAccessibleCustomers", { method: "GET", loginCustomerId: config.loginCustomerId }));
+  const accessible = parseAccessibleCustomers(await adsFetch("/customers:listAccessibleCustomers", { method: "GET" }));
   if (!accessible.includes(config.loginCustomerId)) fail("A conta administradora não está entre as contas autorizadas neste projeto.");
   const pages = await search(config.loginCustomerId, config.loginCustomerId, customerClientQuery());
   return pages.flatMap((page) => parseCustomerClients(page));

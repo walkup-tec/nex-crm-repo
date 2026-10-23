@@ -29,6 +29,14 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
   }
 }
 
+export const googleAdsSelectionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId?: string }) => ({ organizationId: (data.organizationId ?? "").trim() }))
+  .handler(async ({ context, data }): Promise<Result<GoogleAdsRead>> => {
+    const { googleAdsSelection } = await import("@/server/google-ads.server");
+    return guard(() => googleAdsSelection(context.userId, data.organizationId));
+  });
+
 export const listGoogleAdsAccountsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Result<GoogleAdsAccount[]>> => {

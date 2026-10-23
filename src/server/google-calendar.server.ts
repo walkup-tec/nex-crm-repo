@@ -16,7 +16,7 @@ import {
   meetingWhen,
   meetingCalendar,
   markMeetingCalendar,
-  agendaEmailList,
+  lastMeetingFields,
   meetUrlFromEvent,
   overlapsBusy,
   remoteMeetingPatch,
@@ -443,17 +443,21 @@ export async function leadMeetingContext(userId: string, leadId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
   await requireMms(gate.organizationId);
   const lead = await leadInOrg(gate.organizationId, leadId);
-  const intake = await from("contracting_intakes").select("representative_email").eq("contact_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  let email = intake.error ? "" : cell(intake.data ?? {}, "representative_email");
+  const saved = await from("lead_meetings").select("attendee_email, attendees").eq("lead_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const previous = saved.error || !saved.data ? { email: "", attendees: "" } : lastMeetingFields({ email: cell(saved.data, "attendee_email"), attendees: saved.data.attendees });
+  let email = previous.email;
+  let attendees = previous.attendees;
   if (!email) {
-    const saved = await from("lead_meetings").select("attendee_email, attendees").eq("lead_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(20);
-    if (!saved.error) email = agendaEmailList((saved.data ?? []).map((row) => ({ email: cell(row, "attendee_email"), attendees: row.attendees })))[0] ?? "";
+    const intake = await from("contracting_intakes").select("representative_email").eq("contact_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    email = intake.error ? "" : cell(intake.data ?? {}, "representative_email");
+    attendees = "";
   }
   const connection = await connectionForUser(gate.organizationId, userId);
   return {
     leadId,
     leadName: cell(lead, "name"),
     email,
+    attendees,
     connected: cell(connection ?? {}, "connection_status") === "connected",
   };
 }

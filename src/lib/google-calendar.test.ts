@@ -22,6 +22,7 @@ import {
   meetingConfirmUrl,
   meetingNoticeMessages,
   agendaEmailList,
+  lastMeetingFields,
   markMeetingCalendar,
   meetingCalendar,
   meetingChoices,
@@ -73,6 +74,9 @@ const painted = markMeetingCalendar(meetingCalendar(now), [{ start: "2026-10-26T
 assert.equal(painted.find((day) => day.date === "2026-10-26")?.windows[0]?.state, "occupied");
 assert.equal(painted.find((day) => day.date === "2026-10-26")?.windows[1]?.state, "available");
 assert.deepEqual(agendaEmailList([{ email: " Ana@Empresa.com ", attendees: ["maria@empresa.com", "ana@empresa.com"] }]), ["ana@empresa.com", "maria@empresa.com"]);
+assert.deepEqual(lastMeetingFields({ email: " Mozart@Hotmart.com ", attendees: ["mozart@hotmart.com", "maria@empresa.com", "maria@empresa.com"] }), { email: "mozart@hotmart.com", attendees: "maria@empresa.com" });
+assert.deepEqual(lastMeetingFields({ email: "", attendees: ["ana@empresa.com"] }), { email: "ana@empresa.com", attendees: "" });
+assert.deepEqual(lastMeetingFields(null), { email: "", attendees: "" });
 assert.deepEqual(meetingFields("2026-10-23T18:00:00.000Z"), { date: "2026-10-23", time: "15:00" });
 assert.equal(meetingLength("2026-10-23T18:00:00.000Z", "2026-10-23T18:45:00.000Z"), 45);
 assert.equal(meetingWhen("2026-10-23T18:00:00.000Z", "2026-10-23T18:30:00.000Z"), "23/10/2026 15:00–15:30");

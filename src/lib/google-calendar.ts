@@ -239,6 +239,18 @@ export function meetingSlot(input: { date: string; time: string }, now = Date.no
   return { start, end: new Date(Date.parse(start) + standardMeetingMinutes * 60_000).toISOString(), duration: standardMeetingMinutes };
 }
 
+export function lastMeetingFields(entry: { email?: string; attendees?: unknown } | null | undefined) {
+  const stored = cleanEmail(entry?.email ?? "");
+  const extras: string[] = [];
+  const list = Array.isArray(entry?.attendees) ? entry.attendees : [];
+  for (const item of list) {
+    const cleaned = cleanEmail(typeof item === "string" ? item : "");
+    if (cleaned && !extras.includes(cleaned)) extras.push(cleaned);
+  }
+  const email = stored || extras[0] || "";
+  return { email, attendees: extras.filter((item) => item !== email).join(", ") };
+}
+
 export function agendaEmailList(entries: { email?: string; attendees?: unknown }[]) {
   const emails: string[] = [];
   const add = (value: string) => {

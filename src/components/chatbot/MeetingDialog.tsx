@@ -68,6 +68,7 @@ export function MeetingDialog({
         return;
       }
       if (result.data.email) setEmail(result.data.email);
+      if (result.data.attendees) setAttendees(result.data.attendees);
       setConnected(result.data.connected);
     });
     return () => {

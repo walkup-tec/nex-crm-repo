@@ -6,9 +6,10 @@ import {
   disconnectGoogleCalendarFn,
   googleCalendarConnectionFn,
   listLeadMeetingsFn,
+  listMeetingCalendarFn,
   startGoogleCalendarConnectFn,
 } from "@/lib/google-calendar.functions";
-import { meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView } from "@/lib/google-calendar";
+import { meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView, type MeetingCalendarDay } from "@/lib/google-calendar";
 
 function MeetingCards({ meetings, empty, onChanged }: { meetings: LeadMeetingView[]; empty: string; onChanged: () => void }) {
   const [editing, setEditing] = useState<LeadMeetingView | null>(null);
@@ -126,6 +127,7 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
 export function CalendarMeetings() {
   const [connection, setConnection] = useState<GoogleCalendarConnectionView | null>(null);
   const [meetings, setMeetings] = useState<LeadMeetingView[]>([]);
+  const [days, setDays] = useState<MeetingCalendarDay[]>([]);
   const [note, setNote] = useState("");
   const [pending, setPending] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -148,15 +150,18 @@ export function CalendarMeetings() {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const [linked, list] = await Promise.all([
+      const [linked, list, calendar] = await Promise.all([
         googleCalendarConnectionFn(),
         listLeadMeetingsFn({ data: {} }),
+        listMeetingCalendarFn(),
       ]);
       if (!active) return;
       if (!linked.ok) setNote(linked.message);
       else setConnection(linked.data);
       if (!list.ok) setNote(list.message);
       else setMeetings(list.data);
+      if (!calendar.ok) setNote(calendar.message);
+      else setDays(calendar.data);
       setLoaded(true);
     })();
     return () => {
@@ -222,6 +227,26 @@ export function CalendarMeetings() {
         )}
       </header>
       {note ? <p className="composer-error">{note}</p> : null}
+      <div className="agenda-legend">
+        <span className="is-available">Livre</span>
+        <span className="is-occupied">Ocupado</span>
+        <span className="is-past">Encerrado</span>
+      </div>
+      <p className="meeting-zone">Próximos 30 dias, no horário de Brasília.</p>
+      <div className="agenda-month">
+        {days.map((day) => (
+          <article className={`agenda-day${day.closed ? " is-closed" : ""}`} key={day.date}>
+            <header>{day.title}</header>
+            {day.closed ? <p>Sem expediente</p> : null}
+            {day.windows.map((window) => (
+              <span className={`agenda-window is-${window.state}`} key={window.start} title={window.note || (window.state === "occupied" ? "Ocupado" : window.state === "past" ? "Encerrado" : "Livre")}>
+                {window.label}
+                {window.note ? ` · ${window.note}` : ""}
+              </span>
+            ))}
+          </article>
+        ))}
+      </div>
       <MeetingCards meetings={meetings} empty="Nenhuma reunião próxima." onChanged={() => setVersion((value) => value + 1)} />
     </section>
   );

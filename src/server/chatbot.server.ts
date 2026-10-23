@@ -1,3 +1,4 @@
+import { agendaEmailList } from "@/lib/google-calendar";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
@@ -2746,7 +2747,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
       console.error("contract_signed_sync", error instanceof Error ? error.message : "fail");
     }
   })();
-  const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake] = await Promise.all([
+  const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake, agenda] = await Promise.all([
     contactCardRow(organizationId, contactId),
     rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
     rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
@@ -2756,6 +2757,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     rowsOrMissing(table("chatbot_stages").select("name, position").eq("organization_id", organizationId).order("position", { ascending: true })),
     organizationCard(organizationId),
     latestContracting(organizationId, contactId),
+    rowsOrMissing(table("lead_meetings").select("attendee_email, attendees").eq("organization_id", organizationId).eq("lead_id", contactId).order("created_at", { ascending: false }).limit(100)),
     Promise.race([signedSync, new Promise((resolve) => setTimeout(resolve, 1500))]),
   ]);
   const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
@@ -2809,6 +2811,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     showRg,
     contractingLink: org.contractingLink,
     contracting: org.contractingLink ? intake : null,
+    agendaEmails: agendaEmailList(agenda.rows.map((row) => ({ email: cell(row, "attendee_email"), attendees: row.attendees }))),
   };
 }
 

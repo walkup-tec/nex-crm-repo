@@ -72,6 +72,13 @@ export function cleanEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
 }
 
+export const standardMeetingTitle = "Apresentação NEX Mkt Digital";
+
+export const standardMeetingDescription = [
+  "Muito obrigado pelo seu tempo!",
+  "Em breve teremos um momento produtivo, aonde você poderá conhecer melhor a NEX e retirar todas as dúvidas a respeito das ações de marketing digital que irão impulsionar o seu negócio.",
+].join("\n");
+
 export function cleanMeetingTitle(value: string) {
   const title = value.trim().replace(/\s+/g, " ");
   if (title.length < 2 || title.length > 120) return "";
@@ -107,13 +114,115 @@ export function meetingGuests(leadEmail: string, extra: string, organizerEmail =
   return { lead, emails } as const;
 }
 
-export function meetingSlot(input: { date: string; time: string; duration: number }, now = Date.now()) {
+export const standardMeetingMinutes = 60;
+
+export function meetingWindowStarts(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+  const weekday = new Date(`${date}T12:00:00-03:00`).getUTCDay();
+  if (weekday === 1) return [13, 14, 15];
+  if (weekday >= 2 && weekday <= 4) return [9, 10, 11, 12, 13, 14, 15];
+  if (weekday === 5) return [9, 10, 11];
+  return [];
+}
+
+function saoPauloDate(instant: number) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: meetingTimeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(instant));
+}
+
+function shiftDate(date: string, days: number) {
+  return saoPauloDate(Date.parse(`${date}T12:00:00-03:00`) + days * 24 * 60 * 60 * 1000);
+}
+
+function windowBounds(date: string, hour: number) {
+  const start = Date.parse(`${date}T${String(hour).padStart(2, "0")}:00:00-03:00`);
+  if (!Number.isFinite(start)) return null;
+  return { start: new Date(start).toISOString(), end: new Date(start + standardMeetingMinutes * 60_000).toISOString() };
+}
+
+export type MeetingWindowState = "available" | "occupied" | "past";
+
+export type MeetingWindow = {
+  time: string;
+  label: string;
+  start: string;
+  end: string;
+  state: MeetingWindowState;
+  note: string;
+};
+
+export type MeetingCalendarDay = {
+  date: string;
+  title: string;
+  closed: boolean;
+  windows: MeetingWindow[];
+};
+
+export function meetingCalendar(now = Date.now(), count = 30): MeetingCalendarDay[] {
+  const today = saoPauloDate(now);
+  return Array.from({ length: count }, (_, index) => {
+    const date = shiftDate(today, index);
+    const parsed = new Date(`${date}T12:00:00-03:00`);
+    const title = `${new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, weekday: "short" }).format(parsed)} ${new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, day: "2-digit", month: "2-digit" }).format(parsed)}`;
+    const windows = meetingWindowStarts(date).flatMap((hour) => {
+      const bounds = windowBounds(date, hour);
+      if (!bounds) return [];
+      const time = `${String(hour).padStart(2, "0")}:00`;
+      const finish = `${String(hour + 1).padStart(2, "0")}:00`;
+      return [{
+        time,
+        label: `${time}–${finish}`,
+        start: bounds.start,
+        end: bounds.end,
+        state: Date.parse(bounds.start) < now + 60_000 ? "past" as const : "available" as const,
+        note: "",
+      }];
+    });
+    return { date, title, closed: windows.length === 0, windows };
+  });
+}
+
+export function meetingChoices(now = Date.now()) {
+  return meetingCalendar(now)
+    .map((day) => ({ date: day.date, title: day.title, times: day.windows.filter((window) => window.state === "available").map((window) => window.time) }))
+    .filter((day) => day.times.length > 0);
+}
+
+export function markMeetingCalendar(days: MeetingCalendarDay[], busy: { start: string; end: string; note?: string }[]) {
+  return days.map((day) => ({
+    ...day,
+    windows: day.windows.map((window) => {
+      if (window.state === "past") return window;
+      const hit = busy.find((block) => overlapsBusy(window.start, window.end, [block]));
+      if (!hit) return window;
+      return { ...window, state: "occupied" as const, note: hit.note || "Ocupado" };
+    }),
+  }));
+}
+
+export function meetingSlot(input: { date: string; time: string }, now = Date.now()) {
   const match = /^(\d{2}):(\d{2})$/.exec(input.time);
-  const duration = meetingDuration(input.duration);
-  if (!match || !duration) return null;
-  const start = returnInstant({ date: input.date, hour: Number(match[1]), minute: Number(match[2]) }, now);
+  if (!match || Number(match[2]) !== 0) return null;
+  const hour = Number(match[1]);
+  if (!meetingWindowStarts(input.date).includes(hour)) return null;
+  const start = returnInstant({ date: input.date, hour, minute: 0 }, now);
   if (!start) return null;
-  return { start, end: new Date(Date.parse(start) + duration * 60_000).toISOString(), duration };
+  return { start, end: new Date(Date.parse(start) + standardMeetingMinutes * 60_000).toISOString(), duration: standardMeetingMinutes };
+}
+
+export function agendaEmailList(entries: { email?: string; attendees?: unknown }[]) {
+  const emails: string[] = [];
+  const add = (value: string) => {
+    const email = cleanEmail(value);
+    if (email && !emails.includes(email)) emails.push(email);
+  };
+  for (const entry of entries) {
+    add(entry.email ?? "");
+    if (!Array.isArray(entry.attendees)) continue;
+    for (const item of entry.attendees) {
+      if (typeof item === "string") add(item);
+    }
+  }
+  return emails;
 }
 
 export function meetingFields(startAt: string) {

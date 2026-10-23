@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createLeadMeetingFn, leadMeetingContextFn, rescheduleLeadMeetingFn } from "@/lib/google-calendar.functions";
-import { defaultReturnSlot } from "@/lib/chatbot-evo";
 import {
   cleanEmail,
-  cleanMeetingTitle,
-  meetingDurations,
+  meetingChoices,
   meetingFields,
-  meetingLength,
   meetingSlot,
   type LeadMeetingView,
 } from "@/lib/google-calendar";
+
+function slotLabel(time: string) {
+  const hour = Number(time.slice(0, 2)) + 1;
+  return `${time}–${String(hour).padStart(2, "0")}:00`;
+}
 
 export function MeetingDialog({
   open,
@@ -30,39 +32,31 @@ export function MeetingDialog({
   onSaved: () => void;
 }) {
   const requestId = useRef("");
-  const slot = defaultReturnSlot();
+  const choices = meetingChoices();
   const [email, setEmail] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [date, setDate] = useState(slot.date);
-  const [time, setTime] = useState(`${String(slot.hour).padStart(2, "0")}:${String(slot.minute).padStart(2, "0")}`);
-  const [duration, setDuration] = useState<(typeof meetingDurations)[number]>(30);
+  const [date, setDate] = useState(choices[0]?.date ?? "");
+  const [time, setTime] = useState(choices[0]?.times[0] ?? "");
   const [attendees, setAttendees] = useState("");
   const [meet, setMeet] = useState(true);
   const [connected, setConnected] = useState(true);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
   const editing = Boolean(meeting);
+  const times = choices.find((day) => day.date === date)?.times ?? [];
 
   useEffect(() => {
     if (!open) return;
     requestId.current = crypto.randomUUID();
     setNote("");
     setSaving(false);
-    if (meeting) {
-      const fields = meetingFields(meeting.startAt);
-      setDate(fields.date);
-      setTime(fields.time);
-      setDuration(meetingLength(meeting.startAt, meeting.endAt));
-      return;
-    }
-    const next = defaultReturnSlot();
-    setTitle(leadName ? `Reunião com ${leadName}` : "");
-    setDescription("");
+    const nextChoices = meetingChoices();
+    const current = meeting ? meetingFields(meeting.startAt) : null;
+    const day = nextChoices.find((item) => item.date === current?.date && item.times.includes(current.time)) ?? nextChoices[0];
+    setDate(day?.date ?? "");
+    setTime(current && day?.times.includes(current.time) ? current.time : day?.times[0] ?? "");
+    if (meeting) return;
     setAttendees("");
     setMeet(true);
-    setDate(next.date);
-    setTime(`${String(next.hour).padStart(2, "0")}:00`);
     setEmail("");
     setConnected(true);
     if (!leadId) return;
@@ -75,23 +69,22 @@ export function MeetingDialog({
       }
       if (result.data.email) setEmail(result.data.email);
       setConnected(result.data.connected);
-      if (result.data.leadName) setTitle((current) => current || `Reunião com ${result.data.leadName}`);
     });
     return () => {
       active = false;
     };
   }, [open, leadId, leadName, meeting]);
 
-  const ready = Boolean(meetingSlot({ date, time, duration })) && (editing || (Boolean(cleanMeetingTitle(title)) && Boolean(cleanEmail(email))));
+  const ready = Boolean(meetingSlot({ date, time })) && (editing || Boolean(cleanEmail(email)));
 
   async function confirm() {
     if (saving || !ready) return;
     setSaving(true);
     setNote("");
     const result = editing && meeting
-      ? await rescheduleLeadMeetingFn({ data: { meetingId: meeting.id, date, time, duration } })
+      ? await rescheduleLeadMeetingFn({ data: { meetingId: meeting.id, date, time } })
       : await createLeadMeetingFn({
-          data: { leadId, requestId: requestId.current, title, description, email, attendees, date, time, duration, meet },
+          data: { leadId, requestId: requestId.current, email, attendees, date, time, meet },
         });
     setSaving(false);
     if (!result.ok) {
@@ -120,39 +113,42 @@ export function MeetingDialog({
             <input value={leadName || meeting?.leadName || ""} readOnly aria-label="Nome do lead" />
           </label>
           {editing ? null : (
+            <label>
+              E-mail do lead
+              <input value={email} type="email" maxLength={160} disabled={saving} aria-label="E-mail do lead" onChange={(event) => setEmail(event.target.value)} />
+            </label>
+          )}
+          {choices.length ? (
             <>
               <label>
-                E-mail do lead
-                <input value={email} type="email" maxLength={160} disabled={saving} aria-label="E-mail do lead" onChange={(event) => setEmail(event.target.value)} />
+                Data
+                <select aria-label="Data da reunião" value={date} disabled={saving} onChange={(event) => {
+                  const next = event.target.value;
+                  const nextTimes = choices.find((day) => day.date === next)?.times ?? [];
+                  setDate(next);
+                  setTime(nextTimes[0] ?? "");
+                }}>
+                  {choices.map((day) => (
+                    <option key={day.date} value={day.date}>
+                      {day.title}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
-                Assunto
-                <input value={title} maxLength={120} disabled={saving} aria-label="Assunto da reunião" onChange={(event) => setTitle(event.target.value)} />
-              </label>
-              <label>
-                Descrição
-                <textarea value={description} maxLength={2000} disabled={saving} aria-label="Descrição da reunião" onChange={(event) => setDescription(event.target.value)} />
+                Horário
+                <select aria-label="Horário da reunião" value={time} disabled={saving} onChange={(event) => setTime(event.target.value)}>
+                  {times.map((item) => (
+                    <option key={item} value={item}>
+                      {slotLabel(item)}
+                    </option>
+                  ))}
+                </select>
               </label>
             </>
+          ) : (
+            <p className="composer-error">Não há horário disponível nos próximos 30 dias.</p>
           )}
-          <label>
-            Data
-            <input value={date} type="date" disabled={saving} aria-label="Data da reunião" onChange={(event) => setDate(event.target.value)} />
-          </label>
-          <label>
-            Horário inicial
-            <input value={time} type="time" disabled={saving} aria-label="Horário inicial" onChange={(event) => setTime(event.target.value)} />
-          </label>
-          <label>
-            Duração
-            <select aria-label="Duração" value={duration} disabled={saving} onChange={(event) => setDuration(Number(event.target.value) as (typeof meetingDurations)[number])}>
-              {meetingDurations.map((minutes) => (
-                <option key={minutes} value={minutes}>
-                  {minutes} minutos
-                </option>
-              ))}
-            </select>
-          </label>
           <p className="meeting-zone">Horário de Brasília.</p>
           {editing ? null : (
             <>

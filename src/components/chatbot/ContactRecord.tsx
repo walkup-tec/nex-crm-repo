@@ -262,6 +262,7 @@ export function ContactRecord({
             rg: data.rg,
             showDocument: data.showDocument,
             showRg: data.showRg,
+            agendaEmails: data.agendaEmails,
           }
         : current,
     );
@@ -618,7 +619,7 @@ export function ContactRecord({
               {refreshing ? "Atualizando" : refreshed ? "Atualizado" : "Atualizar"}
             </Button>
           </section>
-          {profile.showDocument || profile.showRg || profile.contractingLink ? (
+          {profile.showDocument || profile.showRg || profile.contractingLink || profile.agendaEmails.length > 0 ? (
             <section className={`contact-section${extraOpen ? "" : " is-collapsed"}`}>
               <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
                 <CollapsibleTrigger className="contact-extra">
@@ -679,6 +680,14 @@ export function ContactRecord({
                             {profile.contracting.witnessDocument} — {profile.contracting.witnessEmail}
                           </span>
                         </dd>
+                      </div>
+                    </dl>
+                  ) : null}
+                  {profile.agendaEmails.length ? (
+                    <dl className="contact-contracting">
+                      <div>
+                        <dt>E-mail Agenda</dt>
+                        <dd>{profile.agendaEmails.join(", ")}</dd>
                       </div>
                     </dl>
                   ) : null}

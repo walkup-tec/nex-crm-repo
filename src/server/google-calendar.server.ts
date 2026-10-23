@@ -4,17 +4,20 @@ import { chatbotMenuAllowed, chatbotMenusFromStorage } from "@/lib/chatbot-menus
 import {
   canReadAvailability,
   googleCalendarForMms,
-  cleanMeetingDescription,
-  cleanMeetingTitle,
   googleCalendarScopes,
   googleFailure,
   meetingGuests,
   meetingRecordId,
   meetingSlot,
   meetingTimeZone,
+  meetingCalendar,
+  markMeetingCalendar,
+  agendaEmailList,
   meetUrlFromEvent,
   overlapsBusy,
   remoteMeetingPatch,
+  standardMeetingDescription,
+  standardMeetingTitle,
   type GoogleCalendarConnectionView,
   type GoogleEventShape,
   type LeadMeetingView,
@@ -433,8 +436,12 @@ export async function leadMeetingContext(userId: string, leadId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
   await requireMms(gate.organizationId);
   const lead = await leadInOrg(gate.organizationId, leadId);
-  const intake = await from("contracting_intakes").select("representative_email").eq("contact_id", leadId).eq("organization_id", gate.organizationId).limit(1).maybeSingle();
-  const email = intake.error ? "" : cell(intake.data ?? {}, "representative_email");
+  const intake = await from("contracting_intakes").select("representative_email").eq("contact_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  let email = intake.error ? "" : cell(intake.data ?? {}, "representative_email");
+  if (!email) {
+    const saved = await from("lead_meetings").select("attendee_email, attendees").eq("lead_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(20);
+    if (!saved.error) email = agendaEmailList((saved.data ?? []).map((row) => ({ email: cell(row, "attendee_email"), attendees: row.attendees })))[0] ?? "";
+  }
   const connection = await connectionForUser(gate.organizationId, userId);
   return {
     leadId,
@@ -592,6 +599,40 @@ export async function listLeadMeetings(userId: string, leadId = "") {
   return decorate((await rows(query)).filter((row) => cell(row, "status") !== "failed"), userId, gate.manager);
 }
 
+export async function listMeetingCalendar(userId: string) {
+  const gate = await access(userId, "schedules");
+  if (!(await mmsCalendar(gate.organizationId))) return [];
+  const days = meetingCalendar();
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (!first || !last) return days;
+  const rangeStart = new Date(`${first.date}T00:00:00-03:00`).toISOString();
+  const rangeEnd = new Date(`${last.date}T23:59:59-03:00`).toISOString();
+  const named: { start: string; end: string; note?: string }[] = [];
+  const stored = await from("lead_meetings").select("start_at, end_at, lead_id").eq("organization_id", gate.organizationId).eq("user_id", userId).eq("status", "scheduled").gte("end_at", rangeStart).lt("start_at", rangeEnd).order("start_at", { ascending: true }).limit(200);
+  if (!stored.error) {
+    const rows = stored.data ?? [];
+    const leadIds = [...new Set(rows.map((row) => cell(row, "lead_id")).filter(Boolean))];
+    const leads = leadIds.length ? await from("chatbot_contacts").select("id, name").in("id", leadIds) : { data: [], error: null };
+    const names = new Map((leads.error ? [] : leads.data ?? []).map((row) => [cell(row, "id"), cell(row, "name")]));
+    for (const row of rows) {
+      const start = cell(row, "start_at");
+      const end = cell(row, "end_at");
+      if (start && end) named.push({ start, end, note: names.get(cell(row, "lead_id")) || "Ocupado" });
+    }
+  }
+  const connection = await connectionForUser(gate.organizationId, userId);
+  if (connection && cell(connection, "connection_status") === "connected") {
+    try {
+      const busy = await busyRanges(connection, rangeStart, rangeEnd);
+      for (const block of busy ?? []) named.push(block);
+    } catch (error) {
+      console.error("google_calendar_busy", error instanceof Error ? error.name : "error");
+    }
+  }
+  return markMeetingCalendar(days, named);
+}
+
 async function busyRanges(connection: Row, start: string, end: string) {
   if (!canReadAvailability(cell(connection, "scopes"))) return null;
   const calendarId = cell(connection, "calendar_id") || "primary";
@@ -643,24 +684,19 @@ function storedEvent(event: GoogleEventShape) {
 export async function createLeadMeeting(userId: string, input: {
   leadId: string;
   requestId: string;
-  title: string;
-  description: string;
   email: string;
   attendees: string;
   date: string;
   time: string;
-  duration: number;
   meet: boolean;
 }) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
   await requireMms(gate.organizationId);
   if (!meetingRecordId(input.requestId)) fail("Esse agendamento não é válido. Abra o formulário de novo.");
-  const title = cleanMeetingTitle(input.title);
-  if (!title) fail("Informe o assunto da reunião.");
-  const description = cleanMeetingDescription(input.description);
-  if (description === null) fail("A descrição da reunião passou de 2000 caracteres.");
-  const slot = meetingSlot({ date: input.date, time: input.time, duration: input.duration });
-  if (!slot) fail("Escolha uma data e um horário que ainda não passaram.");
+  const title = standardMeetingTitle;
+  const description = standardMeetingDescription;
+  const slot = meetingSlot({ date: input.date, time: input.time });
+  if (!slot) fail("Escolha um dia e um horário disponíveis.");
   const lead = await leadInOrg(gate.organizationId, input.leadId);
   const connection = requireConnected(await connectionForUser(gate.organizationId, userId));
   const guests = meetingGuests(input.email, input.attendees, cell(connection, "google_account_email"));
@@ -767,9 +803,9 @@ async function managedMeeting(userId: string, meetingId: string) {
   return { gate, meeting: result.data, connection: requireConnected(connection.data) };
 }
 
-export async function rescheduleLeadMeeting(userId: string, input: { meetingId: string; date: string; time: string; duration: number }) {
-  const slot = meetingSlot({ date: input.date, time: input.time, duration: input.duration });
-  if (!slot) fail("Escolha uma data e um horário que ainda não passaram.");
+export async function rescheduleLeadMeeting(userId: string, input: { meetingId: string; date: string; time: string }) {
+  const slot = meetingSlot({ date: input.date, time: input.time });
+  if (!slot) fail("Escolha um dia e um horário disponíveis.");
   const { gate, meeting, connection } = await managedMeeting(userId, input.meetingId);
   const busy = await busyRanges(connection, slot.start, slot.end);
   if (busy && overlapsBusy(slot.start, slot.end, busy, { start: cell(meeting, "start_at"), end: cell(meeting, "end_at") })) {

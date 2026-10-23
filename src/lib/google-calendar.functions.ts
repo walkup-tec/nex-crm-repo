@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { GoogleCalendarConnectionView, LeadMeetingView } from "@/lib/google-calendar";
+import type { GoogleCalendarConnectionView, LeadMeetingView, MeetingCalendarDay } from "@/lib/google-calendar";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -77,29 +77,30 @@ export const listLeadMeetingsFn = createServerFn({ method: "POST" })
     return guard(() => listLeadMeetings(context.userId, data.leadId));
   });
 
+export const listMeetingCalendarFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<Result<MeetingCalendarDay[]>> => {
+    const { listMeetingCalendar } = await import("@/server/google-calendar.server");
+    return guard(() => listMeetingCalendar(context.userId));
+  });
+
 export const createLeadMeetingFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: {
     leadId?: string;
     requestId?: string;
-    title?: string;
-    description?: string;
     email?: string;
     attendees?: string;
     date?: string;
     time?: string;
-    duration?: number;
     meet?: boolean;
   }) => ({
     leadId: text(data.leadId, 80),
     requestId: text(data.requestId, 80),
-    title: text(data.title, 120),
-    description: text(data.description, 2000),
     email: text(data.email, 160),
     attendees: text(data.attendees, 500),
     date: text(data.date, 10),
     time: text(data.time, 5),
-    duration: Number(data.duration),
     meet: data.meet === true,
   }))
   .handler(async ({ context, data }): Promise<Result<LeadMeetingView>> => {
@@ -109,11 +110,10 @@ export const createLeadMeetingFn = createServerFn({ method: "POST" })
 
 export const rescheduleLeadMeetingFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { meetingId?: string; date?: string; time?: string; duration?: number }) => ({
+  .validator((data: { meetingId?: string; date?: string; time?: string }) => ({
     meetingId: text(data.meetingId, 80),
     date: text(data.date, 10),
     time: text(data.time, 5),
-    duration: Number(data.duration),
   }))
   .handler(async ({ context, data }): Promise<Result<LeadMeetingView>> => {
     const { rescheduleLeadMeeting } = await import("@/server/google-calendar.server");

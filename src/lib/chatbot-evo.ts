@@ -1432,6 +1432,7 @@ export function contactExtraDataCount(profile: {
   rg: string;
   showDocument: boolean;
   showRg: boolean;
+  agendaEmails?: string[];
 }) {
   const filled = (value: string) => value.trim().length > 0;
   let count = 0;
@@ -1446,6 +1447,7 @@ export function contactExtraDataCount(profile: {
   }
   if (profile.showDocument && filled(profile.document)) count += 1;
   if (profile.showRg && filled(profile.rg)) count += 1;
+  if (profile.agendaEmails?.some((email) => filled(email))) count += 1;
   return count;
 }
 
@@ -1487,6 +1489,7 @@ export type ChatbotContactProfile = {
   showRg: boolean;
   contractingLink: boolean;
   contracting: ChatbotContracting | null;
+  agendaEmails: string[];
 };
 
 export type ChatbotClientRow = {

@@ -926,7 +926,7 @@ assert.equal(artesMime("arte.webp"), "image/webp");
 assert.equal(whatsappImagePayload("5547992082637", "CLT1.png", "image/png", "aaa").mediatype, "image");
 const emptyExtra = { contracting: null, document: "", rg: "", showDocument: true, showRg: true };
 assert.equal(contactExtraDataCount(emptyExtra), 0);
-assert.equal(contactExtraDataCount({ ...emptyExtra, document: "12345678901", rg: "1234567" }), 2);
+assert.equal(contactExtraDataCount({ ...emptyExtra, document: "12345678901", rg: "1234567", agendaEmails: ["ana@empresa.com"] }), 3);
 assert.equal(
   contactExtraDataCount({
     ...emptyExtra,

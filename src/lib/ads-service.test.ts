@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import { adsServiceDescription, overdueAccessCopy, overduePixCopy, promoChargeCopy } from "./client-access";
+import { adsServiceDescription, clientDisplayName, overdueAccessCopy, overduePixCopy, promoChargeCopy } from "./client-access";
 import { keepsAccessWithoutPayment } from "./finance-access";
+
+assert.equal(clientDisplayName({ legalName: "MMS MARKETING E SISTEMAS DIGITAIS LTDA", commercialName: "MMS" }), "MMS");
+assert.equal(clientDisplayName({ legalName: "MMS MARKETING E SISTEMAS DIGITAIS LTDA", commercialName: "  " }), "MMS MARKETING E SISTEMAS DIGITAIS LTDA");
 
 const promo = promoChargeCopy("R$ 1.800,00", "R$ 499,00", "R$ 1.800,00");
 assert.equal(

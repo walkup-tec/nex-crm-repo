@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { clientDisplayName } from "@/lib/client-access";
 import { sendInviteWhatsapp } from "@/server/evo.server";
 import { appUrl, sendInviteEmail } from "@/server/mail.server";
 
@@ -249,13 +250,24 @@ export async function listMetaConnectionProblems(userId: string): Promise<MetaCo
   const ids = [...broken].filter((id) => !platforms || platforms.get(id)?.adsMeta === true);
   if (!ids.length) return [];
   const [orgs, people, roles] = await Promise.all([
-    supabaseAdmin.from("organizations").select("id, legal_name").in("id", ids),
+    supabaseAdmin.from("organizations").select("id, legal_name, commercial_name").in("id", ids),
     supabaseAdmin.from("profiles").select("id, full_name, organization_id").in("organization_id", ids),
     roleMap(),
   ]);
-  if (orgs.error) fail(orgs.error.message);
+  const organizations = orgs.error && /commercial_name/i.test(orgs.error.message)
+    ? await supabaseAdmin.from("organizations").select("id, legal_name").in("id", ids)
+    : orgs;
+  if (organizations.error) fail(organizations.error.message);
   if (people.error) fail(people.error.message);
-  const orgName = new Map((orgs.data ?? []).map((org) => [org.id, org.legal_name?.trim() || ""]));
+  const orgName = new Map(
+    (organizations.data ?? []).map((org) => [
+      org.id,
+      clientDisplayName({
+        legalName: org.legal_name ?? "",
+        commercialName: "commercial_name" in org ? org.commercial_name : "",
+      }),
+    ]),
+  );
   const adminName = new Map<string, string>();
   for (const person of people.data ?? []) {
     if (!person.organization_id || roles.get(person.id) !== "client_admin") continue;

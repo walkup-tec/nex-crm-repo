@@ -1,4 +1,4 @@
-import { isInactiveClient, type ListedClient } from "@/lib/client-access";
+import { clientDisplayName, isInactiveClient, type ListedClient } from "@/lib/client-access";
 import { daysPast, todayKey } from "@/lib/finance-access";
 import { isLowMetaBalance } from "@/lib/low-balance";
 
@@ -36,13 +36,13 @@ function attentionOf(client: ListedClient): DashboardAttention | null {
   if (client.status === "disabled" || client.status === "contract_ended") return null;
   const overdueCents = overdueCentsOf(client);
   if (overdueCents > 0 || client.status === "overdue") {
-    return { id: client.id, name: client.legalName, detail: "Mensalidade em atraso", amountCents: overdueCents > 0 ? overdueCents : null };
+    return { id: client.id, name: clientDisplayName(client), detail: "Mensalidade em atraso", amountCents: overdueCents > 0 ? overdueCents : null };
   }
   if (client.status === "blocked") {
-    return { id: client.id, name: client.legalName, detail: "Bloqueado", amountCents: null };
+    return { id: client.id, name: clientDisplayName(client), detail: "Bloqueado", amountCents: null };
   }
   if (client.balanceKnown && isLowMetaBalance(client.balanceCents)) {
-    return { id: client.id, name: client.legalName, detail: "Saldo Meta baixo", amountCents: client.balanceCents };
+    return { id: client.id, name: clientDisplayName(client), detail: "Saldo Meta baixo", amountCents: client.balanceCents };
   }
   return null;
 }
@@ -57,7 +57,7 @@ export function masterDashboardFrom(clients: ListedClient[], today = todayKey())
       if (!client.endsOn) return [];
       const daysLeft = -daysPast(client.endsOn, today);
       if (daysLeft < 0 || daysLeft > horizon) return [];
-      return [{ id: client.id, name: client.legalName, endsOn: client.endsOn, daysLeft }];
+      return [{ id: client.id, name: clientDisplayName(client), endsOn: client.endsOn, daysLeft }];
     })
     .sort((left, right) => left.daysLeft - right.daysLeft);
   const attention = clients

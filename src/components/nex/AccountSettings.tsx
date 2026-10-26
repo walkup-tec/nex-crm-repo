@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { clientDisplayName } from "@/lib/client-access";
 import { applyMask } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,10 +54,14 @@ async function loadSignedInAccount(): Promise<AccountInfo> {
   if (profile.organization_id) {
     const { data: company } = await supabase
       .from("organizations")
-      .select("legal_name")
+      .select("legal_name, commercial_name")
       .eq("id", profile.organization_id)
       .maybeSingle();
-    organization = company?.legal_name?.trim() ?? "";
+    const companyName = company ?? (await supabase.from("organizations").select("legal_name").eq("id", profile.organization_id).maybeSingle()).data;
+    organization = clientDisplayName({
+      legalName: companyName?.legal_name ?? "",
+      commercialName: companyName && "commercial_name" in companyName ? companyName.commercial_name : "",
+    });
   }
   const theme: AccountTheme = profile.theme === "dark" ? "dark" : "light";
   return {

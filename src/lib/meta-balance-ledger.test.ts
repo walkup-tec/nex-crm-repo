@@ -6,6 +6,7 @@ import {
   mergeLedger,
   prepaidBalanceCents,
   readLedger,
+  metaBalanceHistorySince,
   shouldUsePrepaidLedger,
 } from "./meta-balance-ledger";
 
@@ -173,6 +174,9 @@ assert.equal(
 );
 assert.equal(mergeLedger([received!], [received!, charge!]).length, 2);
 
+const balanceNow = Date.parse("2026-10-26T12:00:00.000Z");
+assert.equal(metaBalanceHistorySince(balanceNow), "1787832000");
+assert.equal(new Date(Number(metaBalanceHistorySince(balanceNow)) * 1000).toISOString(), "2026-08-27T12:00:00.000Z");
 assert.equal(hasCreditCard({ type: 1, display_string: "Cartão" }), true);
 assert.equal(hasCreditCard({ type: 20, amount: "0" }), false);
 assert.equal(

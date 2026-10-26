@@ -128,7 +128,7 @@ export const lookupAsaasSubscriptionFn = createServerFn({ method: "POST" })
 export const openClientSupportFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { id: string }) => data)
-  .handler(async ({ context, data }): Promise<Result<{ id: string; legalName: string }>> => {
+  .handler(async ({ context, data }): Promise<Result<{ id: string; legalName: string; displayName: string }>> => {
     const { openClientSupport } = await import("@/server/clients.server");
     return guard(() => openClientSupport(context.userId, data.id));
   });

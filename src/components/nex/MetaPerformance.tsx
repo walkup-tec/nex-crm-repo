@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { readDashboardSnapshot, retryDroppedDashboard, writeDashboardSnapshot, type DashboardStorage } from "@/lib/dashboard-cache";
+import { campaignMark } from "@/lib/meta-analysis";
 import type { MetaCampaignRow, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
 import { getMetaPerformanceFn } from "@/lib/meta.functions";
 
@@ -40,6 +41,13 @@ function readOrg() {
 
 function integer(value: number) {
   return new Intl.NumberFormat("pt-BR").format(value);
+}
+
+function CampaignSignal({ row }: { row: Pick<MetaCampaignRow, "status" | "statusGroup"> }) {
+  const mark = campaignMark(row);
+  const tone = mark === "ativa" ? "bg-emerald-500" : mark === "erro" ? "bg-red-500" : "bg-zinc-400";
+  const label = mark === "ativa" ? "Campanha ativa" : mark === "erro" ? "Campanha com erro" : "Campanha desativada";
+  return <span className={`size-2 shrink-0 rounded-full ${tone}`} title={label} aria-label={label} />;
 }
 
 function money(value: number, currency: string) {
@@ -176,7 +184,10 @@ export function MetaPerformance({
                 <SelectItem value="all">Todas as campanhas</SelectItem>
                 {listedCampaigns.map((row) => (
                   <SelectItem key={row.id} value={row.id}>
-                    {row.name}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <CampaignSignal row={row} />
+                      <span className="truncate">{row.name}</span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

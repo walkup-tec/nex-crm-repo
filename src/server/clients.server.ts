@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { ClientDraft, ClientInvoice, ClientStatus, InvoiceStatus, ListedClient } from "@/lib/client-access";
+import { clientDisplayName, type ClientDraft, type ClientInvoice, type ClientStatus, type InvoiceStatus, type ListedClient } from "@/lib/client-access";
 import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionsOverlap } from "@/lib/billing-plan";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
@@ -51,10 +51,12 @@ function migrationMessage(message: string) {
 
 function parseDraft(input: ClientDraft) {
   const legalName = input.legalName.trim();
+  const commercialName = input.commercialName.trim().replace(/\s+/g, " ");
   const responsibleName = input.responsibleName.trim();
   const document = digits(input.document);
   const phone = digits(input.whatsapp);
   if (legalName.length < 2) fail("Informe a razão social.");
+  if (commercialName.length > 160) fail("O nome comercial pode ter até 160 caracteres.");
   if (document.length !== 11 && document.length !== 14) fail("Informe um CPF ou CNPJ válido.");
   if (responsibleName.length < 2) fail("Informe o responsável.");
   const responsibleEmail = emailOf(input.responsibleEmail, "e-mail do responsável");
@@ -103,6 +105,7 @@ function parseDraft(input: ClientDraft) {
   const whatsapp = input.whatsapp.trim();
   return {
     legalName,
+    commercialName,
     document,
     responsibleName,
     responsibleEmail,
@@ -167,19 +170,26 @@ function financeLabel(invoices: ClientInvoice[]) {
 }
 
 async function loadOrganizations() {
-  const full = await supabaseAdmin
-    .from("organizations")
-    .select(
-      "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status, ads_meta, ads_google",
-    )
-    .order("legal_name");
-  if (!full.error || !/ads_meta|ads_google/i.test(full.error.message)) return full;
-  const basic = await supabaseAdmin
-    .from("organizations")
-    .select(
-      "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status",
-    )
-    .order("legal_name");
+  const named = "id, legal_name, commercial_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status";
+  const legacy = "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status";
+  const full = await supabaseAdmin.from("organizations").select(`${named}, ads_meta, ads_google`).order("legal_name");
+  if (!full.error) return full;
+  if (/commercial_name/i.test(full.error.message)) {
+    const withAds = await supabaseAdmin.from("organizations").select(`${legacy}, ads_meta, ads_google`).order("legal_name");
+    if (!withAds.error || !/ads_meta|ads_google/i.test(withAds.error.message)) {
+      return {
+        data: (withAds.data ?? []).map((row) => ({ ...row, commercial_name: "" })),
+        error: withAds.error,
+      };
+    }
+    const basic = await supabaseAdmin.from("organizations").select(legacy).order("legal_name");
+    return {
+      data: (basic.data ?? []).map((row) => ({ ...row, ads_meta: true, ads_google: false, commercial_name: "" })),
+      error: basic.error,
+    };
+  }
+  if (!/ads_meta|ads_google/i.test(full.error.message)) return full;
+  const basic = await supabaseAdmin.from("organizations").select(named).order("legal_name");
   return {
     data: (basic.data ?? []).map((row) => ({ ...row, ads_meta: true, ads_google: false })),
     error: basic.error,
@@ -324,6 +334,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
     return {
       id: org.id,
       legalName: org.legal_name,
+      commercialName: org.commercial_name?.trim() ?? "",
       document: org.document,
       responsibleName: org.responsible_name,
       responsibleEmail: org.responsible_email,
@@ -361,7 +372,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       accessUserId: access?.id ?? null,
       invoices: orgInvoices,
     };
-  });
+  }).sort((left, right) => clientDisplayName(left).localeCompare(clientDisplayName(right), "pt-BR"));
 }
 
 export async function masterDashboard(userId: string): Promise<MasterDashboard> {
@@ -511,6 +522,7 @@ export async function provisionClientShell(input: ClientDraft) {
     .from("organizations")
     .insert({
       legal_name: parsed.legalName,
+      commercial_name: parsed.commercialName,
       document: parsed.document,
       responsible_name: parsed.responsibleName,
       responsible_email: parsed.responsibleEmail,
@@ -568,6 +580,7 @@ export async function createClient(userId: string, input: ClientDraft) {
     .from("organizations")
     .insert({
       legal_name: parsed.legalName,
+      commercial_name: parsed.commercialName,
       document: parsed.document,
       responsible_name: parsed.responsibleName,
       responsible_email: parsed.responsibleEmail,
@@ -628,6 +641,7 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
     .from("organizations")
     .update({
       legal_name: parsed.legalName,
+      commercial_name: parsed.commercialName,
       document: parsed.document,
       responsible_name: parsed.responsibleName,
       responsible_email: parsed.responsibleEmail,
@@ -895,13 +909,17 @@ export async function setClientStatus(userId: string, id: string, active: boolea
 
 export async function openClientSupport(userId: string, id: string) {
   await requireMaster(userId);
-  const { data, error } = await supabaseAdmin
-    .from("organizations")
-    .select("id, legal_name")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) fail(error.message);
-  if (!data) fail("Cliente não encontrado.");
+  const named = await supabaseAdmin.from("organizations").select("id, legal_name, commercial_name").eq("id", id).maybeSingle();
+  const loaded = named.error && /commercial_name/i.test(named.error.message)
+    ? await supabaseAdmin.from("organizations").select("id, legal_name").eq("id", id).maybeSingle()
+    : named;
+  if (loaded.error) fail(loaded.error.message);
+  if (!loaded.data) fail("Cliente não encontrado.");
   await audit(userId, id, "client.support");
-  return { id: data.id, legalName: data.legal_name };
+  const commercialName = "commercial_name" in loaded.data && typeof loaded.data.commercial_name === "string" ? loaded.data.commercial_name : "";
+  return {
+    id: loaded.data.id,
+    legalName: loaded.data.legal_name,
+    displayName: clientDisplayName({ legalName: loaded.data.legal_name, commercialName }),
+  };
 }

@@ -6,6 +6,15 @@ import type {
   MetaPeriod,
 } from "@/lib/meta-access";
 
+export type CampaignMark = "ativa" | "desativada" | "erro";
+
+export function campaignMark(row: Pick<MetaCampaignRow, "status" | "statusGroup">): CampaignMark {
+  if (row.statusGroup === "Ativa") return "ativa";
+  if (row.statusGroup === "Inativa" || row.statusGroup === "Encerrada") return "desativada";
+  if (row.status === "Em análise") return "desativada";
+  return "erro";
+}
+
 export type Grain = "day" | "week" | "month";
 
 export type MetricSet = {

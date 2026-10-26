@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/nex/AppShell";
 import { Button } from "@/components/ui/button";
-import { dateBr, invoiceStatusLabel, moneyFromCents, percentBr, type ListedClient } from "@/lib/client-access";
+import { clientDisplayName, dateBr, invoiceStatusLabel, moneyFromCents, percentBr, type ListedClient } from "@/lib/client-access";
 import { listClientsFn } from "@/lib/clients.functions";
 import { syncFinanceFn } from "@/lib/finance.functions";
 
@@ -45,7 +45,7 @@ function FinancePage() {
   }, [orgId]);
 
   return (
-    <AppShell live notes={false} master title={client ? `Financeiro · ${client.legalName}` : "Financeiro do cliente"} subtitle="Contrato e cobranças gravados. Nenhuma cobrança é inventada.">
+    <AppShell live notes={false} master title={client ? `Financeiro · ${clientDisplayName(client)}` : "Financeiro do cliente"} subtitle="Contrato e cobranças gravados. Nenhuma cobrança é inventada.">
       <div className="mb-5">
         <Button variant="outline" asChild>
           <Link to="/master/clientes">

@@ -5,7 +5,7 @@ import { normalizeBalanceLink } from "@/lib/balance-link";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
-import type { ClientDraft, ClientPromotion, ListedClient } from "@/lib/client-access";
+import { clientDisplayName, type ClientDraft, type ClientPromotion, type ListedClient } from "@/lib/client-access";
 import {
   adsPlatformLabel,
   clientStatusLabel,
@@ -55,6 +55,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const emptyDraft: ClientDraft = {
   legalName: "",
+  commercialName: "",
   document: "",
   responsibleName: "",
   responsibleEmail: "",
@@ -82,6 +83,7 @@ function draftFrom(client: ListedClient): ClientDraft {
   const documentDigits = client.document.replace(/\D/g, "");
   return {
     legalName: client.legalName,
+    commercialName: client.commercialName,
     document:
       documentDigits.length === 11 || documentDigits.length === 14
         ? applyMask("doc", documentDigits)
@@ -158,8 +160,8 @@ export function ClientsAdmin() {
     }
     setNotice(
       activeNext
-        ? `${pendingStatus.legalName} voltou para Ativos.`
-        : `${pendingStatus.legalName} foi desativado e está em Inativos.`,
+        ? `${clientDisplayName(pendingStatus)} voltou para Ativos.`
+        : `${clientDisplayName(pendingStatus)} foi desativado e está em Inativos.`,
     );
     setTab(activeNext ? "active" : "inactive");
     setPendingStatus(null);
@@ -227,10 +229,10 @@ export function ClientsAdmin() {
               <Card key={client.id}>
                 <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
                   <div className="grid size-11 place-items-center rounded-lg bg-brand-soft font-bold text-primary">
-                    {initials(client.legalName)}
+                    {initials(clientDisplayName(client))}
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold">{client.legalName}</p>
+                    <p className="font-semibold">{clientDisplayName(client)}</p>
                     <p className="text-sm text-muted-foreground">
                       Responsável: {client.responsibleName || "não informado"}
                     </p>
@@ -256,7 +258,7 @@ export function ClientsAdmin() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setSelected(client)}
-                    aria-label={`Abrir ${client.legalName}`}
+                    aria-label={`Abrir ${clientDisplayName(client)}`}
                   >
                     <MoreHorizontal />
                   </Button>
@@ -337,7 +339,7 @@ export function ClientsAdmin() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {pendingStatus && isInactiveClient(pendingStatus.status) ? "Reativar" : "Desativar"}{" "}
-              {pendingStatus?.legalName}?
+              {pendingStatus ? clientDisplayName(pendingStatus) : ""}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingStatus && isInactiveClient(pendingStatus.status)
@@ -421,7 +423,7 @@ function ClientDialog({
     <Dialog open={client !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{client?.legalName}</DialogTitle>
+          <DialogTitle>{client ? clientDisplayName(client) : ""}</DialogTitle>
           <DialogDescription>Visão operacional do cliente</DialogDescription>
         </DialogHeader>
         {client && (
@@ -432,6 +434,8 @@ function ClientDialog({
               <TabsTrigger value="meta">Contas Meta</TabsTrigger>
             </TabsList>
             <TabsContent value="summary" className="grid gap-3 sm:grid-cols-2">
+              <Info label="Nome comercial" value={client.commercialName || "—"} />
+              <Info label="Razão social" value={client.legalName} />
               <Info label="Responsável" value={client.responsibleName || "—"} />
               <Info label="Anúncios" value={adsPlatformLabel(client)} />
               <Info label="Situação" value={clientStatusLabel(client.status)} />
@@ -914,6 +918,14 @@ function ClientForm({
                 {cnpjNote}
               </p>
             )}
+            <div className="sm:col-span-2">
+              <Field
+                label="Nome comercial"
+                value={draft.commercialName}
+                onChange={(value) => set({ commercialName: value })}
+                placeholder="Nome usado para identificar o cliente"
+              />
+            </div>
             <Field
               label="Responsável"
               value={draft.responsibleName}

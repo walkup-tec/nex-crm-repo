@@ -26,7 +26,7 @@ function SupportPage() {
     void openClientSupportFn({ data: { id: orgId } }).then((result) => {
       if (!active) return;
       if (!result.ok) setError(result.message);
-      else setName(result.data.legalName);
+      else setName(result.data.displayName);
     });
     return () => {
       active = false;

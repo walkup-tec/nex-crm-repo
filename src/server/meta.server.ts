@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
+import { clientDisplayName } from "@/lib/client-access";
 import type {
   MetaAccountView,
   MetaBusinessView,
@@ -264,6 +265,7 @@ export async function listAdAccountEdge(
   accountId: string,
   edge: string,
   params: Record<string, string>,
+  maxPages = 10,
 ) {
   const digits = accountId.trim().replace(/^act_/i, "");
   if (!/^\d+$/.test(digits) || !/^[a-z_]+$/.test(edge))
@@ -271,7 +273,8 @@ export async function listAdAccountEdge(
   const { token } = await loadToken(organizationId);
   const rows: Record<string, unknown>[] = [];
   let next: string | null = null;
-  for (let page = 0; page < 10; page += 1) {
+  const pages = Math.max(1, Math.min(maxPages, 10));
+  for (let page = 0; page < pages; page += 1) {
     const body: GraphBody = next
       ? await graphFetch(new URL(next))
       : await graphGet(graphVersion(), `/act_${digits}/${edge}`, token, params);
@@ -831,8 +834,10 @@ function campaignStatus(raw: string | undefined): {
   if (raw === "PAUSED" || raw === "CAMPAIGN_PAUSED" || raw === "ADSET_PAUSED")
     return { label: "Inativa", group: "Inativa" };
   if (raw === "ARCHIVED" || raw === "DELETED") return { label: "Encerrada", group: "Encerrada" };
-  if (raw === "PENDING_REVIEW" || raw === "IN_PROCESS" || raw === "WITH_ISSUES")
+  if (raw === "PENDING_REVIEW" || raw === "IN_PROCESS" || raw === "PREAPPROVED")
     return { label: "Em análise", group: "Outro" };
+  if (raw === "WITH_ISSUES" || raw === "DISAPPROVED" || raw === "PENDING_BILLING_INFO")
+    return { label: "Com erro", group: "Outro" };
   return { label: "Indisponível", group: "Outro" };
 }
 
@@ -1216,10 +1221,21 @@ export async function listMasterCampaigns(
   if (organizationIds.length === 0) return { period, campaigns: [], clients: [], notices: [] };
   const { data: organizations, error: orgError } = await supabaseAdmin
     .from("organizations")
-    .select("id, legal_name")
+    .select("id, legal_name, commercial_name")
     .in("id", organizationIds);
-  if (orgError) schemaFail(orgError.message);
-  const names = new Map((organizations ?? []).map((org) => [org.id, org.legal_name]));
+  const organizationRows = orgError && /commercial_name/i.test(orgError.message)
+    ? await supabaseAdmin.from("organizations").select("id, legal_name").in("id", organizationIds)
+    : { data: organizations, error: orgError };
+  if (organizationRows.error) schemaFail(organizationRows.error.message);
+  const names = new Map(
+    (organizationRows.data ?? []).map((org) => [
+      org.id,
+      clientDisplayName({
+        legalName: org.legal_name,
+        commercialName: "commercial_name" in org ? org.commercial_name : "",
+      }),
+    ]),
+  );
   const version = graphVersion();
   const campaigns: MasterCampaignsView["campaigns"] = [];
   const notices: string[] = [];

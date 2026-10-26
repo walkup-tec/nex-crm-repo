@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { clientDisplayName } from "@/lib/client-access";
 import { ensureCreativesBucketFn } from "@/lib/creatives.functions";
 import {
   creativeErrorMessage,
@@ -71,8 +72,8 @@ function mapFile(row: {
 
 async function fetchSnapshot(mode: "master" | "client"): Promise<CreativeSnapshot> {
   const id = await userId();
-  const [organizations, folders, files, profile] = await Promise.all([
-    supabase.from("organizations").select("id, legal_name").order("legal_name"),
+  const [organizationResult, folders, files, profile] = await Promise.all([
+    supabase.from("organizations").select("id, legal_name, commercial_name").order("legal_name"),
     supabase.from("creative_folders").select("id, organization_id, parent_id, name").order("name"),
     supabase
       .from("creative_files")
@@ -80,6 +81,9 @@ async function fetchSnapshot(mode: "master" | "client"): Promise<CreativeSnapsho
       .order("name"),
     supabase.from("profiles").select("organization_id").eq("id", id).maybeSingle(),
   ]);
+  const organizations = organizationResult.error && /commercial_name/i.test(organizationResult.error.message)
+    ? await supabase.from("organizations").select("id, legal_name").order("legal_name")
+    : organizationResult;
   if (organizations.error) fail(organizations.error, "Não foi possível carregar os clientes.");
   if (folders.error) fail(folders.error, "Não foi possível carregar as pastas.");
   if (files.error) fail(files.error, "Não foi possível carregar os arquivos.");
@@ -87,7 +91,10 @@ async function fetchSnapshot(mode: "master" | "client"): Promise<CreativeSnapsho
   const snapshot: CreativeSnapshot = {
     clients: (organizations.data ?? []).map((client) => ({
       id: client.id,
-      name: client.legal_name,
+      name: clientDisplayName({
+        legalName: client.legal_name,
+        commercialName: "commercial_name" in client ? client.commercial_name : "",
+      }),
     })),
     folders: (folders.data ?? []).map(mapFolder),
     files: (files.data ?? []).flatMap((file) => {

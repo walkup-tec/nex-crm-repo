@@ -54,6 +54,13 @@ export function hasCreditCard(
   });
 }
 
+export const metaBalanceHistoryDays = 60;
+
+export function metaBalanceHistorySince(now = Date.now()) {
+  const windowMs = metaBalanceHistoryDays * 24 * 60 * 60 * 1000;
+  return String(Math.floor((now - windowMs) / 1000));
+}
+
 export function shouldUsePrepaidLedger(input: {
   hasCard: boolean;
   displayedCents: number | null;

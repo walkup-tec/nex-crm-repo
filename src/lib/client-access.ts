@@ -13,8 +13,14 @@ export type ClientInvoice = {
 export type BillingProvider = "asaas" | "cora";
 export type DelinquencyMode = "rate" | "amount";
 
+export function clientDisplayName(client: { legalName: string; commercialName?: string | null }) {
+  const commercial = client.commercialName?.trim() ?? "";
+  return commercial || client.legalName.trim();
+}
+
 export type ClientDraft = {
   legalName: string;
+  commercialName: string;
   document: string;
   responsibleName: string;
   responsibleEmail: string;
@@ -49,6 +55,7 @@ export type ClientPromotion = {
 export type ListedClient = {
   id: string;
   legalName: string;
+  commercialName: string;
   document: string;
   responsibleName: string;
   responsibleEmail: string;

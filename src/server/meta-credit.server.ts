@@ -13,6 +13,7 @@ import {
   classifyGraphPayment,
   hasCreditCard,
   mergeLedger,
+  metaBalanceHistorySince,
   prepaidBalanceCents,
   readLedger,
   shouldUsePrepaidLedger,
@@ -166,14 +167,11 @@ async function transactionRows(accountId: string, organizationId: string) {
 
 async function activityRows(accountId: string, organizationId: string, businessId: string | null) {
   const merged: Record<string, unknown>[] = [];
-  const recent = { fields: activityFields, limit: "100" };
-  const history = { fields: activityFields, limit: "100", since: "1514764800" };
-  for (const params of [recent, history]) {
-    try {
-      merged.push(...(await listAdAccountEdge(organizationId, accountId, "activities", params)));
-    } catch (error) {
-      console.error("meta_activities", error instanceof Error ? error.name : "error");
-    }
+  const recent = { fields: activityFields, limit: "100", since: metaBalanceHistorySince() };
+  try {
+    merged.push(...(await listAdAccountEdge(organizationId, accountId, "activities", recent)));
+  } catch (error) {
+    console.error("meta_activities", error instanceof Error ? error.name : "error");
   }
   if (businessId && /^\d+$/.test(businessId) && !merged.some(hasCredit)) {
     try {

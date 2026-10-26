@@ -32,6 +32,7 @@ import { applyMask } from "@/lib/masks";
 import { adsConnectionSections, type ListedUser, type RegisteredClient, type UserPermissions, type UserRole, type UsersSnapshot } from "@/lib/user-access";
 import { GoogleAdsConnect } from "@/components/nex/GoogleAdsConnect";
 import { MetaConnect } from "@/components/nex/MetaConnect";
+import { clientDisplayName } from "@/lib/client-access";
 import { listClientsFn } from "@/lib/clients.functions";
 import { createUserFn, deleteUserFn, listUsersFn, resendInviteFn, setUserBlockedFn, updateUserFn } from "@/lib/users.functions";
 
@@ -87,7 +88,7 @@ export function UsersAdmin() {
             clientsResult.ok
               ? clientsResult.data.map((client) => ({
                   id: client.id,
-                  name: client.legalName,
+                  name: clientDisplayName(client),
                   email: client.responsibleEmail,
                   whatsapp: client.whatsapp,
                   adsMeta: client.adsMeta,

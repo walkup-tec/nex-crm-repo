@@ -615,6 +615,7 @@ export type Database = {
           id: string
           ads_google: boolean
           ads_meta: boolean
+          commercial_name: string
           legal_name: string
           meta_low_balance_alerted_at: string | null
           responsible_email: string
@@ -630,6 +631,7 @@ export type Database = {
           id?: string
           ads_google?: boolean
           ads_meta?: boolean
+          commercial_name?: string
           legal_name: string
           meta_low_balance_alerted_at?: string | null
           responsible_email: string
@@ -645,6 +647,7 @@ export type Database = {
           id?: string
           ads_google?: boolean
           ads_meta?: boolean
+          commercial_name?: string
           legal_name?: string
           meta_low_balance_alerted_at?: string | null
           responsible_email?: string

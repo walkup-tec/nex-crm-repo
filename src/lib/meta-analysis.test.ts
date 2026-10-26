@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   aggregateDays,
+  campaignMark,
   buildAnalysis,
   buildInsights,
   changePercent,
@@ -11,6 +12,13 @@ import {
   ratesOf,
 } from "./meta-analysis";
 import type { MetaCampaignRow, MetaDayPoint, MetaKpis } from "./meta-access";
+
+assert.equal(campaignMark({ status: "Ativa", statusGroup: "Ativa" }), "ativa");
+assert.equal(campaignMark({ status: "Inativa", statusGroup: "Inativa" }), "desativada");
+assert.equal(campaignMark({ status: "Encerrada", statusGroup: "Encerrada" }), "desativada");
+assert.equal(campaignMark({ status: "Em análise", statusGroup: "Outro" }), "desativada");
+assert.equal(campaignMark({ status: "Com erro", statusGroup: "Outro" }), "erro");
+assert.equal(campaignMark({ status: "Indisponível", statusGroup: "Outro" }), "erro");
 
 function campaign(
   partial: Partial<MetaCampaignRow> & Pick<MetaCampaignRow, "id" | "name">,

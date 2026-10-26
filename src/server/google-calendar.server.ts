@@ -432,6 +432,15 @@ export async function disconnectGoogleCalendar(userId: string) {
   return connectionView(saved.data);
 }
 
+async function assignMeetingStage(organizationId: string, leadId: string) {
+  try {
+    const { assignMeetingKanbanStage } = await import("@/server/chatbot.server");
+    await assignMeetingKanbanStage(organizationId, leadId);
+  } catch (error) {
+    console.error("meeting_stage", error instanceof Error ? error.message : "falha ao mover etapa");
+  }
+}
+
 async function leadInOrg(organizationId: string, leadId: string) {
   if (!meetingRecordId(leadId)) fail("Escolha o lead da reunião.");
   const lead = await from("chatbot_contacts").select("id, name").eq("id", leadId).eq("organization_id", organizationId).maybeSingle();
@@ -831,6 +840,7 @@ export async function createLeadMeeting(userId: string, input: {
   const existing = await from("lead_meetings").select("*").eq("organization_id", gate.organizationId).eq("request_id", input.requestId).maybeSingle();
   if (existing.error) schemaFail(existing.error.message);
   if (existing.data && cell(existing.data, "google_event_id") && cell(existing.data, "status") === "scheduled") {
+    if (gate.admin) await assignMeetingStage(gate.organizationId, cell(lead, "id"));
     return shown(await decorate([existing.data], userId, gate.manager));
   }
 
@@ -905,6 +915,7 @@ export async function createLeadMeeting(userId: string, input: {
     }).eq("id", cell(reserved, "id")).eq("organization_id", gate.organizationId).select("*").maybeSingle();
     if (updated.error || !updated.data) schemaFail(updated.error?.message || "lead_meetings");
     const view = await decorate([updated.data], userId, gate.manager);
+    if (gate.admin) await assignMeetingStage(gate.organizationId, cell(lead, "id"));
     void sendMeetingNotices(gate.organizationId, cell(lead, "id"), cell(updated.data, "id"), meetingWhen(slot.start, slot.end), guests.lead, meetUrlFromEvent(event));
     return shown(view);
   } catch (error) {

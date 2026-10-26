@@ -39,7 +39,7 @@ export type ChatbotSnapshot = {
     direction: "in" | "out";
     status: "pending" | "sent" | "failed";
     createdAt: string;
-    mediaKind: "" | "image" | "video" | "audio";
+    mediaKind: "" | "image" | "video" | "audio" | "document";
     mediaMime: string;
     saved: boolean;
     internal: boolean;
@@ -337,6 +337,62 @@ export function composerDraftChange(next: string, sent: string) {
   return next;
 }
 
+export type ComposerMediaKind = "image" | "video" | "audio" | "document";
+
+export const composerMediaMaxBytes = 16 * 1024 * 1024;
+
+export const composerMediaChoices: { kind: ComposerMediaKind; label: string; accept: string }[] = [
+  { kind: "image", label: "Imagem", accept: "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" },
+  { kind: "video", label: "Vídeo", accept: "video/mp4,video/webm,video/quicktime,video/3gpp,.mp4,.webm,.mov,.3gp" },
+  { kind: "audio", label: "Áudio", accept: "audio/ogg,audio/mpeg,audio/mp4,audio/webm,audio/aac,audio/wav,audio/opus,.ogg,.mp3,.m4a,.aac,.wav,.opus,.webm" },
+  { kind: "document", label: "PDF", accept: "application/pdf,.pdf" },
+];
+
+const composerMediaMimes: Record<ComposerMediaKind, readonly string[]> = {
+  image: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  video: ["video/mp4", "video/webm", "video/quicktime", "video/3gpp"],
+  audio: ["audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm", "audio/aac", "audio/opus", "audio/wav"],
+  document: ["application/pdf"],
+};
+
+function composerMediaMime(kind: ComposerMediaKind, mime: string, extension: string) {
+  const clean = mime.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (kind === "document") return clean === "application/pdf" || extension === "pdf" ? "application/pdf" : "";
+  if (extension === "webm") return kind === "video" ? "video/webm" : kind === "audio" ? "audio/webm" : "";
+  if (composerMediaMimes[kind].includes(clean)) return clean;
+  const fromName: Record<string, { kind: ComposerMediaKind; mime: string }> = {
+    jpg: { kind: "image", mime: "image/jpeg" },
+    jpeg: { kind: "image", mime: "image/jpeg" },
+    png: { kind: "image", mime: "image/png" },
+    webp: { kind: "image", mime: "image/webp" },
+    gif: { kind: "image", mime: "image/gif" },
+    mp4: { kind: "video", mime: "video/mp4" },
+    mov: { kind: "video", mime: "video/quicktime" },
+    "3gp": { kind: "video", mime: "video/3gpp" },
+    mp3: { kind: "audio", mime: "audio/mpeg" },
+    ogg: { kind: "audio", mime: "audio/ogg" },
+    m4a: { kind: "audio", mime: "audio/mp4" },
+    aac: { kind: "audio", mime: "audio/aac" },
+    opus: { kind: "audio", mime: "audio/opus" },
+    wav: { kind: "audio", mime: "audio/wav" },
+  };
+  const found = fromName[extension];
+  return found && found.kind === kind ? found.mime : "";
+}
+
+export function composerMediaFile(input: { name: string; mime: string; size: number; kind: string }) {
+  const kind = input.kind === "image" || input.kind === "video" || input.kind === "audio" || input.kind === "document" ? input.kind : "";
+  if (!kind) return { ok: false as const, message: "Escolha imagem, vídeo, áudio ou PDF." };
+  if (!Number.isFinite(input.size) || input.size <= 0) return { ok: false as const, message: "Não foi possível ler o arquivo." };
+  if (input.size > composerMediaMaxBytes) return { ok: false as const, message: "O arquivo pode ter no máximo 16 MB." };
+  const extension = input.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime = composerMediaMime(kind, input.mime, extension);
+  if (!mime) return { ok: false as const, message: kind === "document" ? "Envie um arquivo PDF." : "Esse formato não pode ser enviado." };
+  const fallback = kind === "document" ? "arquivo.pdf" : kind === "video" ? "video.mp4" : kind === "audio" ? "audio.ogg" : "imagem.jpg";
+  const name = input.name.replace(/[^\w.\- ()]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || fallback;
+  return { ok: true as const, kind, mime, name };
+}
+
 export function acceptSnapshot(requestId: number, lastAppliedId: number) {
   return requestId > lastAppliedId;
 }
@@ -551,6 +607,17 @@ export function whatsappImagePayload(phone: string, fileName: string, mime: stri
   return {
     number: phone,
     mediatype: "image",
+    mimetype: mime,
+    caption: "",
+    media: base64,
+    fileName,
+  };
+}
+
+export function whatsappVideoPayload(phone: string, fileName: string, mime: string, base64: string) {
+  return {
+    number: phone,
+    mediatype: "video",
     mimetype: mime,
     caption: "",
     media: base64,
@@ -936,7 +1003,7 @@ export function evolutionMessageContent(data: unknown): { text: string; mediaKin
   return { text: caption || (mediaKind === "audio" ? "[áudio]" : ""), mediaKind, mediaMime: mediaMime(nested["mimetype"]) };
 }
 
-export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video" | "audio" = ""): { mime: string; base64: string; kind: "" | "image" | "video" | "audio" } {
+export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video" | "audio" | "document" = ""): { mime: string; base64: string; kind: "" | "image" | "video" | "audio" | "document" } {
   const root = isRecord(payload) ? payload : {};
   const record = typeof root["base64"] === "string" ? root : isRecord(root["data"]) && typeof root["data"]["base64"] === "string" ? root["data"] : root;
   let base64 = typeof record["base64"] === "string" ? record["base64"].replace(/\s/g, "") : "";
@@ -947,15 +1014,17 @@ export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video
     base64 = prefix[2] ?? "";
   }
   const named = typeof record["mediaType"] === "string" ? record["mediaType"] : "";
-  const kind = mime.startsWith("video/") || named === "video" || named === "videoMessage"
-    ? "video"
-    : mime.startsWith("audio/") || named === "audio" || named === "audioMessage"
-      ? "audio"
-      : mime.startsWith("image/") || named === "image" || named === "imageMessage"
-        ? "image"
-        : hint;
+  const kind = mime === "application/pdf" || named === "document" || named === "documentMessage"
+    ? "document"
+    : mime.startsWith("video/") || named === "video" || named === "videoMessage"
+      ? "video"
+      : mime.startsWith("audio/") || named === "audio" || named === "audioMessage"
+        ? "audio"
+        : mime.startsWith("image/") || named === "image" || named === "imageMessage"
+          ? "image"
+          : hint;
   if (!base64 || !kind || base64.length > 40_000_000) return { mime: "", base64: "", kind: "" };
-  return { mime: mime || (kind === "video" ? "video/mp4" : kind === "audio" ? "audio/ogg" : "image/jpeg"), base64, kind };
+  return { mime: mime || (kind === "document" ? "application/pdf" : kind === "video" ? "video/mp4" : kind === "audio" ? "audio/ogg" : "image/jpeg"), base64, kind };
 }
 
 function buttonReplyText(value: unknown) {
@@ -1003,7 +1072,20 @@ export function evolutionMessageText(message: unknown): string {
 }
 
 export const wonKanbanStage = "Sucesso";
+export const meetingKanbanStage = "Reunião";
+export const attendanceKanbanStage = "Atendimento";
 export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho", wonKanbanStage];
+
+export function shouldAssignMeetingStage(currentStage: string, scheduled: boolean) {
+  if (!scheduled) return false;
+  if (protectedKanbanStage(currentStage)) return false;
+  return currentStage.trim().localeCompare(meetingKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
+}
+
+export function shouldAssignAttendanceStage(currentStage: string) {
+  if (protectedKanbanStage(currentStage)) return false;
+  return currentStage.trim().localeCompare(attendanceKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
+}
 
 export function protectedKanbanStage(name: string) {
   return name.trim().toLowerCase() === wonKanbanStage.toLowerCase();

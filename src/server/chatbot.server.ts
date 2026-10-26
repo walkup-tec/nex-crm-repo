@@ -1,4 +1,4 @@
-import { agendaEmailList } from "@/lib/google-calendar";
+import { agendaEmailList, mmsMasterAutomation } from "@/lib/google-calendar";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { evolutionRuntime } from "@/server/evo.server";
 import { createOrganizationAttendant } from "@/server/users.server";
@@ -72,8 +72,10 @@ import {
   propostaFileName,
   propostaMessages,
   whatsappCadastroButton,
+  composerMediaFile,
   whatsappDocumentPayload,
   whatsappImagePayload,
+  whatsappVideoPayload,
   whatsappFlowAudioPayload,
   whatsappFlowTextPayload,
   whatsappTextPayload,
@@ -82,6 +84,10 @@ import {
   quickReplyText,
   defaultKanbanStages,
   kanbanStageName,
+  attendanceKanbanStage,
+  meetingKanbanStage,
+  shouldAssignAttendanceStage,
+  shouldAssignMeetingStage,
   keepWhatsappName,
   tagColorValue,
   clientVisibleTo,
@@ -527,7 +533,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       direction: cell(row, "direction") as "in" | "out",
       status: cell(row, "status") as "pending" | "sent" | "failed",
       createdAt: cell(row, "created_at"),
-      mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : cell(row, "media_kind") === "audio" ? "audio" as const : "" as const,
+      mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : cell(row, "media_kind") === "audio" ? "audio" as const : cell(row, "media_kind") === "document" ? "document" as const : "" as const,
       mediaMime: cell(row, "media_mime"),
       saved: savedMedia.has(cell(row, "id")),
       internal: row["internal"] === true,
@@ -824,12 +830,85 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     .select("id")
     .maybeSingle();
   if (saved.error) fail(schemaMessage(saved.error.message));
+  const startingAttendance = !assignee || assignee !== userId || cell(conversation.data, "status") !== "active";
   const assigned = await assignConversation(conversationId, organizationId, userId, {
     status: "active",
     bot_paused: true,
     updated_at: new Date().toISOString(),
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
+  if (startingAttendance) await assignAttendanceKanbanStage(organizationId, admin, cell(conversation.data, "contact_id"));
+}
+
+export async function sendChatbotMedia(userId: string, conversationId: string, input: { kind: string; name: string; mime: string; base64: string }) {
+  const raw = input.base64.replace(/^data:[^;]+;base64,/, "").replace(/\s/g, "");
+  const bytes = Buffer.from(raw, "base64");
+  const file = composerMediaFile({ name: input.name, mime: input.mime, size: bytes.length, kind: input.kind });
+  if (!file.ok) fail(file.message);
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error) fail(schemaMessage(conversation.error.message));
+  if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
+  const assignee = cell(conversation.data, "assignee_id");
+  if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
+  const contact = await table("chatbot_contacts")
+    .select("phone")
+    .eq("id", cell(conversation.data, "contact_id"))
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (contact.error) fail(schemaMessage(contact.error.message));
+  const storedPhone = cell(contact.data, "phone");
+  const phone = whatsappGroupJid(storedPhone) || whatsappNumber(storedPhone) || "";
+  if (!phone) fail("Esse contato não tem um telefone válido.");
+  const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  if (!admin) {
+    const allowed = await teamConnectionIds(userId, organizationId);
+    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
+  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  const sent = file.kind === "audio"
+    ? await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(phone, raw), 60000)
+    : await evo(
+        `/message/sendMedia/${instance}`,
+        "POST",
+        file.kind === "document"
+          ? whatsappDocumentPayload(phone, file.name, raw)
+          : file.kind === "video"
+            ? whatsappVideoPayload(phone, file.name, file.mime, raw)
+            : whatsappImagePayload(phone, file.name, file.mime, raw),
+        file.kind === "image" ? 60000 : 90000,
+      );
+  const externalId = readMessageId(sent);
+  const text = file.kind === "audio" ? "[áudio]" : file.kind === "video" ? "[vídeo]" : file.kind === "image" ? "[imagem]" : file.name;
+  const row = {
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    text,
+    direction: "out",
+    status: "sent",
+    external_id: externalId || null,
+  };
+  const saved = await table("chatbot_messages")
+    .insert({ ...row, media_kind: file.kind, media_mime: file.mime })
+    .select("id")
+    .maybeSingle();
+  if (saved.error && /media_kind|media_mime/i.test(saved.error.message)) {
+    const plain = await table("chatbot_messages").insert(row).select("id").maybeSingle();
+    if (plain.error) fail(schemaMessage(plain.error.message));
+  } else if (saved.error) fail(schemaMessage(saved.error.message));
+  const startingAttendance = !assignee || assignee !== userId || cell(conversation.data, "status") !== "active";
+  const assigned = await assignConversation(conversationId, organizationId, userId, {
+    status: "active",
+    bot_paused: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (assigned.error) fail(schemaMessage(assigned.error.message));
+  if (startingAttendance) await assignAttendanceKanbanStage(organizationId, admin, cell(conversation.data, "contact_id"));
 }
 
 export async function sendChatbotCadastro(userId: string, conversationId: string) {
@@ -1387,12 +1466,13 @@ async function assignConversation(
 }
 
 export async function assumeChatbotConversation(userId: string, conversationId: string) {
-  const { organizationId, conversation } = await requireVisibleConversation(userId, conversationId);
+  const { organizationId, admin, conversation } = await requireVisibleConversation(userId, conversationId);
   const assignee = cell(conversation, "assignee_id");
   if (assignee && assignee !== userId) fail("Essa conversa já está com outro atendente.");
   if (assignee === userId) return;
   const updated = await assignConversation(conversationId, organizationId, userId, { status: "active", bot_paused: true });
   if (updated.error) fail(schemaMessage(updated.error.message));
+  await assignAttendanceKanbanStage(organizationId, admin, cell(conversation, "contact_id"));
 }
 
 export async function finishChatbotConversation(userId: string, conversationId: string) {
@@ -2136,7 +2216,7 @@ async function savedMessageIds(organizationId: string) {
   return new Set((result.data ?? []).map((row) => cell(row, "message_id")).filter(Boolean));
 }
 
-const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" | "audio" }>();
+const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" }>();
 
 async function ownedChatMessage(userId: string, messageId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
@@ -2160,7 +2240,7 @@ async function ownedChatMessage(userId: string, messageId: string) {
   return { organizationId, message: message.data, conversation: conversation.data, connection };
 }
 
-async function fetchEvolutionMedia(instanceName: string, externalId: string, kind: "image" | "video" | "audio") {
+async function fetchEvolutionMedia(instanceName: string, externalId: string, kind: "image" | "video" | "audio" | "document") {
   if (!instanceName || !externalId) return null;
   const cacheKey = `${instanceName}:${externalId}:${kind}`;
   const cached = mediaFileCache.get(cacheKey);
@@ -2192,9 +2272,10 @@ function mediaPlaceholder(text: string) {
   return text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]" || text === "[áudio]";
 }
 
-function storedMediaKind(value: string, text: string): "image" | "video" | "audio" | "" {
+function storedMediaKind(value: string, text: string): "image" | "video" | "audio" | "document" | "" {
   if (value === "video" || text === "[vídeo]") return "video";
   if (value === "audio" || text === "[áudio]") return "audio";
+  if (value === "document") return "document";
   if (value === "image" || text === "[imagem]" || text === "[mensagem]") return "image";
   return "";
 }
@@ -2204,7 +2285,7 @@ export async function chatbotMessageMedia(userId: string, messageId: string) {
   const text = cell(owned.message, "text");
   const hinted = storedMediaKind(cell(owned.message, "media_kind"), text);
   if (!hinted && !mediaPlaceholder(text)) fail("Essa mensagem não tem mídia.");
-  let file: { mime: string; base64: string; kind: "image" | "video" | "audio" } | null = null;
+  let file: { mime: string; base64: string; kind: "image" | "video" | "audio" | "document" } | null = null;
   try {
     file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), hinted || "image");
   } catch {
@@ -2240,21 +2321,23 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
   if (!file) fail("Não foi possível salvar essa mídia.");
   await ensureMediaBucket();
   const id = crypto.randomUUID();
-  const extension = file.mime.includes("png")
-    ? "png"
-    : file.mime.includes("webp")
-      ? "webp"
-      : file.mime.includes("gif")
-        ? "gif"
-        : file.kind === "video"
-          ? "mp4"
-          : file.kind === "audio"
-            ? file.mime.includes("mpeg")
-              ? "mp3"
-              : "ogg"
-            : "jpg";
+  const extension = file.kind === "document"
+    ? "pdf"
+    : file.mime.includes("png")
+      ? "png"
+      : file.mime.includes("webp")
+        ? "webp"
+        : file.mime.includes("gif")
+          ? "gif"
+          : file.kind === "video"
+            ? "mp4"
+            : file.kind === "audio"
+              ? file.mime.includes("mpeg")
+                ? "mp3"
+                : "ogg"
+              : "jpg";
   const storagePath = `${owned.organizationId}/${contactId}/${id}.${extension}`;
-  const contentType = file.mime.split(";")[0]?.trim().toLowerCase() || (file.kind === "audio" ? "audio/ogg" : file.kind === "video" ? "video/mp4" : "image/jpeg");
+  const contentType = file.mime.split(";")[0]?.trim().toLowerCase() || (file.kind === "document" ? "application/pdf" : file.kind === "audio" ? "audio/ogg" : file.kind === "video" ? "video/mp4" : "image/jpeg");
   const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(storagePath, Buffer.from(file.base64, "base64"), {
     contentType,
     upsert: false,
@@ -2266,7 +2349,7 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
       organization_id: owned.organizationId,
       contact_id: contactId,
       message_id: messageId,
-      name: file.kind === "video" ? `video.${extension}` : file.kind === "audio" ? `audio.${extension}` : `imagem.${extension}`,
+      name: file.kind === "document" ? (text.toLowerCase().endsWith(".pdf") ? text.slice(0, 80) : "arquivo.pdf") : file.kind === "video" ? `video.${extension}` : file.kind === "audio" ? `audio.${extension}` : `imagem.${extension}`,
       mime_type: contentType,
       storage_path: storagePath,
     })
@@ -3143,8 +3226,47 @@ export async function listChatbotClients(userId: string): Promise<ChatbotClientR
   });
 }
 
+async function mmsMasterActor(organizationId: string, admin: boolean) {
+  if (!admin) return false;
+  const org = await table("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
+  if (org.error) return false;
+  return mmsMasterAutomation(cell(org.data, "legal_name"), true);
+}
+
+export async function assignMeetingKanbanStage(organizationId: string, contactId: string) {
+  if (!(await mmsMasterActor(organizationId, true))) return;
+  const current = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error || !shouldAssignMeetingStage(cell(current.data, "stage_name"), true)) return;
+  await moveContactToKanbanStage(organizationId, contactId, meetingKanbanStage);
+}
+
+async function assignAttendanceKanbanStage(organizationId: string, admin: boolean, contactId: string) {
+  if (!(await mmsMasterActor(organizationId, admin))) return;
+  const current = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error || !shouldAssignAttendanceStage(cell(current.data, "stage_name"))) return;
+  await moveContactToKanbanStage(organizationId, contactId, attendanceKanbanStage);
+}
+
+async function assignScheduledMeetingStages(organizationId: string) {
+  const meetings = await rowsOrMissing(
+    table("lead_meetings").select("lead_id").eq("organization_id", organizationId).eq("status", "scheduled").not("google_event_id", "is", null),
+  );
+  if (meetings.missing || !meetings.rows.length) return;
+  const ids = [...new Set(meetings.rows.map((row) => cell(row, "lead_id")).filter(Boolean))];
+  if (!ids.length) return;
+  const contacts = await rowsOrMissing(
+    table("chatbot_contacts").select("id, stage_name").eq("organization_id", organizationId).in("id", ids),
+  );
+  if (contacts.missing) return;
+  for (const row of contacts.rows) {
+    if (!shouldAssignMeetingStage(cell(row, "stage_name"), true)) continue;
+    await moveContactToKanbanStage(organizationId, cell(row, "id"), meetingKanbanStage);
+  }
+}
+
 export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBoard> {
-  const { organizationId } = await membership(userId, "kanban");
+  const { organizationId, admin } = await membership(userId, "kanban");
+  if (await mmsMasterActor(organizationId, admin)) await assignScheduledMeetingStages(organizationId);
   const stages = await listChatbotStages(userId);
   const contactQuery = (withDeal: boolean) =>
     table("chatbot_contacts")
@@ -3493,6 +3615,7 @@ export async function callChatbotContact(userId: string, contactId: string) {
         updated_at: new Date().toISOString(),
       });
       if (updated.error) fail(schemaMessage(updated.error.message));
+      await assignAttendanceKanbanStage(organizationId, admin, contactId);
     }
     return { conversationId: cell(current, "id") };
   }
@@ -3514,7 +3637,10 @@ export async function callChatbotContact(userId: string, contactId: string) {
     const { assumed_by: _assumedBy, ...withoutCredit } = conversationInsert;
     created = await table("chatbot_conversations").insert(withoutCredit).select("id").maybeSingle();
   }
-  if (created.data) return { conversationId: cell(created.data, "id") };
+  if (created.data) {
+    await assignAttendanceKanbanStage(organizationId, admin, contactId);
+    return { conversationId: cell(created.data, "id") };
+  }
   if (!duplicate(created.error)) fail(schemaMessage(created.error?.message ?? ""));
   const again = await table("chatbot_conversations")
     .select("id, assignee_id")
@@ -3524,6 +3650,7 @@ export async function callChatbotContact(userId: string, contactId: string) {
   if (again.error) fail(schemaMessage(again.error.message));
   const assignee = cell(again.data, "assignee_id");
   if (!again.data || (assignee && assignee !== userId)) fail("Essa conversa já está com outro atendente.");
+  await assignAttendanceKanbanStage(organizationId, admin, contactId);
   return { conversationId: cell(again.data, "id") };
 }
 
@@ -3603,19 +3730,21 @@ export async function startChatbotConversation(userId: string, input: { name: st
     }
   }
   await grantContactTag(organizationId, contactId, "Lead adicionado", "#D97706");
-  await moveContactToKanbanStage(organizationId, contactId, "Atendimento");
-  const staged = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  if (staged.error) fail(schemaMessage(staged.error.message));
-  if (cell(staged.data, "stage_name").localeCompare("Atendimento", "pt-BR", { sensitivity: "accent" }) !== 0) {
-    fail("Não foi possível colocar o contato na etapa Atendimento.");
+  if (await mmsMasterActor(organizationId, admin)) {
+    await moveContactToKanbanStage(organizationId, contactId, attendanceKanbanStage);
+    const staged = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    if (staged.error) fail(schemaMessage(staged.error.message));
+    if (cell(staged.data, "stage_name").localeCompare(attendanceKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0) {
+      fail("Não foi possível colocar o contato na etapa Atendimento.");
+    }
+    const credited = await table("chatbot_contacts")
+      .update({ stage_set_by: userId })
+      .eq("id", contactId)
+      .eq("organization_id", organizationId)
+      .select("id")
+      .maybeSingle();
+    if (credited.error && !/stage_set_by/i.test(credited.error.message)) fail(schemaMessage(credited.error.message));
   }
-  const credited = await table("chatbot_contacts")
-    .update({ stage_set_by: userId })
-    .eq("id", contactId)
-    .eq("organization_id", organizationId)
-    .select("id")
-    .maybeSingle();
-  if (credited.error && !/stage_set_by/i.test(credited.error.message)) fail(schemaMessage(credited.error.message));
   let conversationId = cell(existing.data, "id");
   if (conversationId) {
     const updated = await assignConversation(conversationId, organizationId, userId, {

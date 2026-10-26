@@ -15,6 +15,7 @@ import {
   resolveIncomingPhone,
   composerDraftAfterSend,
   composerDraftChange,
+  composerMediaFile,
   composerSendsOnEnter,
   channelsAllConnected,
   droppedChannels,
@@ -66,7 +67,11 @@ import {
   dailyAttendanceCounts,
   overviewMetrics,
   stageDistribution,
+  attendanceKanbanStage,
+  meetingKanbanStage,
   protectedKanbanStage,
+  shouldAssignAttendanceStage,
+  shouldAssignMeetingStage,
   withWonKanbanStage,
   inboxOrder,
   inboxUnread,
@@ -171,6 +176,17 @@ assert.equal(clientVisibleTo("ana", "bia", false), false);
 assert.equal(clientVisibleTo("ana", "bia", true), true);
 assert.equal(clientVisibleTo("", "ana", false), false);
 assert.equal(protectedKanbanStage(" sucesso "), true);
+assert.equal(meetingKanbanStage, "Reunião");
+assert.equal(shouldAssignMeetingStage("Atendimento", true), true);
+assert.equal(shouldAssignMeetingStage("", true), true);
+assert.equal(shouldAssignMeetingStage("Reunião", true), false);
+assert.equal(shouldAssignMeetingStage("reunião", true), false);
+assert.equal(shouldAssignMeetingStage("Sucesso", true), false);
+assert.equal(shouldAssignMeetingStage("Atendimento", false), false);
+assert.equal(attendanceKanbanStage, "Atendimento");
+assert.equal(shouldAssignAttendanceStage("Novos leads"), true);
+assert.equal(shouldAssignAttendanceStage("Atendimento"), false);
+assert.equal(shouldAssignAttendanceStage("Sucesso"), false);
 assert.deepEqual(withWonKanbanStage(["Proposta"]), ["Proposta", "Sucesso"]);
 assert.deepEqual(withWonKanbanStage(["Sucesso", "Proposta"]), ["Sucesso", "Proposta"]);
 assert.deepEqual(
@@ -690,6 +706,13 @@ assert.equal(composerDraftAfterSend("Podemos agendar amanhã", "Podemos agendar"
 assert.equal(composerDraftAfterSend("", "Podemos agendar"), "");
 assert.equal(composerDraftChange("Podemos agendar", "Podemos agendar"), "");
 assert.equal(composerDraftChange("Nova mensagem", "Podemos agendar"), "Nova mensagem");
+assert.equal(composerMediaFile({ name: "foto.jpg", mime: "image/jpeg", size: 1200, kind: "image" }).ok, true);
+assert.equal(composerMediaFile({ name: "contrato.pdf", mime: "", size: 1200, kind: "document" }).ok, true);
+assert.equal(composerMediaFile({ name: "fala.mp3", mime: "audio/mpeg", size: 1200, kind: "audio" }).ok, true);
+assert.equal(composerMediaFile({ name: "clipe.mp4", mime: "video/mp4", size: 1200, kind: "video" }).ok, true);
+assert.equal(composerMediaFile({ name: "foto.jpg", mime: "image/jpeg", size: 1200, kind: "document" }).ok, false);
+assert.equal(composerMediaFile({ name: "grande.pdf", mime: "application/pdf", size: 16 * 1024 * 1024 + 1, kind: "document" }).ok, false);
+assert.equal(evolutionMediaFile({ mimetype: "application/pdf", base64: "abc" }, "document").kind, "document");
 assert.equal(shouldSyncEvolution(0, 10000), true);
 assert.equal(shouldSyncEvolution(1000, 5000), false);
 assert.deepEqual(

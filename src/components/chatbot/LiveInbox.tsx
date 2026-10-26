@@ -14,6 +14,7 @@ import {
   sendChatbotCadastroFn,
   sendChatbotMinutaFn,
   sendChatbotPropostaFn,
+  sendChatbotMediaFn,
   sendChatbotMessageFn,
   startChatbotConversationFn,
   startChatbotFlowFn,
@@ -28,7 +29,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -37,7 +38,7 @@ function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
 type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
-type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" | "audio" };
+type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" };
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
 
 function mediaCaption(text: string) {
@@ -46,15 +47,15 @@ function mediaCaption(text: string) {
 }
 
 function expectsMedia(item: InboxMessage) {
-  return item.mediaKind === "image" || item.mediaKind === "video" || item.mediaKind === "audio" || item.text === "[mensagem]" || item.text === "[imagem]" || item.text === "[vídeo]" || item.text === "[áudio]";
+  return item.mediaKind === "image" || item.mediaKind === "video" || item.mediaKind === "audio" || item.mediaKind === "document" || item.text === "[mensagem]" || item.text === "[imagem]" || item.text === "[vídeo]" || item.text === "[áudio]";
 }
 
-function downloadMedia(file: LoadedMedia) {
+function downloadMedia(file: LoadedMedia, name = "") {
   const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: file.mime }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = file.kind === "video" ? "video.mp4" : file.kind === "audio" ? "audio.ogg" : "imagem.jpg";
+  link.download = file.kind === "document" ? (name.toLowerCase().endsWith(".pdf") ? name : "arquivo.pdf") : file.kind === "video" ? "video.mp4" : file.kind === "audio" ? "audio.ogg" : "imagem.jpg";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -197,14 +198,17 @@ function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void
     );
   }
   const caption = mediaCaption(item.text);
+  const documentName = file.kind === "document" ? (item.text.toLowerCase().endsWith(".pdf") ? item.text : "PDF") : "";
   return (
     <div className={`message-bubble media ${item.direction}`}>
-      {file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
-      {caption ? <p>{caption}</p> : null}
+      {file.kind === "document" ? <span className="message-text">{documentName}</span> : file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
+      {file.kind === "document" || !caption ? null : <p>{caption}</p>}
       <div className="media-actions">
+        {file.kind === "document" ? null : (
         <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
           Abrir
         </Button>
+        )}
         <Button
           type="button"
           size="sm"
@@ -226,12 +230,13 @@ function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void
         >
           {saved ? "Salvo no contato" : saving ? "Salvando" : "Salvar"}
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => downloadMedia(file)}>
+        <Button type="button" size="sm" variant="ghost" onClick={() => downloadMedia(file, documentName)}>
           Baixar
         </Button>
       </div>
       {error ? <p>{error}</p> : null}
       <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
+      {file.kind === "document" ? null : (
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
@@ -240,6 +245,7 @@ function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void
           {file.kind === "video" ? <video className="media-frame" src={file.url} controls autoPlay /> : <img className="media-frame" src={file.url} alt="" />}
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }
@@ -304,6 +310,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [blockingBots, setBlockingBots] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [botsOpen, setBotsOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState<ChatbotQuickReply[]>([]);
   const [quickNote, setQuickNote] = useState("");
   const [flows, setFlows] = useState<{ id: string; name: string }[]>([]);
@@ -343,6 +350,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const loadAgain = useRef(false);
   const historyRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const mediaKind = useRef<ComposerMediaKind | "">("");
   const stickToBottom = useRef(true);
   const sending = useRef(false);
   const lastSent = useRef("");
@@ -444,6 +453,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setTransferOpen(false);
     setQuickOpen(false);
     setBotsOpen(false);
+    setMediaOpen(false);
   }, [selected]);
 
   useEffect(() => {
@@ -630,6 +640,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
 
   async function openQuickReplies() {
     setBotsOpen(false);
+    setMediaOpen(false);
     const next = !quickOpen;
     setQuickOpen(next);
     if (!next) return;
@@ -689,6 +700,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   async function openBots() {
     if (contact?.botsDisabled) return;
     setQuickOpen(false);
+    setMediaOpen(false);
     const next = !botsOpen;
     setBotsOpen(next);
     if (!next) return;
@@ -946,6 +958,70 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       sending.current = false;
       setPending(false);
       composerRef.current?.focus();
+    }
+  }
+
+  function readFileBase64(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = typeof reader.result === "string" ? reader.result : "";
+        const marker = value.indexOf(",");
+        resolve(marker >= 0 ? value.slice(marker + 1) : value);
+      };
+      reader.onerror = () => reject(new Error("read"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function chooseMedia(kind: ComposerMediaKind) {
+    const choice = composerMediaChoices.find((item) => item.kind === kind);
+    const input = mediaInputRef.current;
+    if (!choice || !input || pending) return;
+    mediaKind.current = kind;
+    setMediaOpen(false);
+    setQuickOpen(false);
+    setBotsOpen(false);
+    input.accept = choice.accept;
+    input.value = "";
+    input.click();
+  }
+
+  async function sendMedia(file: File) {
+    const kind = mediaKind.current;
+    if (!selected || !kind || sending.current) return;
+    const checked = composerMediaFile({ name: file.name, mime: file.type, size: file.size, kind });
+    if (!checked.ok) {
+      setMessage(checked.message);
+      return;
+    }
+    let base64 = "";
+    try {
+      base64 = await readFileBase64(file);
+    } catch {
+      setMessage("Não foi possível ler o arquivo.");
+      return;
+    }
+    if (!selected || sending.current) return;
+    sending.current = true;
+    setPending(true);
+    setMediaOpen(false);
+    setMessage("Enviando arquivo...");
+    try {
+      const result = await sendChatbotMediaFn({
+        data: { conversationId: selected, kind: checked.kind, name: checked.name, mime: checked.mime, base64 },
+      });
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+      setMessage("");
+      void load();
+    } catch {
+      setMessage("Não foi possível enviar o arquivo.");
+    } finally {
+      sending.current = false;
+      setPending(false);
     }
   }
 
@@ -1355,9 +1431,45 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                     ))}
                   </div>
                 ) : null}
+                {mediaOpen ? (
+                  <div className="composer-menu" role="menu" aria-label="Enviar mídia">
+                    {composerMediaChoices.map((item) => (
+                      <button key={item.kind} type="button" role="menuitem" disabled={pending} onClick={() => chooseMedia(item.kind)}>
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 {signatureError ? <p className="composer-error">{signatureError}</p> : null}
                 <footer className="composer-actions">
                   <div className="composer-tools">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="composer-plus"
+                      disabled={pending}
+                      aria-expanded={mediaOpen}
+                      aria-label="Enviar mídia"
+                      title="Enviar mídia"
+                      onClick={() => {
+                        setQuickOpen(false);
+                        setBotsOpen(false);
+                        setMediaOpen((open) => !open);
+                      }}
+                    >
+                      <Plus />
+                    </Button>
+                    <input
+                      ref={mediaInputRef}
+                      type="file"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) void sendMedia(file);
+                      }}
+                    />
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>
                       Respostas rápidas
                     </Button>

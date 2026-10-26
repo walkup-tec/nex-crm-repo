@@ -15,6 +15,79 @@ export function campaignMark(row: Pick<MetaCampaignRow, "status" | "statusGroup"
   return "erro";
 }
 
+const objectiveLabels: Record<string, string> = {
+  link_click: "Cliques no link",
+  lead: "Leads",
+  "onsite_conversion.lead_grouped": "Leads",
+  "offsite_conversion.fb_pixel_lead": "Leads",
+  purchase: "Compras",
+  omni_purchase: "Compras",
+  "offsite_conversion.fb_pixel_purchase": "Compras",
+  messaging_conversation_started_7d: "Conversas por mensagem iniciada",
+  "onsite_conversion.messaging_conversation_started_7d": "Conversas por mensagem iniciada",
+  messaging_first_reply: "Novos contatos de mensagem",
+  "onsite_conversion.messaging_first_reply": "Novos contatos de mensagem",
+  post_engagement: "Engajamentos",
+  page_engagement: "Engajamentos",
+  landing_page_view: "Visualizações da página",
+  video_view: "Visualizações de vídeo",
+  complete_registration: "Cadastros",
+  contact: "Contatos",
+  add_to_cart: "Adições ao carrinho",
+  initiate_checkout: "Inícios de checkout",
+  whatsapp_item_click: "Cliques no WhatsApp",
+  "onsite_conversion.whatsapp_item_click": "Cliques no WhatsApp",
+};
+
+export function objectiveLabel(type: string | undefined) {
+  if (!type) return "Resultados";
+  const bare = type.includes(":") ? type.slice(type.indexOf(":") + 1) : type;
+  if (objectiveLabels[bare]) return objectiveLabels[bare];
+  if (bare.includes("messaging_conversation")) return "Conversas por mensagem iniciada";
+  if (bare.includes("messaging_first_reply")) return "Novos contatos de mensagem";
+  if (bare.includes("whatsapp")) return "Cliques no WhatsApp";
+  if (/(^|\.)lead$|lead_grouped/.test(bare)) return "Leads";
+  return "Resultados";
+}
+
+function resultAmount(value: unknown) {
+  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function adsManagerResult(entries: unknown): {
+  results: number;
+  resultLabel: string;
+  resultActionTypes: string[];
+} | null {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  const parsed = entries.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as {
+      indicator?: string;
+      action_type?: string;
+      value?: string;
+      values?: { value?: string; attribution_windows?: string[] }[];
+    };
+    const raw = row.indicator || row.action_type || "";
+    const actionType = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1) : raw;
+    if (!actionType) return [];
+    const chosen = Array.isArray(row.values)
+      ? (row.values.find((item) => item.attribution_windows?.includes("default")) ?? row.values[0])
+      : null;
+    const value = row.value != null ? resultAmount(row.value) : resultAmount(chosen?.value);
+    return [{ value, actionType, label: objectiveLabel(actionType) }];
+  });
+  if (parsed.length === 0) return null;
+  const labels = new Set(parsed.map((item) => item.label));
+  const chosen = labels.size === 1 ? parsed : [parsed[0]];
+  return {
+    results: chosen.reduce((sum, item) => sum + item.value, 0),
+    resultLabel: chosen[0].label,
+    resultActionTypes: [...new Set(chosen.map((item) => item.actionType))],
+  };
+}
+
 export type Grain = "day" | "week" | "month";
 
 export type MetricSet = {

@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { clientDisplayName } from "@/lib/client-access";
+import { adsManagerResult } from "@/lib/meta-analysis";
 import type {
   MetaAccountView,
   MetaBusinessView,
@@ -119,6 +120,7 @@ type GraphInsight = {
   cpm?: string;
   frequency?: string;
   actions?: InsightAction[];
+  results?: unknown;
   campaign_id?: string;
   date_start?: string;
 };
@@ -703,9 +705,10 @@ function insightQuery(period: MetaPeriod) {
 }
 
 function campaignInsightField(period: MetaPeriod) {
-  const metrics = "impressions,reach,clicks,spend,actions";
-  if (period.mode === "total") return `insights.date_preset(maximum){${metrics}}`;
-  return `insights.time_range({"since":"${period.since}","until":"${period.until}"}){${metrics}}`;
+  const metrics = "impressions,reach,clicks,spend,actions,results";
+  const attribution = ".use_unified_attribution_setting(true)";
+  if (period.mode === "total") return `insights.date_preset(maximum)${attribution}{${metrics}}`;
+  return `insights.time_range({"since":"${period.since}","until":"${period.until}"})${attribution}{${metrics}}`;
 }
 
 function amount(value: unknown) {
@@ -757,6 +760,20 @@ function metricsOf(insight: GraphInsight | undefined) {
       ? (clicks / impressions) * 100
       : null;
   const cpc = insight?.cpc ? amount(insight.cpc) : clicks > 0 ? spend / clicks : null;
+  const objective = adsManagerResult(insight?.results);
+  if (objective) {
+    return {
+      reach,
+      impressions,
+      clicks,
+      spend,
+      ctr,
+      cpc,
+      results: objective.results,
+      resultLabel: objective.resultLabel,
+      resultActionTypes: objective.resultActionTypes,
+    };
+  }
   for (const group of resultGroups) {
     for (const type of group) {
       const found = insight?.actions?.find((entry) => entry.action_type === type);
@@ -815,15 +832,6 @@ function kpisFrom(stats: ReturnType<typeof metricsOf>, insight?: GraphInsight): 
     cpm: cpm != null && Number.isFinite(cpm) ? cpm : null,
     frequency: frequency != null && Number.isFinite(frequency) ? frequency : null,
   };
-}
-
-function countResults(actions: InsightAction[] | undefined, types: string[], clicks: number) {
-  if (types.length === 0) return clicks;
-  for (const type of types) {
-    const found = actions?.find((entry) => entry.action_type === type);
-    if (found) return amount(found.value);
-  }
-  return 0;
 }
 
 function campaignStatus(raw: string | undefined): {
@@ -923,10 +931,12 @@ function dailyRanges(period: MetaPeriod) {
   return ranges;
 }
 
-function dailyResult(actions: InsightAction[] | undefined, types: string[], clicks: unknown) {
+function dailyResult(insight: GraphInsight, types: string[], clicks: unknown) {
+  const objective = adsManagerResult(insight.results);
+  if (objective) return objective.results;
   if (types.length === 0) return amount(clicks);
   for (const type of types) {
-    const found = actions?.find((entry) => entry.action_type === type);
+    const found = insight.actions?.find((entry) => entry.action_type === type);
     if (found) return amount(found.value);
   }
   return 0;
@@ -969,7 +979,7 @@ async function collectDaily(
         ? await graphFetch(new URL(next))
         : await graphGet(version, `/act_${accountId}/insights`, token, {
             level: "campaign",
-            fields: "campaign_id,spend,impressions,clicks,actions,date_start",
+            fields: "campaign_id,spend,impressions,clicks,actions,results,date_start",
             time_increment: "1",
             limit: "500",
             use_unified_attribution_setting: "true",
@@ -990,7 +1000,7 @@ async function collectDaily(
           spend: amount(row.spend),
           impressions: amount(row.impressions),
           clicks: amount(row.clicks),
-          results: dailyResult(row.actions, actionTypes.get(row.campaign_id) ?? [], row.clicks),
+          results: dailyResult(row, actionTypes.get(row.campaign_id) ?? [], row.clicks),
         });
       }
       next = typeof body.paging?.next === "string" ? body.paging.next : null;
@@ -1086,7 +1096,8 @@ async function collectPrevious(
   if (!window) return { previous: null, previousCampaigns: [], previousReady: false };
   const range = JSON.stringify(window);
   const accountInsight = await graphGet(version, `/act_${accountId}/insights`, token, {
-    fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions",
+    fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions,results",
+    use_unified_attribution_setting: "true",
     time_range: range,
   });
   const snapshots: MetaCampaignSnapshot[] = [];
@@ -1096,7 +1107,8 @@ async function collectPrevious(
       ? await graphFetch(new URL(next))
       : await graphGet(version, `/act_${accountId}/insights`, token, {
           level: "campaign",
-          fields: "campaign_id,spend,impressions,reach,clicks,actions",
+          fields: "campaign_id,spend,impressions,reach,clicks,actions,results",
+          use_unified_attribution_setting: "true",
           time_range: range,
           limit: "500",
         });
@@ -1109,11 +1121,7 @@ async function collectPrevious(
         impressions: amount(row.impressions),
         reach: amount(row.reach),
         clicks: amount(row.clicks),
-        results: countResults(
-          row.actions,
-          actionTypes.get(row.campaign_id) ?? accountTypes,
-          amount(row.clicks),
-        ),
+        results: dailyResult(row, actionTypes.get(row.campaign_id) ?? accountTypes, row.clicks),
       });
     }
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
@@ -1349,7 +1357,8 @@ export async function getMetaPerformance(
       `/act_${selected.external_account_id}/insights`,
       token,
       {
-        fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions",
+        fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions,results",
+        use_unified_attribution_setting: "true",
         ...insightQuery(period),
       },
     );

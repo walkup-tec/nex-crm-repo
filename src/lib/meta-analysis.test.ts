@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   aggregateDays,
+  adsManagerResult,
   campaignMark,
   buildAnalysis,
   buildInsights,
@@ -19,6 +20,41 @@ assert.equal(campaignMark({ status: "Encerrada", statusGroup: "Encerrada" }), "d
 assert.equal(campaignMark({ status: "Em análise", statusGroup: "Outro" }), "desativada");
 assert.equal(campaignMark({ status: "Com erro", statusGroup: "Outro" }), "erro");
 assert.equal(campaignMark({ status: "Indisponível", statusGroup: "Outro" }), "erro");
+assert.deepEqual(
+  adsManagerResult([
+    {
+      indicator: "actions:whatsapp_item_click",
+      values: [{ value: "1", attribution_windows: ["default"] }],
+    },
+  ]),
+  { results: 1, resultLabel: "Cliques no WhatsApp", resultActionTypes: ["whatsapp_item_click"] },
+);
+assert.deepEqual(
+  adsManagerResult([
+    {
+      indicator: "actions:onsite_conversion.messaging_conversation_started_7d",
+      values: [{ value: "0", attribution_windows: ["default"] }],
+    },
+  ]),
+  {
+    results: 0,
+    resultLabel: "Conversas por mensagem iniciada",
+    resultActionTypes: ["onsite_conversion.messaging_conversation_started_7d"],
+  },
+);
+assert.equal(
+  adsManagerResult([
+    {
+      indicator: "actions:whatsapp_item_click",
+      values: [
+        { value: "5", attribution_windows: ["7d_click"] },
+        { value: "1", attribution_windows: ["default"] },
+      ],
+    },
+  ])?.results,
+  1,
+);
+assert.equal(adsManagerResult([]), null);
 
 function campaign(
   partial: Partial<MetaCampaignRow> & Pick<MetaCampaignRow, "id" | "name">,

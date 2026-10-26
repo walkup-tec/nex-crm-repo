@@ -9,6 +9,7 @@ import {
 } from "@/lib/client-permissions";
 import { allChatbotMenus, chatbotMenusFromStorage, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
+import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
 import { readMasterRoles } from "@/lib/master-role";
 import type { UserPermissions, UserRole } from "@/lib/user-access";
 
@@ -64,6 +65,7 @@ export const Route = createFileRoute("/_authenticated")({
     }
     const { master, roles } = await readMasterRoles(data.user.id);
     let calendarMenu = false;
+    let legalName = "";
     let adsMeta = true;
     let adsGoogle = false;
     if (profile?.organization_id) {
@@ -81,16 +83,17 @@ export const Route = createFileRoute("/_authenticated")({
         adsMeta = full.data.ads_meta === true;
         adsGoogle = full.data.ads_google === true;
       }
-      calendarMenu = keepsAccessWithoutPayment(org?.legal_name ?? "");
+      legalName = org?.legal_name ?? "";
       const closed =
         org?.status === "disabled" || org?.status === "blocked" || org?.status === "contract_ended";
-      if (!master && closed && !calendarMenu) {
+      if (!master && closed && !keepsAccessWithoutPayment(legalName)) {
         await supabase.auth.signOut();
         throw redirect({ href: "/auth?motivo=inativo" });
       }
     }
-    if (location.pathname === "/chatbot/agendamentos" && !calendarMenu) throw redirect({ to: "/chatbot" });
     const role: UserRole = master || roles.includes("master") ? "master" : roles.includes("client_admin") ? "client_admin" : "client_user";
+    calendarMenu = agendaMenuForMmsMaster(legalName, role);
+    if (location.pathname === "/chatbot/agendamentos" && !calendarMenu) throw redirect({ to: "/chatbot" });
     const loaded = role === "client_user" ? await readOwnPermissions(data.user.id) : null;
     const permissions = loaded?.permissions ?? null;
     const chatbotMenus = loaded?.chatbotMenus ?? null;

@@ -51,6 +51,10 @@ export function googleCalendarForMms(legalName: string) {
   return keepsAccessWithoutPayment(legalName);
 }
 
+export function agendaMenuForMmsMaster(legalName: string, role: string) {
+  return googleCalendarForMms(legalName) && (role === "client_admin" || role === "master");
+}
+
 export type GoogleEventShape = {
   id?: string;
   status?: string;

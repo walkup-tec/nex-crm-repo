@@ -15,6 +15,7 @@ import {
   meetingWindowStarts,
   meetUrlFromEvent,
   overlapsBusy,
+  agendaMenuForMmsMaster,
   googleCalendarForMms,
   remoteMeetingPatch,
   standardMeetingDescription,
@@ -35,6 +36,10 @@ const now = Date.parse("2026-10-23T12:00:00-03:00");
 assert.equal(googleCalendarForMms("MMS MARKETING E SISTEMAS DIGITAIS LTDA"), true);
 assert.equal(googleCalendarForMms(" mms marketing e sistemas digitais ltda "), true);
 assert.equal(googleCalendarForMms("WALKUP SISTEMAS E INTELIGENCIA LTDA"), false);
+assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_admin"), true);
+assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), true);
+assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_user"), false);
+assert.equal(agendaMenuForMmsMaster("WALKUP SISTEMAS E INTELIGENCIA LTDA", "client_admin"), false);
 assert.equal(cleanEmail("  Ana@Empresa.com "), "ana@empresa.com");
 assert.equal(cleanEmail("ana@"), "");
 assert.equal(standardMeetingTitle, "Apresentação NEX Mkt Digital");

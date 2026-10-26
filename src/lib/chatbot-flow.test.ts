@@ -300,11 +300,13 @@ assert.deepEqual(flowDropPosition({ x: 10, y: 20 }, [{ x: 10, y: 20 }]), { x: 38
 assert.deepEqual(flowDropPosition({ x: 200, y: 80 }, []), { x: 200, y: 80 });
 assert.equal(flowMenuOptions([{ id: "1", label: "  Vendas  " }, { id: "4", label: "Fora" }]).map((option) => option.label).join(","), "Vendas");
 const menuButton = flowMenuButtonText("  Você já fez anúncio?  ");
-assert.equal(menuButton.title, "");
+assert.equal(menuButton.title, "\u200b");
+assert.equal(`*${menuButton.title}*`.includes("undefined"), false);
 assert.equal(menuButton.description, "Você já fez anúncio?");
 assert.equal(menuButton.description.includes("*"), false);
 const welcomeButton = flowMenuButtonText("Seja muito bem vindo á NEX!\nPara te atender melhor, informe:");
-assert.equal(welcomeButton.title, "");
+assert.equal(welcomeButton.title, "\u200b");
+assert.equal(`*${welcomeButton.title}*`.includes("undefined"), false);
 assert.equal(welcomeButton.description, "Seja muito bem vindo á NEX!\nPara te atender melhor, informe:");
 assert.deepEqual(waitSetting("5"), { amount: 5, unit: "minutos" });
 assert.deepEqual(waitSetting("30 segundos"), { amount: 30, unit: "segundos" });

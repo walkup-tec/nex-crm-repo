@@ -4877,6 +4877,7 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 
 export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
   const { organizationId, admin } = await membership(userId, "overview");
+  const masterView = mmsMasterActor(organizationId, admin);
   const listedStages = await listChatbotStages(userId);
   const [conversations, contacts, ratings, connections, profiles, members, teams, products, productLinks] = await Promise.all([
     (async () => {
@@ -4921,6 +4922,7 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
   return {
     userId,
     admin,
+    mmsMaster: await masterView,
     stages: listedStages.stages.map((item) => item.name),
     channels: connections.map((row) => ({
       id: cell(row, "id"),

@@ -1110,11 +1110,25 @@ export type ChatbotOverview = {
   days: { day: string; count: number }[];
 };
 
+export const entryFunnelStage = "Entrada";
+
 export function stageDistribution(stages: string[], contacts: { stage: string }[]) {
   return stages.map((name) => ({
     name,
     count: contacts.filter((item) => item.stage === name).length,
   }));
+}
+
+export function funnelWithEntry(stages: { name: string; count: number }[], received: number) {
+  const kanban = stages.filter((stage) => stage.name.trim().localeCompare(entryFunnelStage, "pt-BR", { sensitivity: "accent" }) !== 0);
+  return [{ name: entryFunnelStage, count: received }, ...kanban];
+}
+
+export function funnelAttendanceForMaster(stages: { name: string; count: number }[], attending: number, mmsMaster: boolean) {
+  if (!mmsMaster) return stages;
+  return stages.map((stage) =>
+    stage.name.trim().localeCompare(attendanceKanbanStage, "pt-BR", { sensitivity: "accent" }) === 0 ? { ...stage, count: attending } : stage,
+  );
 }
 
 export function overviewMetrics(input: {
@@ -1217,6 +1231,7 @@ export type OverviewBoard = {
   productLinks?: { contactId: string; productId: string }[];
   userId: string;
   admin: boolean;
+  mmsMaster?: boolean;
 };
 
 export type OverviewAgent = { id: string; name: string; team: string; total: number; success: number; wonCents: number };
@@ -1314,6 +1329,7 @@ export function applyOverviewFilters(source: OverviewBoard, filters: OverviewFil
     });
   return {
     ...metrics,
+    stages: funnelAttendanceForMaster(funnelWithEntry(metrics.stages, metrics.received), metrics.attending, source.mmsMaster === true),
     agents,
     trends: cardTrends({
       period: filters.period,

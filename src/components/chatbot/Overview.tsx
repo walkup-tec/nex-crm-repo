@@ -13,6 +13,7 @@ const stagePalette = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(
 
 function stageFill(name: string, index: number) {
   const key = name.trim().toLocaleLowerCase("pt-BR");
+  if (key === "entrada") return "oklch(0.62 0.16 275)";
   if (key === "sucesso") return "var(--success)";
   if (key === "perdido") return "var(--destructive)";
   return stagePalette[index % stagePalette.length];
@@ -288,7 +289,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
                 compact
                 floor={0.2}
                 label="Funil das etapas do atendimento"
-                fills={view.stages.map((stage, index) => stageFill(stage.name, index))}
+                fills={view.stages.map((stage, index) => stageFill(stage.name, Math.max(0, index - 1)))}
                 stages={view.stages.map((stage) => ({
                   label: stage.name,
                   value: String(stage.count),

@@ -67,6 +67,7 @@ import {
   dailyAttendanceCounts,
   overviewMetrics,
   stageDistribution,
+  funnelWithEntry,
   attendanceKanbanStage,
   meetingKanbanStage,
   protectedKanbanStage,
@@ -231,6 +232,21 @@ assert.deepEqual(
   ],
 );
 assert.deepEqual(
+  funnelWithEntry(
+    [
+      { name: "Atendimento", count: 2 },
+      { name: "Entrada", count: 9 },
+      { name: "Reunião", count: 3 },
+    ],
+    15,
+  ),
+  [
+    { name: "Entrada", count: 15 },
+    { name: "Atendimento", count: 2 },
+    { name: "Reunião", count: 3 },
+  ],
+);
+assert.deepEqual(
   dailyAttendanceCounts(["2026-10-15T02:30:00.000Z", "2026-10-15T15:00:00.000Z", "2026-10-15T18:00:00.000Z", ""]),
   [
     { day: "2026-10-14", count: 1 },
@@ -320,6 +336,56 @@ assert.equal(
   ).received,
   1,
 );
+assert.deepEqual(
+  applyOverviewFilters(
+    {
+      stages: ["Atendimento", "Reunião"],
+      attendants: [],
+      channels: [],
+      conversations: [
+        { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+        { id: "a2", contactId: "c2", connectionId: "w1", assigneeId: "", finishedCount: 0, createdAt: "2026-10-15T16:00:00.000Z" },
+        { id: "a3", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T17:00:00.000Z" },
+      ],
+      contacts: [
+        { id: "c1", negotiatedCents: null, stage: "Atendimento", ownerId: "" },
+        { id: "c2", negotiatedCents: null, stage: "Reunião", ownerId: "" },
+      ],
+      ratings: [],
+      userId: "bia",
+      admin: false,
+    },
+    { period: { mode: "total" }, attendantId: "", channelId: "" },
+  ).stages,
+  [
+    { name: "Entrada", count: 2 },
+    { name: "Atendimento", count: 1 },
+    { name: "Reunião", count: 1 },
+  ],
+);
+const humanAttendance = {
+  stages: ["Atendimento", "Reunião"],
+  attendants: [],
+  channels: [],
+  conversations: [
+    { id: "a1", contactId: "c1", connectionId: "w1", assigneeId: "ana", finishedCount: 0, createdAt: "2026-10-15T15:00:00.000Z" },
+    { id: "a2", contactId: "c2", connectionId: "w1", assigneeId: "bia", finishedCount: 0, createdAt: "2026-10-15T16:00:00.000Z" },
+    { id: "a3", contactId: "c3", connectionId: "w1", assigneeId: "", finishedCount: 0, createdAt: "2026-10-15T17:00:00.000Z" },
+  ],
+  contacts: [
+    { id: "c1", negotiatedCents: null, stage: "Reunião", ownerId: "" },
+    { id: "c2", negotiatedCents: null, stage: "Proposta", ownerId: "" },
+    { id: "c3", negotiatedCents: null, stage: "Atendimento", ownerId: "" },
+  ],
+  ratings: [],
+  userId: "bia",
+  admin: true,
+};
+const everyPeriod = { period: { mode: "total" as const }, attendantId: "", channelId: "" };
+assert.equal(applyOverviewFilters(humanAttendance, everyPeriod).attending, 2);
+assert.equal(applyOverviewFilters(humanAttendance, everyPeriod).stages.find((stage) => stage.name === "Atendimento")?.count, 1);
+assert.equal(applyOverviewFilters({ ...humanAttendance, mmsMaster: true }, everyPeriod).stages.find((stage) => stage.name === "Atendimento")?.count, 2);
+assert.equal(applyOverviewFilters({ ...humanAttendance, mmsMaster: true }, everyPeriod).stages.find((stage) => stage.name === "Reunião")?.count, 1);
 assert.equal(
   applyOverviewFilters(
     {

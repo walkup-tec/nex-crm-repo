@@ -91,6 +91,7 @@ import {
   defaultQueueMinutes,
   defaultRatingPrompt,
   overdueQueue,
+  waitingForHuman,
   reactivationMinutes,
   reactivatesClosedConversation,
   attendanceExpired,
@@ -3200,20 +3201,25 @@ export async function listChatbotQueueAlerts(userId: string) {
   if (!admin) return { minutes, offline: false, leads: [] as { conversationId: string; contactId: string; name: string; waitingMinutes: number }[] };
   const listed = await rowsOrMissing(
     table("chatbot_conversations")
-      .select("id, contact_id, created_at, queued_at")
+      .select("id, contact_id, created_at, queued_at, bot_paused")
       .eq("organization_id", organizationId)
       .eq("status", "queue")
+      .eq("bot_paused", true)
       .is("assignee_id", null),
   );
-  const conversations = listed.missing
-    ? await rows(
+  const paused = listed.missing
+    ? await rowsOrMissing(
         table("chatbot_conversations")
-          .select("id, contact_id, created_at")
+          .select("id, contact_id, created_at, bot_paused")
           .eq("organization_id", organizationId)
           .eq("status", "queue")
+          .eq("bot_paused", true)
           .is("assignee_id", null),
       )
-    : listed.rows;
+    : listed;
+  const conversations = (paused.missing ? [] : paused.rows).filter((row) =>
+    waitingForHuman({ assigneeName: "", botPaused: row["bot_paused"] === true, closed: false }),
+  );
   const contactIds = [...new Set(conversations.map((row) => cell(row, "contact_id")).filter(Boolean))];
   const contacts = contactIds.length
     ? await rows(table("chatbot_contacts").select("id, name").eq("organization_id", organizationId).in("id", contactIds))

@@ -328,6 +328,15 @@ export function composerSendsOnEnter(input: { key: string; code: string; shiftKe
   return enter && !input.shiftKey && !input.pending && input.text.trim().length > 0;
 }
 
+export function composerDraftAfterSend(current: string, sent: string) {
+  return current.trim() === sent.trim() ? "" : current;
+}
+
+export function composerDraftChange(next: string, sent: string) {
+  if (sent.trim() && next.trim() === sent.trim()) return "";
+  return next;
+}
+
 export function acceptSnapshot(requestId: number, lastAppliedId: number) {
   return requestId > lastAppliedId;
 }

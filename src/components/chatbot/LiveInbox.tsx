@@ -28,7 +28,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -902,41 +902,49 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     }
   }
 
+  function restoreUnsent(clean: string) {
+    lastSent.current = "";
+    setDraft((current) => (current.trim() === "" || current.trim() === clean ? clean : current));
+  }
+
   async function send(text = draft) {
     const clean = text.trim();
-    if (!selected || !clean) return false;
-    if (sending.current && lastSent.current === clean) return false;
+    if (!selected || !clean || sending.current) return false;
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
       conversationId: selected,
       text: clean,
       createdAt: new Date().toISOString(),
     };
+    sending.current = true;
     lastSent.current = clean;
     setOutgoing((current) => [...current, preview]);
     setDraft("");
-    sending.current = true;
+    setPending(true);
+    if (composerRef.current) composerRef.current.value = "";
     composerRef.current?.focus();
     try {
       const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
-      if (lastSent.current === clean) lastSent.current = "";
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-        setDraft(clean);
+        restoreUnsent(clean);
         setMessage(result.message);
         return false;
       }
+      lastSent.current = clean;
+      setDraft((current) => composerDraftAfterSend(current, clean));
+      if (composerRef.current && composerRef.current.value.trim() === clean) composerRef.current.value = "";
       setMessage("");
       void load();
       return true;
     } catch {
-      if (lastSent.current === clean) lastSent.current = "";
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-      setDraft(clean);
+      restoreUnsent(clean);
       setMessage("Não foi possível enviar a mensagem.");
       return false;
     } finally {
       sending.current = false;
+      setPending(false);
       composerRef.current?.focus();
     }
   }
@@ -1300,7 +1308,13 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 <textarea
                   ref={composerRef}
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    const sent = lastSent.current;
+                    const next = composerDraftChange(event.target.value, sent);
+                    if (next !== event.target.value) event.target.value = next;
+                    if (sent && next.trim() !== sent.trim()) lastSent.current = "";
+                    setDraft(next);
+                  }}
                   onKeyDown={(event) => {
                     if (event.nativeEvent.isComposing) return;
                     if (!composerSendsOnEnter({ key: event.key, code: event.code, shiftKey: event.shiftKey, pending, text: event.currentTarget.value })) return;

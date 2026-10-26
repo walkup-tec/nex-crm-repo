@@ -13,6 +13,8 @@ import {
   incomingMessageInstant,
   learnLidPhones,
   resolveIncomingPhone,
+  composerDraftAfterSend,
+  composerDraftChange,
   composerSendsOnEnter,
   channelsAllConnected,
   droppedChannels,
@@ -683,6 +685,11 @@ assert.equal(composerSendsOnEnter({ key: "Enter", code: "NumpadEnter", shiftKey:
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: true, pending: false, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: true, text: "Bom dia" }), false);
 assert.equal(composerSendsOnEnter({ key: "Enter", code: "Enter", shiftKey: false, pending: false, text: "   " }), false);
+assert.equal(composerDraftAfterSend("Podemos agendar", "Podemos agendar"), "");
+assert.equal(composerDraftAfterSend("Podemos agendar amanhã", "Podemos agendar"), "Podemos agendar amanhã");
+assert.equal(composerDraftAfterSend("", "Podemos agendar"), "");
+assert.equal(composerDraftChange("Podemos agendar", "Podemos agendar"), "");
+assert.equal(composerDraftChange("Nova mensagem", "Podemos agendar"), "Nova mensagem");
 assert.equal(shouldSyncEvolution(0, 10000), true);
 assert.equal(shouldSyncEvolution(1000, 5000), false);
 assert.deepEqual(

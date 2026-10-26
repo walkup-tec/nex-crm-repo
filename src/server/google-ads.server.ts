@@ -1,7 +1,9 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   accountDailyQuery,
+  campaignMetricsQuery,
   fillAccountDays,
+  parseCampaignMetrics,
   googleAdsQueryWindow,
   parseAccountDays,
   saoPauloDate,
@@ -216,9 +218,22 @@ export async function readGoogleAdsCampaigns(
   if (!gate.organizationId) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], days: empty, period: window.period };
   const account = await selectedAccount(gate.organizationId);
   if (!account) return { linked: false as const, account: null, campaigns: [] as GoogleAdsCampaign[], days: empty, period: window.period };
-  const pages = await search(account.customerId, account.loginCustomerId, accountDailyQuery(window.since, window.until), callBudget());
+  const signal = callBudget();
+  const pages = await search(account.customerId, account.loginCustomerId, accountDailyQuery(window.since, window.until), signal);
   const days = fillAccountDays(pages.flatMap((page) => parseAccountDays(page)), window.since, window.until);
-  return { linked: true as const, account, campaigns: [] as GoogleAdsCampaign[], days, period: window.period };
+  let campaigns: GoogleAdsCampaign[] = [];
+  try {
+    const campaignPages = await search(
+      account.customerId,
+      account.loginCustomerId,
+      campaignMetricsQuery(window.since, window.until),
+      signal,
+    );
+    campaigns = campaignPages.flatMap((page) => parseCampaignMetrics(page));
+  } catch (error) {
+    console.error("google_ads_campaigns", error instanceof Error ? error.name : "error");
+  }
+  return { linked: true as const, account, campaigns, days, period: window.period };
 }
 
 export type { GoogleAdsAccount };

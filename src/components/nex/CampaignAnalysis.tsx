@@ -21,7 +21,6 @@ import {
   formatPercent,
   type ChangeSense,
   type Grain,
-  type ResultBreakdown,
 } from "@/lib/meta-analysis";
 import type { MetaPerformanceView } from "@/lib/meta-access";
 import { JourneyFunnel } from "@/components/nex/StageFunnel";
@@ -81,30 +80,6 @@ function Panel({
       {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       {children}
     </section>
-  );
-}
-
-function ResultBreakdownList({
-  rows,
-  currency,
-  mode,
-}: {
-  rows: ResultBreakdown[];
-  currency: string;
-  mode: "results" | "cost";
-}) {
-  if (rows.length === 0) return <strong className="mt-2 block font-display text-3xl">—</strong>;
-  return (
-    <ul className="mt-2 space-y-3">
-      {rows.map((row) => (
-        <li key={row.label}>
-          <strong className="block font-display text-2xl">
-            {mode === "results" ? formatInteger(row.results) : formatMoney(row.costPerResult, currency)}
-          </strong>
-          <p className="text-xs text-muted-foreground">{row.label}</p>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -192,39 +167,27 @@ export function CampaignAnalysis({
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-lg border bg-card p-5 sm:col-span-1">
           <p className="text-sm text-muted-foreground">Resultados</p>
-          {model.comparable ? (
-            <>
-              <strong className="mt-2 block font-display text-3xl">
-                {formatInteger(model.current.results)}
-              </strong>
-              <p className="mt-1 text-xs text-muted-foreground">{model.resultLabel}</p>
-              <Delta
-                current={model.current.results}
-                previous={model.previous?.results ?? null}
-                sense="up-good"
-              />
-            </>
-          ) : (
-            <ResultBreakdownList rows={model.breakdown} currency={currency} mode="results" />
-          )}
+          <strong className="mt-2 block font-display text-3xl">
+            {formatInteger(model.current.results)}
+          </strong>
+          <p className="mt-1 text-xs text-muted-foreground">{model.resultLabel}</p>
+          <Delta
+            current={model.current.results}
+            previous={model.previous?.results ?? null}
+            sense="up-good"
+          />
         </article>
         <article className="rounded-lg border bg-card p-5">
           <p className="text-sm text-muted-foreground">Custo por resultado</p>
-          {model.comparable ? (
-            <>
-              <strong className="mt-2 block font-display text-3xl">
-                {formatMoney(model.rates.costPerResult, currency)}
-              </strong>
-              <p className="mt-1 text-xs text-muted-foreground">Média do período</p>
-              <Delta
-                current={model.rates.costPerResult}
-                previous={model.previousRates?.costPerResult ?? null}
-                sense="down-good"
-              />
-            </>
-          ) : (
-            <ResultBreakdownList rows={model.breakdown} currency={currency} mode="cost" />
-          )}
+          <strong className="mt-2 block font-display text-3xl">
+            {formatMoney(model.rates.costPerResult, currency)}
+          </strong>
+          <p className="mt-1 text-xs text-muted-foreground">Média do período</p>
+          <Delta
+            current={model.rates.costPerResult}
+            previous={model.previousRates?.costPerResult ?? null}
+            sense="down-good"
+          />
         </article>
         <article className="rounded-lg border bg-card p-5">
           <p className="text-sm text-muted-foreground">Investimento</p>
@@ -362,22 +325,16 @@ export function CampaignAnalysis({
         >
           <div className="mt-4">
             <strong className="font-display text-2xl">
-              {model.comparable
-                ? `${formatInteger(model.current.results)} resultados`
-                : model.breakdown.map((item) => `${formatInteger(item.results)} ${item.label}`).join(" · ")}
+              {`${formatInteger(model.current.results)} resultados`}
             </strong>
-            {model.comparable && resultsChange != null && (
+            {resultsChange != null && (
               <p className="text-sm text-muted-foreground">
                 {resultsChange >= 0 ? "↑" : "↓"} {formatPercent(Math.abs(resultsChange))} vs.
                 período anterior
               </p>
             )}
           </div>
-          {!model.comparable ? (
-            <p className="mt-6 text-sm text-muted-foreground">
-              Cada campanha mantém o próprio resultado. O gráfico único fica disponível ao filtrar uma campanha.
-            </p>
-          ) : model.buckets.length === 0 ? (
+          {model.buckets.length === 0 ? (
             <EmptyChart />
           ) : (
             <div className="mt-4 h-72">
@@ -430,16 +387,10 @@ export function CampaignAnalysis({
         >
           <div className="mt-4">
             <strong className="font-display text-2xl">
-              {model.comparable
-                ? formatMoney(model.rates.costPerResult, currency)
-                : model.breakdown
-                    .map((item) => `${formatMoney(item.costPerResult, currency)} ${item.label}`)
-                    .join(" · ")}
+              {formatMoney(model.rates.costPerResult, currency)}
             </strong>
-            <p className="text-sm text-muted-foreground">
-              {model.comparable ? "Custo médio por resultado" : "Custo de cada tipo de resultado"}
-            </p>
-            {model.comparable && costChange != null && (
+            <p className="text-sm text-muted-foreground">Custo médio por resultado</p>
+            {costChange != null && (
               <p className="text-sm text-muted-foreground">
                 {costChange >= 0 ? "↑" : "↓"} {formatPercent(Math.abs(costChange))} vs. período
                 anterior
@@ -447,11 +398,7 @@ export function CampaignAnalysis({
               </p>
             )}
           </div>
-          {!model.comparable ? (
-            <p className="mt-6 text-sm text-muted-foreground">
-              O custo não é uma média única porque as campanhas medem resultados diferentes.
-            </p>
-          ) : !hasCost ? (
+          {!hasCost ? (
             <EmptyChart />
           ) : (
             <div className="mt-4 h-72">
@@ -762,10 +709,8 @@ export function CampaignJourney({
             },
             {
               label: "Resultados",
-              value: model.comparable
-                ? formatInteger(model.current.results)
-                : model.breakdown.map((item) => `${formatInteger(item.results)} ${item.label}`).join(" · "),
-              amount: model.comparable ? model.current.results : null,
+              value: formatInteger(model.current.results),
+              amount: model.current.results,
             },
           ]}
         />

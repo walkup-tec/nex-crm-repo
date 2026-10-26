@@ -320,6 +320,20 @@ function zeroMetric(resultLabel: string): MetricSet {
   return { spend: 0, impressions: 0, reach: 0, clicks: 0, results: 0, resultLabel };
 }
 
+export function sumCampaignMetrics(rows: MetricSet[], resultLabel: string): MetricSet {
+  return rows.reduce(
+    (total, row) => ({
+      spend: total.spend + (finite(row.spend) ?? 0),
+      impressions: total.impressions + (finite(row.impressions) ?? 0),
+      reach: total.reach + (finite(row.reach) ?? 0),
+      clicks: total.clicks + (finite(row.clicks) ?? 0),
+      results: total.results + (finite(row.results) ?? 0),
+      resultLabel,
+    }),
+    zeroMetric(resultLabel),
+  );
+}
+
 export function buildInsights(
   current: MetricSet,
   previous: MetricSet | null,
@@ -442,31 +456,31 @@ export function buildAnalysis(input: {
   const labels = new Set((selected ? [selected] : input.campaigns).map((row) => row.resultLabel));
   const comparable = labels.size <= 1;
   const resultLabel = labels.size === 1 ? ([...labels][0] ?? "Resultados") : "Resultados";
-  const current = selected
-    ? metricFromCampaign(selected)
-    : comparable
-      ? { ...metricFromKpis(input.kpis), resultLabel }
-      : { ...metricFromKpis(input.kpis), results: 0, resultLabel };
+  const scoped = selected ? [selected] : input.campaigns;
+  const current = scoped.length
+    ? sumCampaignMetrics(scoped.map(metricFromCampaign), resultLabel)
+    : { ...metricFromKpis(input.kpis), resultLabel };
   const snapshot = selected
     ? (input.previousCampaigns.find((row) => row.id === selected.id) ?? null)
     : null;
+  const previousSnapshots = selected
+    ? snapshot
+      ? [metricFromSnapshot(snapshot, resultLabel)]
+      : [zeroMetric(resultLabel)]
+    : input.previousCampaigns.map((row) => metricFromSnapshot(row, resultLabel));
   const previous = !input.previousReady
     ? null
-    : selected
-      ? snapshot
-        ? metricFromSnapshot(snapshot, selected.resultLabel)
-        : zeroMetric(selected.resultLabel)
+    : previousSnapshots.length
+      ? sumCampaignMetrics(previousSnapshots, resultLabel)
       : input.previous
         ? { ...metricFromKpis(input.previous), resultLabel }
         : zeroMetric(resultLabel);
-  const currentRates = ratesOf(comparable ? current : { ...current, results: 0 });
-  const mediaPrevious = previous ? (comparable ? previous : { ...previous, results: 0 }) : null;
+  const currentRates = ratesOf(current);
+  const mediaPrevious = previous;
   const previousRates = mediaPrevious ? ratesOf(mediaPrevious) : null;
   const relevantDays = selected
     ? input.days.filter((day) => day.campaignId === selected.id)
-    : comparable
-      ? input.days
-      : [];
+    : input.days;
   const grain = input.grain ?? defaultGrain(new Set(relevantDays.map((day) => day.date)).size);
   const campaigns = [...input.campaigns]
     .map((row) => ({
@@ -484,7 +498,7 @@ export function buildAnalysis(input: {
   return {
     comparable,
     resultLabel,
-    current: comparable ? current : { ...current, results: 0 },
+    current,
     previous: mediaPrevious,
     rates: currentRates,
     previousRates,
@@ -492,15 +506,8 @@ export function buildAnalysis(input: {
     grain,
     campaigns,
     breakdown,
-    insights: buildInsights(
-      comparable ? current : { ...current, results: 0 },
-      mediaPrevious,
-      currentRates,
-      previousRates,
-    ),
-    status: comparable
-      ? buildStatus(current, previous, currentRates, previous ? ratesOf(previous) : null)
-      : null,
+    insights: buildInsights(current, mediaPrevious, currentRates, previousRates),
+    status: buildStatus(current, previous, currentRates, previous ? ratesOf(previous) : null),
   };
 }
 

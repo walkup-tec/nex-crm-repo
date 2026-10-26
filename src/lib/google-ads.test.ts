@@ -8,6 +8,7 @@ import {
   googleAdsMetricTotal,
   parseAccountDays,
   selectGoogleAdsMetric,
+  sumGoogleCampaigns,
   cleanCustomerId,
   customerClientQuery,
   googleAdsEnvNames,
@@ -95,9 +96,17 @@ assert.deepEqual(selectGoogleAdsMetric(["clicks"], "impressions"), ["clicks", "i
 assert.deepEqual(selectGoogleAdsMetric(["clicks", "impressions"], "cost"), ["clicks", "cost"]);
 assert.deepEqual(selectGoogleAdsMetric(["clicks", "impressions"], "impressions"), ["clicks"]);
 assert.deepEqual(selectGoogleAdsMetric(["clicks"], "clicks"), ["clicks"]);
-assert.equal(campaignMetricsQuery().startsWith("SELECT"), true);
-assert.equal(campaignMetricsQuery().includes("UPDATE"), false);
-assert.equal(campaignMetricsQuery().includes("mutate"), false);
+assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").startsWith("SELECT"), true);
+assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").includes("BETWEEN '2026-10-01' AND '2026-10-23'"), true);
+assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").includes("UPDATE"), false);
+assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").includes("mutate"), false);
+assert.deepEqual(
+  sumGoogleCampaigns([
+    { impressions: 21, clicks: 0, cost: 1, conversions: 0 },
+    { impressions: 271, clicks: 33, cost: 11, conversions: 1 },
+  ]),
+  { impressions: 292, clicks: 33, cost: 12, conversions: 1 },
+);
 assert.equal(
   googleAdsFailure(403, { error: { status: "PERMISSION_DENIED", details: [{ errors: [{ errorCode: { authorizationError: "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" }, message: "The project is not approved." }] }] } }),
   "O projeto Google Cloud ainda não tem acesso Explorer ou superior para consultar contas reais. PERMISSION_DENIED — CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION — The project is not approved.",

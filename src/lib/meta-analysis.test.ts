@@ -304,15 +304,17 @@ const mixed = buildAnalysis({
   campaignId: null,
 });
 assert.equal(mixed.comparable, false);
-assert.equal(mixed.status, null);
-assert.equal(mixed.current.results, 0);
-assert.equal(mixed.rates.costPerResult, null);
+assert.equal(mixed.current.results, 14);
+assert.equal(mixed.current.clicks, 100);
+assert.equal(mixed.current.impressions, 2800);
+assert.equal(mixed.current.reach, 1500);
+assert.equal(mixed.rates.costPerResult, 60 / 14);
 assert.deepEqual(mixed.breakdown, [
   { label: "Conversas", results: 10, costPerResult: 4 },
   { label: "Leads", results: 4, costPerResult: 5 },
 ]);
 assert.equal(mixed.previous?.spend, 60);
-assert.equal(mixed.previous?.results, 0);
+assert.equal(mixed.previous?.results, 10);
 assert.equal(
   mixed.insights.some((item) => item.title === "Maior alcance"),
   true,

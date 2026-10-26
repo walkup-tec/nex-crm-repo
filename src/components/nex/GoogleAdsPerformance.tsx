@@ -7,9 +7,11 @@ import { readDashboardSnapshot, retryDroppedDashboard, writeDashboardSnapshot, t
 import { readGoogleAdsCampaignsFn } from "@/lib/google-ads.functions";
 import {
   adsLoadFailure,
+  googleAdsCampaignTotal,
   googleAdsDayValue,
   googleAdsMetricTotal,
   selectGoogleAdsMetric,
+  type GoogleAdsCampaign,
   type GoogleAdsDay,
   type GoogleAdsMetric,
   type GoogleAdsPeriod,
@@ -50,6 +52,7 @@ const googleCacheKey = "nex.dashboard.google";
 type GoogleSnapshot = {
   period: GoogleAdsPeriod;
   days: GoogleAdsDay[];
+  campaigns: GoogleAdsCampaign[];
   accountName: string;
   currency: string;
   linked: boolean;
@@ -66,7 +69,7 @@ function browserStorage(): DashboardStorage | null {
 function isGoogleSnapshot(value: unknown): value is GoogleSnapshot {
   if (!value || typeof value !== "object") return false;
   const row = value as Partial<GoogleSnapshot>;
-  return (row.period?.mode === "total" || row.period?.mode === "custom") && Array.isArray(row.days) && typeof row.linked === "boolean";
+  return (row.period?.mode === "total" || row.period?.mode === "custom") && Array.isArray(row.days) && typeof row.linked === "boolean" && (row.campaigns == null || Array.isArray(row.campaigns));
 }
 
 function storedGoogle() {
@@ -76,6 +79,7 @@ function storedGoogle() {
 export function GoogleAdsOverview() {
   const cached = storedGoogle();
   const [days, setDays] = useState<GoogleAdsDay[]>(cached?.days ?? []);
+  const [campaigns, setCampaigns] = useState<GoogleAdsCampaign[]>(cached?.campaigns ?? []);
   const [period, setPeriod] = useState<GoogleAdsPeriod>(cached?.period ?? initialPeriod);
   const [accountName, setAccountName] = useState(cached?.accountName ?? "");
   const [currency, setCurrency] = useState(cached?.currency || "BRL");
@@ -102,6 +106,7 @@ export function GoogleAdsOverview() {
       const snapshot: GoogleSnapshot = {
         period: result.data.period ?? nextPeriod,
         days: result.data.days ?? [],
+        campaigns: result.data.campaigns ?? [],
         accountName: result.data.account?.name ?? "",
         currency: result.data.account?.currency || "BRL",
         linked: result.data.linked,
@@ -111,6 +116,7 @@ export function GoogleAdsOverview() {
       setAccountName(snapshot.accountName);
       setCurrency(snapshot.currency);
       setDays(snapshot.days);
+      setCampaigns(snapshot.campaigns);
       setSeen(true);
       writeDashboardSnapshot(browserStorage(), googleCacheKey, snapshot);
     } catch (failure) {
@@ -172,7 +178,7 @@ export function GoogleAdsOverview() {
               >
                 <span className="text-xs font-medium text-muted-foreground">{metric.label}</span>
                 <span className="mt-2 block text-2xl font-semibold tabular-nums" style={active ? { color: metric.color } : undefined}>
-                  {formatMetric(metric.id, googleAdsMetricTotal(days, metric.id), currency)}
+                  {formatMetric(metric.id, campaigns.length ? googleAdsCampaignTotal(campaigns, metric.id) : googleAdsMetricTotal(days, metric.id), currency)}
                 </span>
               </button>
             );

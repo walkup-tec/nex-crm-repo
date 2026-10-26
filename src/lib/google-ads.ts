@@ -115,14 +115,37 @@ export function accountDailyQuery(since: string, until: string) {
   ].join(" ");
 }
 
-export function campaignMetricsQuery() {
+export function campaignMetricsQuery(since: string, until: string) {
+  if (!dayKey.test(since) || !dayKey.test(until)) throw new Error("Escolha o início e o fim do período.");
   return [
     "SELECT campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions",
     "FROM campaign",
-    "WHERE segments.date DURING LAST_30_DAYS AND campaign.status != 'REMOVED'",
+    `WHERE segments.date BETWEEN '${since}' AND '${until}' AND campaign.status != 'REMOVED'`,
     "ORDER BY metrics.impressions DESC",
-    "LIMIT 50",
   ].join(" ");
+}
+
+export function sumGoogleCampaigns(campaigns: Pick<GoogleAdsCampaign, "impressions" | "clicks" | "cost" | "conversions">[]) {
+  return campaigns.reduce(
+    (total, row) => ({
+      impressions: total.impressions + row.impressions,
+      clicks: total.clicks + row.clicks,
+      cost: total.cost + row.cost,
+      conversions: total.conversions + row.conversions,
+    }),
+    { impressions: 0, clicks: 0, cost: 0, conversions: 0 },
+  );
+}
+
+export function googleAdsCampaignTotal(
+  campaigns: Pick<GoogleAdsCampaign, "impressions" | "clicks" | "cost" | "conversions">[],
+  metric: GoogleAdsMetric,
+) {
+  const total = sumGoogleCampaigns(campaigns);
+  if (metric === "cpc") return total.clicks > 0 ? total.cost / total.clicks : 0;
+  if (metric === "impressions") return total.impressions;
+  if (metric === "cost") return total.cost;
+  return total.clicks;
 }
 
 function record(value: unknown) {

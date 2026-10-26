@@ -125,6 +125,15 @@ export function campaignMetricsQuery(since: string, until: string) {
   ].join(" ");
 }
 
+export function enabledCampaignQuery() {
+  return [
+    "SELECT campaign.id, campaign.name, campaign.status",
+    "FROM campaign",
+    "WHERE campaign.status = 'ENABLED'",
+    "ORDER BY campaign.name",
+  ].join(" ");
+}
+
 export function sumGoogleCampaigns(campaigns: Pick<GoogleAdsCampaign, "impressions" | "clicks" | "cost" | "conversions">[]) {
   return campaigns.reduce(
     (total, row) => ({
@@ -279,6 +288,22 @@ export function parseCampaignMetrics(body: unknown) {
       status: text(campaign.status).trim() || "UNKNOWN",
       ...next,
     });
+  }
+  return campaigns;
+}
+
+export function parseEnabledCampaigns(body: unknown) {
+  const results = record(body).results;
+  if (!Array.isArray(results)) return [];
+  const campaigns: { id: string; name: string }[] = [];
+  const seen = new Set<string>();
+  for (const item of results) {
+    const campaign = record(record(item).campaign);
+    const id = text(campaign.id).trim();
+    const status = text(campaign.status).trim();
+    if (!id || seen.has(id) || (status && status !== "ENABLED")) continue;
+    seen.add(id);
+    campaigns.push({ id, name: text(campaign.name).trim() || `Campanha ${id}` });
   }
   return campaigns;
 }

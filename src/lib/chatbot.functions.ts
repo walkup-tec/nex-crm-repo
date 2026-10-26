@@ -561,6 +561,24 @@ export const setChatbotContactStageFn = createServerFn({ method: "POST" })
     return guard(() => setChatbotContactStage(context.userId, data.contactId, data.stage));
   });
 
+export const listLeadOriginCampaignsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { listLeadOriginCampaigns } = await import("@/server/chatbot.server");
+    return guard(() => listLeadOriginCampaigns(context.userId));
+  });
+
+export const setChatbotContactOriginFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { contactId: string; origin: string }) => ({
+    contactId: data.contactId,
+    origin: typeof data.origin === "string" ? data.origin : "",
+  }))
+  .handler(async ({ context, data }) => {
+    const { setChatbotContactOrigin } = await import("@/server/chatbot.server");
+    return guard(() => setChatbotContactOrigin(context.userId, data.contactId, data.origin));
+  });
+
 export const setChatbotContactTagsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; tagIds: string[] }) => ({

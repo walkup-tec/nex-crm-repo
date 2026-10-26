@@ -1651,7 +1651,46 @@ export type ChatbotContactProfile = {
   contractingLink: boolean;
   contracting: ChatbotContracting | null;
   agendaEmails: string[];
+  originReady: boolean;
+  origin: { id: string; platform: "meta" | "google"; name: string } | null;
 };
+
+export type LeadOriginCampaign = { id: string; name: string; platform: "meta" | "google" };
+
+export type LeadOriginChoice = LeadOriginCampaign & { label: string };
+
+export function leadOriginValue(campaign: { platform: string; id: string }) {
+  return `${campaign.platform}:${campaign.id}`;
+}
+
+export function leadOriginSelection(value: string) {
+  const match = /^(meta|google):(\d+)$/.exec(value.trim());
+  if (!match || (match[1] !== "meta" && match[1] !== "google")) return null;
+  return { platform: match[1], id: match[2] };
+}
+
+export function leadOriginChoices(campaigns: LeadOriginCampaign[]): LeadOriginChoice[] {
+  const seen = new Set<string>();
+  const unique: LeadOriginCampaign[] = [];
+  for (const item of campaigns) {
+    const id = item.id.trim();
+    const name = item.name.trim();
+    if (!id || !name || (item.platform !== "meta" && item.platform !== "google")) continue;
+    const key = leadOriginValue({ platform: item.platform, id });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ id, name, platform: item.platform });
+  }
+  if (unique.length < 2) return [];
+  const repeated = new Map<string, number>();
+  for (const item of unique) repeated.set(item.name, (repeated.get(item.name) ?? 0) + 1);
+  return unique
+    .map((item) => ({
+      ...item,
+      label: (repeated.get(item.name) ?? 0) > 1 ? `${item.name} · ${item.platform === "meta" ? "Meta" : "Google"}` : item.name,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+}
 
 export type ChatbotClientRow = {
   id: string;

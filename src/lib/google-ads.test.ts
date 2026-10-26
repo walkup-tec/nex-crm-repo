@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   accountDailyQuery,
   campaignMetricsQuery,
+  enabledCampaignQuery,
   fillAccountDays,
   googleAdsQueryWindow,
   shiftIsoMonths,
@@ -17,6 +18,7 @@ import {
   missingGoogleAdsEnv,
   parseAccessibleCustomers,
   parseCampaignMetrics,
+  parseEnabledCampaigns,
   parseCustomerClients,
   refreshTokenBody,
   refreshTokenUsable,
@@ -100,6 +102,17 @@ assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").startsWith("SELECT
 assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").includes("BETWEEN '2026-10-01' AND '2026-10-23'"), true);
 assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").includes("UPDATE"), false);
 assert.equal(campaignMetricsQuery("2026-10-01", "2026-10-23").includes("mutate"), false);
+assert.equal(enabledCampaignQuery().includes("campaign.status = 'ENABLED'"), true);
+assert.deepEqual(
+  parseEnabledCampaigns({
+    results: [
+      { campaign: { id: "9", name: "Marca", status: "ENABLED" } },
+      { campaign: { id: "9", name: "Marca", status: "ENABLED" } },
+      { campaign: { id: "4", name: "Pausada", status: "PAUSED" } },
+    ],
+  }),
+  [{ id: "9", name: "Marca" }],
+);
 assert.deepEqual(
   sumGoogleCampaigns([
     { impressions: 21, clicks: 0, cost: 1, conversions: 0 },

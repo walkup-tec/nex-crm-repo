@@ -86,6 +86,7 @@ import {
   kanbanStageName,
   attendanceKanbanStage,
   meetingKanbanStage,
+  leadOriginSelection,
   shouldAssignAttendanceStage,
   shouldAssignMeetingStage,
   keepWhatsappName,
@@ -2831,6 +2832,40 @@ async function nexClientIdForDocument(document: string) {
   return cell(found.data, "id");
 }
 
+async function contactOrigin(organizationId: string, contactId: string) {
+  const row = await table("chatbot_contacts")
+    .select("origin_campaign_id, origin_campaign_platform, origin_campaign_name")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (row.error) {
+    if (/origin_campaign|schema cache|does not exist|PGRST205/i.test(row.error.message)) return { ready: false, origin: null };
+    fail(schemaMessage(row.error.message));
+  }
+  const id = cell(row.data, "origin_campaign_id");
+  const stored = cell(row.data, "origin_campaign_platform");
+  const platform = stored === "meta" || stored === "google" ? stored : "";
+  const name = cell(row.data, "origin_campaign_name");
+  if (!id || !platform) return { ready: true, origin: null };
+  return { ready: true, origin: { id, platform, name: name || id } };
+}
+
+async function activeAdCampaigns(organizationId: string) {
+  const [meta, google] = await Promise.all([
+    import("@/server/meta.server").then((mod) => mod.listActiveMetaCampaignNames(organizationId)),
+    import("@/server/google-ads.server").then((mod) => mod.listActiveGoogleCampaignNames(organizationId)),
+  ]);
+  return [
+    ...meta.map((item) => ({ id: item.id, name: item.name, platform: "meta" as const })),
+    ...google.map((item) => ({ id: item.id, name: item.name, platform: "google" as const })),
+  ];
+}
+
+export async function listLeadOriginCampaigns(userId: string) {
+  const { organizationId } = await membership(userId, "inbox");
+  return activeAdCampaigns(organizationId);
+}
+
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
   const { organizationId } = await membership(userId, "inbox");
   const signedSync = (async () => {
@@ -2841,7 +2876,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
       console.error("contract_signed_sync", error instanceof Error ? error.message : "fail");
     }
   })();
-  const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake, agenda] = await Promise.all([
+  const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake, agenda, origin] = await Promise.all([
     contactCardRow(organizationId, contactId),
     rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
     rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
@@ -2852,6 +2887,7 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     organizationCard(organizationId),
     latestContracting(organizationId, contactId),
     rowsOrMissing(table("lead_meetings").select("attendee_email, attendees").eq("organization_id", organizationId).eq("lead_id", contactId).order("created_at", { ascending: false }).limit(100)),
+    contactOrigin(organizationId, contactId),
     Promise.race([signedSync, new Promise((resolve) => setTimeout(resolve, 1500))]),
   ]);
   const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
@@ -2906,6 +2942,8 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     contractingLink: org.contractingLink,
     contracting: org.contractingLink ? intake : null,
     agendaEmails: agendaEmailList(agenda.rows.map((row) => ({ email: cell(row, "attendee_email"), attendees: row.attendees }))),
+    originReady: origin.ready,
+    origin: origin.origin,
   };
 }
 
@@ -3841,6 +3879,31 @@ export async function setChatbotContactStage(userId: string, contactId: string, 
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("Esse contato não pertence à sua empresa.");
   return { stage: clean };
+}
+
+export async function setChatbotContactOrigin(userId: string, contactId: string, value: string) {
+  const { organizationId } = await membership(userId, "inbox");
+  await ownedContact(organizationId, contactId);
+  const selected = leadOriginSelection(value);
+  const campaigns = selected ? await activeAdCampaigns(organizationId) : [];
+  const match = selected ? campaigns.find((item) => item.platform === selected.platform && item.id === selected.id) : null;
+  if (selected && !match) fail("Escolha uma campanha ativa.");
+  const updated = await table("chatbot_contacts")
+    .update({
+      origin_campaign_id: match?.id ?? null,
+      origin_campaign_platform: match?.platform ?? null,
+      origin_campaign_name: match?.name ?? null,
+    })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (updated.error && /origin_campaign|schema cache|does not exist|PGRST205/i.test(updated.error.message)) {
+    fail("A origem do lead ainda não está disponível.");
+  }
+  if (updated.error) fail(schemaMessage(updated.error.message));
+  if (!updated.data) fail("Esse contato não pertence à sua empresa.");
+  return { origin: match };
 }
 
 export async function setChatbotContactBots(userId: string, contactId: string, disabled: boolean) {

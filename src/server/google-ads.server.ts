@@ -2,8 +2,10 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   accountDailyQuery,
   campaignMetricsQuery,
+  enabledCampaignQuery,
   fillAccountDays,
   parseCampaignMetrics,
+  parseEnabledCampaigns,
   googleAdsQueryWindow,
   parseAccountDays,
   saoPauloDate,
@@ -234,6 +236,27 @@ export async function readGoogleAdsCampaigns(
     console.error("google_ads_campaigns", error instanceof Error ? error.name : "error");
   }
   return { linked: true as const, account, campaigns, days, period: window.period };
+}
+
+export async function listActiveGoogleCampaignNames(organizationId: string) {
+  try {
+    const account = await selectedAccount(organizationId);
+    if (!account) return [];
+    const pages = await search(account.customerId, account.loginCustomerId, enabledCampaignQuery(), callBudget());
+    const seen = new Set<string>();
+    const campaigns: { id: string; name: string }[] = [];
+    for (const page of pages) {
+      for (const item of parseEnabledCampaigns(page)) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        campaigns.push(item);
+      }
+    }
+    return campaigns;
+  } catch (error) {
+    console.error("lead_origin_google", error instanceof Error ? error.message : "falha");
+    return [];
+  }
 }
 
 export type { GoogleAdsAccount };

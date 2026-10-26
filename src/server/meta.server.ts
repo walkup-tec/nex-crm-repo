@@ -255,6 +255,38 @@ async function selectedAccount(organizationId: string) {
   return data?.[0] ?? null;
 }
 
+export async function listActiveMetaCampaignNames(organizationId: string) {
+  try {
+    const [connection, selected] = await Promise.all([connectionOf(organizationId), selectedAccount(organizationId)]);
+    if (connection?.status !== "connected" || !connection.access_token_encrypted || !selected?.external_account_id) return [];
+    const { token } = await loadToken(organizationId);
+    const version = graphVersion();
+    const rows: { id: string; name: string }[] = [];
+    let next: string | null = null;
+    for (let page = 0; page < 5; page += 1) {
+      const body: GraphBody = next
+        ? await graphFetch(new URL(next))
+        : await graphGet(version, `/act_${selected.external_account_id}/campaigns`, token, {
+            fields: "id,name,effective_status",
+            limit: "100",
+            filtering: JSON.stringify([{ field: "effective_status", operator: "IN", value: ["ACTIVE"] }]),
+          });
+      for (const item of body.data ?? []) {
+        const id = item.id?.trim() ?? "";
+        const name = item.name?.trim() ?? "";
+        if (!id || !name || item.effective_status !== "ACTIVE") continue;
+        rows.push({ id, name });
+      }
+      next = typeof body.paging?.next === "string" ? body.paging.next : null;
+      if (!next) break;
+    }
+    return rows;
+  } catch (error) {
+    console.error("lead_origin_meta", error instanceof Error ? error.message : "falha");
+    return [];
+  }
+}
+
 export async function readAdAccountNode(organizationId: string, accountId: string, fields: string) {
   const digits = accountId.trim().replace(/^act_/i, "");
   if (!/^\d+$/.test(digits)) fail("Escolha uma conta de anúncio válida.");

@@ -14,12 +14,14 @@ import {
   setChatbotContactNoteFn,
   setChatbotContactProductsFn,
   setChatbotContactStageFn,
+  listLeadOriginCampaignsFn,
+  setChatbotContactOriginFn,
   setChatbotContactTagsFn,
 } from "@/lib/chatbot.functions";
 import { contractingFormUrl } from "@/lib/contracting";
 import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { LeadMeetings } from "@/components/chatbot/CalendarMeetings";
-import { clientPhoneLabel, contactExtraDataCount, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile } from "@/lib/chatbot-evo";
+import { clientPhoneLabel, contactExtraDataCount, leadOriginChoices, leadOriginValue, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile, type LeadOriginChoice } from "@/lib/chatbot-evo";
 
 function RegisteredMark({ label }: { label: string }) {
   return (
@@ -149,6 +151,7 @@ export function ContactRecord({
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
+  const [origins, setOrigins] = useState<LeadOriginChoice[]>([]);
   const [creatingClient, setCreatingClient] = useState(false);
   const [deal, setDeal] = useState("");
   const [documentDraft, setDocumentDraft] = useState("");
@@ -194,6 +197,7 @@ export function ContactRecord({
     setRefreshing(false);
     setRefreshed(false);
     setError("");
+    setOrigins([]);
     if (!contactId) return;
     let active = true;
     void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
@@ -203,6 +207,10 @@ export function ContactRecord({
         return;
       }
       applyProfile(result.data);
+    });
+    void listLeadOriginCampaignsFn().then((result) => {
+      if (!active || !result.ok) return;
+      setOrigins(leadOriginChoices(result.data));
     });
     return () => {
       active = false;
@@ -395,6 +403,19 @@ export function ContactRecord({
     setProfile({ ...profile, stage: result.data.stage });
   }
 
+  async function saveOrigin(value: string) {
+    if (!profile || savingLinks) return;
+    setSavingLinks(true);
+    const result = await setChatbotContactOriginFn({ data: { contactId: profile.id, origin: value } });
+    setSavingLinks(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError("");
+    setProfile({ ...profile, origin: result.data.origin });
+  }
+
   async function toggleTag(tagId: string) {
     if (!profile || savingLinks) return;
     const selected = profile.tags.filter((item) => item.selected).map((item) => item.id);
@@ -551,6 +572,32 @@ export function ContactRecord({
               </p>
             )}
           </section>
+          {origins.length > 1 ? (
+            <section className="contact-section">
+              <h3>Origem</h3>
+              {profile.originReady ? (
+                <select
+                  className="contact-stage"
+                  aria-label="Origem da campanha"
+                  value={profile.origin ? leadOriginValue(profile.origin) : ""}
+                  disabled={savingLinks}
+                  onChange={(event) => void saveOrigin(event.target.value)}
+                >
+                  <option value="">Escolher campanha</option>
+                  {profile.origin && !origins.some((item) => leadOriginValue(item) === leadOriginValue(profile.origin!)) ? (
+                    <option value={leadOriginValue(profile.origin)}>{profile.origin.name}</option>
+                  ) : null}
+                  {origins.map((item) => (
+                    <option key={leadOriginValue(item)} value={leadOriginValue(item)}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p>A origem do lead ainda não está disponível.</p>
+              )}
+            </section>
+          ) : null}
           <section className="contact-section">
             <h3>Kanban</h3>
             {profile.stageReady ? (

@@ -68,6 +68,9 @@ import {
   overviewMetrics,
   stageDistribution,
   funnelWithEntry,
+  leadOriginChoices,
+  leadOriginSelection,
+  leadOriginValue,
   attendanceKanbanStage,
   meetingKanbanStage,
   protectedKanbanStage,
@@ -246,6 +249,19 @@ assert.deepEqual(
     { name: "Reunião", count: 3 },
   ],
 );
+assert.deepEqual(leadOriginChoices([{ id: "1", name: "Marca", platform: "meta" }]), []);
+assert.deepEqual(
+  leadOriginChoices([
+    { id: "1", name: "Marca", platform: "meta" },
+    { id: "1", name: "Marca", platform: "meta" },
+    { id: "2", name: "Leads", platform: "google" },
+    { id: "3", name: "Leads", platform: "meta" },
+  ]).map((item) => item.label),
+  ["Leads · Google", "Leads · Meta", "Marca"],
+);
+assert.equal(leadOriginValue({ platform: "google", id: "2" }), "google:2");
+assert.deepEqual(leadOriginSelection("meta:15"), { platform: "meta", id: "15" });
+assert.equal(leadOriginSelection("campanha"), null);
 assert.deepEqual(
   dailyAttendanceCounts(["2026-10-15T02:30:00.000Z", "2026-10-15T15:00:00.000Z", "2026-10-15T18:00:00.000Z", ""]),
   [

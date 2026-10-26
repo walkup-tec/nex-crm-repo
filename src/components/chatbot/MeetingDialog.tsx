@@ -101,18 +101,23 @@ export function MeetingDialog({
     if (saving || !ready) return;
     setSaving(true);
     setNote("");
-    const result = editing && meeting
-      ? await rescheduleLeadMeetingFn({ data: { meetingId: meeting.id, date, time } })
-      : await createLeadMeetingFn({
-          data: { leadId, requestId: requestId.current, email, attendees, date, time, meet },
-        });
-    setSaving(false);
-    if (!result.ok) {
-      setNote(result.message);
-      return;
+    try {
+      const result = editing && meeting
+        ? await rescheduleLeadMeetingFn({ data: { meetingId: meeting.id, date, time } })
+        : await createLeadMeetingFn({
+            data: { leadId, requestId: requestId.current, email, attendees, date, time, meet },
+          });
+      if (!result.ok) {
+        setNote(result.message);
+        return;
+      }
+      onSaved();
+      onOpenChange(false);
+    } catch {
+      setNote("Não foi possível concluir o agendamento. Tente de novo.");
+    } finally {
+      setSaving(false);
     }
-    onSaved();
-    onOpenChange(false);
   }
 
   return (

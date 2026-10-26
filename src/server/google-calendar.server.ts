@@ -905,7 +905,7 @@ export async function createLeadMeeting(userId: string, input: {
     }).eq("id", cell(reserved, "id")).eq("organization_id", gate.organizationId).select("*").maybeSingle();
     if (updated.error || !updated.data) schemaFail(updated.error?.message || "lead_meetings");
     const view = await decorate([updated.data], userId, gate.manager);
-    await sendMeetingNotices(gate.organizationId, cell(lead, "id"), cell(updated.data, "id"), meetingWhen(slot.start, slot.end), guests.lead, meetUrlFromEvent(event));
+    void sendMeetingNotices(gate.organizationId, cell(lead, "id"), cell(updated.data, "id"), meetingWhen(slot.start, slot.end), guests.lead, meetUrlFromEvent(event));
     return shown(view);
   } catch (error) {
     await from("lead_meetings").update({ status: "failed", updated_at: new Date().toISOString() }).eq("id", cell(reserved, "id")).eq("organization_id", gate.organizationId).is("google_event_id", null);

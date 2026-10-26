@@ -141,6 +141,12 @@ export type AnalysisStatus = {
   reasons: string[];
 };
 
+export type ResultBreakdown = {
+  label: string;
+  results: number;
+  costPerResult: number | null;
+};
+
 export type AnalysisModel = {
   comparable: boolean;
   resultLabel: string;
@@ -151,6 +157,7 @@ export type AnalysisModel = {
   buckets: Bucket[];
   grain: Grain;
   campaigns: CampaignRank[];
+  breakdown: ResultBreakdown[];
   insights: NexInsight[];
   status: AnalysisStatus | null;
 };
@@ -398,6 +405,26 @@ export function buildStatus(
   return { label, reasons };
 }
 
+export function resultBreakdown(
+  campaigns: Pick<MetaCampaignRow, "results" | "spend" | "resultLabel">[],
+): ResultBreakdown[] {
+  const groups = new Map<string, { results: number; spend: number }>();
+  for (const row of campaigns) {
+    const label = row.resultLabel.trim() || "Resultados";
+    const current = groups.get(label) ?? { results: 0, spend: 0 };
+    current.results += finite(row.results) ?? 0;
+    current.spend += finite(row.spend) ?? 0;
+    groups.set(label, current);
+  }
+  return [...groups.entries()]
+    .map(([label, group]) => ({
+      label,
+      results: group.results,
+      costPerResult: group.results > 0 ? group.spend / group.results : null,
+    }))
+    .sort((left, right) => right.results - left.results || left.label.localeCompare(right.label, "pt-BR"));
+}
+
 export function buildAnalysis(input: {
   period: MetaPeriod;
   campaigns: MetaCampaignRow[];
@@ -453,6 +480,7 @@ export function buildAnalysis(input: {
     .sort(
       (left, right) => right.results - left.results || left.name.localeCompare(right.name, "pt-BR"),
     );
+  const breakdown = resultBreakdown(selected ? [selected] : input.campaigns);
   return {
     comparable,
     resultLabel,
@@ -463,6 +491,7 @@ export function buildAnalysis(input: {
     buckets: aggregateDays(relevantDays, grain),
     grain,
     campaigns,
+    breakdown,
     insights: buildInsights(
       comparable ? current : { ...current, results: 0 },
       mediaPrevious,

@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { createLeadMeetingFn, leadMeetingContextFn, listMeetingCalendarFn, rescheduleLeadMeetingFn } from "@/lib/google-calendar.functions";
+import { createLeadMeetingFn, leadMeetingContextFn, listLeadMeetingsFn, listMeetingCalendarFn, rescheduleLeadMeetingFn } from "@/lib/google-calendar.functions";
 import {
   cleanEmail,
   meetingChoices,
   meetingFields,
+  meetingForWindow,
   meetingSlot,
   releaseMeetingSlot,
   type LeadMeetingView,
@@ -33,6 +34,7 @@ export function MeetingDialog({
   onSaved: () => void;
 }) {
   const requestId = useRef("");
+  const savingRef = useRef(false);
   const [choices, setChoices] = useState(meetingChoices);
   const [slotsReady, setSlotsReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -47,7 +49,7 @@ export function MeetingDialog({
   const times = choices.find((day) => day.date === date)?.times ?? [];
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || savingRef.current) return;
     requestId.current = crypto.randomUUID();
     setNote("");
     setSaving(false);
@@ -93,29 +95,48 @@ export function MeetingDialog({
     return () => {
       active = false;
     };
-  }, [open, leadId, leadName, meeting]);
+  }, [open, leadId, meeting]);
 
   const ready = Boolean(meetingSlot({ date, time })) && (editing || Boolean(cleanEmail(email)));
 
+  function closeSaved() {
+    onSaved();
+    onOpenChange(false);
+  }
+
   async function confirm() {
     if (saving || !ready) return;
+    const currentRequest = requestId.current;
+    savingRef.current = true;
     setSaving(true);
     setNote("");
     try {
       const result = editing && meeting
         ? await rescheduleLeadMeetingFn({ data: { meetingId: meeting.id, date, time } })
         : await createLeadMeetingFn({
-            data: { leadId, requestId: requestId.current, email, attendees, date, time, meet },
+            data: { leadId, requestId: currentRequest, email, attendees, date, time, meet },
           });
       if (!result.ok) {
         setNote(result.message);
         return;
       }
-      onSaved();
-      onOpenChange(false);
+      closeSaved();
     } catch {
-      setNote("Não foi possível concluir o agendamento. Tente de novo.");
+      if (!editing && leadId) {
+        try {
+          const saved = await listLeadMeetingsFn({ data: { leadId } });
+          const slot = meetingSlot({ date, time });
+          if (saved.ok && slot && meetingForWindow(saved.data, slot.start, slot.end)) {
+            closeSaved();
+            return;
+          }
+        } catch {
+          // A agenda não respondeu. A mensagem abaixo pede para conferir antes de confirmar outra vez.
+        }
+      }
+      setNote("A resposta não voltou. Se o contato já recebeu o agendamento, feche esta janela.");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

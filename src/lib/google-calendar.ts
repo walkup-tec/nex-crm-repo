@@ -253,6 +253,19 @@ export function markMeetingCalendar(days: MeetingCalendarDay[], busy: { start: s
   }));
 }
 
+export function meetingForWindow<T extends { status: string; startAt: string; endAt: string }>(meetings: T[], start: string, end: string) {
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+  return (
+    meetings.find((meeting) => {
+      if (meeting.status !== "scheduled") return false;
+      const meetingStart = Date.parse(meeting.startAt);
+      return Number.isFinite(meetingStart) && meetingStart >= startMs && meetingStart < endMs;
+    }) ?? null
+  );
+}
+
 export function meetingSlot(input: { date: string; time: string }, now = Date.now()) {
   const match = /^(\d{2}):(\d{2})$/.exec(input.time);
   if (!match || Number(match[2]) !== 0) return null;

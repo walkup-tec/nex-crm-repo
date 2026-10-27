@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FocusEvent } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
+import { callChatbotContactFn } from "@/lib/chatbot.functions";
 import {
   cancelLeadMeetingFn,
   disconnectGoogleCalendarFn,
@@ -9,7 +11,88 @@ import {
   listMeetingCalendarFn,
   startGoogleCalendarConnectFn,
 } from "@/lib/google-calendar.functions";
-import { meetingOnContactCard, meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView, type MeetingCalendarDay } from "@/lib/google-calendar";
+import { meetingForWindow, meetingOnContactCard, meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView, type MeetingCalendarDay, type MeetingWindow } from "@/lib/google-calendar";
+
+const openConversationKey = "nex-kanban-conversation";
+
+function AgendaWindow({
+  slot,
+  meeting,
+  calling,
+  onCall,
+}: {
+  slot: MeetingWindow;
+  meeting: LeadMeetingView | null;
+  calling: string;
+  onCall: (leadId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const timer = useRef(0);
+  const text = `${slot.label}${slot.note ? ` · ${slot.note}` : ""}`;
+  function show() {
+    window.clearTimeout(timer.current);
+    setOpen(true);
+  }
+  function hide() {
+    timer.current = window.setTimeout(() => setOpen(false), 160);
+  }
+  function hideFocus(event: FocusEvent<HTMLDivElement>) {
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget.contains(next)) return;
+    setOpen(false);
+  }
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  if (!meeting) {
+    return (
+      <span className={`agenda-window is-${slot.state}`} title={slot.note || (slot.state === "occupied" ? "Ocupado" : slot.state === "past" ? "Encerrado" : "Livre")}>
+        {text}
+      </span>
+    );
+  }
+  const meet = /^https:\/\//.test(meeting.meetUrl) ? meeting.meetUrl : "";
+  return (
+    <div className={`agenda-window agenda-slot is-${slot.state}`} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hideFocus}>
+      {text}
+      {open ? (
+        <div className="agenda-hover" role="dialog" aria-label="Informações da agenda" onMouseEnter={show} onMouseLeave={hide}>
+          <strong>{meeting.title || "Reunião"}</strong>
+          <p>{meeting.leadName || "Lead"}</p>
+          <p>{meetingWhen(meeting.startAt, meeting.endAt)}</p>
+          {meeting.attendeeEmail ? <p>{meeting.attendeeEmail}</p> : null}
+          {meeting.attendees.length ? <p>{meeting.attendees.join(", ")}</p> : null}
+          {meet ? (
+            <a href={meet} target="_blank" rel="noreferrer">
+              {meet}
+            </a>
+          ) : (
+            <p>O link do Meet ainda não está disponível.</p>
+          )}
+          <div className="agenda-hover-actions">
+            {meet ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void navigator.clipboard.writeText(meet).then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                  }).catch(() => setCopied(false));
+                }}
+              >
+                {copied ? "Link copiado" : "Copiar link"}
+              </Button>
+            ) : null}
+            <Button type="button" size="sm" disabled={!meeting.leadId || calling === meeting.leadId} onClick={() => onCall(meeting.leadId)}>
+              {calling === meeting.leadId ? "Abrindo" : "Chamar"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function MeetingCards({ meetings, empty, onChanged }: { meetings: LeadMeetingView[]; empty: string; onChanged: () => void }) {
   const [editing, setEditing] = useState<LeadMeetingView | null>(null);
@@ -125,6 +208,7 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
 }
 
 export function CalendarMeetings() {
+  const navigate = useNavigate();
   const [connection, setConnection] = useState<GoogleCalendarConnectionView | null>(null);
   const [meetings, setMeetings] = useState<LeadMeetingView[]>([]);
   const [days, setDays] = useState<MeetingCalendarDay[]>([]);
@@ -132,6 +216,7 @@ export function CalendarMeetings() {
   const [pending, setPending] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [version, setVersion] = useState(0);
+  const [calling, setCalling] = useState("");
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -193,6 +278,20 @@ export function CalendarMeetings() {
     })();
   }
 
+  async function call(leadId: string) {
+    if (!leadId || calling) return;
+    setCalling(leadId);
+    setNote("");
+    const result = await callChatbotContactFn({ data: { contactId: leadId } });
+    setCalling("");
+    if (!result.ok) {
+      setNote(result.message);
+      return;
+    }
+    sessionStorage.setItem(openConversationKey, result.data.conversationId);
+    void navigate({ to: "/chatbot" });
+  }
+
   async function disconnect() {
     setPending("disconnect");
     setNote("");
@@ -238,11 +337,8 @@ export function CalendarMeetings() {
           <article className={`agenda-day${day.closed ? " is-closed" : ""}`} key={day.date}>
             <header>{day.title}</header>
             {day.closed ? <p>Sem expediente</p> : null}
-            {day.windows.map((window) => (
-              <span className={`agenda-window is-${window.state}`} key={window.start} title={window.note || (window.state === "occupied" ? "Ocupado" : window.state === "past" ? "Encerrado" : "Livre")}>
-                {window.label}
-                {window.note ? ` · ${window.note}` : ""}
-              </span>
+            {day.windows.map((slot) => (
+              <AgendaWindow key={slot.start} slot={slot} meeting={meetingForWindow(meetings, slot.start, slot.end)} calling={calling} onCall={(leadId) => void call(leadId)} />
             ))}
           </article>
         ))}

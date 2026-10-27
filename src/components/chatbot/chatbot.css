@@ -441,9 +441,17 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .agenda-legend .is-occupied,.chatbot-app .agenda-window.is-occupied{background:oklch(.4 .1 25);color:oklch(.97 .02 25)}
 .chatbot-app .agenda-legend .is-past,.chatbot-app .agenda-window.is-past{background:var(--muted);color:var(--muted-foreground)}
 .chatbot-app .agenda-month{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px}
-.chatbot-app .agenda-day{display:grid;align-content:start;gap:4px;min-height:96px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.chatbot-app .agenda-day{position:relative;display:grid;align-content:start;gap:4px;min-height:96px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.chatbot-app .agenda-day:has(.agenda-slot:hover),.chatbot-app .agenda-day:has(.agenda-slot:focus-within){z-index:8}
 .chatbot-app .agenda-day header{font-size:12px;font-weight:700}
 .chatbot-app .agenda-day p{margin:0;color:var(--muted-foreground);font-size:11px}
 .chatbot-app .agenda-day.is-closed{opacity:.72}
 .chatbot-app .agenda-window{display:block;border-radius:4px;padding:3px 6px;font-size:10px;font-weight:700;line-height:1.3}
+.chatbot-app .agenda-slot{position:relative;cursor:default}
+.chatbot-app .agenda-slot:hover,.chatbot-app .agenda-slot:focus-within{z-index:8}
+.chatbot-app .agenda-hover{position:absolute;z-index:9;left:0;top:calc(100% + 6px);display:grid;gap:6px;width:240px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--foreground);box-shadow:0 12px 32px oklch(0 0 0 / .35);text-align:left;font-weight:500}
+.chatbot-app .agenda-hover strong{font-size:13px}
+.chatbot-app .agenda-hover p{margin:0;color:var(--muted-foreground);font-size:12px;font-weight:500;line-height:1.4}
+.chatbot-app .agenda-hover a{color:var(--primary);font-size:12px;font-weight:700;word-break:break-all}
+.chatbot-app .agenda-hover-actions{display:flex;flex-wrap:wrap;gap:8px}
 

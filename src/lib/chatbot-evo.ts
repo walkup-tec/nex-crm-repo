@@ -1091,14 +1091,18 @@ export const meetingKanbanStage = "Reunião";
 export const attendanceKanbanStage = "Atendimento";
 export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho", wonKanbanStage];
 
+function advancedKanbanStage(name: string) {
+  const key = name.trim().toLocaleLowerCase("pt-BR");
+  return key === "proposta" || key === "contrato" || key === "perdido" || key === "negociação" || key === "negociacao" || key === "ganho" || protectedKanbanStage(name);
+}
+
 export function shouldAssignMeetingStage(currentStage: string, scheduled: boolean) {
-  if (!scheduled) return false;
-  if (protectedKanbanStage(currentStage)) return false;
+  if (!scheduled || advancedKanbanStage(currentStage)) return false;
   return currentStage.trim().localeCompare(meetingKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
 }
 
 export function shouldAssignAttendanceStage(currentStage: string) {
-  if (protectedKanbanStage(currentStage)) return false;
+  if (advancedKanbanStage(currentStage)) return false;
   return currentStage.trim().localeCompare(attendanceKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
 }
 

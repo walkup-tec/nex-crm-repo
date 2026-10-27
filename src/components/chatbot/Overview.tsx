@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, Respo
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { chatbotOverviewFn } from "@/lib/chatbot.functions";
-import { applyOverviewFilters, attendanceSeries, negotiatedLabel, percentAgainstPrevious, previousOverviewPeriod, ratingAverageLabel, type OverviewBoard, type OverviewFilters, type OverviewTrends } from "@/lib/chatbot-evo";
+import { applyOverviewFilters, attendanceSeries, negotiatedLabel, percentAgainstPrevious, ratingAverageLabel, type OverviewFilters, type OverviewTrends } from "@/lib/chatbot-evo";
 import { JourneyFunnel } from "@/components/nex/StageFunnel";
 import { SharePie } from "./SharePie";
 import { PageHeading } from "./common";
@@ -91,52 +91,54 @@ function PeriodDelta({ bounded, percent }: { bounded: boolean; percent: number |
   );
 }
 
-const emptyBoard: OverviewBoard = {
-  stages: [],
-  attendants: [],
-  channels: [],
-  conversations: [],
-  contacts: [],
-  ratings: [],
-  userId: "",
-  admin: false,
-};
+type OverviewView = ReturnType<typeof applyOverviewFilters>;
 
 export function Overview({ reports = false }: { reports?: boolean }) {
   const [filters, setFilters] = useState<OverviewFilters>(clearedFilters);
   const [rankingMode, setRankingMode] = useState<"vendas" | "monetario">("vendas");
-  const [board, setBoard] = useState<OverviewBoard>(emptyBoard);
+  const [attendants, setAttendants] = useState<{ id: string; name: string }[]>([]);
+  const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
+  const [view, setView] = useState<OverviewView | null>(null);
+  const [previousView, setPreviousView] = useState<OverviewView | null>(null);
   const [message, setMessage] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    void chatbotOverviewFn().then((result) => {
-      if (!result.ok) {
-        setMessage(result.message);
-        return;
-      }
-      setBoard(result.data);
-    });
-  }, []);
-
-  const view = useMemo(() => applyOverviewFilters(board, filters), [board, filters]);
-  const previousPeriod = useMemo(() => previousOverviewPeriod(filters.period), [filters.period]);
-  const previousView = useMemo(
-    () => (previousPeriod ? applyOverviewFilters(board, { ...filters, period: previousPeriod }) : null),
-    [board, filters, previousPeriod],
-  );
+    let active = true;
+    setMessage("");
+    void chatbotOverviewFn({ data: filters })
+      .then((result) => {
+        if (!active) return;
+        if (!result.ok || !result.data?.view) {
+          setMessage(result.ok ? "Não foi possível carregar os indicadores." : result.message);
+          return;
+        }
+        setAttendants(result.data.attendants);
+        setChannels(result.data.channels);
+        setView(result.data.view);
+        setPreviousView(result.data.previous);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMessage("Não foi possível carregar os indicadores.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [filters, reloadKey]);
   const performance = useMemo(
-    () => [...view.agents].sort((left, right) => right.total - left.total || left.name.localeCompare(right.name, "pt-BR")),
-    [view.agents],
+    () => [...(view?.agents ?? [])].sort((left, right) => right.total - left.total || left.name.localeCompare(right.name, "pt-BR")),
+    [view],
   );
   const ranking = useMemo(
-    () => [...view.agents].sort((left, right) => (rankingMode === "vendas" ? right.success - left.success : right.wonCents - left.wonCents) || left.name.localeCompare(right.name, "pt-BR")),
-    [rankingMode, view.agents],
+    () => [...(view?.agents ?? [])].sort((left, right) => (rankingMode === "vendas" ? right.success - left.success : right.wonCents - left.wonCents) || left.name.localeCompare(right.name, "pt-BR")),
+    [rankingMode, view],
   );
-  const series = useMemo(() => attendanceSeries(view.days, filters.period), [view.days, filters.period]);
+  const series = useMemo(() => attendanceSeries(view?.days ?? [], filters.period), [view, filters.period]);
 
   const emptyTrends: OverviewTrends = { received: [], attending: [], finished: [], openDeals: [], negotiatingCents: [], wonCents: [], clients: [], rating: [] };
-  const trends = view.trends ?? emptyTrends;
-  const cards = [
+  const trends = view?.trends ?? emptyTrends;
+  const cards = !view ? [] : [
     {
       label: "Atendimentos recebidos",
       info: "Contatos que entraram em contato no período filtrado.",
@@ -217,7 +219,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           Atendente
           <select aria-label="Atendente" value={filters.attendantId} onChange={(event) => setFilters((current) => ({ ...current, attendantId: event.target.value }))}>
             <option value="">Todos os atendentes</option>
-            {board.attendants.map((item) => (
+            {attendants.map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </select>
@@ -226,14 +228,22 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           Canal
           <select aria-label="Canal" value={filters.channelId} onChange={(event) => setFilters((current) => ({ ...current, channelId: event.target.value }))}>
             <option value="">Todos os canais</option>
-            {board.channels.map((item) => (
+            {channels.map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </select>
         </label>
         <Button type="button" variant="outline" className="overview-clear" onClick={() => setFilters(clearedFilters)}>Limpar filtro</Button>
       </div>
-      {message ? <p className="info-note mb-5">{message}</p> : null}
+      {message ? (
+        <p className="info-note mb-5">
+          {message}{" "}
+          <button type="button" className="overview-retry" onClick={() => setReloadKey((value) => value + 1)}>Tentar de novo</button>
+        </p>
+      ) : null}
+      {!view && !message ? <p className="info-note mb-5">Carregando os indicadores...</p> : null}
+      {view ? (
+      <>
       <div className="stats-strip">
         {cards.map((card) => (
           <article className="metric metric-rich" key={card.label}>
@@ -408,6 +418,8 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           </div>
         )}
       </section>
+      </>
+      )}
     </main>
   );
 }

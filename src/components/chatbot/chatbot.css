@@ -461,4 +461,5 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .agenda-hover p{margin:0;color:var(--muted-foreground);font-size:12px;font-weight:500;line-height:1.4}
 .chatbot-app .agenda-hover a{color:var(--primary);font-size:12px;font-weight:700;word-break:break-all}
 .chatbot-app .agenda-hover-actions{display:flex;flex-wrap:wrap;gap:8px}
+.chatbot-app .overview-retry{margin-left:8px;border:0;padding:0;background:transparent;color:var(--primary);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline}
 

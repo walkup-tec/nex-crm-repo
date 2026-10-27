@@ -97,7 +97,9 @@ import {
   proposalKanbanStage,
   keepWhatsappName,
   tagColorValue,
+  applyOverviewFilters,
   clientVisibleTo,
+  previousOverviewPeriod,
   protectedKanbanStage,
   withWonKanbanStage,
   wonKanbanStage,
@@ -121,6 +123,7 @@ import {
   botPresenceCue,
   type ChatbotCatalogItem,
   type OverviewBoard,
+  type OverviewFilters,
   type ChatbotClientRow,
   type ChatbotKanbanBoard,
   type ChatbotContactProfile,
@@ -4960,7 +4963,7 @@ export async function saveChatbotStages(userId: string, names: string[]) {
   return stageRows(stages);
 }
 
-export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
+export async function chatbotOverview(userId: string, filters?: OverviewFilters) {
   const { organizationId, admin } = await membership(userId, "overview");
   const masterView = mmsMasterActor(organizationId, admin);
   const listedStages = await listChatbotStages(userId);
@@ -5004,7 +5007,7 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
     if (!name || !memberId) continue;
     teamsOf.set(memberId, [...(teamsOf.get(memberId) ?? []), name]);
   }
-  return {
+  const board: OverviewBoard = {
     userId,
     admin,
     mmsMaster: await masterView,
@@ -5017,7 +5020,7 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
       .filter((row) => attendantIds.has(row.id) || (ownerIds.has(row.id) && memberIds.has(row.id)))
       .map((row) => ({
         id: row.id,
-        name: row.full_name.trim() || "Atendente",
+        name: String(row.full_name ?? "").trim() || "Atendente",
         team: (teamsOf.get(row.id) ?? []).join(", "),
       })),
     conversations: conversations.map((row) => ({
@@ -5047,6 +5050,18 @@ export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
     })),
     products: products.rows.map((row) => ({ id: cell(row, "id"), name: cell(row, "name") })).filter((item) => item.id && item.name),
     productLinks: productLinks.rows.map((row) => ({ contactId: cell(row, "contact_id"), productId: cell(row, "product_id") })),
+  };
+  const safe: OverviewFilters = {
+    period: filters?.period.mode === "custom" ? filters.period : { mode: "total" },
+    attendantId: filters?.attendantId ?? "",
+    channelId: filters?.channelId ?? "",
+  };
+  const previousPeriod = previousOverviewPeriod(safe.period);
+  return {
+    attendants: board.attendants,
+    channels: board.channels,
+    view: applyOverviewFilters(board, safe),
+    previous: previousPeriod ? applyOverviewFilters(board, { ...safe, period: previousPeriod }) : null,
   };
 }
 

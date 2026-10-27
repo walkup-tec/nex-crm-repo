@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { ChatbotSnapshot } from "@/lib/chatbot-evo";
+import type { ChatbotSnapshot, OverviewFilters } from "@/lib/chatbot-evo";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
@@ -754,11 +754,24 @@ export const deleteChatbotProductFn = createServerFn({ method: "POST" })
     return guard(() => deleteChatbotProduct(context.userId, data.productId));
   });
 
+function overviewFilters(data: unknown): OverviewFilters {
+  const body = data && typeof data === "object" ? (data as { period?: { mode?: string; since?: string; until?: string }; attendantId?: string; channelId?: string }) : {};
+  const since = typeof body.period?.since === "string" ? body.period.since : "";
+  const until = typeof body.period?.until === "string" ? body.period.until : "";
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  return {
+    period: body.period?.mode === "custom" && day.test(since) && day.test(until) ? { mode: "custom", since, until } : { mode: "total" },
+    attendantId: typeof body.attendantId === "string" ? body.attendantId.slice(0, 80) : "",
+    channelId: typeof body.channelId === "string" ? body.channelId.slice(0, 80) : "",
+  };
+}
+
 export const chatbotOverviewFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .validator(overviewFilters)
+  .handler(async ({ context, data }) => {
     const { chatbotOverview } = await import("@/server/chatbot.server");
-    return guard(() => chatbotOverview(context.userId));
+    return guard(() => chatbotOverview(context.userId, data));
   });
 
 export const listChatbotStagesFn = createServerFn({ method: "POST" })

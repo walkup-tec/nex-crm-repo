@@ -68,7 +68,12 @@ import {
   artesMime,
   minutaFileName,
   returnInstant,
+  activeClientTag,
+  activeClientTagColor,
+  addedLeadTag,
+  addedLeadTagColor,
   tagGrantedByMinuta,
+  tagGrantedBySuccess,
   propostaFileName,
   propostaMessages,
   whatsappCadastroButton,
@@ -89,7 +94,6 @@ import {
   leadOriginSelection,
   shouldAssignAttendanceStage,
   shouldAssignMeetingStage,
-  shouldAssignProposalStage,
   proposalKanbanStage,
   keepWhatsappName,
   tagColorValue,
@@ -2870,7 +2874,6 @@ export async function listLeadOriginCampaigns(userId: string) {
 
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
   const { organizationId } = await membership(userId, "inbox");
-  await assignProposalStageForContact(organizationId, contactId);
   const signedSync = (async () => {
     try {
       const { syncContractSignature } = await import("@/server/autentique.server");
@@ -3288,66 +3291,8 @@ async function assignAttendanceKanbanStage(organizationId: string, admin: boolea
   await moveContactToKanbanStage(organizationId, contactId, attendanceKanbanStage);
 }
 
-async function assignProposalStageForContact(organizationId: string, contactId: string) {
-  const current = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  if (current.error || !shouldAssignProposalStage(cell(current.data, "stage_name"), true)) return;
-  const conversations = await rowsOrMissing(
-    table("chatbot_conversations").select("id").eq("organization_id", organizationId).eq("contact_id", contactId),
-  );
-  if (conversations.missing || !conversations.rows.length) return;
-  const ids = conversations.rows.map((row) => cell(row, "id")).filter(Boolean);
-  if (!ids.length) return;
-  const messages = await rowsOrMissing(
-    table("chatbot_messages").select("id").eq("organization_id", organizationId).eq("direction", "out").eq("text", propostaFileName).in("conversation_id", ids).limit(1),
-  );
-  if (messages.missing || !messages.rows.length) return;
-  await moveContactToKanbanStage(organizationId, contactId, proposalKanbanStage);
-}
-
-async function assignProposalStages(organizationId: string) {
-  const messages = await rowsOrMissing(
-    table("chatbot_messages").select("conversation_id").eq("organization_id", organizationId).eq("direction", "out").eq("text", propostaFileName),
-  );
-  if (messages.missing || !messages.rows.length) return;
-  const conversationIds = [...new Set(messages.rows.map((row) => cell(row, "conversation_id")).filter(Boolean))];
-  if (!conversationIds.length) return;
-  const conversations = await rowsOrMissing(
-    table("chatbot_conversations").select("id, contact_id").eq("organization_id", organizationId).in("id", conversationIds),
-  );
-  if (conversations.missing) return;
-  const contactIds = [...new Set(conversations.rows.map((row) => cell(row, "contact_id")).filter(Boolean))];
-  if (!contactIds.length) return;
-  const contacts = await rowsOrMissing(
-    table("chatbot_contacts").select("id, stage_name").eq("organization_id", organizationId).in("id", contactIds),
-  );
-  if (contacts.missing) return;
-  for (const row of contacts.rows) {
-    if (!shouldAssignProposalStage(cell(row, "stage_name"), true)) continue;
-    await moveContactToKanbanStage(organizationId, cell(row, "id"), proposalKanbanStage);
-  }
-}
-
-async function assignScheduledMeetingStages(organizationId: string) {
-  const meetings = await rowsOrMissing(
-    table("lead_meetings").select("lead_id").eq("organization_id", organizationId).eq("status", "scheduled").not("google_event_id", "is", null),
-  );
-  if (meetings.missing || !meetings.rows.length) return;
-  const ids = [...new Set(meetings.rows.map((row) => cell(row, "lead_id")).filter(Boolean))];
-  if (!ids.length) return;
-  const contacts = await rowsOrMissing(
-    table("chatbot_contacts").select("id, stage_name").eq("organization_id", organizationId).in("id", ids),
-  );
-  if (contacts.missing) return;
-  for (const row of contacts.rows) {
-    if (!shouldAssignMeetingStage(cell(row, "stage_name"), true)) continue;
-    await moveContactToKanbanStage(organizationId, cell(row, "id"), meetingKanbanStage);
-  }
-}
-
 export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBoard> {
-  const { organizationId, admin } = await membership(userId, "kanban");
-  if (await mmsMasterActor(organizationId, admin)) await assignScheduledMeetingStages(organizationId);
-  await assignProposalStages(organizationId);
+  const { organizationId } = await membership(userId, "kanban");
   const stages = await listChatbotStages(userId);
   const contactQuery = (withDeal: boolean) =>
     table("chatbot_contacts")
@@ -3736,32 +3681,58 @@ export async function callChatbotContact(userId: string, contactId: string) {
 }
 
 async function grantContactTag(organizationId: string, contactId: string, tagName: string, color: string) {
-  const tags = await rowsOrMissing(table("chatbot_tags").select("id, name").eq("organization_id", organizationId));
+  const tags = await rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId));
   if (tags.missing) fail("As etiquetas do chatbot ainda não estão disponíveis.");
   const found = tags.rows.find((row) => cell(row, "name").localeCompare(tagName, "pt-BR", { sensitivity: "accent" }) === 0);
   let tagId = cell(found, "id");
+  let storedColor = cell(found, "color") || color;
   if (!tagId) {
     const inserted = await table("chatbot_tags")
       .insert({ organization_id: organizationId, name: tagName, color })
-      .select("id")
+      .select("id, color")
       .maybeSingle();
     if (inserted.error && !duplicate(inserted.error)) fail(schemaMessage(inserted.error.message));
     tagId = cell(inserted.data, "id");
+    storedColor = cell(inserted.data, "color") || color;
     if (!tagId) {
-      const again = await table("chatbot_tags").select("id").eq("organization_id", organizationId).eq("name", tagName).maybeSingle();
+      const again = await table("chatbot_tags").select("id, color").eq("organization_id", organizationId).eq("name", tagName).maybeSingle();
       if (again.error) fail(schemaMessage(again.error.message));
       tagId = cell(again.data, "id");
+      storedColor = cell(again.data, "color") || color;
     }
   }
-  if (!tagId) fail("Não foi possível marcar o contato como Lead adicionado.");
+  if (!tagId) fail(`Não foi possível marcar a etiqueta ${tagName}.`);
   const linked = await table("chatbot_contact_tags")
     .insert({ contact_id: contactId, tag_id: tagId, organization_id: organizationId })
     .select("contact_id")
     .maybeSingle();
   if (linked.error && !duplicate(linked.error)) fail(schemaMessage(linked.error.message));
+  return { id: tagId, name: tagName, color: storedColor || color };
 }
 
-export async function startChatbotConversation(userId: string, input: { name: string; phone: string; connectionId: string }) {
+async function grantSelectedTags(organizationId: string, contactId: string, tagIds: string[]) {
+  const unique = uniqueIds(tagIds);
+  if (!unique.length) return;
+  const tags = await rowsOrMissing(table("chatbot_tags").select("id").eq("organization_id", organizationId));
+  if (tags.missing) fail("As etiquetas do chatbot ainda não estão disponíveis.");
+  const known = new Set(tags.rows.map((row) => cell(row, "id")));
+  for (const tagId of unique) {
+    if (!known.has(tagId)) continue;
+    const linked = await table("chatbot_contact_tags")
+      .insert({ contact_id: contactId, tag_id: tagId, organization_id: organizationId })
+      .select("contact_id")
+      .maybeSingle();
+    if (linked.error && !duplicate(linked.error)) fail(schemaMessage(linked.error.message));
+  }
+}
+
+async function grantSuccessTag(organizationId: string, contactId: string, stageName: string) {
+  const tagName = tagGrantedBySuccess(stageName);
+  if (!tagName) return null;
+  return grantContactTag(organizationId, contactId, tagName, activeClientTagColor);
+}
+
+export async function startChatbotConversation(userId: string, input: { name: string; phone: string; connectionId: string; tagIds?: string[] }) {
   const name = catalogName(input.name, 80);
   if (!name) fail("Informe o nome do contato.");
   const phone = whatsappNumber(input.phone);
@@ -3810,7 +3781,8 @@ export async function startChatbotConversation(userId: string, input: { name: st
       if (!cell(again.data, "client_owner_id")) fail("Não foi possível listar o contato em Clientes.");
     }
   }
-  await grantContactTag(organizationId, contactId, "Lead adicionado", "#D97706");
+  if (input.tagIds) await grantSelectedTags(organizationId, contactId, input.tagIds);
+  else await grantContactTag(organizationId, contactId, addedLeadTag, addedLeadTagColor);
   if (await mmsMasterActor(organizationId, admin)) {
     await moveContactToKanbanStage(organizationId, contactId, attendanceKanbanStage);
     const staged = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
@@ -3921,7 +3893,8 @@ export async function setChatbotContactStage(userId: string, contactId: string, 
   }
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("Esse contato não pertence à sua empresa.");
-  return { stage: clean };
+  const tag = clean ? await grantSuccessTag(organizationId, contactId, clean) : null;
+  return { stage: clean, tag };
 }
 
 export async function setChatbotContactOrigin(userId: string, contactId: string, value: string) {
@@ -4320,6 +4293,7 @@ async function moveContactToKanbanStage(organizationId: string, contactId: strin
       }
     }
     await table("chatbot_contacts").update({ stage_name: stored }).eq("id", contactId).eq("organization_id", organizationId);
+    await grantSuccessTag(organizationId, contactId, stored);
   } catch (error) {
     console.error("chatbot_stage", error instanceof Error ? error.message : "falha ao mover etapa");
   }
@@ -4331,6 +4305,7 @@ async function assignFlowStage(organizationId: string, contactId: string, name: 
   const stages = await rowsOrMissing(table("chatbot_stages").select("name").eq("organization_id", organizationId));
   if (!stages.missing && !stages.rows.some((row) => cell(row, "name") === clean)) return;
   await table("chatbot_contacts").update({ stage_name: clean }).eq("id", contactId).eq("organization_id", organizationId);
+  await grantSuccessTag(organizationId, contactId, clean);
 }
 
 async function flowVariableValues(organizationId: string, contactId: string) {
@@ -4983,7 +4958,6 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 
 export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
   const { organizationId, admin } = await membership(userId, "overview");
-  await assignProposalStages(organizationId);
   const masterView = mmsMasterActor(organizationId, admin);
   const listedStages = await listChatbotStages(userId);
   const [conversations, contacts, ratings, connections, profiles, members, teams, products, productLinks] = await Promise.all([

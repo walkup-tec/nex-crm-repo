@@ -271,6 +271,7 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .contact-refresh-section{padding-top:12px;padding-bottom:12px}
 .chatbot-app .contact-refresh{width:100%}
 .chatbot-app .transfer-form{display:grid;gap:14px}
+.chatbot-app .new-lead-tags{display:grid;gap:6px;font-size:12px;font-weight:600}
 .chatbot-app .transfer-form label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--foreground)}
 .chatbot-app .transfer-form select.transfer-agent{height:36px;padding:0 28px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2390909a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;color:var(--foreground);font-size:13px;font-weight:500;line-height:36px;appearance:none}
 .chatbot-app .transfer-form select.transfer-agent:focus,.chatbot-app .transfer-form textarea:focus{outline:none;border-color:#6F02FD}

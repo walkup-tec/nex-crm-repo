@@ -527,10 +527,11 @@ export const callChatbotContactFn = createServerFn({ method: "POST" })
 
 export const startChatbotConversationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { name: string; phone: string; connectionId: string }) => ({
+  .validator((data: { name: string; phone: string; connectionId: string; tagIds?: string[] }) => ({
     name: typeof data.name === "string" ? data.name : "",
     phone: typeof data.phone === "string" ? data.phone : "",
     connectionId: typeof data.connectionId === "string" ? data.connectionId : "",
+    tagIds: Array.isArray(data.tagIds) ? data.tagIds.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean).slice(0, 30) : undefined,
   }))
   .handler(async ({ context, data }) => {
     const { startChatbotConversation } = await import("@/server/chatbot.server");

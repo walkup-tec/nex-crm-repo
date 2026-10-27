@@ -78,7 +78,6 @@ import {
   protectedKanbanStage,
   shouldAssignAttendanceStage,
   shouldAssignMeetingStage,
-  shouldAssignProposalStage,
   withWonKanbanStage,
   inboxOrder,
   inboxUnread,
@@ -86,12 +85,15 @@ import {
   attendancePhone,
   artesFileNames,
   artesMime,
+  activeClientTag,
+  addedLeadTag,
   altoPotencialTag,
   minutaFileName,
   defaultReturnSlot,
   returnInstant,
   returnMonthCells,
   tagGrantedByMinuta,
+  tagGrantedBySuccess,
   propostaFileName,
   propostaMessages,
   whatsappImagePayload,
@@ -189,18 +191,12 @@ assert.equal(shouldAssignMeetingStage("", true), true);
 assert.equal(shouldAssignMeetingStage("Reunião", true), false);
 assert.equal(shouldAssignMeetingStage("reunião", true), false);
 assert.equal(shouldAssignMeetingStage("Sucesso", true), false);
-assert.equal(shouldAssignMeetingStage("Proposta", true), false);
-assert.equal(shouldAssignMeetingStage("Contrato", true), false);
-assert.equal(shouldAssignMeetingStage("Perdido", true), false);
+assert.equal(shouldAssignMeetingStage("Proposta", true), true);
+assert.equal(shouldAssignMeetingStage("Contrato", true), true);
 assert.equal(shouldAssignMeetingStage("Atendimento", false), false);
-assert.equal(shouldAssignProposalStage("Reunião", true), true);
-assert.equal(shouldAssignProposalStage("Atendimento", true), true);
-assert.equal(shouldAssignProposalStage("Proposta", true), false);
-assert.equal(shouldAssignProposalStage("Contrato", true), false);
-assert.equal(shouldAssignProposalStage("Sucesso", true), false);
-assert.equal(shouldAssignProposalStage("Reunião", false), false);
 assert.equal(shouldAssignAttendanceStage("Proposta"), false);
 assert.equal(shouldAssignAttendanceStage("Contrato"), false);
+assert.equal(shouldAssignAttendanceStage("Reunião"), false);
 assert.equal(attendanceKanbanStage, "Atendimento");
 assert.equal(shouldAssignAttendanceStage("Novos leads"), true);
 assert.equal(shouldAssignAttendanceStage("Atendimento"), false);
@@ -1059,6 +1055,10 @@ assert.deepEqual([...propostaMessages], [
 ]);
 assert.equal(tagGrantedByMinuta(true), altoPotencialTag);
 assert.equal(tagGrantedByMinuta(false), "");
+assert.equal(tagGrantedBySuccess("Sucesso"), activeClientTag);
+assert.equal(tagGrantedBySuccess("sucesso"), activeClientTag);
+assert.equal(tagGrantedBySuccess("Proposta"), "");
+assert.equal(addedLeadTag, "Lead adicionado");
 assert.equal(returnInstant({ date: "2026-10-23", hour: 15, minute: 30 }, Date.parse("2026-10-22T12:00:00-03:00")), "2026-10-23T18:30:00.000Z");
 assert.equal(returnInstant({ date: "2026-10-22", hour: 11, minute: 0 }, Date.parse("2026-10-22T12:00:00-03:00")), "");
 assert.equal(returnInstant({ date: "2026-02-31", hour: 10, minute: 0 }, Date.parse("2026-02-01T12:00:00-03:00")), "");

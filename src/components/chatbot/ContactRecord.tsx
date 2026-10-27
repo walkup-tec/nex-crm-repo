@@ -400,7 +400,13 @@ export function ContactRecord({
       return;
     }
     setError("");
-    setProfile({ ...profile, stage: result.data.stage });
+    const granted = result.data.tag;
+    const tags = granted
+      ? profile.tags.some((item) => item.id === granted.id)
+        ? profile.tags.map((item) => (item.id === granted.id ? { ...item, selected: true } : item))
+        : [...profile.tags, { id: granted.id, name: granted.name, color: granted.color, selected: true }]
+      : profile.tags;
+    setProfile({ ...profile, stage: result.data.stage, tags });
   }
 
   async function saveOrigin(value: string) {

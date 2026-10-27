@@ -29,7 +29,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -329,6 +329,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newConnectionId, setNewConnectionId] = useState("");
+  const [newTagIds, setNewTagIds] = useState<string[]>([]);
   const [newSaving, setNewSaving] = useState(false);
   const [newError, setNewError] = useState("");
   const [contactQuery, setContactQuery] = useState("");
@@ -1251,6 +1252,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setNewName("");
     setNewPhone("");
     setNewConnectionId(channels[0]?.id ?? "");
+    const added = data?.catalogs.tags.find((tag) => tag.id && tag.name.localeCompare(addedLeadTag, "pt-BR", { sensitivity: "accent" }) === 0);
+    setNewTagIds(added?.id ? [added.id] : []);
     setNewError("");
     setNewOpen(true);
   }
@@ -1259,7 +1262,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     if (newSaving) return;
     setNewSaving(true);
     setNewError("");
-    const result = await startChatbotConversationFn({ data: { name: newName, phone: newPhone, connectionId: newConnectionId } });
+    const result = await startChatbotConversationFn({ data: { name: newName, phone: newPhone, connectionId: newConnectionId, tagIds: newTagIds } });
     setNewSaving(false);
     if (!result.ok) {
       setNewError(result.message);
@@ -1271,10 +1274,15 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setSelected(result.data.conversationId);
     setLane(attendant ? "atendimento" : "aguardando");
     setDraft("");
+    const chosenTags = (data?.catalogs.tags ?? []).filter((tag) => tag.id && newTagIds.includes(tag.id));
     setData((current) => {
       if (!current || current.conversations.some((item) => item.id === result.data.conversationId)) return current;
+      const withTags = (tags: { id?: string; name: string; color: string }[]) => {
+        const names = new Set(tags.map((tag) => tag.name));
+        return [...tags, ...chosenTags.filter((tag) => !names.has(tag.name))];
+      };
       const contacts = current.contacts.some((item) => item.id === result.data.contactId)
-        ? current.contacts
+        ? current.contacts.map((item) => (item.id === result.data.contactId ? { ...item, tags: withTags(item.tags) } : item))
         : [
             {
               id: result.data.contactId,
@@ -1282,7 +1290,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
               phone: newPhone,
               avatarUrl: "",
               botsDisabled: true,
-              tags: [],
+              tags: chosenTags,
               products: [],
               stage: "Atendimento",
             },
@@ -1802,6 +1810,35 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                   </select>
                 </label>
               ) : null}
+              <div className="new-lead-tags">
+                <span>Etiquetas</span>
+                {data?.catalogs.tags.length ? (
+                  <div className="contact-tags">
+                    {data.catalogs.tags.map((tag) => {
+                      const tagId = tag.id ?? "";
+                      const selected = Boolean(tagId && newTagIds.includes(tagId));
+                      return (
+                        <button
+                          key={tagId || tag.name}
+                          type="button"
+                          className={`tag-chip${selected ? " selected" : ""}`}
+                          aria-pressed={selected}
+                          disabled={newSaving || !tagId}
+                          style={selected ? { background: tag.color, color: tagInk(tag.color), borderColor: tag.color } : { color: tag.color, borderColor: tag.color }}
+                          onClick={() => {
+                            if (!tagId) return;
+                            setNewTagIds((current) => (current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]));
+                          }}
+                        >
+                          {tag.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="info-note">Nenhuma etiqueta cadastrada.</p>
+                )}
+              </div>
               {availableChannels.length ? null : <p className="info-note">Conecte um canal de WhatsApp antes de iniciar a conversa.</p>}
               {newError ? <p className="info-note">{newError}</p> : null}
               <div className="modal-actions">

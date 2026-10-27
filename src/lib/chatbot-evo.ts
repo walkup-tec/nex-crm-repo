@@ -520,9 +520,17 @@ export function whatsappCadastroButton(phone: string, url: string) {
 
 export const minutaFileName = "MINUTA NEX.pdf";
 export const altoPotencialTag = "Alto Potencial";
+export const addedLeadTag = "Lead adicionado";
+export const addedLeadTagColor = "#D97706";
+export const activeClientTag = "Cliente Ativo";
+export const activeClientTagColor = "#16A34A";
 
 export function tagGrantedByMinuta(mmsMaster: boolean) {
   return mmsMaster ? altoPotencialTag : "";
+}
+
+export function tagGrantedBySuccess(stageName: string) {
+  return protectedKanbanStage(stageName) ? activeClientTag : "";
 }
 
 export function saoPauloToday(now = Date.now()) {
@@ -1092,24 +1100,19 @@ export const attendanceKanbanStage = "Atendimento";
 export const proposalKanbanStage = "Proposta";
 export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho", wonKanbanStage];
 
-function advancedKanbanStage(name: string) {
+function recordedKanbanStage(name: string) {
   const key = name.trim().toLocaleLowerCase("pt-BR");
-  return key === "proposta" || key === "contrato" || key === "perdido" || key === "negociação" || key === "negociacao" || key === "ganho" || protectedKanbanStage(name);
+  return key === "reunião" || key === "reuniao" || key === "proposta" || key === "contrato" || protectedKanbanStage(name);
 }
 
 export function shouldAssignMeetingStage(currentStage: string, scheduled: boolean) {
-  if (!scheduled || advancedKanbanStage(currentStage)) return false;
+  if (!scheduled || protectedKanbanStage(currentStage)) return false;
   return currentStage.trim().localeCompare(meetingKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
 }
 
 export function shouldAssignAttendanceStage(currentStage: string) {
-  if (advancedKanbanStage(currentStage)) return false;
+  if (recordedKanbanStage(currentStage)) return false;
   return currentStage.trim().localeCompare(attendanceKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
-}
-
-export function shouldAssignProposalStage(currentStage: string, receivedProposal: boolean) {
-  if (!receivedProposal || advancedKanbanStage(currentStage)) return false;
-  return currentStage.trim().localeCompare(proposalKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
 }
 
 export function protectedKanbanStage(name: string) {
@@ -1556,7 +1559,7 @@ export function tagColorValue(value: string) {
   return match ? `#${match[1].toLowerCase()}` : "";
 }
 
-export type InboxContactTag = { name: string; color: string };
+export type InboxContactTag = { id?: string; name: string; color: string };
 
 export function inboxContactTags(
   links: { contactId: string; tagId: string }[],

@@ -1,4 +1,4 @@
-import { MessageSquare, Bot, ExternalLink, Filter, Pause, Pin, Play, Plus, Search, Send, UserRound } from "lucide-react";
+import { MessageSquare, Bot, ExternalLink, Filter, Mic, Pause, Pin, Play, Plus, Search, Send, Square, UserRound } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -29,7 +29,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -311,6 +311,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [quickOpen, setQuickOpen] = useState(false);
   const [botsOpen, setBotsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
   const [quickReplies, setQuickReplies] = useState<ChatbotQuickReply[]>([]);
   const [quickNote, setQuickNote] = useState("");
   const [flows, setFlows] = useState<{ id: string; name: string }[]>([]);
@@ -354,6 +356,15 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaKind = useRef<ComposerMediaKind | "">("");
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef(0);
+  const discardRecordRef = useRef(false);
+  const recordConversationRef = useRef("");
+  const recordingRef = useRef(false);
+  const recordStartingRef = useRef(false);
+  const finishRecordingRef = useRef<(send: boolean) => void>(() => {});
   const stickToBottom = useRef(true);
   const sending = useRef(false);
   const lastSent = useRef("");
@@ -456,6 +467,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setQuickOpen(false);
     setBotsOpen(false);
     setMediaOpen(false);
+    return () => finishRecordingRef.current(false);
   }, [selected]);
 
   useLayoutEffect(() => {
@@ -511,6 +523,11 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         internal: false,
       })),
   ];
+
+  const composerOpen = Boolean(conversation && (conversation.open || conversation.mine));
+  useEffect(() => {
+    if (!composerOpen && recordingRef.current) finishRecordingRef.current(false);
+  }, [composerOpen]);
 
   useEffect(() => {
     const box = historyRef.current;
@@ -1034,7 +1051,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     sending.current = true;
     setPending(true);
     setMediaOpen(false);
-    setMessage("Enviando arquivo...");
+    setMessage(checked.kind === "audio" ? "Enviando áudio..." : "Enviando arquivo...");
     try {
       const result = await sendChatbotMediaFn({
         data: { conversationId: selected, kind: checked.kind, name: checked.name, mime: checked.mime, base64 },
@@ -1050,6 +1067,112 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     } finally {
       sending.current = false;
       setPending(false);
+    }
+  }
+
+  function releaseRecorderStream() {
+    recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordStreamRef.current = null;
+  }
+
+  function finishRecording(send: boolean) {
+    discardRecordRef.current = !send;
+    window.clearInterval(recordTimerRef.current);
+    recordingRef.current = false;
+    recordStartingRef.current = false;
+    setRecording(false);
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      releaseRecorderStream();
+      recorderRef.current = null;
+      return;
+    }
+    recorder.stop();
+  }
+  finishRecordingRef.current = finishRecording;
+
+  async function startRecording() {
+    if (!selected || pending || sending.current || recordingRef.current || recordStartingRef.current) return;
+    recordStartingRef.current = true;
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      recordStartingRef.current = false;
+      setMessage("Este navegador não grava áudio.");
+      return;
+    }
+    const conversationId = selected;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      recordStartingRef.current = false;
+      setMessage(name === "NotAllowedError" || name === "SecurityError" ? "Permita o microfone para gravar o áudio." : name === "NotFoundError" ? "Nenhum microfone foi encontrado." : "Não foi possível gravar o áudio.");
+      return;
+    }
+    if (selectedRef.current !== conversationId || recordingRef.current) {
+      recordStartingRef.current = false;
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    const mime = voiceRecorderMime((value) => MediaRecorder.isTypeSupported(value));
+    let recorder: MediaRecorder;
+    try {
+      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch {
+      try {
+        recorder = new MediaRecorder(stream);
+      } catch {
+        recordStartingRef.current = false;
+        stream.getTracks().forEach((track) => track.stop());
+        setMessage("Este navegador não grava áudio.");
+        return;
+      }
+    }
+    recordChunksRef.current = [];
+    discardRecordRef.current = false;
+    recordConversationRef.current = conversationId;
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) recordChunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      const chunks = recordChunksRef.current;
+      recordChunksRef.current = [];
+      const type = recorder.mimeType || mime || "audio/webm";
+      releaseRecorderStream();
+      recorderRef.current = null;
+      if (discardRecordRef.current || selectedRef.current !== conversationId) return;
+      const blob = new Blob(chunks, { type });
+      if (blob.size <= 0) {
+        setMessage("A gravação ficou vazia.");
+        return;
+      }
+      mediaKind.current = "audio";
+      void sendMedia(new File([blob], voiceNoteName(type), { type }));
+    };
+    recordStreamRef.current = stream;
+    recorderRef.current = recorder;
+    recordingRef.current = true;
+    recordStartingRef.current = false;
+    setRecording(true);
+    setRecordSeconds(0);
+    setMediaOpen(false);
+    setQuickOpen(false);
+    setBotsOpen(false);
+    setMessage("");
+    const started = Date.now();
+    recordTimerRef.current = window.setInterval(() => {
+      setRecordSeconds(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+    }, 250);
+    try {
+      recorder.start(200);
+    } catch {
+      recordingRef.current = false;
+      recordStartingRef.current = false;
+      setRecording(false);
+      window.clearInterval(recordTimerRef.current);
+      releaseRecorderStream();
+      recorderRef.current = null;
+      setMessage("Não foi possível gravar o áudio.");
     }
   }
 
@@ -1421,7 +1544,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                     setDraft(next);
                   }}
                   onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing) return;
+                    if (recording || event.nativeEvent.isComposing) return;
                     if (!composerSendsOnEnter({ key: event.key, code: event.code, shiftKey: event.shiftKey, pending, text: event.currentTarget.value })) return;
                     event.preventDefault();
                     void send(event.currentTarget.value);
@@ -1431,6 +1554,15 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                   rows={3}
                 />
                 <p className="composer-hint">Shift + Enter para nova linha</p>
+                {recording ? (
+                  <p className="composer-recording" role="status">
+                    <span className="composer-recording-dot" aria-hidden="true" />
+                    Gravando {audioDurationLabel(recordSeconds)}
+                    <button type="button" onClick={() => finishRecording(false)}>
+                      Cancelar
+                    </button>
+                  </p>
+                ) : null}
                 {quickOpen ? (
                   <div className="composer-menu" role="listbox" aria-label="Respostas rápidas">
                     {quickNote ? <p>{quickNote}</p> : null}
@@ -1531,10 +1663,28 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       </Button>
                     ) : null}
                   </div>
-                  <Button type="submit" disabled={pending || !draft.trim()}>
-                    <Send />
-                    Enviar
-                  </Button>
+                  <div className="composer-submit">
+                    <Button
+                      type="button"
+                      variant={recording ? "default" : "outline"}
+                      size="icon"
+                      className="composer-mic"
+                      disabled={pending}
+                      aria-pressed={recording}
+                      aria-label={recording ? "Parar e enviar áudio" : "Gravar áudio"}
+                      title={recording ? "Parar e enviar áudio" : "Gravar áudio"}
+                      onClick={() => {
+                        if (recording) finishRecording(true);
+                        else void startRecording();
+                      }}
+                    >
+                      {recording ? <Square /> : <Mic />}
+                    </Button>
+                    <Button type="submit" disabled={pending || recording || !draft.trim()}>
+                      <Send />
+                      Enviar
+                    </Button>
+                  </div>
                 </footer>
               </form>
               ) : (

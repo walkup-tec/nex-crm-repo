@@ -16,6 +16,8 @@ import {
   composerDraftAfterSend,
   composerDraftChange,
   composerMediaFile,
+  voiceNoteName,
+  voiceRecorderMime,
   composerSendsOnEnter,
   channelsAllConnected,
   droppedChannels,
@@ -794,6 +796,11 @@ assert.equal(composerMediaFile({ name: "fala.mp3", mime: "audio/mpeg", size: 120
 assert.equal(composerMediaFile({ name: "clipe.mp4", mime: "video/mp4", size: 1200, kind: "video" }).ok, true);
 assert.equal(composerMediaFile({ name: "foto.jpg", mime: "image/jpeg", size: 1200, kind: "document" }).ok, false);
 assert.equal(composerMediaFile({ name: "grande.pdf", mime: "application/pdf", size: 16 * 1024 * 1024 + 1, kind: "document" }).ok, false);
+assert.equal(voiceRecorderMime((mime) => mime === "audio/webm"), "audio/webm");
+assert.equal(voiceRecorderMime(() => false), "");
+assert.equal(voiceNoteName("audio/webm;codecs=opus"), "audio.webm");
+assert.equal(voiceNoteName("audio/mp4"), "audio.m4a");
+assert.equal(composerMediaFile({ name: voiceNoteName("audio/webm;codecs=opus"), mime: "audio/webm;codecs=opus", size: 2400, kind: "audio" }).ok, true);
 assert.equal(evolutionMediaFile({ mimetype: "application/pdf", base64: "abc" }, "document").kind, "document");
 assert.equal(shouldSyncEvolution(0, 10000), true);
 assert.equal(shouldSyncEvolution(1000, 5000), false);

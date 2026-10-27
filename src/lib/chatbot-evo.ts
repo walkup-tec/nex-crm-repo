@@ -393,6 +393,21 @@ export function composerMediaFile(input: { name: string; mime: string; size: num
   return { ok: true as const, kind, mime, name };
 }
 
+const voiceRecorderMimes = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+
+export function voiceRecorderMime(supported: (mime: string) => boolean) {
+  return voiceRecorderMimes.find((mime) => supported(mime)) ?? "";
+}
+
+export function voiceNoteName(mime: string) {
+  const clean = mime.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (clean === "audio/mp4" || clean === "audio/aac") return "audio.m4a";
+  if (clean === "audio/ogg" || clean === "audio/opus") return "audio.ogg";
+  if (clean === "audio/mpeg") return "audio.mp3";
+  if (clean === "audio/wav") return "audio.wav";
+  return "audio.webm";
+}
+
 export function acceptSnapshot(requestId: number, lastAppliedId: number) {
   return requestId > lastAppliedId;
 }

@@ -74,7 +74,12 @@
 .chatbot-app .conversation-row .status-pill{margin-top:8px}
 .chatbot-app .composer footer.composer-actions{justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .chatbot-app .composer-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.chatbot-app .composer-plus{width:32px;height:32px;border-radius:999px}
+.chatbot-app .composer-plus,.chatbot-app .composer-mic{width:32px;height:32px;border-radius:999px}
+.chatbot-app .composer-submit{display:flex;align-items:center;gap:8px}
+.chatbot-app .composer-recording{display:flex;align-items:center;gap:8px;margin:8px 0 0;color:var(--destructive);font-size:12px;font-weight:700}
+.chatbot-app .composer-recording-dot{width:8px;height:8px;flex:none;border-radius:999px;background:var(--destructive)}
+.chatbot-app .composer-recording button{height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--muted-foreground);font-size:12px;font-weight:700;cursor:pointer}
+.chatbot-app .composer-recording button:hover{color:var(--foreground)}
 .chatbot-app .composer-menu{position:absolute;left:16px;bottom:64px;z-index:5;width:min(280px,calc(100% - 32px));max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--card);box-shadow:var(--shadow-panel);padding:6px;display:grid;gap:2px}
 .chatbot-app .composer-menu button{justify-content:flex-start;width:100%;height:auto;min-height:32px;padding:8px 10px;border:0;border-radius:6px;background:transparent;color:var(--foreground);font-size:12px;font-weight:650;text-align:left;cursor:pointer}
 .chatbot-app .composer-menu button:hover{background:var(--accent)}

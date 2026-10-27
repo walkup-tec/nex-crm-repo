@@ -200,7 +200,8 @@ export type FlowAction =
   | { type: "stage"; name: string }
   | { type: "save"; field: CrmSaveField; text: string }
   | { type: "queue" }
-  | { type: "pause" };
+  | { type: "pause" }
+  | { type: "stop" };
 export type FlowStep = { actions: FlowAction[]; run: FlowRun | null };
 export type FlowLaunch = "auto" | "manual";
 export type SavedFlow = { id: string; name: string; graph: FlowGraph; launch?: FlowLaunch };
@@ -474,6 +475,10 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
       actions.push({ type: "pause" });
       return { actions, run: doneRun(flow.id, node.id, lastAnswer) };
     }
+    if (node.label === "Parar Bot") {
+      actions.push({ type: "stop" });
+      return { actions, run: doneRun(flow.id, node.id, lastAnswer) };
+    }
     if (node.label === "Tempo de espera") {
       return {
         actions,
@@ -514,6 +519,7 @@ function describeFlowAction(action: FlowAction) {
   if (action.type === "stage") return `Contato colocado na etapa ${action.name}.`;
   if (action.type === "save") return `Resposta salva em ${crmSaveLabel(action.field)}: ${action.text}`;
   if (action.type === "queue") return "Conversa enviada para a fila de atendimento do Chatbot.";
+  if (action.type === "stop") return "Bot desativado para este contato.";
   return "";
 }
 

@@ -55,6 +55,11 @@ export function agendaMenuForMmsMaster(legalName: string, role: string) {
   return googleCalendarForMms(legalName) && (role === "client_admin" || role === "master");
 }
 
+export function activeClientMeetingName(userName: string) {
+  const name = userName.trim().replace(/\s+/g, " ");
+  return `${name || "Cliente"}-[Cliente ativo]`;
+}
+
 export function mmsMasterAutomation(legalName: string, admin: boolean) {
   return googleCalendarForMms(legalName) && admin;
 }

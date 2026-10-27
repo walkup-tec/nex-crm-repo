@@ -77,6 +77,27 @@ export const listLeadMeetingsFn = createServerFn({ method: "POST" })
     return guard(() => listLeadMeetings(context.userId, data.leadId));
   });
 
+export const requestClientMeetingContextFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { requestClientMeetingContext } = await import("@/server/google-calendar.server");
+    return guard(() => requestClientMeetingContext(context.userId));
+  });
+
+export const requestClientMeetingFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { requestId?: string; attendees?: string; date?: string; time?: string; meet?: boolean }) => ({
+    requestId: text(data.requestId, 80),
+    attendees: text(data.attendees, 500),
+    date: text(data.date, 10),
+    time: text(data.time, 5),
+    meet: data.meet === true,
+  }))
+  .handler(async ({ context, data }) => {
+    const { requestClientMeeting } = await import("@/server/google-calendar.server");
+    return guard(() => requestClientMeeting(context.userId, data));
+  });
+
 export const listMeetingCalendarFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Result<MeetingCalendarDay[]>> => {

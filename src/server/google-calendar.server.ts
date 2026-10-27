@@ -6,6 +6,7 @@ import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
 import { evolutionRuntime } from "@/server/evo.server";
 import {
   canReadAvailability,
+  cleanEmail,
   googleCalendarForMms,
   googleCalendarScopes,
   googleFailure,
@@ -15,7 +16,9 @@ import {
   meetingSlot,
   meetingTimeZone,
   meetingWhen,
+  activeClientMeetingName,
   meetingCalendar,
+  meetingChoices,
   markMeetingCalendar,
   lastMeetingFields,
   meetUrlFromEvent,
@@ -990,4 +993,100 @@ export async function cancelLeadMeeting(userId: string, meetingId: string) {
   }).eq("id", cell(meeting, "id")).eq("organization_id", gate.organizationId).select("*").maybeSingle();
   if (updated.error || !updated.data) schemaFail(updated.error?.message || "lead_meetings");
   return shown(await decorate([updated.data], userId, gate.manager));
+}
+
+async function requesterIdentity(userId: string) {
+  const profile = await from("profiles").select("full_name").eq("id", userId).maybeSingle();
+  if (profile.error) fail("Não foi possível confirmar o acesso.");
+  const auth = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (auth.error) fail("Não foi possível confirmar o e-mail.");
+  return {
+    name: activeClientMeetingName(cell(profile.data ?? {}, "full_name")),
+    email: cleanEmail(auth.data.user?.email ?? ""),
+  };
+}
+
+export async function requestClientMeetingContext(userId: string) {
+  const gate = await accessAny(userId, ["inbox", "schedules"]);
+  await requireMms(gate.organizationId);
+  const identity = await requesterIdentity(userId);
+  const connection = await connectionForUser(gate.organizationId, userId);
+  return { ...identity, connected: cell(connection ?? {}, "connection_status") === "connected" };
+}
+
+export async function requestClientMeeting(userId: string, input: {
+  requestId: string;
+  attendees: string;
+  date: string;
+  time: string;
+  meet: boolean;
+}) {
+  const gate = await accessAny(userId, ["inbox", "schedules"]);
+  await requireMms(gate.organizationId);
+  if (!meetingRecordId(input.requestId)) fail("Esse agendamento não é válido. Abra o formulário de novo.");
+  const identity = await requesterIdentity(userId);
+  if (!identity.email) fail("Não há e-mail neste acesso para solicitar a reunião.");
+  const days = await listMeetingCalendar(userId);
+  const open = meetingChoices(Date.now(), days).some((day) => day.date === input.date && day.times.includes(input.time));
+  if (!open) fail("Escolha um dia e um horário disponíveis.");
+  const slot = meetingSlot({ date: input.date, time: input.time });
+  if (!slot) fail("Escolha um dia e um horário disponíveis.");
+  const connection = requireConnected(await connectionForUser(gate.organizationId, userId));
+  const guests = meetingGuests(identity.email, input.attendees, cell(connection, "google_account_email"));
+  if ("error" in guests) fail(guests.error);
+  const calendarId = encodeURIComponent(cell(connection, "calendar_id") || "primary");
+  const description = `${standardMeetingDescription}\nSolicitante: ${identity.name}`;
+  const busy = await busyRanges(connection, slot.start, slot.end);
+  if (busy && overlapsBusy(slot.start, slot.end, busy)) fail("Esse horário já está ocupado na agenda.");
+  const saved = await withGoogle(connection, async (token) => {
+    const found = await findExistingEvent(token, calendarId, input.requestId);
+    if (found) return { status: 200, body: found };
+    const event: Row = {
+      summary: standardMeetingTitle,
+      description,
+      start: { dateTime: slot.start, timeZone: meetingTimeZone },
+      end: { dateTime: slot.end, timeZone: meetingTimeZone },
+      extendedProperties: { private: { nexRequestId: input.requestId } },
+    };
+    if (guests.emails.length) event.attendees = guests.emails.map((email) => ({ email }));
+    if (input.meet) {
+      event.conferenceData = {
+        createRequest: {
+          requestId: input.requestId,
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      };
+    }
+    const params = new URLSearchParams({ sendUpdates: "all" });
+    if (input.meet) params.set("conferenceDataVersion", "1");
+    const created = await googleJson(token, `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?${params}`, { method: "POST", body: event });
+    if ((created.status !== 200 && created.status !== 201) || !created.body || typeof created.body !== "object") return created;
+    const ready = input.meet ? await readMeet(token, calendarId, created.body as GoogleEventShape) : created.body as GoogleEventShape;
+    return { status: 200, body: ready };
+  });
+  if ((saved.status !== 200 && saved.status !== 201) || !saved.body || typeof saved.body !== "object") fail(googleFailure(saved.status, googleReason(saved.body)));
+  const event = saved.body as GoogleEventShape;
+  const intake = await from("contracting_intakes").select("contact_id").eq("organization_id", gate.organizationId).eq("representative_email", identity.email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const contactId = intake.error ? "" : cell(intake.data ?? {}, "contact_id");
+  if (contactId && event.id) {
+    const lead = await from("chatbot_contacts").select("id").eq("id", contactId).eq("organization_id", gate.organizationId).maybeSingle();
+    if (!lead.error && lead.data) {
+      await from("lead_meetings").insert({
+        organization_id: gate.organizationId,
+        lead_id: contactId,
+        user_id: userId,
+        google_connection_id: cell(connection, "id"),
+        request_id: input.requestId,
+        title: standardMeetingTitle,
+        description,
+        attendee_email: guests.lead,
+        attendees: guests.emails,
+        start_at: slot.start,
+        end_at: slot.end,
+        timezone: meetingTimeZone,
+        ...storedEvent(event),
+      });
+    }
+  }
+  return { name: identity.name, email: identity.email, when: meetingWhen(slot.start, slot.end) };
 }

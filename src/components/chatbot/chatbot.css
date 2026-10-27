@@ -435,6 +435,7 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .meeting-form label{display:grid;gap:6px;font-size:12px;font-weight:600}
 .chatbot-app .meeting-form input,.chatbot-app .meeting-form select,.chatbot-app .meeting-form textarea{width:100%;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);font-size:13px}
 .chatbot-app .meeting-form input,.chatbot-app .meeting-form select{height:36px;padding:0 10px}
+.chatbot-app .meeting-form input:disabled,.chatbot-app .meeting-form input[readonly]{opacity:.8;cursor:not-allowed}
 .chatbot-app .meeting-form textarea{min-height:72px;padding:8px 10px;resize:vertical}
 .chatbot-app .meeting-form input:focus,.chatbot-app .meeting-form select:focus,.chatbot-app .meeting-form textarea:focus{outline:none;border-color:#6F02FD}
 .chatbot-app .meeting-check{display:flex !important;align-items:center;gap:8px}

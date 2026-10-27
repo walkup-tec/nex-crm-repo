@@ -4390,6 +4390,10 @@ async function applyFlowActions(connection: Record<string, unknown>, organizatio
       if (action.type === "pause") {
         await table("chatbot_conversations").update({ bot_paused: true, updated_at: new Date().toISOString() }).eq("id", conversationId).eq("organization_id", organizationId);
       }
+      if (action.type === "stop") {
+        await table("chatbot_contacts").update({ bots_disabled: true }).eq("id", contactId).eq("organization_id", organizationId);
+        await table("chatbot_conversations").update({ bot_paused: true, updated_at: new Date().toISOString() }).eq("organization_id", organizationId).eq("contact_id", contactId);
+      }
     } catch (error) {
       console.error("chatbot_flow", error instanceof Error ? error.message : "falha");
     }

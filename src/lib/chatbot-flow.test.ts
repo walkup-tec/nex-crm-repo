@@ -356,6 +356,28 @@ const legacyBoard = stepFlow(
   { text: "oi", at: noon, outsideHours: false },
 );
 assert.equal(legacyBoard.actions[1]?.type, "stage");
+const stopFlow: SavedFlow = {
+  id: "parar",
+  name: "Parar",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      { id: "m", label: "Enviar mensagem", kind: "Ação", content: "Vou transferir você." },
+      { id: "s", label: "Parar Bot", kind: "Ação", content: "" },
+      { id: "later", label: "Enviar mensagem", kind: "Ação", content: "Isso não deve sair." },
+    ],
+    edges: [
+      { source: "t", target: "m" },
+      { source: "m", target: "s" },
+      { source: "s", target: "later" },
+    ],
+  },
+};
+const stopped = stepFlow(stopFlow, null, { text: "oi", at: noon, outsideHours: false });
+assert.equal(stopped.actions.some((action) => action.type === "stop"), true);
+assert.equal(stopped.actions.some((action) => action.type === "send" && action.text === "Isso não deve sair."), false);
+assert.equal(stopped.run?.status, "done");
+assert.equal(previewFlowTurns(stopFlow.graph, ["oi"], false, noon).turns.some((turn) => turn.text === "Bot desativado para este contato."), true);
 
 const returnAudio = { kind: "audio" as const, name: "retorno.mp3", mime: "audio/mpeg", path: "11111111-1111-4111-8111-111111111111/flows/33333333-3333-4333-8333-333333333333.mp3" };
 const returnFlow: SavedFlow = {

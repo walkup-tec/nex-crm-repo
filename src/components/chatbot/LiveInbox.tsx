@@ -1,5 +1,5 @@
 import { MessageSquare, Bot, ExternalLink, Filter, Pause, Pin, Play, Plus, Search, Send, UserRound } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -349,6 +349,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const inFlight = useRef(false);
   const loadAgain = useRef(false);
   const historyRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaKind = useRef<ComposerMediaKind | "">("");
@@ -455,6 +457,32 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setBotsOpen(false);
     setMediaOpen(false);
   }, [selected]);
+
+  useLayoutEffect(() => {
+    if (!filtersOpen) return;
+    const place = () => {
+      const button = filterButtonRef.current;
+      const panel = filterPanelRef.current;
+      if (!button || !panel) return;
+      const rect = button.getBoundingClientRect();
+      const width = panel.offsetWidth || 240;
+      const gap = 8;
+      let left = rect.right + gap;
+      if (left + width > window.innerWidth - 12) left = Math.max(12, window.innerWidth - width - 12);
+      let top = rect.top;
+      const height = panel.offsetHeight;
+      if (top + height > window.innerHeight - 12) top = Math.max(12, window.innerHeight - height - 12);
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [filtersOpen]);
 
   useEffect(() => {
     if (!newOpen) return;
@@ -1183,6 +1211,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 </h2>
               </div>
               <button
+                ref={filterButtonRef}
                 type="button"
                 className={`list-filter${filtersOn ? " active" : ""}`}
                 aria-label="Filtrar conversas"
@@ -1215,7 +1244,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
               ))}
             </div>
             {filtersOpen ? (
-              <div className="list-filter-panel">
+              <div ref={filterPanelRef} className="list-filter-panel">
                 {(
                   [
                     ["products", "Produto", data?.catalogs.products.map((name) => ({ name })) ?? []],

@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Columns3 } from "lucide-react";
+import { Columns3, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -41,13 +41,16 @@ export function Kanban() {
   const navigate = useNavigate();
   const [stages, setStages] = useState<string[]>([]);
   const [cards, setCards] = useState<ChatbotKanbanCard[]>([]);
-  const [search, setSearch] = useState("");
   const [ready, setReady] = useState(true);
   const [calling, setCalling] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const [failure, setFailure] = useState("");
 
-  useEffect(() => {
-    void listChatbotKanbanFn().then((result) => {
+  async function refresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const result = await listChatbotKanbanFn();
       if (!result.ok) {
         setFailure(result.message);
         return;
@@ -55,7 +58,13 @@ export function Kanban() {
       setReady(result.data.ready);
       setStages(result.data.stages);
       setCards(result.data.cards);
-    });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
   }, []);
 
   async function call(contactId: string) {
@@ -70,20 +79,18 @@ export function Kanban() {
     void navigate({ to: "/chatbot" });
   }
 
-  const term = search.trim().toLowerCase();
-
   return (
     <main className="page kanban-page">
-      <div className="table-toolbar mb-5 rounded-md border bg-card">
-        <input placeholder="Buscar contato" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar contato" />
+      <div className="mb-5 flex justify-end">
+        <Button variant="outline" disabled={refreshing} onClick={() => void refresh()}>
+          <RefreshCw className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Atualizando" : "Atualizar"}
+        </Button>
       </div>
       {ready ? null : <p className="info-note mb-5">A etapa do contato ainda não está disponível. Aplique a migração do kanban no Supabase.</p>}
       <div className="kanban-board">
         {stages.map((stage, index) => {
-          const items = cards.filter((card) => {
-            const product = card.products.join(", ");
-            return card.stage === stage && `${card.name} ${product}`.toLowerCase().includes(term);
-          });
+          const items = cards.filter((card) => card.stage === stage);
           const total = items.reduce((sum, card) => sum + (card.negotiatedCents ?? 0), 0);
           return (
             <section key={stage} className="kanban-column" style={{ "--stage": stageTone(stage, index) } as CSSProperties}>

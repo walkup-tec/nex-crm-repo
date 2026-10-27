@@ -1089,6 +1089,7 @@ export function evolutionMessageText(message: unknown): string {
 export const wonKanbanStage = "Sucesso";
 export const meetingKanbanStage = "Reunião";
 export const attendanceKanbanStage = "Atendimento";
+export const proposalKanbanStage = "Proposta";
 export const defaultKanbanStages = ["Novos leads", "Qualificação", "Proposta", "Negociação", "Ganho", wonKanbanStage];
 
 function advancedKanbanStage(name: string) {
@@ -1104,6 +1105,11 @@ export function shouldAssignMeetingStage(currentStage: string, scheduled: boolea
 export function shouldAssignAttendanceStage(currentStage: string) {
   if (advancedKanbanStage(currentStage)) return false;
   return currentStage.trim().localeCompare(attendanceKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
+}
+
+export function shouldAssignProposalStage(currentStage: string, receivedProposal: boolean) {
+  if (!receivedProposal || advancedKanbanStage(currentStage)) return false;
+  return currentStage.trim().localeCompare(proposalKanbanStage, "pt-BR", { sensitivity: "accent" }) !== 0;
 }
 
 export function protectedKanbanStage(name: string) {

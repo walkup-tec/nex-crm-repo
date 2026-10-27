@@ -78,6 +78,7 @@ import {
   protectedKanbanStage,
   shouldAssignAttendanceStage,
   shouldAssignMeetingStage,
+  shouldAssignProposalStage,
   withWonKanbanStage,
   inboxOrder,
   inboxUnread,
@@ -192,6 +193,12 @@ assert.equal(shouldAssignMeetingStage("Proposta", true), false);
 assert.equal(shouldAssignMeetingStage("Contrato", true), false);
 assert.equal(shouldAssignMeetingStage("Perdido", true), false);
 assert.equal(shouldAssignMeetingStage("Atendimento", false), false);
+assert.equal(shouldAssignProposalStage("Reunião", true), true);
+assert.equal(shouldAssignProposalStage("Atendimento", true), true);
+assert.equal(shouldAssignProposalStage("Proposta", true), false);
+assert.equal(shouldAssignProposalStage("Contrato", true), false);
+assert.equal(shouldAssignProposalStage("Sucesso", true), false);
+assert.equal(shouldAssignProposalStage("Reunião", false), false);
 assert.equal(shouldAssignAttendanceStage("Proposta"), false);
 assert.equal(shouldAssignAttendanceStage("Contrato"), false);
 assert.equal(attendanceKanbanStage, "Atendimento");

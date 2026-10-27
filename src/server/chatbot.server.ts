@@ -89,6 +89,8 @@ import {
   leadOriginSelection,
   shouldAssignAttendanceStage,
   shouldAssignMeetingStage,
+  shouldAssignProposalStage,
+  proposalKanbanStage,
   keepWhatsappName,
   tagColorValue,
   clientVisibleTo,
@@ -1234,7 +1236,7 @@ export async function sendChatbotProposta(userId: string, conversationId: string
     updated_at: new Date().toISOString(),
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
-  await moveContactToKanbanStage(organizationId, contactId, "Proposta");
+  await moveContactToKanbanStage(organizationId, contactId, proposalKanbanStage);
 }
 
 async function clientContractTerms(organizationId: string, contactId: string, documentDigits: string) {
@@ -2868,6 +2870,7 @@ export async function listLeadOriginCampaigns(userId: string) {
 
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
   const { organizationId } = await membership(userId, "inbox");
+  await assignProposalStageForContact(organizationId, contactId);
   const signedSync = (async () => {
     try {
       const { syncContractSignature } = await import("@/server/autentique.server");
@@ -3285,6 +3288,45 @@ async function assignAttendanceKanbanStage(organizationId: string, admin: boolea
   await moveContactToKanbanStage(organizationId, contactId, attendanceKanbanStage);
 }
 
+async function assignProposalStageForContact(organizationId: string, contactId: string) {
+  const current = await table("chatbot_contacts").select("stage_name").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+  if (current.error || !shouldAssignProposalStage(cell(current.data, "stage_name"), true)) return;
+  const conversations = await rowsOrMissing(
+    table("chatbot_conversations").select("id").eq("organization_id", organizationId).eq("contact_id", contactId),
+  );
+  if (conversations.missing || !conversations.rows.length) return;
+  const ids = conversations.rows.map((row) => cell(row, "id")).filter(Boolean);
+  if (!ids.length) return;
+  const messages = await rowsOrMissing(
+    table("chatbot_messages").select("id").eq("organization_id", organizationId).eq("direction", "out").eq("text", propostaFileName).in("conversation_id", ids).limit(1),
+  );
+  if (messages.missing || !messages.rows.length) return;
+  await moveContactToKanbanStage(organizationId, contactId, proposalKanbanStage);
+}
+
+async function assignProposalStages(organizationId: string) {
+  const messages = await rowsOrMissing(
+    table("chatbot_messages").select("conversation_id").eq("organization_id", organizationId).eq("direction", "out").eq("text", propostaFileName),
+  );
+  if (messages.missing || !messages.rows.length) return;
+  const conversationIds = [...new Set(messages.rows.map((row) => cell(row, "conversation_id")).filter(Boolean))];
+  if (!conversationIds.length) return;
+  const conversations = await rowsOrMissing(
+    table("chatbot_conversations").select("id, contact_id").eq("organization_id", organizationId).in("id", conversationIds),
+  );
+  if (conversations.missing) return;
+  const contactIds = [...new Set(conversations.rows.map((row) => cell(row, "contact_id")).filter(Boolean))];
+  if (!contactIds.length) return;
+  const contacts = await rowsOrMissing(
+    table("chatbot_contacts").select("id, stage_name").eq("organization_id", organizationId).in("id", contactIds),
+  );
+  if (contacts.missing) return;
+  for (const row of contacts.rows) {
+    if (!shouldAssignProposalStage(cell(row, "stage_name"), true)) continue;
+    await moveContactToKanbanStage(organizationId, cell(row, "id"), proposalKanbanStage);
+  }
+}
+
 async function assignScheduledMeetingStages(organizationId: string) {
   const meetings = await rowsOrMissing(
     table("lead_meetings").select("lead_id").eq("organization_id", organizationId).eq("status", "scheduled").not("google_event_id", "is", null),
@@ -3305,6 +3347,7 @@ async function assignScheduledMeetingStages(organizationId: string) {
 export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBoard> {
   const { organizationId, admin } = await membership(userId, "kanban");
   if (await mmsMasterActor(organizationId, admin)) await assignScheduledMeetingStages(organizationId);
+  await assignProposalStages(organizationId);
   const stages = await listChatbotStages(userId);
   const contactQuery = (withDeal: boolean) =>
     table("chatbot_contacts")
@@ -4940,6 +4983,7 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 
 export async function chatbotOverview(userId: string): Promise<OverviewBoard> {
   const { organizationId, admin } = await membership(userId, "overview");
+  await assignProposalStages(organizationId);
   const masterView = mmsMasterActor(organizationId, admin);
   const listedStages = await listChatbotStages(userId);
   const [conversations, contacts, ratings, connections, profiles, members, teams, products, productLinks] = await Promise.all([

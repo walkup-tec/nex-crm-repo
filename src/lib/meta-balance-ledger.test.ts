@@ -175,6 +175,51 @@ assert.equal(
 );
 assert.equal(mergeLedger([received!], [received!, charge!]).length, 2);
 
+const octoberDepositAt = Date.parse("2026-10-07T15:00:00.000Z");
+const october27At = Date.parse("2026-10-27T15:00:00.000Z");
+const october28At = Date.parse("2026-10-28T15:00:00.000Z");
+const octoberDeposit = classifyGraphPayment({
+  id: "28936639426026954-2913029933327629",
+  status: "Com saldo",
+  payment_option: "Pagamento manual",
+  app_amount: { amount: "200,00" },
+  time: octoberDepositAt / 1000,
+});
+const october27 = classifyGraphPayment({
+  id: "29373632172327680-29236716052685959",
+  status: "Pago",
+  payment_option: "Saldo pré-pago",
+  app_amount: { amount: "33,01" },
+  time: 0,
+  billing_end_time: october27At / 1000,
+});
+const october28 = classifyGraphPayment({
+  id: "29270693555954871-29465309913159899",
+  status: "Pago",
+  payment_option: "Saldo pré-pago",
+  app_amount: { amount: "24,73" },
+  time: String(october28At / 1000),
+});
+assert.equal(october27?.direction, "debit");
+assert.equal(october27?.cents, 3301);
+assert.equal(october27?.at, "2026-10-27T15:00:00.000Z");
+assert.equal(october28?.direction, "debit");
+assert.equal(october28?.cents, 2473);
+assert.equal(october28?.at, "2026-10-28T15:00:00.000Z");
+assert.equal(prepaidBalanceCents([octoberDeposit!, october27!, october28!]), 14226);
+const staleOctober28 = {
+  id: october28!.id,
+  direction: "debit" as const,
+  cents: 2172,
+  at: "1970-01-01T00:00:00.000Z",
+};
+assert.equal(
+  prepaidBalanceCents(
+    mergeLedger([octoberDeposit!, staleOctober28], [octoberDeposit!, october27!, october28!]),
+  ),
+  14226,
+);
+
 const storedSpend = classifyGraphPayment({
   id: "29270693555954871-29465309913159899",
   status: "completed",

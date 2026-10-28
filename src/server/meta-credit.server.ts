@@ -167,7 +167,7 @@ async function readSpendFields(organizationId: string, accountId: string, node: 
 }
 
 const transactionFields =
-  "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
+  "id,time,billing_end_time,billing_start_time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
 const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
 
 async function paymentRows(accountId: string, organizationId: string, businessId: string | null) {

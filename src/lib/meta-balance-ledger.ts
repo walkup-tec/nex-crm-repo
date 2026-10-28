@@ -95,9 +95,7 @@ function occurredMillis(at: string | null | undefined) {
 
 export function mergeLedger(existing: LedgerEntry[], incoming: LedgerEntry[]) {
   const byId = new Map(existing.map((entry) => [entry.id, entry]));
-  for (const entry of incoming) {
-    if (!byId.has(entry.id)) byId.set(entry.id, entry);
-  }
+  for (const entry of incoming) byId.set(entry.id, entry);
   return [...byId.values()];
 }
 
@@ -134,6 +132,8 @@ type GraphPayment = {
   amount?: unknown;
   time?: unknown;
   event_time?: unknown;
+  billing_start_time?: unknown;
+  billing_end_time?: unknown;
   object_id?: unknown;
 };
 
@@ -152,7 +152,12 @@ export function classifyGraphPayment(item: unknown): LedgerEntry | null {
   );
   const id = paymentId(record);
   if (!id || cents == null) return null;
-  const at = occurredAt(record.time ?? record.event_time);
+  const at = firstOccurredAt(
+    record.time,
+    record.event_time,
+    record.billing_end_time,
+    record.billing_start_time,
+  );
   return { id, direction, cents, at };
 }
 
@@ -237,15 +242,37 @@ function paymentId(record: GraphPayment) {
   return id || null;
 }
 
-function occurredAt(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return new Date(value > 10_000_000_000 ? value : value * 1000).toISOString();
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+const earliestChargeMillis = Date.UTC(2001, 0, 1);
+
+function firstOccurredAt(...values: unknown[]) {
+  for (const value of values) {
+    const at = occurredAt(value);
+    if (at) return at;
   }
   return null;
+}
+
+function occurredAt(value: unknown) {
+  const millis = epochMillis(value);
+  if (millis == null || millis < earliestChargeMillis) return null;
+  return new Date(millis).toISOString();
+}
+
+function epochMillis(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return scaledEpoch(value);
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) ? scaledEpoch(numeric) : null;
+  }
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function scaledEpoch(value: number) {
+  return value > 10_000_000_000 ? value : value * 1000;
 }
 
 function parseExtra(value: unknown): Record<string, unknown> | null {

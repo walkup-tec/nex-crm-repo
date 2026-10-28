@@ -3110,6 +3110,7 @@ async function provisionChatbotNexClient(organizationId: string, contactId: stri
   const { inviteClientAdmin } = await import("@/server/users.server");
   const created = await provisionClientShell({
     legalName: intake.legalName,
+    commercialName: "",
     document: intake.cnpj,
     responsibleName: intake.representativeName,
     responsibleEmail: intake.representativeEmail,

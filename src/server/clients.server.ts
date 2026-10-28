@@ -51,7 +51,7 @@ function migrationMessage(message: string) {
 
 function parseDraft(input: ClientDraft) {
   const legalName = input.legalName.trim();
-  const commercialName = input.commercialName.trim().replace(/\s+/g, " ");
+  const commercialName = (input.commercialName ?? "").trim().replace(/\s+/g, " ");
   const responsibleName = input.responsibleName.trim();
   const document = digits(input.document);
   const phone = digits(input.whatsapp);

@@ -128,8 +128,7 @@ async function rememberBalance(accountRowId: string, cents: number | null, kind:
 
 async function readNode(organizationId: string, accountId: string) {
   const attempts = [
-    "name,account_id,currency,balance,spend_cap,amount_spent,is_prepay_account,funding_source_details",
-    "name,account_id,currency,balance,spend_cap,amount_spent,is_prepay_account",
+    "name,account_id,currency,balance,is_prepay_account,funding_source_details",
     "name,account_id,currency,balance,is_prepay_account",
     "name,account_id,currency,balance",
   ];
@@ -152,19 +151,24 @@ async function readNode(organizationId: string, accountId: string) {
 // in their own call. If that dedicated call fails we fall back to whatever the
 // batched read happened to return.
 async function readSpendFields(organizationId: string, accountId: string, node: AccountNode) {
-  try {
-    const trimmed = (await readAdAccountNode(
-      organizationId,
-      accountId,
-      "spend_cap,amount_spent",
-    )) as AccountNode;
-    if (trimmed.spend_cap != null || trimmed.amount_spent != null) {
-      return { spendCap: trimmed.spend_cap ?? null, amountSpent: trimmed.amount_spent ?? null };
+  const fallback = { spendCap: node.spend_cap ?? null, amountSpent: node.amount_spent ?? null };
+  const pending = (async () => {
+    try {
+      const trimmed = (await readAdAccountNode(
+        organizationId,
+        accountId,
+        "spend_cap,amount_spent",
+      )) as AccountNode;
+      if (trimmed.spend_cap != null || trimmed.amount_spent != null) {
+        return { spendCap: trimmed.spend_cap ?? null, amountSpent: trimmed.amount_spent ?? null };
+      }
+    } catch (error) {
+      console.error("meta_spend_cap", error instanceof Error ? error.name : "error");
     }
-  } catch (error) {
-    console.error("meta_spend_cap", error instanceof Error ? error.name : "error");
-  }
-  return { spendCap: node.spend_cap ?? null, amountSpent: node.amount_spent ?? null };
+    return fallback;
+  })();
+  const abandoned = new Promise<typeof fallback>((resolve) => setTimeout(() => resolve(fallback), 8000));
+  return Promise.race([pending, abandoned]);
 }
 
 const transactionFields =
@@ -182,7 +186,7 @@ async function transactionRows(accountId: string, organizationId: string) {
   const attempts = [{ limit: "100", fields: transactionFields }, { limit: "100" }];
   for (const params of attempts) {
     try {
-      return await listAdAccountEdge(organizationId, accountId, "transactions", params);
+      return await listAdAccountEdge(organizationId, accountId, "transactions", params, 2);
     } catch (error) {
       console.error("meta_transactions", error instanceof Error ? error.name : "error");
     }
@@ -194,17 +198,20 @@ async function activityRows(accountId: string, organizationId: string, businessI
   const merged: Record<string, unknown>[] = [];
   const recent = { fields: activityFields, limit: "100", since: metaBalanceHistorySince() };
   try {
-    merged.push(...(await listAdAccountEdge(organizationId, accountId, "activities", recent)));
+    merged.push(...(await listAdAccountEdge(organizationId, accountId, "activities", recent, 2)));
   } catch (error) {
     console.error("meta_activities", error instanceof Error ? error.name : "error");
   }
   if (businessId && /^\d+$/.test(businessId) && !merged.some(hasCredit)) {
     try {
       merged.push(
-        ...(await listAdAccountEdge(organizationId, accountId, "activities", {
-          ...recent,
-          business_id: businessId,
-        })),
+        ...(await listAdAccountEdge(
+          organizationId,
+          accountId,
+          "activities",
+          { ...recent, business_id: businessId },
+          2,
+        )),
       );
     } catch (error) {
       console.error("meta_activities", error instanceof Error ? error.name : "error");

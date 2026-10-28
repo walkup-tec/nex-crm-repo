@@ -108,13 +108,18 @@ export function MetaCredits() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const result = await getMetaCreditFn();
-    setLoading(false);
-    if (!result.ok) {
-      setError(result.message);
-      return;
+    try {
+      const result = await getMetaCreditFn();
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setView(result.data);
+    } catch {
+      setError("Não foi possível carregar o saldo. Tente de novo.");
+    } finally {
+      setLoading(false);
     }
-    setView(result.data);
   }, []);
 
   useEffect(() => {

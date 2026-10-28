@@ -5,7 +5,8 @@ import stepPayment from "@/assets/meta-saldo-etapa-2.webp";
 import { Button } from "@/components/ui/button";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { isLowMetaBalance } from "@/lib/low-balance";
-import { getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
+import type { MetaFieldRead } from "@/lib/meta-balance-debug";
+import { getMetaBalanceDebugFn, getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
 import type { MetaCreditView } from "@/lib/meta-credit";
 
 const guide = [
@@ -100,6 +101,9 @@ export function MetaCredits() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [entering, setEntering] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [reads, setReads] = useState<MetaFieldRead[] | null>(null);
+  const [readError, setReadError] = useState("");
   const watchRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -282,6 +286,49 @@ export function MetaCredits() {
               : "Nenhuma conta de anúncio integrada"}
           </p>
         </div>
+        {view?.canDebug ? (
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={reading}
+              onClick={() => {
+                setReading(true);
+                setReadError("");
+                void getMetaBalanceDebugFn()
+                  .then((result) => {
+                    if (!result.ok) {
+                      setReads(null);
+                      setReadError(result.message);
+                      return;
+                    }
+                    setReads(result.data);
+                  })
+                  .catch(() => setReadError("Não foi possível ler a resposta da Meta."))
+                  .finally(() => setReading(false));
+              }}
+            >
+              {reading ? "Lendo a Meta..." : "Ver resposta da Meta"}
+            </Button>
+            {readError ? <p className="mt-3 text-sm text-destructive">{readError}</p> : null}
+            {reads ? (
+              <div className="mt-4 space-y-3">
+                {reads.map((read) => (
+                  <article key={read.name} className="rounded-lg border bg-background p-3">
+                    <p className="text-sm font-medium">{read.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {read.ok ? "Meta respondeu" : "Meta recusou"} · HTTP {read.status}
+                      {read.code != null ? ` · código ${read.code}` : ""}
+                    </p>
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-xs">
+                      {JSON.stringify(read.body, null, 2)}
+                    </pre>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="order-2 rounded-lg border bg-card p-5 lg:order-none lg:col-span-2 lg:row-start-2">

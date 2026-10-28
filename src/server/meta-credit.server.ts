@@ -8,13 +8,20 @@ import {
   whatsappNumber,
 } from "@/lib/low-balance";
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
+import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
+import type { MetaFieldRead } from "@/lib/meta-balance-debug";
 import {
   accountFigures,
   type BalanceKind,
   type FundingSource,
   type MetaCreditView,
 } from "@/lib/meta-credit";
-import { listAdAccountEdge, readAdAccountNode, startSimpleFacebookLogin } from "@/server/meta.server";
+import {
+  debugMetaRead,
+  listAdAccountEdge,
+  readAdAccountNode,
+  startSimpleFacebookLogin,
+} from "@/server/meta.server";
 
 type Role = "master" | "client_admin" | "client_user";
 
@@ -58,7 +65,17 @@ async function actorOf(userId: string) {
     perms?.can_add_meta_credit === true;
   const canAdd = role !== "client_user" || perms?.can_add_meta_credit === true;
   if (!canView) fail("Você não tem permissão para ver os créditos Meta.");
-  return { organizationId: profile.organization_id, canAdd };
+  return { organizationId: profile.organization_id, canAdd, role };
+}
+
+async function mmsMaster(organizationId: string, role: Role) {
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("legal_name")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error || !data) return false;
+  return agendaMenuForMmsMaster(data.legal_name ?? "", role);
 }
 
 async function selectedAccount(organizationId: string) {
@@ -167,6 +184,7 @@ function emptyView(canAdd: boolean): MetaCreditView {
     chargeCents: null,
     thresholdCents: null,
     canAdd,
+    canDebug: false,
     syncedAt: null,
     prepay: null,
     balanceUrl: null,
@@ -175,8 +193,9 @@ function emptyView(canAdd: boolean): MetaCreditView {
 
 export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
   const actor = await actorOf(userId);
+  const canDebug = await mmsMaster(actor.organizationId, actor.role);
   const account = await selectedAccount(actor.organizationId);
-  if (!account) return emptyView(actor.canAdd);
+  if (!account) return { ...emptyView(actor.canAdd), canDebug };
   const { figures, prepay } = await readBalance(
     actor.organizationId,
     account.external_account_id,
@@ -191,10 +210,43 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     chargeCents: figures.chargeCents,
     thresholdCents: figures.thresholdCents,
     canAdd: actor.canAdd,
+    canDebug,
     syncedAt: new Date().toISOString(),
     prepay,
     balanceUrl: normalizeBalanceLink(account.balance_url ?? ""),
   };
+}
+
+const metaReads = [
+  ["Saldo disponível · total_prepay_balance", "total_prepay_balance", ""],
+  ["Saldo disponível · prepay_account_balance", "prepay_account_balance", ""],
+  [
+    "Saldo disponível · funding_source_details",
+    "funding_source_details{type,amount,currency,display_amount,display_string,coupons{amount}}",
+    "",
+  ],
+  ["Será cobrado · current_unbilled_spend", "current_unbilled_spend", ""],
+  ["Será cobrado · balance", "balance", ""],
+  [
+    "A Meta cobra ao chegar a · adspaymentcycle",
+    "threshold_amount,requested_threshold_amount",
+    "adspaymentcycle",
+  ],
+] as const;
+
+export async function getMetaBalanceDebug(userId: string): Promise<MetaFieldRead[]> {
+  const actor = await actorOf(userId);
+  if (!(await mmsMaster(actor.organizationId, actor.role))) {
+    fail("Você não pode ver esta leitura.");
+  }
+  const account = await selectedAccount(actor.organizationId);
+  if (!account) fail("Nenhuma conta de anúncio integrada.");
+  return Promise.all(
+    metaReads.map(async ([name, field, edge]) => {
+      const read = await debugMetaRead(actor.organizationId, account.external_account_id, field, edge);
+      return { name, field, ok: read.ok, status: read.status, code: read.code, body: read.body };
+    }),
+  );
 }
 
 export async function getClientBalanceAlert(userId: string) {

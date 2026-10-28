@@ -249,7 +249,8 @@ async function readBalance(
       ? remainingSpendCents(node.spend_cap, node.amount_spent)
       : null;
   let result = remaining != null ? { cents: remaining, kind: "available" as const } : reading;
-  if (remaining == null && (
+  if (
+    remaining == null &&
     shouldUsePrepaidLedger({
       hasCard,
       displayedCents: reading.cents,

@@ -5,6 +5,7 @@ import {
   hasCreditCard,
   mergeLedger,
   prepaidBalanceCents,
+  ledgerSourceRows,
   readLedger,
   metaBalanceHistorySince,
   shouldUsePrepaidLedger,
@@ -173,6 +174,22 @@ assert.equal(
   17000,
 );
 assert.equal(mergeLedger([received!], [received!, charge!]).length, 2);
+
+const storedSpend = classifyGraphPayment({
+  id: "29270693555954871-29465309913159899",
+  status: "completed",
+  payment_option: "stored_balance",
+  app_amount: { amount: "24,73" },
+  time: 1761609600,
+});
+assert.equal(storedSpend?.direction, "debit");
+assert.equal(storedSpend?.cents, 2473);
+
+const depositOnly = [{ id: "fund", status: "Com saldo", payment_option: "Pagamento manual", app_amount: { amount: "200,00" }, time: 1759795200 }];
+const spendActivity = [{ event_type: "ad_account_billing_charge", event_time: 1761609600, object_id: "act_1", extra_data: JSON.stringify({ new_value: 2473, status: "paid" }) }];
+assert.equal(ledgerSourceRows(depositOnly, spendActivity).length, 2);
+assert.equal(ledgerSourceRows([...depositOnly, { id: "paid", status: "Pago", payment_option: "Saldo pré-pago", app_amount: { amount: "24,73" } }], spendActivity).length, 2);
+assert.equal(ledgerSourceRows([], spendActivity).length, 1);
 
 const balanceNow = Date.parse("2026-10-26T12:00:00.000Z");
 assert.equal(metaBalanceHistorySince(balanceNow), "1787832000");

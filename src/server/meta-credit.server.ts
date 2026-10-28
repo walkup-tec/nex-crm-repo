@@ -12,6 +12,7 @@ import { sendLowBalanceWhatsapp } from "@/server/evo.server";
 import {
   classifyGraphPayment,
   hasCreditCard,
+  ledgerSourceRows,
   mergeLedger,
   metaBalanceHistorySince,
   prepaidBalanceCents,
@@ -151,10 +152,9 @@ const activityFields = "event_type,event_time,extra_data,object_id,translated_ev
 
 async function paymentRows(accountId: string, organizationId: string, businessId: string | null) {
   const transactions = await transactionRows(accountId, organizationId);
-  if (transactions.some((item) => classifyGraphPayment(item)?.direction === "credit")) {
-    return transactions;
-  }
-  return activityRows(accountId, organizationId, businessId);
+  const needsCharges = !transactions.some((item) => classifyGraphPayment(item)?.direction === "debit");
+  const activities = needsCharges ? await activityRows(accountId, organizationId, businessId) : [];
+  return ledgerSourceRows(transactions, activities);
 }
 
 async function transactionRows(accountId: string, organizationId: string) {

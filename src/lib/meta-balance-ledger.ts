@@ -179,9 +179,28 @@ function paymentDirection(
 
   if (!settledStatus.has(status)) return null;
   if (record.is_funding_event === true) return "credit";
+  const option = canonical(readable(record.payment_option));
+  if (prepaidSpend.has(option)) return "debit";
   const charge = canonical(readable(record.charge_type));
   if (charge === "payment" || charge === "charge") return "debit";
   return null;
+}
+
+const prepaidSpend = new Set(["saldo pre pago", "stored balance"]);
+
+export function ledgerSourceRows(transactions: unknown[], activities: unknown[]) {
+  const directions = transactions.flatMap((item) => {
+    const entry = classifyGraphPayment(item);
+    return entry ? [entry.direction] : [];
+  });
+  const hasCredit = directions.includes("credit");
+  const hasDebit = directions.includes("debit");
+  if (hasCredit && hasDebit) return transactions;
+  if (!hasCredit) return activities.length ? activities : transactions;
+  return [
+    ...transactions,
+    ...activities.filter((item) => classifyGraphPayment(item)?.direction === "debit"),
+  ];
 }
 
 const ignoredStatus = new Set([

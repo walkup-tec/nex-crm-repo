@@ -1,4 +1,4 @@
-import { Check, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, CreditCard, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import stepAccount from "@/assets/meta-saldo-etapa-1.webp";
 import stepPayment from "@/assets/meta-saldo-etapa-2.webp";
@@ -88,9 +88,15 @@ function MetaAccountReading({ connected = false }: { connected?: boolean }) {
   );
 }
 
-function balanceHint(cents: number | null) {
-  if (cents == null) return "A Meta não informou o saldo disponível.";
-  return "Saldo disponível";
+function PixMark() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-4 shrink-0" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8 1.2 6.4 2.8c-.3.3-.3.8 0 1.1L8 5.5l1.6-1.6c.3-.3.3-.8 0-1.1L8 1.2Zm-4.9 3.3L1.5 6.1c-.3.3-.3.8 0 1.1L3.1 8.8c.3.3.8.3 1.1 0L5.8 7.2 4.2 5.6c-.3-.3-.8-.3-1.1 0Zm9.8 0c-.3-.3-.8-.3-1.1 0L10.2 7.2l1.6 1.6c.3.3.8.3 1.1 0l1.6-1.6c.3-.3.3-.8 0-1.1L12.9 4.5ZM8 8.8 6.4 10.4c-.3.3-.3.8 0 1.1L8 13.1l1.6-1.6c.3-.3.3-.8 0-1.1L8 8.8Z"
+      />
+    </svg>
+  );
 }
 
 export function MetaCredits() {
@@ -265,18 +271,21 @@ export function MetaCredits() {
               : "mt-4 rounded-lg bg-brand-gradient p-5 text-primary-foreground"
           }
         >
-          <p className="text-sm opacity-80">
-            {view ? balanceHint(view.balanceCents) : "Conta integrada"}
+          <p className="flex items-center gap-2 text-sm opacity-80">
+            <PixMark />
+            Saldo disponível
           </p>
           <strong className="mt-2 block font-display text-3xl">
             {money(view?.balanceCents ?? null, view?.currency || "BRL")}
           </strong>
-          <p className="mt-3 text-sm opacity-80">
-            Será cobrado: {money(view?.chargeCents ?? null, view?.currency || "BRL")}
+          <p className="mt-2 text-xs opacity-80">Lançamentos dos últimos 30 dias.</p>
+          <p className="mt-4 flex items-center gap-2 text-sm opacity-80">
+            <CreditCard className="size-4" />
+            Saldo a cobrar
           </p>
-          <p className="text-sm opacity-80">
-            A Meta cobra ao chegar a {money(view?.thresholdCents ?? null, view?.currency || "BRL")}
-          </p>
+          <strong className="mt-1 block font-display text-2xl">
+            {money(view?.chargeCents ?? null, view?.currency || "BRL")}
+          </strong>
           <p className="mt-4 truncate text-xs opacity-80">
             {view?.accountName
               ? `${view.accountName}${view.accountId ? ` · ${view.accountId}` : ""}`

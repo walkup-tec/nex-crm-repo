@@ -8,6 +8,7 @@ export type LedgerEntry = {
   direction: LedgerDirection;
   cents: number;
   at: string | null;
+  manual: boolean;
 };
 
 const cardType = 1;
@@ -54,7 +55,7 @@ export function hasCreditCard(
   });
 }
 
-export const metaBalanceHistoryDays = 60;
+export const metaBalanceHistoryDays = 30;
 
 export function metaBalanceHistorySince(now = Date.now()) {
   const windowMs = metaBalanceHistoryDays * 24 * 60 * 60 * 1000;
@@ -111,7 +112,7 @@ export function readLedger(value: Json | null | undefined): LedgerEntry[] {
     const cents = typeof item["cents"] === "number" ? item["cents"] : null;
     const at = typeof item["at"] === "string" ? item["at"] : null;
     if (!id || !direction || cents == null || !Number.isInteger(cents) || cents <= 0) return [];
-    return [{ id, direction, cents, at }];
+    return [{ id, direction, cents, at, manual: item["manual"] === true }];
   });
 }
 
@@ -158,7 +159,30 @@ export function classifyGraphPayment(item: unknown): LedgerEntry | null {
     record.billing_end_time,
     record.billing_start_time,
   );
-  return { id, direction, cents, at };
+  return { id, direction, cents, at, manual: manualTopUp(record) };
+}
+
+export function manualTopUp(record: {
+  status?: unknown;
+  payment_option?: unknown;
+}) {
+  const status = canonical(readable(record.status));
+  const option = canonical(readable(record.payment_option));
+  return status === "com saldo" && option === "pagamento manual";
+}
+
+export function withinPrepaidHistory(at: string | null, now = Date.now()) {
+  if (!at) return false;
+  const parsed = Date.parse(at);
+  if (!Number.isFinite(parsed)) return false;
+  const since = now - metaBalanceHistoryDays * 24 * 60 * 60 * 1000;
+  return parsed >= since && parsed <= now;
+}
+
+export function prepaidAvailableCents(entries: LedgerEntry[], now = Date.now()) {
+  const recent = entries.filter((entry) => withinPrepaidHistory(entry.at, now));
+  if (!recent.some((entry) => entry.manual && entry.direction === "credit")) return null;
+  return prepaidBalanceCents(recent);
 }
 
 function statusText(record: GraphPayment, extra: Record<string, unknown> | null) {

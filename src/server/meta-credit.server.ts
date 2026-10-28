@@ -1,6 +1,14 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
+  classifyGraphPayment,
+  ledgerSourceRows,
+  metaBalanceHistorySince,
+  prepaidAvailableCents,
+  type LedgerEntry,
+} from "@/lib/meta-balance-ledger";
+import {
+  isLowMetaBalance,
   lowBalanceAlertStamp,
   lowBalanceAlreadyDelivered,
   lowBalanceSignal,
@@ -10,12 +18,7 @@ import {
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
 import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
 import { formatMetaFieldRead, type MetaFieldReport } from "@/lib/meta-balance-debug";
-import {
-  accountFigures,
-  type BalanceKind,
-  type FundingSource,
-  type MetaCreditView,
-} from "@/lib/meta-credit";
+import { moneyCents, type MetaCreditView } from "@/lib/meta-credit";
 import {
   debugMetaRead,
   listAdAccountEdge,
@@ -102,20 +105,66 @@ async function selectedAccount(organizationId: string) {
   return query.data?.[0] ?? null;
 }
 
-async function rememberBalance(accountRowId: string, cents: number | null, kind: BalanceKind) {
-  if ((kind !== "available" && kind !== "prepaid") || cents == null) return;
-  await supabaseAdmin
-    .from("meta_accounts")
-    .update({
-      balance_cents: cents,
-      last_synced_at: new Date().toISOString(),
-      sync_status: "synced",
-    })
-    .eq("id", accountRowId);
+async function rememberBalance(accountRowId: string, cents: number | null, entries: LedgerEntry[]) {
+  const update: { prepaid_ledger: { entries: LedgerEntry[]; manualCredit: boolean }; last_synced_at: string; sync_status: string; balance_cents?: number } = {
+    prepaid_ledger: { entries, manualCredit: cents != null },
+    last_synced_at: new Date().toISOString(),
+    sync_status: "synced",
+  };
+  if (cents != null) update.balance_cents = cents;
+  const { error } = await supabaseAdmin.from("meta_accounts").update(update).eq("id", accountRowId);
+  if (error && /prepaid_ledger/i.test(error.message) && cents != null) {
+    await supabaseAdmin
+      .from("meta_accounts")
+      .update({
+        balance_cents: cents,
+        last_synced_at: update.last_synced_at,
+        sync_status: "synced",
+      })
+      .eq("id", accountRowId);
+  }
 }
 
-const fundingFields =
-  "funding_source_details{type,amount,currency,display_amount,display_string,coupons{amount}}";
+const transactionFields =
+  "id,time,billing_end_time,billing_start_time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
+const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
+
+async function transactionRows(organizationId: string, accountId: string) {
+  const since = metaBalanceHistorySince();
+  const attempts = [
+    { limit: "100", fields: transactionFields, since },
+    { limit: "100", fields: transactionFields },
+    { limit: "100" },
+  ];
+  for (const params of attempts) {
+    try {
+      return await listAdAccountEdge(organizationId, accountId, "transactions", params);
+    } catch (error) {
+      console.error("meta_transactions", error instanceof Error ? error.name : "error");
+    }
+  }
+  return [];
+}
+
+async function activityRows(organizationId: string, accountId: string) {
+  try {
+    return await listAdAccountEdge(organizationId, accountId, "activities", {
+      fields: activityFields,
+      limit: "100",
+      since: metaBalanceHistorySince(),
+    });
+  } catch (error) {
+    console.error("meta_activities", error instanceof Error ? error.name : "error");
+    return [];
+  }
+}
+
+async function paymentRows(organizationId: string, accountId: string) {
+  const transactions = await transactionRows(organizationId, accountId);
+  const needsCharges = !transactions.some((item) => classifyGraphPayment(item)?.direction === "debit");
+  const activities = needsCharges ? await activityRows(organizationId, accountId) : [];
+  return ledgerSourceRows(transactions, activities);
+}
 
 async function readFields(organizationId: string, accountId: string, fields: string) {
   try {
@@ -126,52 +175,24 @@ async function readFields(organizationId: string, accountId: string, fields: str
   }
 }
 
-async function readChargeThreshold(organizationId: string, accountId: string) {
-  try {
-    const rows = await listAdAccountEdge(organizationId, accountId, "adspaymentcycle", {
-      fields: "threshold_amount,requested_threshold_amount",
-      limit: "5",
-    });
-    for (const row of rows) {
-      if (row.threshold_amount != null) return row.threshold_amount;
-    }
-    for (const row of rows) {
-      if (row.requested_threshold_amount != null) return row.requested_threshold_amount;
-    }
-  } catch (error) {
-    console.error("meta_payment_cycle", error instanceof Error ? error.name : "error");
-  }
-  return null;
-}
-
 async function readBalance(organizationId: string, accountId: string, accountRowId: string) {
-  const [account, totalPrepay, prepayAccount, unbilled, fundingExpanded, fundingPlain, threshold] =
-    await Promise.all([
-      readFields(organizationId, accountId, "name,account_id,currency,balance,is_prepay_account"),
-      readFields(organizationId, accountId, "total_prepay_balance"),
-      readFields(organizationId, accountId, "prepay_account_balance"),
-      readFields(organizationId, accountId, "current_unbilled_spend"),
-      readFields(organizationId, accountId, fundingFields),
-      readFields(organizationId, accountId, "funding_source_details"),
-      readChargeThreshold(organizationId, accountId),
-    ]);
-  if (!account && !totalPrepay && !prepayAccount && !unbilled) {
+  const [account, rows] = await Promise.all([
+    readFields(organizationId, accountId, "name,account_id,currency,balance,is_prepay_account"),
+    paymentRows(organizationId, accountId),
+  ]);
+  if (!account && rows.length === 0) {
     throw new Error("A Meta não respondeu como esperado. Tente de novo.");
   }
-  const funding = fundingExpanded?.funding_source_details ?? fundingPlain?.funding_source_details;
-  const figures = accountFigures({
-    totalPrepay: totalPrepay?.total_prepay_balance,
-    prepayAccount: prepayAccount?.prepay_account_balance,
-    ...(funding != null ? { funding: funding as FundingSource | FundingSource[] } : {}),
-    unbilled: unbilled?.current_unbilled_spend,
-    balance: account?.balance,
-    threshold,
+  const entries = rows.flatMap((item) => {
+    const entry = classifyGraphPayment(item);
+    return entry ? [entry] : [];
   });
-  const kind: BalanceKind = figures.availableCents != null ? "available" : "unknown";
-  await rememberBalance(accountRowId, figures.availableCents, kind);
+  const availableCents = prepaidAvailableCents(entries);
+  const chargeCents = moneyCents(account?.balance);
+  await rememberBalance(accountRowId, availableCents, entries);
   const prepayFlag = account?.is_prepay_account;
   const prepay = typeof prepayFlag === "boolean" ? prepayFlag : null;
-  return { figures, prepay };
+  return { availableCents, chargeCents, prepay };
 }
 
 function emptyView(canAdd: boolean): MetaCreditView {
@@ -197,7 +218,7 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
   const canDebug = await mmsMaster(actor.organizationId, actor.role);
   const account = await selectedAccount(actor.organizationId);
   if (!account) return { ...emptyView(actor.canAdd), canDebug };
-  const { figures, prepay } = await readBalance(
+  const { availableCents, chargeCents, prepay } = await readBalance(
     actor.organizationId,
     account.external_account_id,
     account.id,
@@ -206,10 +227,10 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     accountName: account.name,
     accountId: account.external_account_id,
     currency: account.currency || "BRL",
-    balanceCents: figures.availableCents,
-    balanceKind: figures.availableCents != null ? "available" : "unknown",
-    chargeCents: figures.chargeCents,
-    thresholdCents: figures.thresholdCents,
+    balanceCents: availableCents,
+    balanceKind: availableCents != null ? "prepaid" : "unknown",
+    chargeCents,
+    thresholdCents: null,
     canAdd: actor.canAdd,
     canDebug,
     fieldReads: canDebug
@@ -286,14 +307,24 @@ export async function getClientBalanceAlert(userId: string) {
   }
   const { data: accounts, error: accountError } = await supabaseAdmin
     .from("meta_accounts")
-    .select("external_account_id, balance_cents, last_synced_at")
+    .select("external_account_id, balance_cents, last_synced_at, prepaid_ledger")
     .eq("organization_id", profile.organization_id)
     .eq("selected", true)
     .limit(1);
-  if (accountError) return { low: false, cents: null };
+  if (accountError) {
+    if (/prepaid_ledger/i.test(accountError.message)) return { low: false, cents: null };
+    return { low: false, cents: null };
+  }
   const account = accounts?.[0];
   const stored = account?.last_synced_at ? Number(account.balance_cents) : null;
   const cents = stored != null && Number.isFinite(stored) ? stored : null;
+  const ledger = account?.prepaid_ledger;
+  const manualCredit =
+    !!ledger &&
+    typeof ledger === "object" &&
+    !Array.isArray(ledger) &&
+    (ledger as { manualCredit?: unknown }).manualCredit === true;
+  if (!manualCredit) return { low: false, cents };
   const signal = lowBalanceSignal(cents);
   if (signal !== "unknown") await syncLowBalanceWhatsapp(profile.organization_id, signal === "low");
   return { low: signal === "low", cents };

@@ -4,6 +4,7 @@ import {
   classifyGraphPayment,
   hasCreditCard,
   mergeLedger,
+  prepaidAvailableCents,
   prepaidBalanceCents,
   ledgerSourceRows,
   readLedger,
@@ -237,8 +238,10 @@ assert.equal(ledgerSourceRows([...depositOnly, { id: "paid", status: "Pago", pay
 assert.equal(ledgerSourceRows([], spendActivity).length, 1);
 
 const balanceNow = Date.parse("2026-10-26T12:00:00.000Z");
-assert.equal(metaBalanceHistorySince(balanceNow), "1787832000");
-assert.equal(new Date(Number(metaBalanceHistorySince(balanceNow)) * 1000).toISOString(), "2026-08-27T12:00:00.000Z");
+assert.equal(
+  new Date(Number(metaBalanceHistorySince(balanceNow)) * 1000).toISOString(),
+  "2026-09-26T12:00:00.000Z",
+);
 assert.equal(hasCreditCard({ type: 1, display_string: "Cartão" }), true);
 assert.equal(hasCreditCard({ type: 20, amount: "0" }), false);
 assert.equal(
@@ -286,5 +289,65 @@ const stored = readLedger({
 });
 assert.equal(stored.length, 1);
 assert.equal(stored[0]?.cents, 20000);
+
+const walkupNow = Date.parse("2026-10-28T18:00:00.000Z");
+const walkup = [
+  classifyGraphPayment({
+    id: "28936639426026954-2913029933327629",
+    status: "Com saldo",
+    payment_option: "Pagamento manual",
+    app_amount: { amount: "200,00" },
+    time: Date.parse("2026-10-20T15:00:00.000Z") / 1000,
+  })!,
+  classifyGraphPayment({
+    id: "29373632172327680-29236716052685959",
+    status: "Pago",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "33,01" },
+    time: Date.parse("2026-10-27T15:00:00.000Z") / 1000,
+  })!,
+  classifyGraphPayment({
+    id: "29270693555954871-29465309913159899",
+    status: "Pago",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "24,73" },
+    time: Date.parse("2026-10-28T12:00:00.000Z") / 1000,
+  })!,
+  classifyGraphPayment({
+    id: "29353659210991639-29241185882238978",
+    status: "Pago",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "56,75" },
+    time: Date.parse("2026-10-28T16:00:00.000Z") / 1000,
+  })!,
+];
+assert.equal(walkup[0]?.manual, true);
+assert.equal(prepaidAvailableCents(walkup, walkupNow), 8551);
+assert.equal(
+  prepaidAvailableCents(
+    [
+      {
+        ...walkup[0]!,
+        at: "2026-10-07T15:00:00.000Z",
+      },
+      ...walkup.slice(1),
+    ],
+    walkupNow,
+  ),
+  8551,
+);
+assert.equal(
+  prepaidAvailableCents(
+    [
+      {
+        ...walkup[0]!,
+        at: "2026-09-20T15:00:00.000Z",
+      },
+      ...walkup.slice(1),
+    ],
+    walkupNow,
+  ),
+  null,
+);
 
 console.log("meta-balance-ledger tests ok");

@@ -9,7 +9,7 @@ import {
 } from "@/lib/low-balance";
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
 import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
-import type { MetaFieldRead } from "@/lib/meta-balance-debug";
+import { formatMetaFieldRead, type MetaFieldReport } from "@/lib/meta-balance-debug";
 import {
   accountFigures,
   type BalanceKind,
@@ -185,6 +185,7 @@ function emptyView(canAdd: boolean): MetaCreditView {
     thresholdCents: null,
     canAdd,
     canDebug: false,
+    fieldReads: null,
     syncedAt: null,
     prepay: null,
     balanceUrl: null,
@@ -211,6 +212,9 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     thresholdCents: figures.thresholdCents,
     canAdd: actor.canAdd,
     canDebug,
+    fieldReads: canDebug
+      ? await readMetaFields(actor.organizationId, account.external_account_id)
+      : null,
     syncedAt: new Date().toISOString(),
     prepay,
     balanceUrl: normalizeBalanceLink(account.balance_url ?? ""),
@@ -234,17 +238,22 @@ const metaReads = [
   ],
 ] as const;
 
-export async function getMetaBalanceDebug(userId: string): Promise<MetaFieldRead[]> {
-  const actor = await actorOf(userId);
-  if (!(await mmsMaster(actor.organizationId, actor.role))) {
-    fail("Você não pode ver esta leitura.");
-  }
-  const account = await selectedAccount(actor.organizationId);
-  if (!account) fail("Nenhuma conta de anúncio integrada.");
+async function readMetaFields(organizationId: string, accountId: string): Promise<MetaFieldReport[]> {
   return Promise.all(
     metaReads.map(async ([name, field, edge]) => {
-      const read = await debugMetaRead(actor.organizationId, account.external_account_id, field, edge);
-      return { name, field, ok: read.ok, status: read.status, code: read.code, body: read.body };
+      try {
+        const read = await debugMetaRead(organizationId, accountId, field, edge);
+        return formatMetaFieldRead({
+          name,
+          field,
+          ok: read.ok,
+          status: read.status,
+          code: read.code,
+          body: read.body,
+        });
+      } catch {
+        return { name, text: "Meta recusou\nA leitura deste campo não voltou." };
+      }
     }),
   );
 }

@@ -7,6 +7,24 @@ export type MetaFieldRead = {
   body: unknown;
 };
 
+export type MetaFieldReport = {
+  name: string;
+  text: string;
+};
+
+export function formatMetaFieldRead(read: MetaFieldRead): MetaFieldReport {
+  const status = `${read.ok ? "Meta respondeu" : "Meta recusou"} · HTTP ${read.status}${
+    read.code != null ? ` · código ${read.code}` : ""
+  }`;
+  let body = "{\"message\":\"resposta ilegível\"}";
+  try {
+    body = JSON.stringify(read.body, null, 2);
+  } catch {
+    body = "{\"message\":\"resposta ilegível\"}";
+  }
+  return { name: read.name, text: `${status}\n${body}`.slice(0, 4000) };
+}
+
 const hiddenKey = /token|secret|password|authorization|email|fbtrace/i;
 
 export function sanitizeMetaDebug(value: unknown, key = "", depth = 0): unknown {

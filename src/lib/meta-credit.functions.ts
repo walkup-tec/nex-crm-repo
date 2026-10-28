@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { MetaFieldRead } from "@/lib/meta-balance-debug";
 import type { MetaCreditView } from "@/lib/meta-credit";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
@@ -33,13 +32,6 @@ export const getMetaCreditFn = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<Result<MetaCreditView>> => {
     const { getMetaCredit } = await import("@/server/meta-credit.server");
     return guard(() => getMetaCredit(context.userId));
-  });
-
-export const getMetaBalanceDebugFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Result<MetaFieldRead[]>> => {
-    const { getMetaBalanceDebug } = await import("@/server/meta-credit.server");
-    return guard(() => getMetaBalanceDebug(context.userId));
   });
 
 export const getClientBalanceAlertFn = createServerFn({ method: "GET" })

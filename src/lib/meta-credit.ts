@@ -15,6 +15,7 @@ export type MetaCreditView = {
   thresholdCents: number | null;
   canAdd: boolean;
   canDebug: boolean;
+  fieldReads: { name: string; text: string }[] | null;
   syncedAt: string | null;
   prepay: boolean | null;
   balanceUrl: string | null;

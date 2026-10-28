@@ -322,6 +322,16 @@ const walkup = [
   })!,
 ];
 assert.equal(walkup[0]?.manual, true);
+const englishManual = classifyGraphPayment({
+  id: "manual-en",
+  status: "completed",
+  is_funding_event: true,
+  payment_option: "Pagamento manual",
+  app_amount: { amount: "200,00" },
+  time: Date.parse("2026-10-07T15:00:00.000Z") / 1000,
+});
+assert.equal(englishManual?.direction, "credit");
+assert.equal(englishManual?.manual, true);
 assert.equal(prepaidAvailableCents(walkup, walkupNow), 8551);
 assert.equal(
   prepaidAvailableCents(

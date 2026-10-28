@@ -90,10 +90,10 @@ function MetaAccountReading({ connected = false }: { connected?: boolean }) {
 
 function PixMark() {
   return (
-    <svg viewBox="0 0 16 16" className="size-4 shrink-0" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="size-5 shrink-0" aria-hidden="true">
       <path
         fill="currentColor"
-        d="M8 1.2 6.4 2.8c-.3.3-.3.8 0 1.1L8 5.5l1.6-1.6c.3-.3.3-.8 0-1.1L8 1.2Zm-4.9 3.3L1.5 6.1c-.3.3-.3.8 0 1.1L3.1 8.8c.3.3.8.3 1.1 0L5.8 7.2 4.2 5.6c-.3-.3-.8-.3-1.1 0Zm9.8 0c-.3-.3-.8-.3-1.1 0L10.2 7.2l1.6 1.6c.3.3.8.3 1.1 0l1.6-1.6c.3-.3.3-.8 0-1.1L12.9 4.5ZM8 8.8 6.4 10.4c-.3.3-.3.8 0 1.1L8 13.1l1.6-1.6c.3-.3.3-.8 0-1.1L8 8.8Z"
+        d="M4 7.25A2.25 2.25 0 0 1 6.25 5h11.5A2.25 2.25 0 0 1 20 7.25V9H4V7.25ZM4 10.5h16v6.25A2.25 2.25 0 0 1 17.75 19h-11.5A2.25 2.25 0 0 1 4 16.75V10.5Zm11.25 2.15c0-.48.4-.86.9-.86h1.2c.5 0 .9.38.9.86s-.4.86-.9.86h-1.2c-.5 0-.9-.38-.9-.86Z"
       />
     </svg>
   );
@@ -271,7 +271,7 @@ export function MetaCredits() {
               : "mt-4 rounded-lg bg-brand-gradient p-5 text-primary-foreground"
           }
         >
-          <p className="flex items-center gap-2 text-sm opacity-80">
+          <p className="flex items-center gap-2 text-sm font-medium">
             <PixMark />
             Saldo disponível
           </p>

@@ -162,13 +162,19 @@ export function classifyGraphPayment(item: unknown): LedgerEntry | null {
   return { id, direction, cents, at, manual: manualTopUp(record) };
 }
 
+const manualOption = new Set(["pagamento manual", "manual payment", "manual"]);
+const manualStatus = new Set(["com saldo", "with balance"]);
+
 export function manualTopUp(record: {
   status?: unknown;
   payment_option?: unknown;
 }) {
   const status = canonical(readable(record.status));
   const option = canonical(readable(record.payment_option));
-  return status === "com saldo" && option === "pagamento manual";
+  if (!manualOption.has(option)) return false;
+  if (!status) return true;
+  if (ignoredStatus.has(status)) return false;
+  return manualStatus.has(status) || status === "completed" || status === "successful" || status === "success" || status === "settled";
 }
 
 export function withinPrepaidHistory(at: string | null, now = Date.now()) {

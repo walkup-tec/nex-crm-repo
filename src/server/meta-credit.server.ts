@@ -126,19 +126,20 @@ async function rememberBalance(accountRowId: string, cents: number | null, entri
 }
 
 const transactionFields =
-  "id,time,billing_end_time,billing_start_time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
+  "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
+const datedTransactionFields = `${transactionFields},billing_end_time,billing_start_time`;
 const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
 
 async function transactionRows(organizationId: string, accountId: string) {
-  const since = metaBalanceHistorySince();
   const attempts = [
-    { limit: "100", fields: transactionFields, since },
+    { limit: "100", fields: datedTransactionFields },
     { limit: "100", fields: transactionFields },
     { limit: "100" },
   ];
   for (const params of attempts) {
     try {
-      return await listAdAccountEdge(organizationId, accountId, "transactions", params);
+      const rows = await listAdAccountEdge(organizationId, accountId, "transactions", params);
+      if (rows.length > 0) return rows;
     } catch (error) {
       console.error("meta_transactions", error instanceof Error ? error.name : "error");
     }

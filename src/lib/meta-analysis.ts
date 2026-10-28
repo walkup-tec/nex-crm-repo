@@ -15,6 +15,24 @@ export function campaignMark(row: Pick<MetaCampaignRow, "status" | "statusGroup"
   return "erro";
 }
 
+const deliveringStatuses = new Set(["ACTIVE", "IN_PROCESS", "PENDING_REVIEW", "PREAPPROVED"]);
+
+export function campaignDeliveryGroup(input: {
+  effectiveStatus: string | undefined;
+  adStatuses: string[];
+  adSetStatuses: string[];
+}): { label: string; group: "Ativa" | "Inativa" } | null {
+  if (input.effectiveStatus !== "ACTIVE" && input.effectiveStatus !== "IN_PROCESS") return null;
+  const adOn = input.adStatuses.some((status) => deliveringStatuses.has(status));
+  const adSetOn = input.adSetStatuses.some((status) => deliveringStatuses.has(status));
+  if (adOn && adSetOn) {
+    return input.effectiveStatus === "IN_PROCESS" ? { label: "Preparando", group: "Ativa" } : null;
+  }
+  if (input.adStatuses.length === 0) return { label: "Nenhum anúncio", group: "Inativa" };
+  if (!adSetOn) return { label: "Conjunto de anúncios desativado", group: "Inativa" };
+  return { label: "Anúncio desativado", group: "Inativa" };
+}
+
 const objectiveLabels: Record<string, string> = {
   link_click: "Cliques no link",
   lead: "Leads",

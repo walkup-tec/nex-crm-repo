@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { clientDisplayName } from "@/lib/client-access";
-import { adsManagerResult } from "@/lib/meta-analysis";
+import { adsManagerResult, campaignDeliveryGroup } from "@/lib/meta-analysis";
 import type {
   MetaAccountView,
   MetaBusinessView,
@@ -129,6 +129,8 @@ type GraphCampaign = {
   name?: string;
   effective_status?: string;
   insights?: { data?: GraphInsight[] };
+  ads?: { data?: { effective_status?: string }[] };
+  adsets?: { data?: { effective_status?: string }[] };
 };
 type GraphBody = {
   error?: GraphError;
@@ -280,7 +282,18 @@ export async function listActiveMetaCampaignNames(organizationId: string) {
       next = typeof body.paging?.next === "string" ? body.paging.next : null;
       if (!next) break;
     }
-    return rows;
+    let delivery = new Map<string, { adStatuses: string[]; adSetStatuses: string[] }>();
+    try {
+      delivery = await campaignDeliveryMap(version, token, selected.external_account_id.replace(/^act_/i, ""));
+    } catch (error) {
+      console.error("lead_origin_meta_delivery", error instanceof Error ? error.message : "falha");
+    }
+    if (!delivery.size) return rows;
+    return rows.filter((row) => {
+      const children = delivery.get(row.id);
+      if (!children) return true;
+      return campaignDeliveryGroup({ effectiveStatus: "ACTIVE", ...children })?.group !== "Inativa";
+    });
   } catch (error) {
     console.error("lead_origin_meta", error instanceof Error ? error.message : "falha");
     return [];
@@ -881,6 +894,30 @@ function campaignStatus(raw: string | undefined): {
   return { label: "Indisponível", group: "Outro" };
 }
 
+function edgeStatuses(edge: { data?: { effective_status?: string }[] } | undefined) {
+  return (edge?.data ?? []).map((item) => item.effective_status ?? "").filter(Boolean);
+}
+
+async function campaignDeliveryMap(version: string, token: string, accountId: string) {
+  const map = new Map<string, { adStatuses: string[]; adSetStatuses: string[] }>();
+  let next: string | null = null;
+  for (let page = 0; page < 5; page += 1) {
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(version, `/act_${accountId}/campaigns`, token, {
+          fields: "id,ads.limit(100){effective_status},adsets.limit(100){effective_status}",
+          limit: "100",
+        });
+    for (const item of body.data ?? []) {
+      if (!item.id) continue;
+      map.set(item.id, { adStatuses: edgeStatuses(item.ads), adSetStatuses: edgeStatuses(item.adsets) });
+    }
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  return map;
+}
+
 async function collectCampaigns(
   version: string,
   token: string,
@@ -889,6 +926,7 @@ async function collectCampaigns(
 ) {
   const rows: MetaCampaignRow[] = [];
   const actionTypes = new Map<string, string[]>();
+  const rawStatus = new Map<string, string | undefined>();
   let next: string | null = null;
   const fields = `id,name,effective_status,${campaignInsightField(period)}`;
   for (let page = 0; page < 5; page += 1) {
@@ -914,9 +952,27 @@ async function collectCampaigns(
         ctr: stats.ctr,
       });
       actionTypes.set(item.id, stats.resultActionTypes);
+      rawStatus.set(item.id, item.effective_status);
     }
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
     if (!next) break;
+  }
+  try {
+    const delivery = await campaignDeliveryMap(version, token, accountId);
+    for (const row of rows) {
+      const children = delivery.get(row.id);
+      if (!children) continue;
+      const override = campaignDeliveryGroup({
+        effectiveStatus: rawStatus.get(row.id),
+        adStatuses: children.adStatuses,
+        adSetStatuses: children.adSetStatuses,
+      });
+      if (!override) continue;
+      row.status = override.label;
+      row.statusGroup = override.group;
+    }
+  } catch (error) {
+    console.error("meta_delivery", error instanceof Error ? error.message : "falha");
   }
   return { rows, actionTypes };
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   aggregateDays,
   adsManagerResult,
+  campaignDeliveryGroup,
   campaignMark,
   buildAnalysis,
   buildInsights,
@@ -20,6 +21,31 @@ assert.equal(campaignMark({ status: "Encerrada", statusGroup: "Encerrada" }), "d
 assert.equal(campaignMark({ status: "Em análise", statusGroup: "Outro" }), "desativada");
 assert.equal(campaignMark({ status: "Com erro", statusGroup: "Outro" }), "erro");
 assert.equal(campaignMark({ status: "Indisponível", statusGroup: "Outro" }), "erro");
+assert.equal(
+  campaignDeliveryGroup({ effectiveStatus: "ACTIVE", adStatuses: ["ACTIVE"], adSetStatuses: ["ACTIVE"] }),
+  null,
+);
+assert.deepEqual(
+  campaignDeliveryGroup({ effectiveStatus: "ACTIVE", adStatuses: [], adSetStatuses: ["ACTIVE"] }),
+  { label: "Nenhum anúncio", group: "Inativa" },
+);
+assert.deepEqual(
+  campaignDeliveryGroup({ effectiveStatus: "ACTIVE", adStatuses: ["PAUSED"], adSetStatuses: ["ACTIVE"] }),
+  { label: "Anúncio desativado", group: "Inativa" },
+);
+assert.deepEqual(
+  campaignDeliveryGroup({ effectiveStatus: "ACTIVE", adStatuses: ["IN_PROCESS"], adSetStatuses: ["PAUSED"] }),
+  { label: "Conjunto de anúncios desativado", group: "Inativa" },
+);
+assert.deepEqual(
+  campaignDeliveryGroup({ effectiveStatus: "IN_PROCESS", adStatuses: ["IN_PROCESS"], adSetStatuses: ["ACTIVE"] }),
+  { label: "Preparando", group: "Ativa" },
+);
+assert.equal(campaignDeliveryGroup({ effectiveStatus: "PAUSED", adStatuses: [], adSetStatuses: [] }), null);
+assert.equal(
+  campaignMark({ status: "Nenhum anúncio", statusGroup: "Inativa" }),
+  "desativada",
+);
 assert.deepEqual(
   adsManagerResult([
     {

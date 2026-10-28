@@ -22,6 +22,7 @@ import {
 import {
   availableBalanceCents,
   balanceFromAccount,
+  remainingSpendCents,
   type BalanceKind,
   type FundingSource,
   type MetaCreditView,
@@ -39,6 +40,8 @@ type AccountNode = {
   account_id?: string;
   currency?: string;
   balance?: string | number | null;
+  spend_cap?: string | number | null;
+  amount_spent?: string | number | null;
   is_prepay_account?: boolean;
   funding_source_details?: FundingSource | FundingSource[] | null;
 };
@@ -124,7 +127,8 @@ async function rememberBalance(accountRowId: string, cents: number | null, kind:
 
 async function readNode(organizationId: string, accountId: string) {
   const attempts = [
-    "name,account_id,currency,balance,is_prepay_account,funding_source_details",
+    "name,account_id,currency,balance,spend_cap,amount_spent,is_prepay_account,funding_source_details",
+    "name,account_id,currency,balance,spend_cap,amount_spent,is_prepay_account",
     "name,account_id,currency,balance,is_prepay_account",
     "name,account_id,currency,balance",
   ];
@@ -240,8 +244,12 @@ async function readBalance(
   });
   const storedCents = funding === undefined ? null : availableBalanceCents(funding);
   const hasCard = hasCreditCard(funding);
-  let result = reading;
-  if (
+  const remaining =
+    node.is_prepay_account === true
+      ? remainingSpendCents(node.spend_cap, node.amount_spent)
+      : null;
+  let result = remaining != null ? { cents: remaining, kind: "available" as const } : reading;
+  if (remaining == null && (
     shouldUsePrepaidLedger({
       hasCard,
       displayedCents: reading.cents,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   availableBalanceCents,
   balanceFromAccount,
+  remainingSpendCents,
   balanceGrew,
   centsFromMoneyInput,
   metaBillingUrl,
@@ -23,6 +24,11 @@ assert.equal(due.cents, 3500);
 const available = balanceFromAccount({ balance: "3500", funding: { type: "20", amount: "900" } });
 assert.equal(available.kind, "available");
 assert.equal(available.cents, 900);
+assert.equal(remainingSpendCents("20000", "5773"), 14227);
+assert.equal(remainingSpendCents("14227", "0"), 14227);
+assert.equal(remainingSpendCents("1000", "1000"), 0);
+assert.equal(remainingSpendCents("0", "5773"), null);
+assert.equal(remainingSpendCents(null, "0"), null);
 
 assert.equal(centsFromMoneyInput("R$ 2.007,13"), 200713);
 assert.equal(centsFromMoneyInput(""), null);

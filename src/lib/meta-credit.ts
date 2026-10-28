@@ -58,6 +58,16 @@ export function availableBalanceCents(
   return found ? total : null;
 }
 
+export function remainingSpendCents(
+  spendCap: string | number | null | undefined,
+  amountSpent: string | number | null | undefined,
+): number | null {
+  const cap = offsetCents(spendCap);
+  const spent = offsetCents(amountSpent);
+  if (cap == null || cap === 0 || spent == null) return null;
+  return Math.max(0, cap - spent);
+}
+
 export function balanceFromAccount(input: {
   balance?: string | number | null;
   funding?: FundingSource | FundingSource[] | null;

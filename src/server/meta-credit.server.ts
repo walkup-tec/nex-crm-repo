@@ -23,7 +23,7 @@ import {
 import {
   availableBalanceCents,
   balanceFromAccount,
-  remainingSpendCents,
+  spendCapBalance,
   type BalanceKind,
   type FundingSource,
   type MetaCreditView,
@@ -146,6 +146,27 @@ async function readNode(organizationId: string, accountId: string) {
     : new Error("A Meta não respondeu como esperado. Tente de novo.");
 }
 
+// spend_cap/amount_spent are the source of the "Saldo total" on the Meta
+// billing page. The batched readNode above drops these fields whenever the
+// Graph API rejects the larger field list, so we always ask for just these two
+// in their own call. If that dedicated call fails we fall back to whatever the
+// batched read happened to return.
+async function readSpendFields(organizationId: string, accountId: string, node: AccountNode) {
+  try {
+    const trimmed = (await readAdAccountNode(
+      organizationId,
+      accountId,
+      "spend_cap,amount_spent",
+    )) as AccountNode;
+    if (trimmed.spend_cap != null || trimmed.amount_spent != null) {
+      return { spendCap: trimmed.spend_cap ?? null, amountSpent: trimmed.amount_spent ?? null };
+    }
+  } catch (error) {
+    console.error("meta_spend_cap", error instanceof Error ? error.name : "error");
+  }
+  return { spendCap: node.spend_cap ?? null, amountSpent: node.amount_spent ?? null };
+}
+
 const transactionFields =
   "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
 const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
@@ -244,11 +265,14 @@ async function readBalance(
   });
   const storedCents = funding === undefined ? null : availableBalanceCents(funding);
   const hasCard = hasCreditCard(funding);
-  const remaining =
-    node.is_prepay_account === true
-      ? remainingSpendCents(node.spend_cap, node.amount_spent)
-      : null;
-  let result = remaining != null ? { cents: remaining, kind: "available" as const } : reading;
+  const spend = await readSpendFields(organizationId, accountId, node);
+  const remaining = spendCapBalance({
+    balance: node.balance ?? null,
+    spendCap: spend.spendCap,
+    amountSpent: spend.amountSpent,
+    isPrepay: node.is_prepay_account ?? null,
+  });
+  let result = remaining != null ? remaining : reading;
   if (
     remaining == null &&
     shouldUsePrepaidLedger({

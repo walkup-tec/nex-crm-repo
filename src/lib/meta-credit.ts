@@ -68,6 +68,25 @@ export function remainingSpendCents(
   return Math.max(0, cap - spent);
 }
 
+// The real available balance is spend_cap - amount_spent whenever there is a
+// spend limit, regardless of is_prepay_account. We only refuse to use it when
+// the account carries a real outstanding (due) balance on a postpaid account:
+// a positive open `balance` that is not a prepaid account must not be hidden
+// behind a spend limit.
+export function spendCapBalance(input: {
+  balance?: string | number | null;
+  spendCap?: string | number | null;
+  amountSpent?: string | number | null;
+  isPrepay?: boolean | null;
+}): { cents: number; kind: "available" } | null {
+  const remaining = remainingSpendCents(input.spendCap, input.amountSpent);
+  if (remaining == null) return null;
+  const due = offsetCents(input.balance);
+  const hasOpenDue = due != null && due > 0;
+  if (hasOpenDue && input.isPrepay !== true) return null;
+  return { cents: remaining, kind: "available" };
+}
+
 export function balanceFromAccount(input: {
   balance?: string | number | null;
   funding?: FundingSource | FundingSource[] | null;

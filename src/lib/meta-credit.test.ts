@@ -3,6 +3,7 @@ import {
   availableBalanceCents,
   balanceFromAccount,
   remainingSpendCents,
+  spendCapBalance,
   balanceGrew,
   centsFromMoneyInput,
   metaBillingUrl,
@@ -29,6 +30,27 @@ assert.equal(remainingSpendCents("14227", "0"), 14227);
 assert.equal(remainingSpendCents("1000", "1000"), 0);
 assert.equal(remainingSpendCents("0", "5773"), null);
 assert.equal(remainingSpendCents(null, "0"), null);
+
+// spend_cap - amount_spent is the available balance whenever there is a limit,
+// without requiring is_prepay_account. This is the fix for CP Walkup showing
+// 200 instead of 142,27.
+assert.deepEqual(spendCapBalance({ spendCap: "20000", amountSpent: "5773" }), {
+  cents: 14227,
+  kind: "available",
+});
+assert.equal(spendCapBalance({ spendCap: "0", amountSpent: "5773" }), null);
+// An open balance of 0 with a positive cap uses the remaining limit (CP Walkup).
+assert.deepEqual(spendCapBalance({ balance: "0", spendCap: "20000", amountSpent: "5773" }), {
+  cents: 14227,
+  kind: "available",
+});
+// A real outstanding (due) balance on a postpaid account is NOT replaced by the limit.
+assert.equal(spendCapBalance({ balance: "3500", spendCap: "20000", amountSpent: "5773" }), null);
+// ...unless it is a prepaid account, where the remaining limit still wins.
+assert.deepEqual(
+  spendCapBalance({ balance: "3500", spendCap: "20000", amountSpent: "5773", isPrepay: true }),
+  { cents: 14227, kind: "available" },
+);
 
 assert.equal(centsFromMoneyInput("R$ 2.007,13"), 200713);
 assert.equal(centsFromMoneyInput(""), null);

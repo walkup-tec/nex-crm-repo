@@ -1,5 +1,6 @@
 import { startBillingNoticeRunner } from "./server/billing-notices.server";
 import { startChatbotReturnRunner } from "./server/chatbot.server";
+import { runMetaBalanceProbe } from "./server/meta-balance-probe.server";
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
@@ -81,14 +82,24 @@ export default {
   },
 };
 
-try {
-  startBillingNoticeRunner();
-} catch (error) {
-  console.error("billing_notices", error instanceof Error ? error.message : "falha");
+const metaBalanceProbeOnly = process.argv.includes("--meta-balance-probe");
+
+if (!metaBalanceProbeOnly) {
+  try {
+    startBillingNoticeRunner();
+  } catch (error) {
+    console.error("billing_notices", error instanceof Error ? error.message : "falha");
+  }
+
+  try {
+    startChatbotReturnRunner();
+  } catch (error) {
+    console.error("chatbot_return", error instanceof Error ? error.message : "falha");
+  }
 }
 
-try {
-  startChatbotReturnRunner();
-} catch (error) {
-  console.error("chatbot_return", error instanceof Error ? error.message : "falha");
+if (metaBalanceProbeOnly) {
+  void runMetaBalanceProbe().finally(() => {
+    setTimeout(() => process.exit(0), 200);
+  });
 }

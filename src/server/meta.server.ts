@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { clientDisplayName } from "@/lib/client-access";
+import { sanitizeAccountProbe, sanitizeProbeMessage } from "@/lib/meta-balance-probe";
 import { adsManagerResult, campaignDeliveryGroup } from "@/lib/meta-analysis";
 import type {
   MetaAccountView,
@@ -305,6 +306,51 @@ export async function readAdAccountNode(organizationId: string, accountId: strin
   if (!/^\d+$/.test(digits)) fail("Escolha uma conta de anúncio válida.");
   const { token } = await loadToken(organizationId);
   return graphGet(graphVersion(), `/act_${digits}`, token, { fields });
+}
+
+export async function probeAdAccountFields(organizationId: string, accountId: string, fields: string) {
+  const digits = accountId.trim().replace(/^act_/i, "");
+  if (!/^\d+$/.test(digits)) {
+    return { ok: false as const, status: 0, code: null, subcode: null, type: null, message: "conta inválida" };
+  }
+  const connection = await connectionOf(organizationId);
+  if (!connection || connection.status === "disconnected" || !connection.access_token_encrypted) {
+    return { ok: false as const, status: 0, code: null, subcode: null, type: "local", message: "sem conexão" };
+  }
+  if (connection.token_expires_at && new Date(connection.token_expires_at).getTime() < Date.now()) {
+    return { ok: false as const, status: 0, code: null, subcode: null, type: "local", message: "conexão expirada" };
+  }
+  const token = decryptToken(connection.access_token_encrypted);
+  const url = new URL(`https://graph.facebook.com/${graphVersion()}/act_${digits}`);
+  url.searchParams.set("access_token", token);
+  url.searchParams.set("fields", fields);
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  } catch (error) {
+    return {
+      ok: false as const,
+      status: 0,
+      code: null,
+      subcode: null,
+      type: error instanceof Error ? error.name : "error",
+      message: null,
+    };
+  }
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const error = body.error;
+  if (!response.ok || (error && typeof error === "object")) {
+    const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+    return {
+      ok: false as const,
+      status: response.status,
+      code: typeof record.code === "number" ? record.code : null,
+      subcode: typeof record.error_subcode === "number" ? record.error_subcode : null,
+      type: typeof record.type === "string" ? record.type : null,
+      message: sanitizeProbeMessage(typeof record.message === "string" ? record.message : null),
+    };
+  }
+  return { ok: true as const, read: sanitizeAccountProbe(body) };
 }
 
 export async function listAdAccountEdge(

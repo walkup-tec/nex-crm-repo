@@ -1,7 +1,7 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 
-const NEX_DEPLOY = "NEX-DEPLOY-TOTAL";
+const NEX_DEPLOY = "NEX-DEPLOY-SONDA";
 const SHUTDOWN_GRACE_MS = 20000;
 const servers = new Set();
 
@@ -28,8 +28,10 @@ process.once("SIGTERM", () => beginShutdown("SIGTERM"));
 process.once("SIGINT", () => beginShutdown("SIGINT"));
 
 const listen = http.Server.prototype.listen;
+const metaBalanceProbeOnly = process.argv.includes("--meta-balance-probe");
 
 http.Server.prototype.listen = function (options, ...args) {
+  if (metaBalanceProbeOnly) return this;
   servers.add(this);
   this.once("close", () => servers.delete(this));
   if (options && typeof options === "object") {
@@ -40,3 +42,13 @@ http.Server.prototype.listen = function (options, ...args) {
   });
   return listen.call(this, options, ...args);
 };
+
+if (metaBalanceProbeOnly) {
+  try {
+    await import("./.output/server/_ssr/ssr.mjs");
+  } catch {
+    console.info('meta_balance_probe {"account":"886574174420761","failed":"read"}');
+    process.exit(1);
+  }
+  await new Promise(() => {});
+}

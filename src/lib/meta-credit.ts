@@ -11,6 +11,8 @@ export type MetaCreditView = {
   currency: string;
   balanceCents: number | null;
   balanceKind: BalanceKind;
+  chargeCents: number | null;
+  thresholdCents: number | null;
   canAdd: boolean;
   syncedAt: string | null;
   prepay: boolean | null;
@@ -120,6 +122,50 @@ export function balanceFromAccount(input: {
   const due = offsetCents(input.balance);
   if (due != null) return { cents: due, kind: "due" };
   return { cents: null, kind: "unknown" };
+}
+
+export function moneyCents(value: unknown): number | null {
+  if (typeof value === "number" || typeof value === "string") return offsetOrDisplay(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const offset = offsetOrDisplay(
+    record.amount_in_hundredths ?? record.offsetted_amount ?? record.offset_amount,
+  );
+  if (offset != null) return offset;
+  return offsetOrDisplay(record.amount);
+}
+
+function offsetOrDisplay(value: unknown) {
+  if (typeof value === "number") return offsetCents(value);
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return offsetCents(raw);
+  return centsFromDisplay(raw);
+}
+
+function positiveMoney(value: unknown) {
+  const cents = moneyCents(value);
+  return cents != null && cents > 0 ? cents : null;
+}
+
+export function accountFigures(input: {
+  totalPrepay?: unknown;
+  prepayAccount?: unknown;
+  funding?: FundingSource | FundingSource[] | null;
+  unbilled?: unknown;
+  balance?: unknown;
+  threshold?: unknown;
+}) {
+  const available =
+    positiveMoney(input.totalPrepay) ??
+    positiveMoney(input.prepayAccount) ??
+    availableBalanceCents(input.funding);
+  return {
+    availableCents: available,
+    chargeCents: positiveMoney(input.unbilled) ?? moneyCents(input.balance),
+    thresholdCents: positiveMoney(input.threshold),
+  };
 }
 
 export function centsFromMoneyInput(value: string) {

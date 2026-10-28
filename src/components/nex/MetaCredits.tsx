@@ -88,12 +88,9 @@ function MetaAccountReading({ connected = false }: { connected?: boolean }) {
   );
 }
 
-function balanceHint(kind: MetaCreditView["balanceKind"]) {
-  if (kind === "available") return "Saldo da conta de anúncio na Meta.";
-  if (kind === "prepaid")
-    return "Pagamentos com saldo, menos os que constam como pagos. A Meta cobra o cartão antes.";
-  if (kind === "due") return "Valor em aberto com a Meta";
-  return "A Meta não informou o saldo desta conta.";
+function balanceHint(cents: number | null) {
+  if (cents == null) return "A Meta não informou o saldo disponível.";
+  return "Saldo disponível";
 }
 
 export function MetaCredits() {
@@ -268,11 +265,17 @@ export function MetaCredits() {
           }
         >
           <p className="text-sm opacity-80">
-            {view ? balanceHint(view.balanceKind) : "Conta integrada"}
+            {view ? balanceHint(view.balanceCents) : "Conta integrada"}
           </p>
           <strong className="mt-2 block font-display text-3xl">
             {money(view?.balanceCents ?? null, view?.currency || "BRL")}
           </strong>
+          <p className="mt-3 text-sm opacity-80">
+            Será cobrado: {money(view?.chargeCents ?? null, view?.currency || "BRL")}
+          </p>
+          <p className="text-sm opacity-80">
+            A Meta cobra ao chegar a {money(view?.thresholdCents ?? null, view?.currency || "BRL")}
+          </p>
           <p className="mt-4 truncate text-xs opacity-80">
             {view?.accountName
               ? `${view.accountName}${view.accountId ? ` · ${view.accountId}` : ""}`

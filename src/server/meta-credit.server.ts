@@ -9,25 +9,14 @@ import {
 } from "@/lib/low-balance";
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
 import {
-  balanceFromAccount,
+  accountFigures,
   type BalanceKind,
   type FundingSource,
   type MetaCreditView,
 } from "@/lib/meta-credit";
-import { readAdAccountNode, startSimpleFacebookLogin } from "@/server/meta.server";
+import { listAdAccountEdge, readAdAccountNode, startSimpleFacebookLogin } from "@/server/meta.server";
 
 type Role = "master" | "client_admin" | "client_user";
-
-type AccountNode = {
-  name?: string;
-  account_id?: string;
-  currency?: string;
-  balance?: string | number | null;
-  spend_cap?: string | number | null;
-  amount_spent?: string | number | null;
-  is_prepay_account?: boolean;
-  funding_source_details?: FundingSource | FundingSource[] | null;
-};
 
 function fail(message: string): never {
   throw new Error(message);
@@ -111,36 +100,61 @@ async function rememberBalance(accountRowId: string, cents: number | null, kind:
 const fundingFields =
   "funding_source_details{type,amount,currency,display_amount,display_string,coupons{amount}}";
 
-async function readNode(organizationId: string, accountId: string) {
-  const attempts = [
-    `name,account_id,currency,balance,is_prepay_account,${fundingFields}`,
-    "name,account_id,currency,balance,is_prepay_account,funding_source_details",
-    "name,account_id,currency,balance,is_prepay_account",
-    "name,account_id,currency,balance",
-  ];
-  let last: unknown;
-  for (const fields of attempts) {
-    try {
-      return (await readAdAccountNode(organizationId, accountId, fields)) as AccountNode;
-    } catch (error) {
-      last = error;
-    }
+async function readFields(organizationId: string, accountId: string, fields: string) {
+  try {
+    return (await readAdAccountNode(organizationId, accountId, fields)) as Record<string, unknown>;
+  } catch (error) {
+    console.error("meta_account_fields", error instanceof Error ? error.name : "error");
+    return null;
   }
-  throw last instanceof Error
-    ? last
-    : new Error("A Meta não respondeu como esperado. Tente de novo.");
+}
+
+async function readChargeThreshold(organizationId: string, accountId: string) {
+  try {
+    const rows = await listAdAccountEdge(organizationId, accountId, "adspaymentcycle", {
+      fields: "threshold_amount,requested_threshold_amount",
+      limit: "5",
+    });
+    for (const row of rows) {
+      if (row.threshold_amount != null) return row.threshold_amount;
+    }
+    for (const row of rows) {
+      if (row.requested_threshold_amount != null) return row.requested_threshold_amount;
+    }
+  } catch (error) {
+    console.error("meta_payment_cycle", error instanceof Error ? error.name : "error");
+  }
+  return null;
 }
 
 async function readBalance(organizationId: string, accountId: string, accountRowId: string) {
-  const node = await readNode(organizationId, accountId);
-  const funding = node.funding_source_details;
-  const reading = balanceFromAccount({
-    ...(node.balance !== undefined ? { balance: node.balance } : {}),
-    ...(funding !== undefined ? { funding } : {}),
+  const [account, totalPrepay, prepayAccount, unbilled, fundingExpanded, fundingPlain, threshold] =
+    await Promise.all([
+      readFields(organizationId, accountId, "name,account_id,currency,balance,is_prepay_account"),
+      readFields(organizationId, accountId, "total_prepay_balance"),
+      readFields(organizationId, accountId, "prepay_account_balance"),
+      readFields(organizationId, accountId, "current_unbilled_spend"),
+      readFields(organizationId, accountId, fundingFields),
+      readFields(organizationId, accountId, "funding_source_details"),
+      readChargeThreshold(organizationId, accountId),
+    ]);
+  if (!account && !totalPrepay && !prepayAccount && !unbilled) {
+    throw new Error("A Meta não respondeu como esperado. Tente de novo.");
+  }
+  const funding = fundingExpanded?.funding_source_details ?? fundingPlain?.funding_source_details;
+  const figures = accountFigures({
+    totalPrepay: totalPrepay?.total_prepay_balance,
+    prepayAccount: prepayAccount?.prepay_account_balance,
+    ...(funding != null ? { funding: funding as FundingSource | FundingSource[] } : {}),
+    unbilled: unbilled?.current_unbilled_spend,
+    balance: account?.balance,
+    threshold,
   });
-  await rememberBalance(accountRowId, reading.cents, reading.kind);
-  const prepay = typeof node.is_prepay_account === "boolean" ? node.is_prepay_account : null;
-  return { reading, prepay };
+  const kind: BalanceKind = figures.availableCents != null ? "available" : "unknown";
+  await rememberBalance(accountRowId, figures.availableCents, kind);
+  const prepayFlag = account?.is_prepay_account;
+  const prepay = typeof prepayFlag === "boolean" ? prepayFlag : null;
+  return { figures, prepay };
 }
 
 function emptyView(canAdd: boolean): MetaCreditView {
@@ -150,6 +164,8 @@ function emptyView(canAdd: boolean): MetaCreditView {
     currency: "BRL",
     balanceCents: null,
     balanceKind: "unknown",
+    chargeCents: null,
+    thresholdCents: null,
     canAdd,
     syncedAt: null,
     prepay: null,
@@ -161,7 +177,7 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
   const actor = await actorOf(userId);
   const account = await selectedAccount(actor.organizationId);
   if (!account) return emptyView(actor.canAdd);
-  const { reading, prepay } = await readBalance(
+  const { figures, prepay } = await readBalance(
     actor.organizationId,
     account.external_account_id,
     account.id,
@@ -170,8 +186,10 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     accountName: account.name,
     accountId: account.external_account_id,
     currency: account.currency || "BRL",
-    balanceCents: reading.cents,
-    balanceKind: reading.kind,
+    balanceCents: figures.availableCents,
+    balanceKind: figures.availableCents != null ? "available" : "unknown",
+    chargeCents: figures.chargeCents,
+    thresholdCents: figures.thresholdCents,
     canAdd: actor.canAdd,
     syncedAt: new Date().toISOString(),
     prepay,

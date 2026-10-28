@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  accountFigures,
   availableBalanceCents,
   balanceFromAccount,
   remainingSpendCents,
@@ -15,6 +16,19 @@ assert.equal(availableBalanceCents({ type: 20, amount: "14227" }), 14227);
 assert.equal(availableBalanceCents({ type: 20, display_amount: "R$ 142,27" }), 14227);
 assert.equal(availableBalanceCents({ type: 20, amount: "0", display_amount: "R$ 142,27" }), 14227);
 assert.equal(availableBalanceCents({ type: 20, amount: "0" }), null);
+
+const walkup = accountFigures({
+  totalPrepay: "14227",
+  unbilled: "3741",
+  balance: "3402",
+  threshold: "4900",
+});
+assert.equal(walkup.availableCents, 14227);
+assert.equal(walkup.chargeCents, 3741);
+assert.equal(walkup.thresholdCents, 4900);
+assert.equal(accountFigures({ prepayAccount: { amount: "142,27", currency: "BRL" } }).availableCents, 14227);
+assert.equal(accountFigures({ balance: "3402" }).chargeCents, 3402);
+assert.equal(accountFigures({ balance: "3402" }).availableCents, null);
 assert.equal(
   availableBalanceCents({ type: 20, amount: "10000", coupons: [{ amount: "500" }] }),
   10500,

@@ -274,6 +274,29 @@ const ignoredEvent = new Set([
 
 const settledStatus = new Set(["completed", "successful", "settled", "success"]);
 
+export function classifyPrepaidRow(item: unknown): LedgerEntry | null {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const record = item as GraphPayment;
+  const status = canonical(readable(record.status));
+  const option = canonical(readable(record.payment_option));
+  if (ignoredStatus.has(status)) return null;
+  const direction: LedgerDirection | null =
+    manualOption.has(option) && manualStatus.has(status)
+      ? "credit"
+      : prepaidSpend.has(option) &&
+          (status === "pago" || status === "paid" || settledStatus.has(status))
+        ? "debit"
+        : null;
+  if (!direction) return null;
+  const cents = centsFromMetaAmount(
+    record.app_amount ?? record.provider_amount ?? record.amount,
+  );
+  const id = paymentId(record);
+  if (!id || cents == null) return null;
+  const at = firstOccurredAt(record.time, record.billing_end_time, record.billing_start_time);
+  return { id, direction, cents, at, manual: direction === "credit" };
+}
+
 function canonical(value: string) {
   return normalizeText(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }

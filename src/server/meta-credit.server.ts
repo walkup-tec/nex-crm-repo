@@ -1,11 +1,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
-  classifyGraphPayment,
+  classifyPrepaidRow,
   hasManualTopUp,
-  ledgerNeedsActivities,
-  ledgerSourceRows,
-  metaBalanceHistorySince,
   prepaidAvailableCents,
   type LedgerEntry,
 } from "@/lib/meta-balance-ledger";
@@ -135,7 +132,6 @@ async function rememberBalance(
 const transactionFields =
   "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
 const datedTransactionFields = `${transactionFields},billing_end_time,billing_start_time`;
-const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
 
 async function transactionRows(organizationId: string, accountId: string) {
   const attempts = [
@@ -146,7 +142,7 @@ async function transactionRows(organizationId: string, accountId: string) {
   for (const params of attempts) {
     try {
       const rows = await listAdAccountEdge(organizationId, accountId, "transactions", params);
-      if (rows.some((item) => classifyGraphPayment(item))) return rows;
+      if (rows.some((item) => classifyPrepaidRow(item))) return rows;
     } catch (error) {
       console.error("meta_transactions", error instanceof Error ? error.name : "error");
     }
@@ -154,26 +150,8 @@ async function transactionRows(organizationId: string, accountId: string) {
   return [];
 }
 
-async function activityRows(organizationId: string, accountId: string) {
-  const attempts = [
-    { fields: activityFields, limit: "100", since: metaBalanceHistorySince() },
-    { fields: activityFields, limit: "100" },
-  ];
-  for (const params of attempts) {
-    try {
-      const rows = await listAdAccountEdge(organizationId, accountId, "activities", params);
-      if (rows.length > 0) return rows;
-    } catch (error) {
-      console.error("meta_activities", error instanceof Error ? error.name : "error");
-    }
-  }
-  return [];
-}
-
 async function paymentRows(organizationId: string, accountId: string) {
-  const transactions = await transactionRows(organizationId, accountId);
-  const activities = ledgerNeedsActivities(transactions) ? await activityRows(organizationId, accountId) : [];
-  return ledgerSourceRows(transactions, activities);
+  return transactionRows(organizationId, accountId);
 }
 
 async function readFields(organizationId: string, accountId: string, fields: string) {
@@ -194,7 +172,7 @@ async function readBalance(organizationId: string, accountId: string, accountRow
     throw new Error("A Meta não respondeu como esperado. Tente de novo.");
   }
   const entries = rows.flatMap((item) => {
-    const entry = classifyGraphPayment(item);
+    const entry = classifyPrepaidRow(item);
     return entry ? [entry] : [];
   });
   const availableCents = prepaidAvailableCents(entries);

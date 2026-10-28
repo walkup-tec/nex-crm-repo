@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   centsFromMetaAmount,
   classifyGraphPayment,
+  classifyPrepaidRow,
   hasCreditCard,
   mergeLedger,
   prepaidAvailableCents,
@@ -377,6 +378,60 @@ assert.equal(
     ],
     walkupNow,
   ),
+  null,
+);
+
+const screenNow = Date.parse("2026-10-28T23:00:00.000Z");
+const screenRows = [
+  {
+    id: "29353659210991639-29241185882238978",
+    status: "Pago",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "56,75" },
+    time: Date.parse("2026-10-28T16:00:00.000Z") / 1000,
+  },
+  {
+    id: "29270693555954871-29465309913159899",
+    status: "Pago",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "24,73" },
+    time: Date.parse("2026-10-28T12:00:00.000Z") / 1000,
+  },
+  {
+    id: "29373632172327680-29236716052685959",
+    status: "Pago",
+    payment_option: "Saldo pré-pago",
+    app_amount: { amount: "33,01" },
+    time: Date.parse("2026-10-27T15:00:00.000Z") / 1000,
+  },
+  {
+    id: "28936639426026954-2913029933327629",
+    status: "Com saldo",
+    payment_option: "Pagamento manual",
+    app_amount: { amount: "200,00" },
+    time: Date.parse("2026-10-07T15:00:00.000Z") / 1000,
+  },
+  {
+    id: "29007270588963838-28916370761387158",
+    status: "Falha",
+    payment_option: "Pagamento manual",
+    app_amount: { amount: "500,00" },
+    time: Date.parse("2026-10-07T14:00:00.000Z") / 1000,
+  },
+];
+const screenEntries = screenRows.flatMap((row) => {
+  const entry = classifyPrepaidRow(row);
+  return entry ? [entry] : [];
+});
+assert.equal(screenEntries.some((entry) => entry.cents === 50000), false);
+assert.equal(prepaidAvailableCents(screenEntries, screenNow), 8551);
+assert.equal(
+  classifyPrepaidRow({
+    event_type: "funding_event_successful",
+    event_time: Date.parse("2026-10-07T15:00:00.000Z") / 1000,
+    object_id: "886574174420761",
+    extra_data: JSON.stringify({ new_value: "12843", currency: "BRL" }),
+  }),
   null,
 );
 

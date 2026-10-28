@@ -187,8 +187,14 @@ export function withinPrepaidHistory(at: string | null, now = Date.now()) {
 
 export function prepaidAvailableCents(entries: LedgerEntry[], now = Date.now()) {
   const recent = entries.filter((entry) => withinPrepaidHistory(entry.at, now));
-  if (!recent.some((entry) => entry.manual && entry.direction === "credit")) return null;
+  if (!recent.some((entry) => entry.direction === "credit")) return null;
   return prepaidBalanceCents(recent);
+}
+
+export function hasManualTopUp(entries: LedgerEntry[], now = Date.now()) {
+  return entries.some(
+    (entry) => entry.manual && entry.direction === "credit" && withinPrepaidHistory(entry.at, now),
+  );
 }
 
 function statusText(record: GraphPayment, extra: Record<string, unknown> | null) {
@@ -223,13 +229,24 @@ function paymentDirection(
 
 const prepaidSpend = new Set(["saldo pre pago", "stored balance"]);
 
-export function ledgerSourceRows(transactions: unknown[], activities: unknown[]) {
-  const directions = transactions.flatMap((item) => {
+function classifiedRows(rows: unknown[]) {
+  return rows.flatMap((item) => {
     const entry = classifyGraphPayment(item);
-    return entry ? [entry.direction] : [];
+    return entry ? [entry] : [];
   });
-  const hasCredit = directions.includes("credit");
-  const hasDebit = directions.includes("debit");
+}
+
+export function ledgerNeedsActivities(transactions: unknown[], now = Date.now()) {
+  const recent = classifiedRows(transactions).filter((entry) => withinPrepaidHistory(entry.at, now));
+  const hasCredit = recent.some((entry) => entry.direction === "credit");
+  const hasDebit = recent.some((entry) => entry.direction === "debit");
+  return !(hasCredit && hasDebit);
+}
+
+export function ledgerSourceRows(transactions: unknown[], activities: unknown[], now = Date.now()) {
+  const recent = classifiedRows(transactions).filter((entry) => withinPrepaidHistory(entry.at, now));
+  const hasCredit = recent.some((entry) => entry.direction === "credit");
+  const hasDebit = recent.some((entry) => entry.direction === "debit");
   if (hasCredit && hasDebit) return transactions;
   if (!hasCredit) return activities.length ? activities : transactions;
   return [

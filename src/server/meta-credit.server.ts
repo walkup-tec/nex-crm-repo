@@ -2,6 +2,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
   classifyGraphPayment,
+  hasManualTopUp,
+  ledgerNeedsActivities,
   ledgerSourceRows,
   metaBalanceHistorySince,
   prepaidAvailableCents,
@@ -105,9 +107,14 @@ async function selectedAccount(organizationId: string) {
   return query.data?.[0] ?? null;
 }
 
-async function rememberBalance(accountRowId: string, cents: number | null, entries: LedgerEntry[]) {
+async function rememberBalance(
+  accountRowId: string,
+  cents: number | null,
+  entries: LedgerEntry[],
+  manualCredit: boolean,
+) {
   const update: { prepaid_ledger: { entries: LedgerEntry[]; manualCredit: boolean }; last_synced_at: string; sync_status: string; balance_cents?: number } = {
-    prepaid_ledger: { entries, manualCredit: cents != null },
+    prepaid_ledger: { entries, manualCredit },
     last_synced_at: new Date().toISOString(),
     sync_status: "synced",
   };
@@ -139,7 +146,7 @@ async function transactionRows(organizationId: string, accountId: string) {
   for (const params of attempts) {
     try {
       const rows = await listAdAccountEdge(organizationId, accountId, "transactions", params);
-      if (rows.length > 0) return rows;
+      if (rows.some((item) => classifyGraphPayment(item))) return rows;
     } catch (error) {
       console.error("meta_transactions", error instanceof Error ? error.name : "error");
     }
@@ -148,22 +155,24 @@ async function transactionRows(organizationId: string, accountId: string) {
 }
 
 async function activityRows(organizationId: string, accountId: string) {
-  try {
-    return await listAdAccountEdge(organizationId, accountId, "activities", {
-      fields: activityFields,
-      limit: "100",
-      since: metaBalanceHistorySince(),
-    });
-  } catch (error) {
-    console.error("meta_activities", error instanceof Error ? error.name : "error");
-    return [];
+  const attempts = [
+    { fields: activityFields, limit: "100", since: metaBalanceHistorySince() },
+    { fields: activityFields, limit: "100" },
+  ];
+  for (const params of attempts) {
+    try {
+      const rows = await listAdAccountEdge(organizationId, accountId, "activities", params);
+      if (rows.length > 0) return rows;
+    } catch (error) {
+      console.error("meta_activities", error instanceof Error ? error.name : "error");
+    }
   }
+  return [];
 }
 
 async function paymentRows(organizationId: string, accountId: string) {
   const transactions = await transactionRows(organizationId, accountId);
-  const needsCharges = !transactions.some((item) => classifyGraphPayment(item)?.direction === "debit");
-  const activities = needsCharges ? await activityRows(organizationId, accountId) : [];
+  const activities = ledgerNeedsActivities(transactions) ? await activityRows(organizationId, accountId) : [];
   return ledgerSourceRows(transactions, activities);
 }
 
@@ -190,7 +199,7 @@ async function readBalance(organizationId: string, accountId: string, accountRow
   });
   const availableCents = prepaidAvailableCents(entries);
   const chargeCents = moneyCents(account?.balance);
-  await rememberBalance(accountRowId, availableCents, entries);
+  await rememberBalance(accountRowId, availableCents, entries, hasManualTopUp(entries));
   const prepayFlag = account?.is_prepay_account;
   const prepay = typeof prepayFlag === "boolean" ? prepayFlag : null;
   return { availableCents, chargeCents, prepay };

@@ -231,11 +231,12 @@ const storedSpend = classifyGraphPayment({
 assert.equal(storedSpend?.direction, "debit");
 assert.equal(storedSpend?.cents, 2473);
 
-const depositOnly = [{ id: "fund", status: "Com saldo", payment_option: "Pagamento manual", app_amount: { amount: "200,00" }, time: 1759795200 }];
-const spendActivity = [{ event_type: "ad_account_billing_charge", event_time: 1761609600, object_id: "act_1", extra_data: JSON.stringify({ new_value: 2473, status: "paid" }) }];
-assert.equal(ledgerSourceRows(depositOnly, spendActivity).length, 2);
-assert.equal(ledgerSourceRows([...depositOnly, { id: "paid", status: "Pago", payment_option: "Saldo pré-pago", app_amount: { amount: "24,73" } }], spendActivity).length, 2);
-assert.equal(ledgerSourceRows([], spendActivity).length, 1);
+const ledgerNow = Date.parse("2026-10-28T18:00:00.000Z");
+const depositOnly = [{ id: "fund", status: "Com saldo", payment_option: "Pagamento manual", app_amount: { amount: "200,00" }, time: Date.parse("2026-10-07T15:00:00.000Z") / 1000 }];
+const spendActivity = [{ event_type: "ad_account_billing_charge", event_time: Date.parse("2026-10-28T12:00:00.000Z") / 1000, object_id: "act_1", extra_data: JSON.stringify({ new_value: 2473, status: "paid" }) }];
+assert.equal(ledgerSourceRows(depositOnly, spendActivity, ledgerNow).length, 2);
+assert.equal(ledgerSourceRows([...depositOnly, { id: "paid", status: "Pago", payment_option: "Saldo pré-pago", app_amount: { amount: "24,73" }, time: Date.parse("2026-10-27T15:00:00.000Z") / 1000 }], spendActivity, ledgerNow).length, 2);
+assert.equal(ledgerSourceRows([], spendActivity, ledgerNow).length, 1);
 
 const balanceNow = Date.parse("2026-10-26T12:00:00.000Z");
 assert.equal(
@@ -332,6 +333,25 @@ const englishManual = classifyGraphPayment({
 });
 assert.equal(englishManual?.direction, "credit");
 assert.equal(englishManual?.manual, true);
+const fundingCredit = classifyGraphPayment({
+  event_type: "funding_event_successful",
+  event_time: Date.parse("2026-10-07T15:00:00.000Z") / 1000,
+  object_id: "886574174420761",
+  extra_data: JSON.stringify({ new_value: "20000", currency: "BRL" }),
+});
+const fundingCharges = [3301, 2473, 5675].map((cents, index) =>
+  classifyGraphPayment({
+    event_type: "ad_account_billing_charge",
+    event_time: Date.parse("2026-10-27T15:00:00.000Z") / 1000 + index,
+    object_id: `charge-${index}`,
+    extra_data: JSON.stringify({ new_value: cents, status: "paid" }),
+  }),
+);
+assert.equal(fundingCredit?.manual, false);
+assert.equal(
+  prepaidAvailableCents([fundingCredit!, ...fundingCharges.filter((entry) => entry != null)], walkupNow),
+  8551,
+);
 assert.equal(prepaidAvailableCents(walkup, walkupNow), 8551);
 assert.equal(
   prepaidAvailableCents(

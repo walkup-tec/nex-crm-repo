@@ -89,7 +89,7 @@ function MetaAccountReading({ connected = false }: { connected?: boolean }) {
 }
 
 function balanceHint(kind: MetaCreditView["balanceKind"]) {
-  if (kind === "available") return "Disponível para anúncios";
+  if (kind === "available") return "Saldo da conta de anúncio na Meta.";
   if (kind === "prepaid")
     return "Pagamentos com saldo, menos os que constam como pagos. A Meta cobra o cartão antes.";
   if (kind === "due") return "Valor em aberto com a Meta";

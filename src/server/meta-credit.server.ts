@@ -1,5 +1,4 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { Json } from "@/integrations/supabase/types";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
   lowBalanceAlertStamp,
@@ -10,29 +9,12 @@ import {
 } from "@/lib/low-balance";
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
 import {
-  classifyGraphPayment,
-  hasCreditCard,
-  ledgerSourceRows,
-  mergeLedger,
-  metaBalanceHistorySince,
-  prepaidBalanceCents,
-  readLedger,
-  shouldUsePrepaidLedger,
-  type LedgerEntry,
-} from "@/lib/meta-balance-ledger";
-import {
-  availableBalanceCents,
   balanceFromAccount,
-  spendCapBalance,
   type BalanceKind,
   type FundingSource,
   type MetaCreditView,
 } from "@/lib/meta-credit";
-import {
-  listAdAccountEdge,
-  readAdAccountNode,
-  startSimpleFacebookLogin,
-} from "@/server/meta.server";
+import { readAdAccountNode, startSimpleFacebookLogin } from "@/server/meta.server";
 
 type Role = "master" | "client_admin" | "client_user";
 
@@ -126,8 +108,12 @@ async function rememberBalance(accountRowId: string, cents: number | null, kind:
     .eq("id", accountRowId);
 }
 
+const fundingFields =
+  "funding_source_details{type,amount,currency,display_amount,display_string,coupons{amount}}";
+
 async function readNode(organizationId: string, accountId: string) {
   const attempts = [
+    `name,account_id,currency,balance,is_prepay_account,${fundingFields}`,
     "name,account_id,currency,balance,is_prepay_account,funding_source_details",
     "name,account_id,currency,balance,is_prepay_account",
     "name,account_id,currency,balance",
@@ -145,164 +131,16 @@ async function readNode(organizationId: string, accountId: string) {
     : new Error("A Meta não respondeu como esperado. Tente de novo.");
 }
 
-// spend_cap/amount_spent are the source of the "Saldo total" on the Meta
-// billing page. The batched readNode above drops these fields whenever the
-// Graph API rejects the larger field list, so we always ask for just these two
-// in their own call. If that dedicated call fails we fall back to whatever the
-// batched read happened to return.
-async function readSpendFields(organizationId: string, accountId: string, node: AccountNode) {
-  try {
-    const trimmed = (await readAdAccountNode(
-      organizationId,
-      accountId,
-      "spend_cap,amount_spent",
-    )) as AccountNode;
-    if (trimmed.spend_cap != null || trimmed.amount_spent != null) {
-      return { spendCap: trimmed.spend_cap ?? null, amountSpent: trimmed.amount_spent ?? null };
-    }
-  } catch (error) {
-    console.error("meta_spend_cap", error instanceof Error ? error.name : "error");
-  }
-  return { spendCap: node.spend_cap ?? null, amountSpent: node.amount_spent ?? null };
-}
-
-const transactionFields =
-  "id,time,billing_end_time,billing_start_time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
-const activityFields = "event_type,event_time,extra_data,object_id,translated_event_type";
-
-async function paymentRows(accountId: string, organizationId: string, businessId: string | null) {
-  const transactions = await transactionRows(accountId, organizationId);
-  const needsCharges = !transactions.some((item) => classifyGraphPayment(item)?.direction === "debit");
-  const activities = needsCharges ? await activityRows(accountId, organizationId, businessId) : [];
-  return ledgerSourceRows(transactions, activities);
-}
-
-async function transactionRows(accountId: string, organizationId: string) {
-  const attempts = [{ limit: "100", fields: transactionFields }, { limit: "100" }];
-  for (const params of attempts) {
-    try {
-      return await listAdAccountEdge(organizationId, accountId, "transactions", params);
-    } catch (error) {
-      console.error("meta_transactions", error instanceof Error ? error.name : "error");
-    }
-  }
-  return [];
-}
-
-async function activityRows(accountId: string, organizationId: string, businessId: string | null) {
-  const merged: Record<string, unknown>[] = [];
-  const recent = { fields: activityFields, limit: "100", since: metaBalanceHistorySince() };
-  try {
-    merged.push(...(await listAdAccountEdge(organizationId, accountId, "activities", recent)));
-  } catch (error) {
-    console.error("meta_activities", error instanceof Error ? error.name : "error");
-  }
-  if (businessId && /^\d+$/.test(businessId) && !merged.some(hasCredit)) {
-    try {
-      merged.push(
-        ...(await listAdAccountEdge(organizationId, accountId, "activities", {
-          ...recent,
-          business_id: businessId,
-        })),
-      );
-    } catch (error) {
-      console.error("meta_activities", error instanceof Error ? error.name : "error");
-    }
-  }
-  return merged;
-}
-
-function hasCredit(item: Record<string, unknown>) {
-  return classifyGraphPayment(item)?.direction === "credit";
-}
-
-async function prepaidLedger(
-  organizationId: string,
-  accountId: string,
-  accountRowId: string,
-  businessId: string | null,
-  stored: Json | null,
-) {
-  let rows: Record<string, unknown>[];
-  try {
-    rows = await paymentRows(accountId, organizationId, businessId);
-  } catch (error) {
-    console.error("meta_activities", error instanceof Error ? error.name : "error");
-    return null;
-  }
-  const incoming = rows.flatMap((item) => {
-    const entry = classifyGraphPayment(item);
-    return entry ? [entry] : [];
-  });
-  const entries = mergeLedger(readLedger(stored), incoming);
-  if (!entries.some((entry) => entry.direction === "credit")) return null;
-  const { error } = await supabaseAdmin
-    .from("meta_accounts")
-    .update({ prepaid_ledger: { entries } })
-    .eq("id", accountRowId)
-    .eq("organization_id", organizationId);
-  if (error) console.error("meta_prepaid_ledger", error.code ?? "error");
-  return { cents: prepaidBalanceCents(entries), credits: creditCount(entries) };
-}
-
-function creditCount(entries: LedgerEntry[]) {
-  return entries.filter((entry) => entry.direction === "credit").length;
-}
-
-async function readBalance(
-  organizationId: string,
-  accountId: string,
-  accountRowId: string,
-  businessId: string | null,
-  storedLedger: Json | null,
-) {
+async function readBalance(organizationId: string, accountId: string, accountRowId: string) {
   const node = await readNode(organizationId, accountId);
   const funding = node.funding_source_details;
   const reading = balanceFromAccount({
     ...(node.balance !== undefined ? { balance: node.balance } : {}),
     ...(funding !== undefined ? { funding } : {}),
   });
-  const storedCents = funding === undefined ? null : availableBalanceCents(funding);
-  const hasCard = hasCreditCard(funding);
-  const spend = await readSpendFields(organizationId, accountId, node);
-  const remaining = spendCapBalance({
-    balance: node.balance ?? null,
-    spendCap: spend.spendCap,
-    amountSpent: spend.amountSpent,
-    isPrepay: node.is_prepay_account ?? null,
-  });
-  let result = remaining != null ? remaining : reading;
-  if (
-    remaining == null &&
-    shouldUsePrepaidLedger({
-      hasCard,
-      displayedCents: reading.cents,
-      storedCents,
-      creditCount: 1,
-    })
-  ) {
-    const ledger = await prepaidLedger(
-      organizationId,
-      accountId,
-      accountRowId,
-      businessId,
-      storedLedger,
-    );
-    if (
-      ledger &&
-      shouldUsePrepaidLedger({
-        hasCard,
-        displayedCents: reading.cents,
-        storedCents,
-        creditCount: ledger.credits,
-      })
-    ) {
-      result = { cents: ledger.cents, kind: "prepaid" };
-    }
-  }
-  await rememberBalance(accountRowId, result.cents, result.kind);
+  await rememberBalance(accountRowId, reading.cents, reading.kind);
   const prepay = typeof node.is_prepay_account === "boolean" ? node.is_prepay_account : null;
-  return { reading: result, prepay };
+  return { reading, prepay };
 }
 
 function emptyView(canAdd: boolean): MetaCreditView {
@@ -327,8 +165,6 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     actor.organizationId,
     account.external_account_id,
     account.id,
-    account.portfolio_id,
-    account.prepaid_ledger,
   );
   return {
     accountName: account.name,

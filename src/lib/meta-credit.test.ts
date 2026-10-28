@@ -11,6 +11,10 @@ import {
 } from "./meta-credit";
 
 assert.equal(availableBalanceCents({ type: 20, amount: "18250" }), 18250);
+assert.equal(availableBalanceCents({ type: 20, amount: "14227" }), 14227);
+assert.equal(availableBalanceCents({ type: 20, display_amount: "R$ 142,27" }), 14227);
+assert.equal(availableBalanceCents({ type: 20, amount: "0", display_amount: "R$ 142,27" }), 14227);
+assert.equal(availableBalanceCents({ type: 20, amount: "0" }), null);
 assert.equal(
   availableBalanceCents({ type: 20, amount: "10000", coupons: [{ amount: "500" }] }),
   10500,

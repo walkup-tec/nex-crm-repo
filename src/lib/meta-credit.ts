@@ -20,6 +20,7 @@ export type MetaCreditView = {
 export type FundingSource = {
   type?: number | string;
   amount?: string | number | null;
+  display_amount?: string | number | null;
   display_string?: string;
   coupons?: { amount?: string | number | null }[] | null;
 };
@@ -33,6 +34,34 @@ function offsetCents(value: string | number | null | undefined) {
   return Math.round(parsed);
 }
 
+function centsFromDisplay(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return Number.isInteger(value) ? Math.round(value) : Math.round(value * 100);
+  }
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().replace(/[^\d,.-]/g, "");
+  if (!cleaned || !/\d/.test(cleaned)) return null;
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalAt = Math.max(lastComma, lastDot);
+  const decimal = decimalAt >= 0 ? cleaned.slice(decimalAt + 1) : "";
+  const major =
+    decimalAt >= 0 && decimal.length > 0 && decimal.length <= 2
+      ? `${cleaned.slice(0, decimalAt).replace(/[^\d-]/g, "")}.${decimal}`
+      : cleaned.replace(/[^\d-]/g, "");
+  const parsed = Number(major);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(parsed * 100);
+}
+
+function storedSourceCents(source: FundingSource) {
+  if (Number(source.type) !== storedBalance) return null;
+  const amount = offsetCents(source.amount);
+  if (amount != null && amount > 0) return amount;
+  return centsFromDisplay(source.display_amount);
+}
+
 export function availableBalanceCents(
   funding: FundingSource | FundingSource[] | null | undefined,
 ): number | null {
@@ -40,16 +69,14 @@ export function availableBalanceCents(
   let total = 0;
   let found = false;
   for (const source of sources) {
-    if (Number(source.type) === storedBalance) {
-      const cents = offsetCents(source.amount);
-      if (cents != null) {
-        total += cents;
-        found = true;
-      }
+    const stored = storedSourceCents(source);
+    if (stored != null) {
+      total += stored;
+      found = true;
     }
     for (const coupon of source.coupons ?? []) {
       const cents = offsetCents(coupon.amount);
-      if (cents != null) {
+      if (cents != null && cents > 0) {
         total += cents;
         found = true;
       }
@@ -68,11 +95,8 @@ export function remainingSpendCents(
   return Math.max(0, cap - spent);
 }
 
-// The real available balance is spend_cap - amount_spent whenever there is a
-// spend limit, regardless of is_prepay_account. We only refuse to use it when
-// the account carries a real outstanding (due) balance on a postpaid account:
-// a positive open `balance` that is not a prepaid account must not be hidden
-// behind a spend limit.
+// spend_cap is the account spending limit. It is not the balance shown for the
+// ad account. The card uses the stored balance Meta returns, or the bill amount.
 export function spendCapBalance(input: {
   balance?: string | number | null;
   spendCap?: string | number | null;

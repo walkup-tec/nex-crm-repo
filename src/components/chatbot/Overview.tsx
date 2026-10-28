@@ -419,7 +419,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
         )}
       </section>
       </>
-      )}
+      ) : null}
     </main>
   );
 }

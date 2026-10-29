@@ -1264,7 +1264,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     const channel = data.connections.find((connection) => connection.id === item.connectionId)?.name ?? "";
     const unread = item.unreadCount > 99 ? "99+" : String(item.unreadCount);
     const mark = markFor(item.id);
-    const pending = waitingForHuman({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+    const pending = waitingForHuman({
+      assigneeName: item.assigneeName,
+      botPaused: item.botPaused,
+      closed: item.status === "closed",
+      unreadCount: item.unreadCount,
+    });
     return (
       <div
         key={item.id}

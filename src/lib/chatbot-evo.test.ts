@@ -652,17 +652,25 @@ assert.equal(waitingForHuman({ assigneeName: "", botPaused: true, closed: false 
 assert.equal(waitingForHuman({ assigneeName: "", botPaused: false, closed: false }), false);
 assert.equal(waitingForHuman({ assigneeName: "Marina Costa", botPaused: true, closed: false }), false);
 assert.equal(waitingForHuman({ assigneeName: "", botPaused: true, closed: true }), false);
+assert.equal(waitingForHuman({ assigneeName: "Ana", botPaused: true, closed: false, unreadCount: 2 }), true);
 assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: false }), "atendimento");
 assert.equal(inboxLane({ assigneeName: "", botPaused: true, closed: false }), "aguardando");
 assert.equal(inboxLane({ assigneeName: "", botPaused: false, closed: false }), "robo");
 assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: true }), "");
+assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: false, unreadCount: 4 }), "aguardando");
+assert.equal(inboxLane({ assigneeName: "", botPaused: false, closed: false, unreadCount: 1 }), "aguardando");
 const lanes = [
-  { id: "human", contactId: "mozart", assigneeName: "Ana", botPaused: true, status: "active", pinned: false, updatedAt: "2026-10-22T12:00:00.000Z" },
-  { id: "bot", contactId: "mozart", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T12:05:00.000Z" },
-  { id: "wait", contactId: "paulo", assigneeName: "", botPaused: true, status: "queue", pinned: true, updatedAt: "2026-10-22T11:00:00.000Z" },
-  { id: "robot", contactId: "grupo", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T10:00:00.000Z" },
-  { id: "done", contactId: "grupo", assigneeName: "", botPaused: false, status: "closed", pinned: false, updatedAt: "2026-10-22T13:00:00.000Z" },
+  { id: "human", contactId: "mozart", assigneeName: "Ana", botPaused: true, status: "active", pinned: false, updatedAt: "2026-10-22T12:00:00.000Z", unreadCount: 0 },
+  { id: "bot", contactId: "mozart", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T12:05:00.000Z", unreadCount: 0 },
+  { id: "wait", contactId: "paulo", assigneeName: "", botPaused: true, status: "queue", pinned: true, updatedAt: "2026-10-22T11:00:00.000Z", unreadCount: 0 },
+  { id: "robot", contactId: "grupo", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T10:00:00.000Z", unreadCount: 0 },
+  { id: "done", contactId: "grupo", assigneeName: "", botPaused: false, status: "closed", pinned: false, updatedAt: "2026-10-22T13:00:00.000Z", unreadCount: 0 },
 ];
+const unreadHuman = [
+  { id: "human", contactId: "focus", assigneeName: "Ana", botPaused: true, status: "active", pinned: false, updatedAt: "2026-10-22T12:00:00.000Z", unreadCount: 4 },
+  { id: "sister", contactId: "focus", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T11:00:00.000Z", unreadCount: 0 },
+];
+const unreadPeople = [{ id: "focus", name: "AI FOCUS", phone: "5598984054833", products: [], tags: [], stage: "" }];
 const people = [
   { id: "mozart", name: "Mozart", phone: "5551999666841", products: ["Meta Ads"], tags: [{ name: "Suporte" }], stage: "Proposta" },
   { id: "paulo", name: "Paulo", phone: "5515998007677", products: [], tags: [], stage: "" },
@@ -682,6 +690,15 @@ assert.deepEqual(inboxTabCounts(lanes, people, "", none), {
   atendimento: 1,
   aguardando: 1,
   robo: 1,
+});
+assert.equal(inboxContactLane(unreadHuman, "focus"), "aguardando");
+assert.deepEqual(inboxList(unreadHuman, unreadPeople, "aguardando", "", none).map((item) => item.id), ["human"]);
+assert.deepEqual(inboxList(unreadHuman, unreadPeople, "atendimento", "", none).map((item) => item.id), []);
+assert.deepEqual(inboxTabCounts(unreadHuman, unreadPeople, "", none), {
+  todos: 2,
+  atendimento: 0,
+  aguardando: 1,
+  robo: 0,
 });
 assert.equal(inboxQueryMatch("José", "Jose Silva", ""), true);
 assert.equal(inboxFiltersMatch(people[0]!, { products: ["Meta Ads"], tags: ["Suporte"], stages: ["Proposta"] }), true);

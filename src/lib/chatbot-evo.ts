@@ -104,15 +104,18 @@ export function attendanceMark(input: { assigneeName: string; botPaused: boolean
   return "";
 }
 
-export function waitingForHuman(input: { assigneeName: string; botPaused: boolean; closed: boolean }) {
-  return !input.closed && !input.assigneeName.trim() && input.botPaused;
+export function waitingForHuman(input: { assigneeName: string; botPaused: boolean; closed: boolean; unreadCount?: number }) {
+  if (input.closed) return false;
+  if ((input.unreadCount ?? 0) > 0) return true;
+  return !input.assigneeName.trim() && input.botPaused;
 }
 
 export type InboxLane = "atendimento" | "aguardando" | "robo";
 export type InboxTab = InboxLane | "todos";
 
-export function inboxLane(input: { assigneeName: string; botPaused: boolean; closed: boolean }): InboxLane | "" {
+export function inboxLane(input: { assigneeName: string; botPaused: boolean; closed: boolean; unreadCount?: number }): InboxLane | "" {
   if (input.closed) return "";
+  if ((input.unreadCount ?? 0) > 0) return "aguardando";
   if (input.assigneeName.trim()) return "atendimento";
   if (input.botPaused) return "aguardando";
   return "robo";
@@ -120,16 +123,25 @@ export function inboxLane(input: { assigneeName: string; botPaused: boolean; clo
 
 const inboxLaneRank: Record<InboxLane, number> = { atendimento: 3, aguardando: 2, robo: 1 };
 
-export function inboxContactLanes<T extends { contactId: string; assigneeName: string; botPaused: boolean; status: string }>(
+export function inboxContactLanes<T extends { contactId: string; assigneeName: string; botPaused: boolean; status: string; unreadCount?: number }>(
   conversations: T[],
 ): Map<string, InboxLane> {
   const winners = new Map<string, InboxLane>();
+  const unreadContacts = new Set<string>();
   for (const item of conversations) {
-    const lane = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+    const closed = item.status === "closed";
+    if (!closed && (item.unreadCount ?? 0) > 0) unreadContacts.add(item.contactId);
+    const lane = inboxLane({
+      assigneeName: item.assigneeName,
+      botPaused: item.botPaused,
+      closed,
+      unreadCount: item.unreadCount,
+    });
     if (!lane) continue;
     const current = winners.get(item.contactId);
     if (!current || inboxLaneRank[lane] > inboxLaneRank[current]) winners.set(item.contactId, lane);
   }
+  for (const contactId of unreadContacts) winners.set(contactId, "aguardando");
   return winners;
 }
 
@@ -165,7 +177,7 @@ export function inboxFiltersMatch(
   return true;
 }
 
-export function inboxList<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string }>(
+export function inboxList<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string; unreadCount?: number }>(
   conversations: T[],
   contacts: { id: string; name: string; phone: string; products: string[]; tags: { name: string }[]; stage: string }[],
   lane: InboxTab,
@@ -177,7 +189,12 @@ export function inboxList<T extends { id: string; contactId: string; assigneeNam
   return inboxOrder(
     conversations.filter((item) => {
       if (lane !== "todos") {
-        const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+        const own = inboxLane({
+          assigneeName: item.assigneeName,
+          botPaused: item.botPaused,
+          closed: item.status === "closed",
+          unreadCount: item.unreadCount,
+        });
         if (own !== lane || contactLanes?.get(item.contactId) !== lane) return false;
       }
       const person = people.get(item.contactId);
@@ -188,7 +205,7 @@ export function inboxList<T extends { id: string; contactId: string; assigneeNam
   );
 }
 
-export function inboxTabCounts<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string }>(
+export function inboxTabCounts<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string; unreadCount?: number }>(
   conversations: T[],
   contacts: { id: string; name: string; phone: string; products: string[]; tags: { name: string }[]; stage: string }[],
   query: string,
@@ -202,7 +219,12 @@ export function inboxTabCounts<T extends { id: string; contactId: string; assign
     if (!inboxQueryMatch(query, person?.name ?? "", person?.phone ?? "")) continue;
     if (inboxFiltersActive(filters) && !(person ? inboxFiltersMatch(person, filters) : false)) continue;
     counts.todos += 1;
-    const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+    const own = inboxLane({
+      assigneeName: item.assigneeName,
+      botPaused: item.botPaused,
+      closed: item.status === "closed",
+      unreadCount: item.unreadCount,
+    });
     if (own && contactLanes.get(item.contactId) === own) counts[own] += 1;
   }
   return counts;

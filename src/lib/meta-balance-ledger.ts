@@ -227,7 +227,7 @@ function paymentDirection(
   return null;
 }
 
-const prepaidSpend = new Set(["saldo pre pago", "stored balance"]);
+const prepaidSpend = new Set(["saldo pre pago", "stored balance", "prepaid balance"]);
 
 function classifiedRows(rows: unknown[]) {
   return rows.flatMap((item) => {
@@ -280,17 +280,18 @@ export function classifyPrepaidRow(item: unknown): LedgerEntry | null {
   const status = canonical(readable(record.status));
   const option = canonical(readable(record.payment_option));
   if (ignoredStatus.has(status)) return null;
+  const settled = settledStatus.has(status);
   const direction: LedgerDirection | null =
-    manualOption.has(option) && manualStatus.has(status)
+    manualOption.has(option) && (manualStatus.has(status) || settled)
       ? "credit"
-      : prepaidSpend.has(option) &&
-          (status === "pago" || status === "paid" || settledStatus.has(status))
+      : prepaidSpend.has(option) && (status === "pago" || status === "paid" || settled)
         ? "debit"
         : null;
   if (!direction) return null;
-  const cents = centsFromMetaAmount(
-    record.app_amount ?? record.provider_amount ?? record.amount,
-  );
+  const cents =
+    centsFromMetaAmount(record.app_amount) ??
+    centsFromMetaAmount(record.provider_amount) ??
+    centsFromMetaAmount(record.amount);
   const id = paymentId(record);
   if (!id || cents == null) return null;
   const at = firstOccurredAt(record.time, record.billing_end_time, record.billing_start_time);

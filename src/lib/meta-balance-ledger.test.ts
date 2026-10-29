@@ -425,6 +425,57 @@ const screenEntries = screenRows.flatMap((row) => {
 });
 assert.equal(screenEntries.some((entry) => entry.cents === 50000), false);
 assert.equal(prepaidAvailableCents(screenEntries, screenNow), 8551);
+const apiRows = [
+  {
+    id: "api-spend-56",
+    status: "completed",
+    payment_option: "stored_balance",
+    app_amount: { amount: "56.75", currency: "BRL" },
+    time: Date.parse("2026-10-28T16:00:00.000Z") / 1000,
+  },
+  {
+    id: "api-spend-24",
+    status: "completed",
+    payment_option: "stored_balance",
+    app_amount: { amount: "24.73", currency: "BRL" },
+    time: Date.parse("2026-10-28T12:00:00.000Z") / 1000,
+  },
+  {
+    id: "api-spend-33",
+    status: "completed",
+    payment_option: "stored_balance",
+    app_amount: { amount: "33.01", currency: "BRL" },
+    time: Date.parse("2026-10-27T15:00:00.000Z") / 1000,
+  },
+  {
+    id: "api-manual",
+    status: "completed",
+    payment_option: "Pagamento manual",
+    app_amount: { amount: "200.00", currency: "BRL" },
+    time: Date.parse("2026-10-07T15:00:00.000Z") / 1000,
+  },
+  {
+    id: "api-failed",
+    status: "failed",
+    payment_option: "Pagamento manual",
+    app_amount: { amount: "500.00", currency: "BRL" },
+    time: Date.parse("2026-10-07T14:00:00.000Z") / 1000,
+  },
+  {
+    id: "api-card",
+    status: "completed",
+    payment_option: "credit_card",
+    charge_type: "payment",
+    app_amount: { amount: "2,100.40", currency: "BRL" },
+    time: Date.parse("2026-10-08T12:00:00.000Z") / 1000,
+  },
+];
+const apiEntries = apiRows.flatMap((row) => {
+  const entry = classifyPrepaidRow(row);
+  return entry ? [entry] : [];
+});
+assert.equal(apiEntries.some((entry) => entry.cents === 50000 || entry.cents === 210040), false);
+assert.equal(prepaidAvailableCents(apiEntries, screenNow), 8551);
 assert.equal(
   classifyPrepaidRow({
     event_type: "funding_event_successful",

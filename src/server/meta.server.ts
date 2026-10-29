@@ -1191,6 +1191,10 @@ async function collectCampaigns(
   const rows: MetaCampaignRow[] = [];
   const actionTypes = new Map<string, string[]>();
   const rawStatus = new Map<string, string | undefined>();
+  const deliveryPromise = campaignDeliveryMap(version, token, accountId).catch((error) => {
+    console.error("meta_delivery", error instanceof Error ? error.message : "falha");
+    return null;
+  });
   let next: string | null = null;
   const fields = `id,name,effective_status,${campaignInsightField(period)}`;
   for (let page = 0; page < 5; page += 1) {
@@ -1221,8 +1225,8 @@ async function collectCampaigns(
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
     if (!next) break;
   }
-  try {
-    const delivery = await campaignDeliveryMap(version, token, accountId);
+  const delivery = await deliveryPromise;
+  if (delivery) {
     for (const row of rows) {
       const children = delivery.get(row.id);
       if (!children) continue;
@@ -1235,8 +1239,6 @@ async function collectCampaigns(
       row.status = override.label;
       row.statusGroup = override.group;
     }
-  } catch (error) {
-    console.error("meta_delivery", error instanceof Error ? error.message : "falha");
   }
   return { rows, actionTypes };
 }
@@ -1704,57 +1706,61 @@ export async function getMetaPerformance(
   try {
     const { token } = await loadToken(organizationId);
     const version = graphVersion();
-    const insight = await graphGet(
-      version,
-      `/act_${selected.external_account_id}/insights`,
-      token,
-      {
+    const accountId = selected.external_account_id;
+    const [insight, collected] = await Promise.all([
+      graphGet(version, `/act_${accountId}/insights`, token, {
         fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions,results",
         use_unified_attribution_setting: "true",
         ...insightQuery(period),
-      },
-    );
+      }),
+      collectCampaigns(version, token, accountId, period),
+    ]);
     const stats = metricsOf(insight.data?.[0]);
     view.kpis = kpisFrom(stats, insight.data?.[0]);
-    const collected = await collectCampaigns(version, token, selected.external_account_id, period);
     view.campaigns = collected.rows;
     if (view.kpis && collected.rows.length > 0) {
       const labels = new Set(collected.rows.map((row) => row.resultLabel));
       view.kpis.results = collected.rows.reduce((sum, row) => sum + row.results, 0);
       view.kpis.resultLabel = labels.size === 1 ? ([...labels][0] ?? "Resultados") : "Resultados";
     }
-    try {
-      const timeline = await collectDaily(
+    const [timeline, compared] = await Promise.all([
+      collectDaily(version, token, accountId, period, collected.rows, collected.actionTypes)
+        .then((result) => ({ ok: true as const, result }))
+        .catch((seriesError) => {
+          console.error("meta_daily", seriesError instanceof Error ? seriesError.name : "error");
+          return { ok: false as const };
+        }),
+      collectPrevious(
         version,
         token,
-        selected.external_account_id,
-        period,
-        collected.rows,
-        collected.actionTypes,
-      );
-      view.series = timeline.series;
-      view.days = timeline.days;
-    } catch (seriesError) {
-      console.error("meta_daily", seriesError instanceof Error ? seriesError.name : "error");
-      view.series = emptySeries;
-      view.days = [];
-    }
-    try {
-      const compared = await collectPrevious(
-        version,
-        token,
-        selected.external_account_id,
+        accountId,
         period,
         collected.rows,
         collected.actionTypes,
         stats.resultActionTypes,
         view.kpis?.resultLabel ?? stats.resultLabel,
-      );
-      view.previous = compared.previous;
-      view.previousCampaigns = compared.previousCampaigns;
-      view.previousReady = compared.previousReady;
-    } catch (previousError) {
-      console.error("meta_previous", previousError instanceof Error ? previousError.name : "error");
+      )
+        .then((result) => ({ ok: true as const, result }))
+        .catch((previousError) => {
+          console.error(
+            "meta_previous",
+            previousError instanceof Error ? previousError.name : "error",
+          );
+          return { ok: false as const };
+        }),
+    ]);
+    if (timeline.ok) {
+      view.series = timeline.result.series;
+      view.days = timeline.result.days;
+    } else {
+      view.series = emptySeries;
+      view.days = [];
+    }
+    if (compared.ok) {
+      view.previous = compared.result.previous;
+      view.previousCampaigns = compared.result.previousCampaigns;
+      view.previousReady = compared.result.previousReady;
+    } else {
       view.previous = null;
       view.previousCampaigns = [];
       view.previousReady = false;

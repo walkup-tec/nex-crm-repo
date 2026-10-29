@@ -20,6 +20,47 @@ function stageFill(name: string, index: number) {
 }
 
 const clearedFilters: OverviewFilters = { period: { mode: "total" }, attendantId: "", channelId: "" };
+const overviewCacheKey = "nex.chatbot.overview";
+type OverviewView = ReturnType<typeof applyOverviewFilters>;
+
+type OverviewPayload = {
+  filters: OverviewFilters;
+  attendants: { id: string; name: string }[];
+  channels: { id: string; name: string }[];
+  view: OverviewView;
+  previous: OverviewView | null;
+};
+
+function overviewCacheId(filters: OverviewFilters) {
+  const period =
+    filters.period.mode === "custom"
+      ? `${filters.period.since}:${filters.period.until}`
+      : "total";
+  return `${period}|${filters.attendantId}|${filters.channelId}`;
+}
+
+function readOverviewCache(filters: OverviewFilters): OverviewPayload | null {
+  try {
+    const raw = sessionStorage.getItem(overviewCacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OverviewPayload & { id?: string };
+    if (parsed.id !== overviewCacheId(filters) || !parsed.view) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeOverviewCache(filters: OverviewFilters, payload: Omit<OverviewPayload, "filters">) {
+  try {
+    sessionStorage.setItem(
+      overviewCacheKey,
+      JSON.stringify({ id: overviewCacheId(filters), filters, ...payload }),
+    );
+  } catch {
+    return;
+  }
+}
 
 function axisTop(max: number) {
   const top = Number.isFinite(max) ? max : 0;
@@ -91,21 +132,32 @@ function PeriodDelta({ bounded, percent }: { bounded: boolean; percent: number |
   );
 }
 
-type OverviewView = ReturnType<typeof applyOverviewFilters>;
-
 export function Overview({ reports = false }: { reports?: boolean }) {
   const [filters, setFilters] = useState<OverviewFilters>(clearedFilters);
   const [rankingMode, setRankingMode] = useState<"vendas" | "monetario">("vendas");
-  const [attendants, setAttendants] = useState<{ id: string; name: string }[]>([]);
-  const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
-  const [view, setView] = useState<OverviewView | null>(null);
-  const [previousView, setPreviousView] = useState<OverviewView | null>(null);
+  const cached = typeof window !== "undefined" ? readOverviewCache(clearedFilters) : null;
+  const [attendants, setAttendants] = useState<{ id: string; name: string }[]>(cached?.attendants ?? []);
+  const [channels, setChannels] = useState<{ id: string; name: string }[]>(cached?.channels ?? []);
+  const [view, setView] = useState<OverviewView | null>(cached?.view ?? null);
+  const [previousView, setPreviousView] = useState<OverviewView | null>(cached?.previous ?? null);
   const [message, setMessage] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let active = true;
     setMessage("");
+    const local = readOverviewCache(filters);
+    if (local) {
+      setAttendants(local.attendants);
+      setChannels(local.channels);
+      setView(local.view);
+      setPreviousView(local.previous);
+    } else {
+      setView(null);
+      setPreviousView(null);
+    }
+    setRefreshing(true);
     void chatbotOverviewFn({ data: filters })
       .then((result) => {
         if (!active) return;
@@ -113,14 +165,24 @@ export function Overview({ reports = false }: { reports?: boolean }) {
           setMessage(result.ok ? "Não foi possível carregar os indicadores." : result.message);
           return;
         }
-        setAttendants(result.data.attendants);
-        setChannels(result.data.channels);
-        setView(result.data.view);
-        setPreviousView(result.data.previous);
+        const next = {
+          attendants: result.data.attendants,
+          channels: result.data.channels,
+          view: result.data.view,
+          previous: result.data.previous,
+        };
+        setAttendants(next.attendants);
+        setChannels(next.channels);
+        setView(next.view);
+        setPreviousView(next.previous);
+        writeOverviewCache(filters, next);
       })
       .catch(() => {
         if (!active) return;
         setMessage("Não foi possível carregar os indicadores.");
+      })
+      .finally(() => {
+        if (active) setRefreshing(false);
       });
     return () => {
       active = false;
@@ -242,6 +304,7 @@ export function Overview({ reports = false }: { reports?: boolean }) {
         </p>
       ) : null}
       {!view && !message ? <p className="info-note mb-5">Carregando os indicadores...</p> : null}
+      {view && refreshing ? <p className="info-note mb-5">Atualizando os indicadores...</p> : null}
       {view ? (
       <>
       <div className="stats-strip">

@@ -12,9 +12,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { callChatbotContactFn, listChatbotKanbanFn } from "@/lib/chatbot.functions";
-import { negotiatedLabel, type ChatbotKanbanCard } from "@/lib/chatbot-evo";
+import {
+  defaultKanbanStages,
+  negotiatedLabel,
+  type ChatbotKanbanCard,
+} from "@/lib/chatbot-evo";
 
 const openConversationKey = "nex-kanban-conversation";
+const kanbanCacheKey = "nex.kanban.board";
 
 const stagePalette = ["var(--primary)", "var(--info)", "var(--warning)", "oklch(0.72 0.16 330)", "var(--success)", "var(--destructive)"];
 
@@ -23,6 +28,30 @@ function stageTone(name: string, index: number) {
   if (key === "sucesso") return "var(--success)";
   if (key === "perdido") return "var(--destructive)";
   return stagePalette[index % stagePalette.length];
+}
+
+function readKanbanCache(): { stages: string[]; cards: ChatbotKanbanCard[]; ready: boolean } | null {
+  try {
+    const raw = sessionStorage.getItem(kanbanCacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { stages?: unknown; cards?: unknown; ready?: unknown };
+    if (!Array.isArray(parsed.stages) || !Array.isArray(parsed.cards)) return null;
+    return {
+      stages: parsed.stages.filter((item): item is string => typeof item === "string"),
+      cards: parsed.cards as ChatbotKanbanCard[],
+      ready: parsed.ready !== false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeKanbanCache(value: { stages: string[]; cards: ChatbotKanbanCard[]; ready: boolean }) {
+  try {
+    sessionStorage.setItem(kanbanCacheKey, JSON.stringify(value));
+  } catch {
+    return;
+  }
 }
 
 function WhatsAppIcon() {
@@ -39,9 +68,10 @@ function WhatsAppIcon() {
 
 export function Kanban() {
   const navigate = useNavigate();
-  const [stages, setStages] = useState<string[]>([]);
-  const [cards, setCards] = useState<ChatbotKanbanCard[]>([]);
-  const [ready, setReady] = useState(true);
+  const cached = typeof window !== "undefined" ? readKanbanCache() : null;
+  const [stages, setStages] = useState<string[]>(cached?.stages?.length ? cached.stages : defaultKanbanStages);
+  const [cards, setCards] = useState<ChatbotKanbanCard[]>(cached?.cards ?? []);
+  const [ready, setReady] = useState(cached?.ready ?? true);
   const [calling, setCalling] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [failure, setFailure] = useState("");
@@ -55,9 +85,15 @@ export function Kanban() {
         setFailure(result.message);
         return;
       }
-      setReady(result.data.ready);
-      setStages(result.data.stages);
-      setCards(result.data.cards);
+      const next = {
+        ready: result.data.ready,
+        stages: result.data.stages.length ? result.data.stages : defaultKanbanStages,
+        cards: result.data.cards,
+      };
+      setReady(next.ready);
+      setStages(next.stages);
+      setCards(next.cards);
+      writeKanbanCache(next);
     } finally {
       setRefreshing(false);
     }
@@ -87,7 +123,11 @@ export function Kanban() {
           {refreshing ? "Atualizando" : "Atualizar"}
         </Button>
       </div>
-      {ready ? null : <p className="info-note mb-5">A etapa do contato ainda não está disponível. Aplique a migração do kanban no Supabase.</p>}
+      {ready ? null : (
+        <p className="info-note mb-5">
+          A etapa do contato ainda não está disponível. Aplique a migração do kanban no Supabase.
+        </p>
+      )}
       <div className="kanban-board">
         {stages.map((stage, index) => {
           const items = cards.filter((card) => card.stage === stage);
@@ -104,7 +144,12 @@ export function Kanban() {
                   <strong>{card.name || "Contato sem nome"}</strong>
                   <p className="kanban-product">{card.products.join(", ") || "Sem produto"}</p>
                   <p className="kanban-value">{negotiatedLabel(card.negotiatedCents ?? 0)}</p>
-                  <Button variant="outline" className="kanban-call" disabled={calling === card.id} onClick={() => void call(card.id)}>
+                  <Button
+                    variant="outline"
+                    className="kanban-call"
+                    disabled={calling === card.id}
+                    onClick={() => void call(card.id)}
+                  >
                     <WhatsAppIcon />
                     {calling === card.id ? "Abrindo" : "Chamar"}
                   </Button>
@@ -113,7 +158,7 @@ export function Kanban() {
               {!items.length ? (
                 <div className="text-center text-xs text-muted-foreground py-10">
                   <Columns3 className="mx-auto mb-3 size-5 opacity-40" />
-                  Nenhum contato
+                  {refreshing && !cached ? "Carregando..." : "Nenhum contato"}
                 </div>
               ) : null}
             </section>

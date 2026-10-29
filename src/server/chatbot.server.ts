@@ -590,9 +590,17 @@ export async function createChatbotConnection(userId: string, name: string, phon
 }
 
 async function readEvolutionConnection(instanceName: string) {
+  try {
+    const state = readState(
+      await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET", undefined, 6000),
+    );
+    if (state) return { known: true, record: { connectionStatus: state } as Record<string, unknown>, state };
+  } catch {
+    /* fallback below */
+  }
   let listed: unknown = null;
   try {
-    listed = await evo("/instance/fetchInstances", "GET");
+    listed = await evo("/instance/fetchInstances", "GET", undefined, 8000);
   } catch {
     return { known: false, record: null as Record<string, unknown> | null, state: "" };
   }
@@ -602,25 +610,29 @@ async function readEvolutionConnection(instanceName: string) {
   );
   const record = found && typeof found === "object" ? (found as Record<string, unknown>) : null;
   if (!record) return { known: true, record: null, state: "" };
-  let state = cell(record, "connectionStatus");
-  try {
-    state = readState(await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET")) || state;
-  } catch {
-    return { known: true, record, state };
-  }
-  return { known: true, record, state };
+  return { known: true, record, state: cell(record, "connectionStatus") };
 }
 
 async function openConnectionQr(instanceName: string, phone: string) {
   const number = attendancePhone(phone);
-  await evo("/instance/create", "POST", {
-    instanceName,
-    qrcode: true,
-    integration: "WHATSAPP-BAILEYS",
-    ...(number ? { number } : {}),
-  }).catch(() => null);
-  await ensureWebhook(instanceName);
-  const connected = await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET").catch(() => null);
+  await evo(
+    "/instance/create",
+    "POST",
+    {
+      instanceName,
+      qrcode: true,
+      integration: "WHATSAPP-BAILEYS",
+      ...(number ? { number } : {}),
+    },
+    8000,
+  ).catch(() => null);
+  void ensureWebhook(instanceName);
+  const connected = await evo(
+    `/instance/connect/${encodeURIComponent(instanceName)}`,
+    "GET",
+    undefined,
+    12000,
+  ).catch(() => null);
   return evolutionQrImage(connected);
 }
 
@@ -629,23 +641,62 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
   const current = await ownedConnection(organizationId, connectionId, phone);
   const instanceName = cell(current, "instance_name");
   const savedId = cell(current, "id");
+  const previous = cell(current, "status");
+
+  if (withQr) {
+    const qrCode = await openConnectionQr(instanceName, cell(current, "phone"));
+    let state = "";
+    try {
+      state = readState(
+        await evo(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET", undefined, 4000),
+      );
+    } catch {
+      state = "";
+    }
+    if (evolutionConnectionStatus(state) === "connected") {
+      if (previous !== "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
+      const updated = await table("chatbot_connections")
+        .update({ status: "connected", last_error: "", updated_at: new Date().toISOString() })
+        .eq("id", savedId)
+        .eq("organization_id", organizationId)
+        .select("*")
+        .maybeSingle();
+      if (updated.error) fail(schemaMessage(updated.error.message));
+      return { status: "connected" as const, qrCode: "", error: "" };
+    }
+    if (!qrCode) fail("A API do WhatsApp não entregou o QR Code. Tente de novo.");
+    const updated = await table("chatbot_connections")
+      .update({ status: "qr", last_error: "", updated_at: new Date().toISOString() })
+      .eq("id", savedId)
+      .eq("organization_id", organizationId)
+      .select("*")
+      .maybeSingle();
+    if (updated.error) fail(schemaMessage(updated.error.message));
+    return { status: "qr" as const, qrCode, error: "" };
+  }
+
   const live = await readEvolutionConnection(instanceName);
   if (!live.known) fail("A Evolution API não concluiu a operação.");
-  const removed = Boolean(live.record) && (live.state === "close" || cell(live.record, "connectionStatus") === "close") && whatsappDeviceRemoved(live.record?.["disconnectionReasonCode"]);
-  const previous = cell(current, "status");
+  const removed =
+    Boolean(live.record) &&
+    (live.state === "close" || cell(live.record, "connectionStatus") === "close") &&
+    whatsappDeviceRemoved(live.record?.["disconnectionReasonCode"]);
   let qrCode = "";
-  if (withQr && (!live.record || evolutionConnectionStatus(live.state) !== "connected")) {
-    qrCode = await openConnectionQr(instanceName, cell(current, "phone"));
-  } else if (live.record) {
-    await ensureWebhook(instanceName);
-  }
+  if (live.record) void ensureWebhook(instanceName);
   const next = evolutionReportedStatus({
     state: live.state,
-    instancePresent: Boolean(live.record) || Boolean(qrCode),
+    instancePresent: Boolean(live.record),
     removed,
-    qrReady: Boolean(qrCode),
+    qrReady: false,
   });
-  const lastError = next === "connected" || next === "qr" ? "" : removed ? whatsappDeviceRemovedMessage : next === "disconnected" ? evolutionInactiveMessage : cell(current, "last_error");
+  const lastError =
+    next === "connected" || next === "qr"
+      ? ""
+      : removed
+        ? whatsappDeviceRemovedMessage
+        : next === "disconnected"
+          ? evolutionInactiveMessage
+          : cell(current, "last_error");
   if (next === "connected" && previous !== "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
   const updated = await table("chatbot_connections")
     .update({ status: next, last_error: lastError, updated_at: new Date().toISOString() })
@@ -654,7 +705,6 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
     .select("*")
     .maybeSingle();
   if (updated.error) fail(schemaMessage(updated.error.message));
-  if (withQr && next !== "connected" && !qrCode) fail("A API do WhatsApp não entregou o QR Code. Tente de novo.");
   return { status: next, qrCode, error: lastError };
 }
 
@@ -3297,24 +3347,43 @@ async function assignAttendanceKanbanStage(organizationId: string, admin: boolea
 
 export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBoard> {
   const { organizationId } = await membership(userId, "kanban");
-  const stages = await listChatbotStages(userId);
   const contactQuery = (withDeal: boolean) =>
     table("chatbot_contacts")
       .select(withDeal ? "id, name, negotiated_cents, stage_name" : "id, name, stage_name")
       .eq("organization_id", organizationId)
       .not("stage_name", "is", null)
       .order("name", { ascending: true });
-  const listed = await rowsOrMissing(contactQuery(true));
+  const [stageState, listed] = await Promise.all([
+    rowsOrMissing(
+      table("chatbot_stages")
+        .select("id, name, position")
+        .eq("organization_id", organizationId)
+        .order("position", { ascending: true }),
+    ),
+    rowsOrMissing(contactQuery(true)),
+  ]);
   const contacts = listed.missing ? await rowsOrMissing(contactQuery(false)) : listed;
-  if (contacts.missing) return { ready: false, stages: stages.stages.map((item) => item.name), cards: [] };
+  const stageNames = stageState.missing
+    ? defaultKanbanStages
+    : stageState.rows.map((row) => cell(row, "name")).filter(Boolean);
+  const stages = stageNames.length ? stageNames : defaultKanbanStages;
+  if (contacts.missing) return { ready: false, stages, cards: [] };
   const visible = contacts.rows.filter((row) => cell(row, "stage_name"));
   const ids = visible.map((row) => cell(row, "id")).filter(Boolean);
-  const productLinks = ids.length
-    ? await rowsOrMissing(table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId).in("contact_id", ids))
-    : { rows: [] as Record<string, unknown>[], missing: false };
-  const products = ids.length
-    ? await rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId))
-    : { rows: [] as Record<string, unknown>[], missing: false };
+  const [productLinks, products] = ids.length
+    ? await Promise.all([
+        rowsOrMissing(
+          table("chatbot_contact_products")
+            .select("contact_id, product_id")
+            .eq("organization_id", organizationId)
+            .in("contact_id", ids),
+        ),
+        rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId)),
+      ])
+    : [
+        { rows: [] as Record<string, unknown>[], missing: false },
+        { rows: [] as Record<string, unknown>[], missing: false },
+      ];
   const productCatalog = new Map(products.rows.map((row) => [cell(row, "id"), cell(row, "name")]));
   const productNames = new Map<string, string[]>();
   for (const link of productLinks.rows) {
@@ -3323,9 +3392,16 @@ export async function listChatbotKanban(userId: string): Promise<ChatbotKanbanBo
     if (!name) continue;
     productNames.set(contactId, [...(productNames.get(contactId) ?? []), name]);
   }
+  const extraStages = [
+    ...new Set(
+      visible
+        .map((row) => cell(row, "stage_name"))
+        .filter((name) => name && !stages.includes(name)),
+    ),
+  ];
   return {
-    ready: stages.ready,
-    stages: stages.stages.map((item) => item.name),
+    ready: !stageState.missing,
+    stages: [...stages, ...extraStages],
     cards: visible.map((row) => {
       const raw = row["negotiated_cents"];
       const amount = raw == null || raw === "" ? null : Number(raw);
@@ -4966,30 +5042,76 @@ export async function saveChatbotStages(userId: string, names: string[]) {
 
 export async function chatbotOverview(userId: string, filters?: OverviewFilters) {
   const { organizationId, admin } = await membership(userId, "overview");
-  const masterView = mmsMasterActor(organizationId, admin);
-  const listedStages = await listChatbotStages(userId);
-  const [conversations, contacts, ratings, connections, profiles, members, teams, products, productLinks] = await Promise.all([
+  const [
+    masterView,
+    stageState,
+    conversations,
+    contacts,
+    ratings,
+    connections,
+    profiles,
+    members,
+    teams,
+    products,
+    productLinks,
+  ] = await Promise.all([
+    mmsMasterActor(organizationId, admin),
+    rowsOrMissing(
+      table("chatbot_stages")
+        .select("id, name, position")
+        .eq("organization_id", organizationId)
+        .order("position", { ascending: true }),
+    ),
     (async () => {
       const credited = await rowsOrMissing(
-        table("chatbot_conversations").select("id, contact_id, connection_id, assignee_id, assumed_by, finished_count, created_at").eq("organization_id", organizationId),
+        table("chatbot_conversations")
+          .select("id, contact_id, connection_id, assignee_id, assumed_by, finished_count, created_at")
+          .eq("organization_id", organizationId),
       );
       if (!credited.missing) return credited.rows;
-      return rows(table("chatbot_conversations").select("id, contact_id, connection_id, assignee_id, finished_count, created_at").eq("organization_id", organizationId));
+      return rows(
+        table("chatbot_conversations")
+          .select("id, contact_id, connection_id, assignee_id, finished_count, created_at")
+          .eq("organization_id", organizationId),
+      );
     })(),
     (async () => {
       const credited = await rowsOrMissing(
-        table("chatbot_contacts").select("id, negotiated_cents, stage_name, stage_set_by, client_owner_id").eq("organization_id", organizationId),
+        table("chatbot_contacts")
+          .select("id, negotiated_cents, stage_name, stage_set_by, client_owner_id")
+          .eq("organization_id", organizationId),
       );
       if (!credited.missing) return credited.rows;
-      return rows(table("chatbot_contacts").select("id, negotiated_cents, stage_name, client_owner_id").eq("organization_id", organizationId));
+      return rows(
+        table("chatbot_contacts")
+          .select("id, negotiated_cents, stage_name, client_owner_id")
+          .eq("organization_id", organizationId),
+      );
     })(),
-    rowsOrMissing(table("chatbot_ratings").select("conversation_id, score, created_at").eq("organization_id", organizationId)),
-    rows(table("chatbot_connections").select("id, display_name, phone").eq("organization_id", organizationId).order("created_at", { ascending: true })),
-    supabaseAdmin.from("profiles").select("id, full_name").eq("organization_id", organizationId).order("full_name", { ascending: true }),
+    rowsOrMissing(
+      table("chatbot_ratings")
+        .select("conversation_id, score, created_at")
+        .eq("organization_id", organizationId),
+    ),
+    rows(
+      table("chatbot_connections")
+        .select("id, display_name, phone")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: true }),
+    ),
+    supabaseAdmin
+      .from("profiles")
+      .select("id, full_name")
+      .eq("organization_id", organizationId)
+      .order("full_name", { ascending: true }),
     rowsOrMissing(table("chatbot_team_members").select("team_id, user_id").eq("organization_id", organizationId)),
     rowsOrMissing(table("chatbot_teams").select("id, name").eq("organization_id", organizationId)),
-    rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
-    rowsOrMissing(table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId)),
+    rowsOrMissing(
+      table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true }),
+    ),
+    rowsOrMissing(
+      table("chatbot_contact_products").select("contact_id, product_id").eq("organization_id", organizationId),
+    ),
   ]);
   if (profiles.error) fail(schemaMessage(profiles.error.message));
   const profileIds = (profiles.data ?? []).map((row) => row.id);
@@ -5008,11 +5130,14 @@ export async function chatbotOverview(userId: string, filters?: OverviewFilters)
     if (!name || !memberId) continue;
     teamsOf.set(memberId, [...(teamsOf.get(memberId) ?? []), name]);
   }
+  const stageNames = stageState.missing
+    ? defaultKanbanStages
+    : stageState.rows.map((row) => cell(row, "name")).filter(Boolean);
   const board: OverviewBoard = {
     userId,
     admin,
-    mmsMaster: await masterView,
-    stages: listedStages.stages.map((item) => item.name),
+    mmsMaster: masterView,
+    stages: stageNames.length ? stageNames : defaultKanbanStages,
     channels: connections.map((row) => ({
       id: cell(row, "id"),
       name: cell(row, "display_name") || cell(row, "phone") || "Canal sem nome",

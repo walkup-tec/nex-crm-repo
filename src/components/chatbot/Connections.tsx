@@ -11,10 +11,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  chatbotSnapshotFn,
   createChatbotConnectionFn,
   deleteChatbotConnectionFn,
   disconnectChatbotConnectionFn,
+  listChatbotChannelsFn,
   refreshChatbotConnectionFn,
 } from "@/lib/chatbot.functions";
 import { attendancePhone, tintQrPixel, whatsappMask, type ChatbotConnectionStatus } from "@/lib/chatbot-evo";
@@ -28,6 +28,15 @@ const labels: Record<ChatbotConnectionStatus, string> = {
   error: "Erro",
 };
 
+const statusValues = new Set<ChatbotConnectionStatus>([
+  "waiting",
+  "qr",
+  "connecting",
+  "connected",
+  "disconnected",
+  "error",
+]);
+
 type Connection = {
   id: string;
   name: string;
@@ -35,6 +44,12 @@ type Connection = {
   status: ChatbotConnectionStatus;
   error: string;
 };
+
+function asStatus(value: string): ChatbotConnectionStatus {
+  return statusValues.has(value as ChatbotConnectionStatus)
+    ? (value as ChatbotConnectionStatus)
+    : "disconnected";
+}
 
 function formatPhone(value: string) {
   return whatsappMask(value) || "Aguardando leitura";
@@ -65,7 +80,7 @@ function ConnectionsLoading() {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">Consultando as conexões na API WhatsApp...</p>
+      <p className="mt-3 text-sm text-muted-foreground">Carregando números salvos...</p>
     </div>
   );
 }
@@ -108,6 +123,7 @@ export function Connections() {
   const [active, setActive] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [qrPendingId, setQrPendingId] = useState("");
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<Connection | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -123,6 +139,7 @@ export function Connections() {
     qrIssuedAt.current = 0;
     setQr("");
     setActive("");
+    setQrPendingId("");
   }
 
   async function presentQr(value: string) {
@@ -131,31 +148,50 @@ export function Connections() {
       return;
     }
     qrIssuedAt.current = Date.now();
-    setQr(await tintQrImage(value));
+    setQr(value);
+    const tinted = await tintQrImage(value);
+    if (qrIssuedAt.current) setQr(tinted);
   }
 
   async function reload() {
-    const result = await chatbotSnapshotFn();
+    const result = await listChatbotChannelsFn();
     if (!result.ok) {
       setMessage(result.message);
       return;
     }
-    setRows(result.data.connections);
+    setRows(
+      result.data.map((row) => ({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        status: asStatus(row.status),
+        error: "",
+      })),
+    );
   }
 
   useEffect(() => {
     void (async () => {
-      const result = await chatbotSnapshotFn();
+      const result = await listChatbotChannelsFn();
       if (!result.ok) {
         setMessage(result.message);
         setLoading(false);
         return;
       }
-      setRows(result.data.connections);
+      const listed = result.data.map((row) => ({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        status: asStatus(row.status),
+        error: "",
+      }));
+      setRows(listed);
       setLoading(false);
       const refreshed = await Promise.all(
-        result.data.connections.map(async (row) => {
-          const current = await refreshChatbotConnectionFn({ data: { connectionId: row.id, phone: row.phone, withQr: false } });
+        listed.map(async (row) => {
+          const current = await refreshChatbotConnectionFn({
+            data: { connectionId: row.id, phone: row.phone, withQr: false },
+          });
           return current.ok ? { id: row.id, status: current.data.status, error: current.data.error } : null;
         }),
       );
@@ -204,10 +240,12 @@ export function Connections() {
 
   async function showQr(connectionId: string) {
     setMessage("");
+    setQrPendingId(connectionId);
     qrIssuedAt.current = Date.now();
     setActive(connectionId);
     const phone = rows.find((row) => row.id === connectionId)?.phone ?? "";
     const result = await refreshChatbotConnectionFn({ data: { connectionId, phone, withQr: true } });
+    setQrPendingId("");
     if (!result.ok) {
       setMessage(result.message);
       return;
@@ -283,8 +321,13 @@ export function Connections() {
               {row.error ? <p className="mt-2 text-xs text-muted-foreground">{row.error}</p> : null}
               <div className="mt-3 flex gap-2">
                 {row.status !== "connected" ? (
-                  <Button variant="outline" size="sm" onClick={() => void showQr(row.id)}>
-                    Ver QR
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={qrPendingId === row.id}
+                    onClick={() => void showQr(row.id)}
+                  >
+                    {qrPendingId === row.id ? "Abrindo QR" : "Ver QR"}
                   </Button>
                 ) : null}
                 <Button

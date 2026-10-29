@@ -93,16 +93,20 @@ export function MetaPerformance({
   const cached = readDashboardSnapshot(browserStorage(), cacheKey, isMetaSnapshot);
   const [period, setPeriod] = useState<MetaPeriod>(cached?.period ?? initialPeriod);
   const [view, setView] = useState<MetaPerformanceView | null>(cached);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [campaignId, setCampaignId] = useState("all");
   const [chartId, setChartId] = useState<string | null>(null);
   const [dashView, setDashView] = useState<"individual" | "comparativo">("individual");
+  const busy = loading || refreshing;
 
   const load = async (nextPeriod: MetaPeriod) => {
-    setLoading(true);
+    const hasView = Boolean(view);
+    if (hasView) setRefreshing(true);
+    else setLoading(true);
     setError("");
     const data: { organizationId?: string; period?: string; since?: string; until?: string } = {
       period: nextPeriod.mode,
@@ -125,6 +129,7 @@ export function MetaPerformance({
       setError(view ? "A conexão caiu. Os indicadores na tela são a última leitura." : "A conexão com a Meta caiu antes da resposta.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -203,10 +208,10 @@ export function MetaPerformance({
               </SelectContent>
             </Select>
           )}
-          <PeriodPicker value={period} disabled={loading} onApply={(next) => void load(next)} />
-          <Button type="button" onClick={() => void load(period)} disabled={loading}>
-            <RefreshCw className={loading ? "animate-spin" : ""} />
-            {loading ? "Atualizando" : "Atualizar dados"}
+          <PeriodPicker value={period} disabled={busy} onApply={(next) => void load(next)} />
+          <Button type="button" onClick={() => void load(period)} disabled={busy}>
+            <RefreshCw className={busy ? "animate-spin" : ""} />
+            {busy ? "Atualizando" : "Atualizar dados"}
           </Button>
         </div>
       </div>

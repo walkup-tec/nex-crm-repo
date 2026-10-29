@@ -269,7 +269,6 @@ export function MetaCredits() {
         setTopupNote("Pagamento registrado.");
         setShowPaymentDone(false);
         clearPaymentWait();
-        void load();
       } catch {
         setTopupNote("Não foi possível registrar o pagamento. Tente de novo.");
       } finally {

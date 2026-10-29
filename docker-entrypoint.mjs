@@ -1,7 +1,7 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 
-const NEX_DEPLOY = "NEX-DEPLOY-ZERO";
+const NEX_DEPLOY = "NEX-DEPLOY-CORPO";
 const SHUTDOWN_GRACE_MS = 20000;
 const servers = new Set();
 
@@ -29,9 +29,11 @@ process.once("SIGINT", () => beginShutdown("SIGINT"));
 
 const listen = http.Server.prototype.listen;
 const metaBalanceProbeOnly = process.argv.includes("--meta-balance-probe");
+const transactionsDiagnoseOnly = process.argv.includes("--meta-transactions-diagnose");
+const manualReadOnly = metaBalanceProbeOnly || transactionsDiagnoseOnly;
 
 http.Server.prototype.listen = function (options, ...args) {
-  if (metaBalanceProbeOnly) return this;
+  if (manualReadOnly) return this;
   servers.add(this);
   this.once("close", () => servers.delete(this));
   if (options && typeof options === "object") {
@@ -43,11 +45,12 @@ http.Server.prototype.listen = function (options, ...args) {
   return listen.call(this, options, ...args);
 };
 
-if (metaBalanceProbeOnly) {
+if (manualReadOnly) {
   try {
     await import("./.output/server/_ssr/ssr.mjs");
   } catch {
-    console.info('meta_balance_probe {"account":"886574174420761","failed":"read"}');
+    const label = transactionsDiagnoseOnly ? "meta_transactions_diagnose" : "meta_balance_probe";
+    console.info(`${label} {"account":"886574174420761","failed":"read"}`);
     process.exit(1);
   }
   await new Promise(() => {});

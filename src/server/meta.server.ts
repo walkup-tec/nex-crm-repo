@@ -4,6 +4,10 @@ import { normalizeBalanceLink } from "@/lib/balance-link";
 import { clientDisplayName } from "@/lib/client-access";
 import { sanitizeMetaDebug } from "@/lib/meta-balance-debug";
 import { sanitizeAccountProbe, sanitizeProbeMessage } from "@/lib/meta-balance-probe";
+import {
+  assembleTransactionDiagnosis,
+  rejectedTransactionField,
+} from "@/lib/meta-transactions-diagnose";
 import { adsManagerResult, campaignDeliveryGroup } from "@/lib/meta-analysis";
 import type {
   MetaAccountView,
@@ -352,6 +356,131 @@ export async function probeAdAccountFields(organizationId: string, accountId: st
     };
   }
   return { ok: true as const, read: sanitizeAccountProbe(body) };
+}
+
+const transactionDiagnoseFields = [
+  "id",
+  "time",
+  "status",
+  "payment_option",
+  "app_amount",
+  "provider_amount",
+  "amount",
+  "is_funding_event",
+  "billing_reason",
+  "charge_type",
+];
+
+export async function diagnoseAccountTransactions(organizationId: string, accountId: string) {
+  const attempts: unknown[] = [];
+  let fields = [...transactionDiagnoseFields];
+  let first: { rows: Record<string, unknown>[]; nextUrl: string | null } | null = null;
+  for (let attempt = 0; attempt < 12 && fields.length > 0; attempt += 1) {
+    const page = await readDiagnosticEdge(organizationId, accountId, "transactions", {
+      fields: fields.join(","),
+      limit: "100",
+    }, null);
+    if (!page.ok) {
+      attempts.push({
+        fields: [...fields],
+        ok: false,
+        status: page.status,
+        code: page.code,
+        message: page.message,
+      });
+      const rejected = rejectedTransactionField(page.message);
+      if (!rejected || !fields.includes(rejected)) break;
+      fields = fields.filter((name) => name !== rejected);
+      continue;
+    }
+    attempts.push({ fields: [...fields], ok: true, rows: page.rows.length });
+    first = { rows: page.rows, nextUrl: page.nextUrl };
+    break;
+  }
+  const rows = [...(first?.rows ?? [])];
+  let nextUrl = first?.nextUrl ?? null;
+  let pages = first ? 1 : 0;
+  let hasMore = Boolean(nextUrl);
+  while (nextUrl && pages < 10) {
+    const page = await readDiagnosticEdge(organizationId, accountId, "transactions", {}, nextUrl);
+    if (!page.ok) {
+      attempts.push({ fields: ["page"], ok: false, status: page.status, code: page.code, message: page.message });
+      break;
+    }
+    rows.push(...page.rows);
+    pages += 1;
+    nextUrl = page.nextUrl;
+    hasMore = Boolean(nextUrl);
+  }
+  return assembleTransactionDiagnosis({
+    attempts,
+    rows,
+    pages,
+    hasMore,
+    fields: first ? fields : [],
+    now: Date.now(),
+  });
+}
+
+async function readDiagnosticEdge(
+  organizationId: string,
+  accountId: string,
+  edge: string,
+  params: Record<string, string>,
+  nextUrl: string | null,
+) {
+  const digits = accountId.trim().replace(/^act_/i, "");
+  if (!/^\d+$/.test(digits) || !/^[a-z_]+$/.test(edge)) {
+    return { ok: false as const, status: 0, code: null, message: "conta inválida" };
+  }
+  const connection = await connectionOf(organizationId);
+  if (!connection || connection.status === "disconnected" || !connection.access_token_encrypted) {
+    return { ok: false as const, status: 0, code: null, message: "sem conexão" };
+  }
+  if (connection.token_expires_at && new Date(connection.token_expires_at).getTime() < Date.now()) {
+    return { ok: false as const, status: 0, code: null, message: "conexão expirada" };
+  }
+  const token = decryptToken(connection.access_token_encrypted);
+  const url = nextUrl
+    ? new URL(nextUrl)
+    : new URL(`https://graph.facebook.com/${graphVersion()}/act_${digits}/${edge}`);
+  if (!nextUrl) {
+    url.searchParams.set("access_token", token);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  }
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  } catch (error) {
+    return {
+      ok: false as const,
+      status: 0,
+      code: null,
+      message: error instanceof Error ? error.name : "error",
+    };
+  }
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const error = body.error;
+  if (!response.ok || (error && typeof error === "object")) {
+    const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+    return {
+      ok: false as const,
+      status: response.status,
+      code: typeof record.code === "number" ? record.code : null,
+      message: sanitizeProbeMessage(typeof record.message === "string" ? record.message : null),
+    };
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  const paging = body.paging;
+  const next =
+    paging && typeof paging === "object" && !Array.isArray(paging) && typeof (paging as { next?: unknown }).next === "string"
+      ? (paging as { next: string }).next
+      : null;
+  return {
+    ok: true as const,
+    rows: data.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item)),
+    nextUrl: next,
+  };
 }
 
 export async function debugMetaRead(

@@ -1,6 +1,7 @@
 import { startBillingNoticeRunner } from "./server/billing-notices.server";
 import { startChatbotReturnRunner } from "./server/chatbot.server";
 import { runMetaBalanceProbe } from "./server/meta-balance-probe.server";
+import { runTransactionsDiagnose } from "./server/meta-transactions-diagnose.server";
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
@@ -83,8 +84,9 @@ export default {
 };
 
 const metaBalanceProbeOnly = process.argv.includes("--meta-balance-probe");
+const transactionsDiagnoseOnly = process.argv.includes("--meta-transactions-diagnose");
 
-if (!metaBalanceProbeOnly) {
+if (!metaBalanceProbeOnly && !transactionsDiagnoseOnly) {
   try {
     startBillingNoticeRunner();
   } catch (error) {
@@ -100,6 +102,12 @@ if (!metaBalanceProbeOnly) {
 
 if (metaBalanceProbeOnly) {
   void runMetaBalanceProbe().finally(() => {
+    setTimeout(() => process.exit(0), 200);
+  });
+}
+
+if (transactionsDiagnoseOnly) {
+  void runTransactionsDiagnose().finally(() => {
     setTimeout(() => process.exit(0), 200);
   });
 }

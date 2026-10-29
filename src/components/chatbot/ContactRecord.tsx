@@ -392,64 +392,70 @@ export function ContactRecord({
 
   async function saveStage(stage: string) {
     if (!profile || savingLinks) return;
+    const previous = profile;
+    setProfile({ ...profile, stage });
     setSavingLinks(true);
     const result = await setChatbotContactStageFn({ data: { contactId: profile.id, stage } });
     setSavingLinks(false);
     if (!result.ok) {
+      setProfile(previous);
       setError(result.message);
       return;
     }
     setError("");
     const granted = result.data.tag;
     const tags = granted
-      ? profile.tags.some((item) => item.id === granted.id)
-        ? profile.tags.map((item) => (item.id === granted.id ? { ...item, selected: true } : item))
-        : [...profile.tags, { id: granted.id, name: granted.name, color: granted.color, selected: true }]
-      : profile.tags;
-    setProfile({ ...profile, stage: result.data.stage, tags });
+      ? previous.tags.some((item) => item.id === granted.id)
+        ? previous.tags.map((item) => (item.id === granted.id ? { ...item, selected: true } : item))
+        : [...previous.tags, { id: granted.id, name: granted.name, color: granted.color, selected: true }]
+      : previous.tags;
+    setProfile({ ...previous, stage: result.data.stage, tags });
   }
 
   async function saveOrigin(value: string) {
     if (!profile || savingLinks) return;
+    const previous = profile;
+    setProfile({ ...profile, origin: value });
     setSavingLinks(true);
     const result = await setChatbotContactOriginFn({ data: { contactId: profile.id, origin: value } });
     setSavingLinks(false);
     if (!result.ok) {
+      setProfile(previous);
       setError(result.message);
       return;
     }
     setError("");
-    setProfile({ ...profile, origin: result.data.origin });
+    setProfile({ ...previous, origin: result.data.origin });
   }
 
   async function toggleTag(tagId: string) {
-    if (!profile || savingLinks) return;
+    if (!profile) return;
+    const previous = profile;
     const selected = profile.tags.filter((item) => item.selected).map((item) => item.id);
     const next = selected.includes(tagId) ? selected.filter((id) => id !== tagId) : [...selected, tagId];
-    setSavingLinks(true);
+    setProfile({ ...profile, tags: profile.tags.map((item) => ({ ...item, selected: next.includes(item.id) })) });
     const result = await setChatbotContactTagsFn({ data: { contactId: profile.id, tagIds: next } });
-    setSavingLinks(false);
     if (!result.ok) {
+      setProfile(previous);
       setError(result.message);
       return;
     }
     setError("");
-    setProfile({ ...profile, tags: profile.tags.map((item) => ({ ...item, selected: next.includes(item.id) })) });
   }
 
   async function toggleProduct(productId: string) {
-    if (!profile || savingLinks) return;
+    if (!profile) return;
+    const previous = profile;
     const selected = profile.products.filter((item) => item.selected).map((item) => item.id);
     const next = selected.includes(productId) ? selected.filter((id) => id !== productId) : [...selected, productId];
-    setSavingLinks(true);
+    setProfile({ ...profile, products: profile.products.map((item) => ({ ...item, selected: next.includes(item.id) })) });
     const result = await setChatbotContactProductsFn({ data: { contactId: profile.id, productIds: next } });
-    setSavingLinks(false);
     if (!result.ok) {
+      setProfile(previous);
       setError(result.message);
       return;
     }
     setError("");
-    setProfile({ ...profile, products: profile.products.map((item) => ({ ...item, selected: next.includes(item.id) })) });
   }
 
   return (
@@ -566,7 +572,7 @@ export function ContactRecord({
               <div className="contact-choices">
                 {profile.products.map((item) => (
                   <label className="contact-choice" key={item.id}>
-                    <input type="checkbox" checked={item.selected} disabled={savingLinks} onChange={() => void toggleProduct(item.id)} />
+                    <input type="checkbox" checked={item.selected} onChange={() => void toggleProduct(item.id)} />
                     <span>{item.name}</span>
                   </label>
                 ))}
@@ -629,7 +635,6 @@ export function ContactRecord({
                     type="button"
                     className={`tag-chip${item.selected ? " selected" : ""}`}
                     aria-pressed={item.selected}
-                    disabled={savingLinks}
                     style={item.selected ? { background: item.color, color: tagInk(item.color), borderColor: item.color } : { color: item.color, borderColor: item.color }}
                     onClick={() => void toggleTag(item.id)}
                   >

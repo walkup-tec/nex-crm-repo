@@ -52,7 +52,10 @@ export function WhatsAppChannelStatus({ enabled }: { enabled: boolean }) {
       }
     }
     void load();
-    const timer = window.setInterval(() => void load(), 2000);
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void load();
+    }, 10000);
     const onChange = () => void load();
     window.addEventListener("nex-channel-status", onChange);
     return () => {

@@ -2927,7 +2927,7 @@ export async function listLeadOriginCampaigns(userId: string) {
 
 export async function chatbotContactProfile(userId: string, contactId: string): Promise<ChatbotContactProfile> {
   const { organizationId } = await membership(userId, "inbox");
-  const signedSync = (async () => {
+  void (async () => {
     try {
       const { syncContractSignature } = await import("@/server/autentique.server");
       await syncContractSignature(organizationId, contactId);
@@ -2947,13 +2947,16 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     latestContracting(organizationId, contactId),
     rowsOrMissing(table("lead_meetings").select("attendee_email, attendees").eq("organization_id", organizationId).eq("lead_id", contactId).order("created_at", { ascending: false }).limit(100)),
     contactOrigin(organizationId, contactId),
-    Promise.race([signedSync, new Promise((resolve) => setTimeout(resolve, 1500))]),
   ]);
   const selectedTags = new Set(tagLinks.rows.map((row) => cell(row, "tag_id")));
   const selectedProducts = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
   const stageReady = contact.stageReady && !stages.missing;
   const paths = files.map((row) => cell(row, "storage_path")).filter(Boolean);
-  const signed = paths.length ? await supabaseAdmin.storage.from(mediaBucket).createSignedUrls(paths, 60 * 30) : { data: [] };
+  const [signed, nexClientId, contractSigned] = await Promise.all([
+    paths.length ? supabaseAdmin.storage.from(mediaBucket).createSignedUrls(paths, 60 * 30) : Promise.resolve({ data: [] as { path?: string; signedUrl?: string }[] }),
+    nexClientIdForDocument(intake?.cnpj ?? ""),
+    contractWasSigned(organizationId, contactId),
+  ]);
   const signedUrls = new Map((signed.data ?? []).map((item) => [item.path ?? "", item.signedUrl ?? ""]));
   const savedFiles = files.map((row) => {
     const storagePath = cell(row, "storage_path");
@@ -2991,8 +2994,8 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
     dealReady: contact.dealReady,
     negotiatedCents: contact.dealReady ? contact.negotiated : null,
     clientOwnerId: contact.dealReady ? contact.clientOwnerId : "",
-    nexClientId: await nexClientIdForDocument(intake?.cnpj ?? ""),
-    contractSigned: await contractWasSigned(organizationId, contactId),
+    nexClientId,
+    contractSigned,
     note: contact.note,
     document: contact.document,
     rg: contact.rg,

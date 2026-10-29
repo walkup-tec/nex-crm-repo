@@ -120,18 +120,24 @@ export function inboxLane(input: { assigneeName: string; botPaused: boolean; clo
 
 const inboxLaneRank: Record<InboxLane, number> = { atendimento: 3, aguardando: 2, robo: 1 };
 
+export function inboxContactLanes<T extends { contactId: string; assigneeName: string; botPaused: boolean; status: string }>(
+  conversations: T[],
+): Map<string, InboxLane> {
+  const winners = new Map<string, InboxLane>();
+  for (const item of conversations) {
+    const lane = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+    if (!lane) continue;
+    const current = winners.get(item.contactId);
+    if (!current || inboxLaneRank[lane] > inboxLaneRank[current]) winners.set(item.contactId, lane);
+  }
+  return winners;
+}
+
 export function inboxContactLane<T extends { contactId: string; assigneeName: string; botPaused: boolean; status: string }>(
   conversations: T[],
   contactId: string,
 ): InboxLane | "" {
-  let winner: InboxLane | "" = "";
-  for (const item of conversations) {
-    if (item.contactId !== contactId) continue;
-    const lane = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
-    if (!lane) continue;
-    if (!winner || inboxLaneRank[lane] > inboxLaneRank[winner]) winner = lane;
-  }
-  return winner;
+  return inboxContactLanes(conversations).get(contactId) ?? "";
 }
 
 export function inboxQueryMatch(query: string, name: string, phone: string) {
@@ -167,11 +173,12 @@ export function inboxList<T extends { id: string; contactId: string; assigneeNam
   filters: InboxListFilters,
 ) {
   const people = new Map(contacts.map((item) => [item.id, item]));
+  const contactLanes = lane === "todos" ? null : inboxContactLanes(conversations);
   return inboxOrder(
     conversations.filter((item) => {
       if (lane !== "todos") {
         const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
-        if (own !== lane || inboxContactLane(conversations, item.contactId) !== lane) return false;
+        if (own !== lane || contactLanes?.get(item.contactId) !== lane) return false;
       }
       const person = people.get(item.contactId);
       if (!inboxQueryMatch(query, person?.name ?? "", person?.phone ?? "")) return false;
@@ -179,6 +186,26 @@ export function inboxList<T extends { id: string; contactId: string; assigneeNam
       return person ? inboxFiltersMatch(person, filters) : false;
     }),
   );
+}
+
+export function inboxTabCounts<T extends { id: string; contactId: string; assigneeName: string; botPaused: boolean; status: string; pinned: boolean; updatedAt: string }>(
+  conversations: T[],
+  contacts: { id: string; name: string; phone: string; products: string[]; tags: { name: string }[]; stage: string }[],
+  query: string,
+  filters: InboxListFilters,
+): Record<InboxTab, number> {
+  const people = new Map(contacts.map((item) => [item.id, item]));
+  const contactLanes = inboxContactLanes(conversations);
+  const counts: Record<InboxTab, number> = { todos: 0, atendimento: 0, aguardando: 0, robo: 0 };
+  for (const item of conversations) {
+    const person = people.get(item.contactId);
+    if (!inboxQueryMatch(query, person?.name ?? "", person?.phone ?? "")) continue;
+    if (inboxFiltersActive(filters) && !(person ? inboxFiltersMatch(person, filters) : false)) continue;
+    counts.todos += 1;
+    const own = inboxLane({ assigneeName: item.assigneeName, botPaused: item.botPaused, closed: item.status === "closed" });
+    if (own && contactLanes.get(item.contactId) === own) counts[own] += 1;
+  }
+  return counts;
 }
 
 export function inboxContactNames(links: { contactId: string; itemId: string }[], catalog: { id: string; name: string }[]) {

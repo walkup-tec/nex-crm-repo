@@ -1,5 +1,5 @@
 import { MessageSquare, Bot, ExternalLink, Filter, Mic, Pause, Pin, Play, Plus, Search, Send, Square, UserRound } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -29,7 +29,9 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, inboxTabCounts, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+
+const INBOX_POLL_MS = 5000;
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -462,17 +464,26 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       setSelected(pendingOpen.current);
     }
     void load();
-    const timer = window.setInterval(() => void load(), 2000);
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void load();
+    }, INBOX_POLL_MS);
     function openStored() {
       const id = sessionStorage.getItem("nex-kanban-conversation") ?? "";
       if (!id) return;
       pendingOpen.current = id;
       setSelected(id);
     }
+    function onVisible() {
+      if (document.hidden) return;
+      void load();
+    }
     window.addEventListener("nex-open-conversation", openStored);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("nex-open-conversation", openStored);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -575,26 +586,45 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     if (stickToBottom.current) box.scrollTop = box.scrollHeight;
   }, []);
 
+  const conversations = data?.conversations ?? [];
+  const botSpokeByConversation = useMemo(() => {
+    const spoken = new Set<string>();
+    for (const item of data?.messages ?? []) {
+      if (item.direction === "out") spoken.add(item.conversationId);
+    }
+    return spoken;
+  }, [data?.messages]);
+  const visibleConversations = useMemo(
+    () => (data ? inboxList(conversations, data.contacts, lane, contactQuery, listFilters) : []),
+    [data, conversations, lane, contactQuery, listFilters],
+  );
+  const laneCounts = useMemo(
+    () => (data ? inboxTabCounts(conversations, data.contacts, contactQuery, listFilters) : { todos: 0, atendimento: 0, aguardando: 0, robo: 0 }),
+    [data, conversations, contactQuery, listFilters],
+  );
+  const pinnedConversations = useMemo(() => visibleConversations.filter((item) => item.pinned), [visibleConversations]);
+  const listedConversations = useMemo(() => visibleConversations.filter((item) => !item.pinned), [visibleConversations]);
+  const filtersOn = inboxFiltersActive(listFilters);
+  const laneCount = (key: InboxTab) => laneCounts[key];
+
   function labelFor(conversationId: string) {
     const current = data?.conversations.find((item) => item.id === conversationId);
-    if (!current || !data) return "Em fila";
-    const botSpoke = data.messages.some((item) => item.conversationId === conversationId && item.direction === "out");
+    if (!current) return "Em fila";
     return attendanceLabel({
       assigneeName: current.assigneeName,
       botPaused: current.botPaused,
-      botSpoke,
+      botSpoke: botSpokeByConversation.has(conversationId),
       closed: current.status === "closed",
     });
   }
 
   function markFor(conversationId: string) {
     const current = data?.conversations.find((item) => item.id === conversationId);
-    if (!current || !data) return "";
-    const botSpoke = data.messages.some((item) => item.conversationId === conversationId && item.direction === "out");
+    if (!current) return "";
     return attendanceMark({
       assigneeName: current.assigneeName,
       botPaused: current.botPaused,
-      botSpoke,
+      botSpoke: botSpokeByConversation.has(conversationId),
       closed: current.status === "closed",
     });
   }
@@ -602,7 +632,15 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   function openConversation(id: string) {
     selectedRef.current = id;
     setSelected(id);
-    void load();
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            conversations: current.conversations.map((item) => (item.id === id ? { ...item, unreadCount: 0 } : item)),
+          }
+        : current,
+    );
+    void markChatbotConversationReadFn({ data: { conversationId: id } });
   }
 
   async function togglePin(id: string, pinned: boolean) {
@@ -618,11 +656,10 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     const result = await setChatbotConversationPinFn({ data: { conversationId: id, pinned: nextPinned } });
     if (!result.ok) {
       setMessage(result.message);
-      await load();
+      void load();
       return;
     }
     setMessage("");
-    await load();
   }
 
   async function openTransfer(id: string) {
@@ -670,7 +707,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         : current,
     );
     setMessage("");
-    await load();
   }
 
   async function finish(id: string) {
@@ -693,7 +729,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         : current,
     );
     setMessage("");
-    await load();
   }
 
   async function toggleBots(contactId: string, disabled: boolean) {
@@ -720,7 +755,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     );
     if (disabled) setBotsOpen(false);
     setMessage("");
-    await load();
   }
 
   async function openQuickReplies() {
@@ -1215,13 +1249,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       setMessage("Não foi possível gravar o áudio.");
     }
   }
-
-  const conversations = data?.conversations ?? [];
-  const visibleConversations = data ? inboxList(conversations, data.contacts, lane, contactQuery, listFilters) : [];
-  const pinnedConversations = visibleConversations.filter((item) => item.pinned);
-  const listedConversations = visibleConversations.filter((item) => !item.pinned);
-  const filtersOn = inboxFiltersActive(listFilters);
-  const laneCount = (key: InboxTab) => (data ? inboxList(conversations, data.contacts, key, contactQuery, listFilters).length : 0);
 
   function toggleListFilter(kind: keyof InboxListFilters, name: string) {
     setListFilters((current) => {

@@ -413,10 +413,131 @@ export function campaignSeriesColor(index: number) {
   return seriesColors[index] ?? `oklch(0.62 0.16 ${(index * 47) % 360})`;
 }
 
+export type CampaignCompareIndicator = {
+  key: CompareMetricKey;
+  title: string;
+  shortTitle: string;
+  lowerIsBetter: boolean;
+  winnerId: string;
+  winnerName: string;
+  winnerShortName: string;
+  leaderWon: boolean;
+  leaderLabel: "Melhor" | "Menor" | "Maior";
+};
+
+export type CampaignCompareSummary = {
+  winnerId: string;
+  winnerName: string;
+  wins: number;
+  total: number;
+  tied: boolean;
+  indicators: CampaignCompareIndicator[];
+};
+
+const compareShortTitles: Record<CompareMetricKey, string> = {
+  costPerResult: "Custo por Resultado",
+  reach: "Alcance",
+  impressions: "Impressões",
+  ctr: "CTR",
+  cpc: "CPC",
+  cpm: "CPM",
+};
+
+export function campaignShortName(name: string) {
+  const clean = name.trim();
+  if (!clean) return "Campanha";
+  const cut = clean.split(/\s[-–—]\s/)[0]?.trim() || clean;
+  return cut.length > 22 ? `${cut.slice(0, 21)}…` : cut;
+}
+
+export function campaignCompareSummary(
+  campaigns: CampaignCompareRow[],
+): CampaignCompareSummary | null {
+  if (campaigns.length < 2) return null;
+  const winCount = new Map(campaigns.map((row) => [row.id, 0]));
+  const metricWinners: {
+    key: CompareMetricKey;
+    title: string;
+    shortTitle: string;
+    lowerIsBetter: boolean;
+    winnerId: string;
+    winnerName: string;
+    bestValue: number;
+  }[] = [];
+
+  for (const spec of compareSpecs) {
+    const eligible = campaigns
+      .map((row) => ({ id: row.id, name: row.name, value: row[spec.key] }))
+      .filter((row): row is { id: string; name: string; value: number } => row.value != null);
+    if (eligible.length === 0) continue;
+    eligible.sort((left, right) => {
+      const diff = spec.lowerIsBetter
+        ? left.value - right.value
+        : right.value - left.value;
+      return diff || left.name.localeCompare(right.name, "pt-BR");
+    });
+    const best = eligible[0];
+    if (!best) continue;
+    for (const winner of eligible.filter((row) => row.value === best.value)) {
+      winCount.set(winner.id, (winCount.get(winner.id) ?? 0) + 1);
+    }
+    metricWinners.push({
+      key: spec.key,
+      title: spec.title,
+      shortTitle: compareShortTitles[spec.key],
+      lowerIsBetter: spec.lowerIsBetter,
+      winnerId: best.id,
+      winnerName: best.name,
+      bestValue: best.value,
+    });
+  }
+
+  if (metricWinners.length === 0) return null;
+  const ranked = [...campaigns].sort((left, right) => {
+    const winDiff = (winCount.get(right.id) ?? 0) - (winCount.get(left.id) ?? 0);
+    return winDiff || left.name.localeCompare(right.name, "pt-BR");
+  });
+  const leader = ranked[0];
+  if (!leader) return null;
+  const wins = winCount.get(leader.id) ?? 0;
+  const tied = ranked.some(
+    (row, index) => index > 0 && (winCount.get(row.id) ?? 0) === wins,
+  );
+  const indicators = metricWinners.map((metric) => {
+    const leaderValue = leader[metric.key];
+    const leaderWon =
+      metric.winnerId === leader.id ||
+      (leaderValue != null && leaderValue === metric.bestValue);
+    let leaderLabel: "Melhor" | "Menor" | "Maior" = "Melhor";
+    if (!leaderWon) leaderLabel = metric.lowerIsBetter ? "Maior" : "Menor";
+    return {
+      key: metric.key,
+      title: metric.title,
+      shortTitle: metric.shortTitle,
+      lowerIsBetter: metric.lowerIsBetter,
+      winnerId: metric.winnerId,
+      winnerName: metric.winnerName,
+      winnerShortName: campaignShortName(metric.winnerName),
+      leaderWon,
+      leaderLabel,
+    };
+  });
+
+  return {
+    winnerId: leader.id,
+    winnerName: leader.name,
+    wins,
+    total: metricWinners.length,
+    tied,
+    indicators,
+  };
+}
+
 export function campaignCompareMetrics(rows: MetaCampaignRow[]): {
   comparable: boolean;
   campaigns: CampaignCompareRow[];
   panels: CampaignComparePanel[];
+  summary: CampaignCompareSummary | null;
 } {
   const campaigns = rows.map((row, index) => {
     const rates = ratesOf(metricFromCampaign(row));
@@ -458,7 +579,7 @@ export function campaignCompareMetrics(rows: MetaCampaignRow[]): {
         return diff || left.name.localeCompare(right.name, "pt-BR");
       }),
   }));
-  return { comparable, campaigns, panels };
+  return { comparable, campaigns, panels, summary: campaignCompareSummary(campaigns) };
 }
 
 function metricFromSnapshot(row: MetaCampaignSnapshot, resultLabel: string): MetricSet {

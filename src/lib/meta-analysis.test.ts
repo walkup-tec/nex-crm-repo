@@ -7,6 +7,7 @@ import {
   campaignDeliveryGroup,
   campaignMark,
   campaignSeriesColor,
+  campaignShortName,
   buildAnalysis,
   buildInsights,
   changePercent,
@@ -426,5 +427,31 @@ const mixedCompare = campaignCompareMetrics([
   campaign({ id: "b", name: "B", resultLabel: "Leads", spend: 50, results: 5, impressions: 200, clicks: 10 }),
 ]);
 assert.equal(mixedCompare.comparable, false);
+
+const summaryBoard = campaignCompareMetrics([
+  campaign({
+    id: "corban",
+    name: "Corban - Nex Ads [Eng. WhatsApp] - V2",
+    spend: 8.58,
+    results: 1,
+    reach: 120,
+    impressions: 144,
+    clicks: 5,
+  }),
+  campaign({
+    id: "geral",
+    name: "Geral - Nex Ads [Eng. WhatsApp]",
+    spend: 11.2,
+    results: 0,
+    reach: 50,
+    impressions: 76,
+    clicks: 0,
+  }),
+]);
+assert.equal(summaryBoard.summary?.winnerId, "corban");
+assert.ok((summaryBoard.summary?.wins ?? 0) >= 4);
+assert.equal(summaryBoard.summary?.total, 6);
+assert.equal(summaryBoard.summary?.indicators.length, 6);
+assert.equal(campaignShortName("Corban - Nex Ads [Eng. WhatsApp] - V2"), "Corban");
 
 console.log("meta-analysis tests ok");

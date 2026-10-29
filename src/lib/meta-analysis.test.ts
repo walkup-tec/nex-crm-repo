@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import {
+  activeCampaigns,
   aggregateDays,
   adsManagerResult,
+  campaignCompareMetrics,
   campaignDeliveryGroup,
   campaignMark,
+  campaignSeriesColor,
   buildAnalysis,
   buildInsights,
   changePercent,
@@ -366,5 +369,62 @@ assert.deepEqual(flare, [100 / 400, 1, 50 / 400, 10 / 400]);
 
 const emptyJourney = funnelStageWidths([0, 0, null, 0]);
 assert.deepEqual(emptyJourney, [0, 0, 0, 0]);
+
+const compareSource = [
+  campaign({
+    id: "a",
+    name: "Campanha A",
+    statusGroup: "Ativa",
+    spend: 100,
+    results: 10,
+    reach: 800,
+    impressions: 2000,
+    clicks: 40,
+  }),
+  campaign({
+    id: "b",
+    name: "Campanha B",
+    statusGroup: "Ativa",
+    spend: 80,
+    results: 20,
+    reach: 1200,
+    impressions: 3000,
+    clicks: 90,
+  }),
+  campaign({
+    id: "c",
+    name: "Campanha C",
+    statusGroup: "Inativa",
+    spend: 50,
+    results: 5,
+    reach: 400,
+    impressions: 1000,
+    clicks: 10,
+  }),
+];
+assert.deepEqual(
+  activeCampaigns(compareSource).map((row) => row.id),
+  ["a", "b"],
+);
+
+const compare = campaignCompareMetrics(activeCampaigns(compareSource));
+assert.equal(compare.comparable, true);
+assert.equal(compare.panels.length, 6);
+assert.equal(compare.panels[0]?.key, "costPerResult");
+assert.equal(compare.panels[0]?.rows[0]?.id, "b");
+assert.equal(compare.panels[0]?.rows[0]?.value, 4);
+assert.equal(compare.panels[1]?.key, "reach");
+assert.equal(compare.panels[1]?.rows[0]?.id, "b");
+assert.equal(compare.panels[3]?.key, "ctr");
+assert.equal(compare.panels[4]?.key, "cpc");
+assert.equal(compare.panels[5]?.key, "cpm");
+assert.equal(compare.campaigns[0]?.cpm, (100 / 2000) * 1000);
+assert.equal(campaignSeriesColor(0), "var(--primary)");
+
+const mixedCompare = campaignCompareMetrics([
+  campaign({ id: "a", name: "A", resultLabel: "Conversas", spend: 40, results: 4, impressions: 100, clicks: 8 }),
+  campaign({ id: "b", name: "B", resultLabel: "Leads", spend: 50, results: 5, impressions: 200, clicks: 10 }),
+]);
+assert.equal(mixedCompare.comparable, false);
 
 console.log("meta-analysis tests ok");

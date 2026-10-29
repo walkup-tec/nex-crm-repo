@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { CampaignAnalysis } from "@/components/nex/CampaignAnalysis";
+import { CampaignComparison } from "@/components/nex/CampaignComparison";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,8 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { readDashboardSnapshot, retryDroppedDashboard, writeDashboardSnapshot, type DashboardStorage } from "@/lib/dashboard-cache";
-import { campaignMark } from "@/lib/meta-analysis";
+import { activeCampaigns, campaignMark, campaignSeriesColor } from "@/lib/meta-analysis";
 import type { MetaCampaignRow, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
 import { getMetaPerformanceFn } from "@/lib/meta.functions";
 
@@ -97,6 +99,7 @@ export function MetaPerformance({
   const [status, setStatus] = useState("all");
   const [campaignId, setCampaignId] = useState("all");
   const [chartId, setChartId] = useState<string | null>(null);
+  const [dashView, setDashView] = useState<"individual" | "comparativo">("individual");
 
   const load = async (nextPeriod: MetaPeriod) => {
     setLoading(true);
@@ -130,7 +133,10 @@ export function MetaPerformance({
   }, []);
 
   const listedCampaigns = view?.campaigns ?? noCampaigns;
-  const showCampaignFilter = listedCampaigns.length > 1;
+  const activeRows = useMemo(() => activeCampaigns(listedCampaigns), [listedCampaigns]);
+  const showCompareTabs = mode === "overview" && activeRows.length > 1;
+  const comparing = showCompareTabs && dashView === "comparativo";
+  const showCampaignFilter = listedCampaigns.length > 1 && !comparing;
   const selectedCampaign =
     showCampaignFilter && campaignId !== "all"
       ? (listedCampaigns.find((row) => row.id === campaignId) ?? null)
@@ -140,6 +146,10 @@ export function MetaPerformance({
     if (campaignId !== "all" && !listedCampaigns.some((row) => row.id === campaignId))
       setCampaignId("all");
   }, [campaignId, listedCampaigns]);
+
+  useEffect(() => {
+    if (!showCompareTabs && dashView !== "individual") setDashView("individual");
+  }, [showCompareTabs, dashView]);
 
   const campaigns = useMemo(() => {
     const rows = selectedCampaign
@@ -201,6 +211,18 @@ export function MetaPerformance({
         </div>
       </div>
 
+      {showCompareTabs && (
+        <Tabs
+          value={dashView}
+          onValueChange={(value) => setDashView(value as "individual" | "comparativo")}
+        >
+          <TabsList aria-label="Modo do dashboard">
+            <TabsTrigger value="individual">Individual</TabsTrigger>
+            <TabsTrigger value="comparativo">Comparativo</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+
       {loading && !view && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -241,7 +263,10 @@ export function MetaPerformance({
 
       {ready && view?.kpis && (
         <>
-          {mode === "overview" && (
+          {mode === "overview" && comparing && (
+            <CampaignComparison campaigns={activeRows} currency={view.currency || "BRL"} />
+          )}
+          {mode === "overview" && !comparing && (
             <CampaignAnalysis view={view} campaignId={selectedCampaign?.id ?? null} />
           )}
           {mode === "overview" && view.campaigns.length === 0 && (
@@ -308,17 +333,8 @@ function costPerResult(row: MetaCampaignRow) {
   return row.spend / row.results;
 }
 
-const lineColors = [
-  "var(--primary)",
-  "var(--info)",
-  "var(--success)",
-  "var(--warning)",
-  "var(--cyan)",
-  "var(--destructive)",
-];
-
 function lineColor(index: number) {
-  return lineColors[index] ?? `oklch(0.62 0.16 ${(index * 47) % 360})`;
+  return campaignSeriesColor(index);
 }
 
 function dayLabel(iso: string) {

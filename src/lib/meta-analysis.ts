@@ -312,7 +312,7 @@ function metricFromKpis(kpis: MetaKpis): MetricSet {
   };
 }
 
-function metricFromCampaign(row: MetaCampaignRow): MetricSet {
+export function metricFromCampaign(row: MetaCampaignRow): MetricSet {
   return {
     spend: finite(row.spend) ?? 0,
     impressions: finite(row.impressions) ?? 0,
@@ -321,6 +321,144 @@ function metricFromCampaign(row: MetaCampaignRow): MetricSet {
     results: finite(row.results) ?? 0,
     resultLabel: row.resultLabel || "Resultados",
   };
+}
+
+export function activeCampaigns(rows: MetaCampaignRow[]) {
+  return rows.filter((row) => row.statusGroup === "Ativa");
+}
+
+export type CompareMetricKey =
+  | "costPerResult"
+  | "reach"
+  | "impressions"
+  | "ctr"
+  | "cpc"
+  | "cpm";
+
+export type CampaignCompareRow = {
+  id: string;
+  name: string;
+  resultLabel: string;
+  colorIndex: number;
+  costPerResult: number | null;
+  reach: number;
+  impressions: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+};
+
+export type CampaignComparePanel = {
+  key: CompareMetricKey;
+  title: string;
+  hint: string;
+  lowerIsBetter: boolean;
+  rows: { id: string; name: string; value: number | null; colorIndex: number }[];
+};
+
+const compareSpecs: {
+  key: CompareMetricKey;
+  title: string;
+  hint: string;
+  lowerIsBetter: boolean;
+}[] = [
+  {
+    key: "costPerResult",
+    title: "Custo por Resultado",
+    hint: "Quanto você paga, em média, por cada resultado da campanha.",
+    lowerIsBetter: true,
+  },
+  {
+    key: "reach",
+    title: "Alcance",
+    hint: "Quantas pessoas únicas viram os anúncios no período.",
+    lowerIsBetter: false,
+  },
+  {
+    key: "impressions",
+    title: "Impressões",
+    hint: "Quantas vezes os anúncios foram exibidos no período.",
+    lowerIsBetter: false,
+  },
+  {
+    key: "ctr",
+    title: "CTR (Taxa de cliques)",
+    hint: "Percentual de impressões que geraram clique.",
+    lowerIsBetter: false,
+  },
+  {
+    key: "cpc",
+    title: "CPC (Custo por clique)",
+    hint: "Quanto você paga, em média, por cada clique.",
+    lowerIsBetter: true,
+  },
+  {
+    key: "cpm",
+    title: "CPM (Custo por mil impressões)",
+    hint: "Quanto você paga, em média, a cada mil impressões.",
+    lowerIsBetter: true,
+  },
+];
+
+const seriesColors = [
+  "var(--primary)",
+  "var(--info)",
+  "var(--success)",
+  "var(--warning)",
+  "var(--cyan)",
+  "var(--destructive)",
+];
+
+export function campaignSeriesColor(index: number) {
+  return seriesColors[index] ?? `oklch(0.62 0.16 ${(index * 47) % 360})`;
+}
+
+export function campaignCompareMetrics(rows: MetaCampaignRow[]): {
+  comparable: boolean;
+  campaigns: CampaignCompareRow[];
+  panels: CampaignComparePanel[];
+} {
+  const campaigns = rows.map((row, index) => {
+    const rates = ratesOf(metricFromCampaign(row));
+    return {
+      id: row.id,
+      name: row.name,
+      resultLabel: row.resultLabel || "Resultados",
+      colorIndex: index,
+      costPerResult: rates.costPerResult,
+      reach: finite(row.reach) ?? 0,
+      impressions: finite(row.impressions) ?? 0,
+      ctr: rates.ctr,
+      cpc: rates.cpc,
+      cpm: rates.cpm,
+    };
+  });
+  const labels = new Set(campaigns.map((row) => row.resultLabel));
+  const comparable = labels.size <= 1;
+  const panels = compareSpecs.map((spec) => ({
+    key: spec.key,
+    title: spec.title,
+    hint: spec.hint,
+    lowerIsBetter: spec.lowerIsBetter,
+    rows: [...campaigns]
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        value: row[spec.key],
+        colorIndex: row.colorIndex,
+      }))
+      .sort((left, right) => {
+        if (left.value == null && right.value == null)
+          return left.name.localeCompare(right.name, "pt-BR");
+        if (left.value == null) return 1;
+        if (right.value == null) return -1;
+        const diff = spec.lowerIsBetter
+          ? left.value - right.value
+          : right.value - left.value;
+        return diff || left.name.localeCompare(right.name, "pt-BR");
+      }),
+  }));
+  return { comparable, campaigns, panels };
 }
 
 function metricFromSnapshot(row: MetaCampaignSnapshot, resultLabel: string): MetricSet {

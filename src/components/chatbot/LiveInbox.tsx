@@ -1,5 +1,5 @@
 import { MessageSquare, Bot, ExternalLink, Filter, Mic, Pause, Pin, Play, Plus, Search, Send, Square, UserRound } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -29,7 +29,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import { acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -134,7 +134,15 @@ function VoiceNote({ file, sentAt, outgoing }: { file: LoadedMedia; sentAt: stri
   );
 }
 
-function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void }) {
+function ChatMedia({
+  item,
+  onSaved,
+  onLayout,
+}: {
+  item: InboxMessage;
+  onSaved?: () => void;
+  onLayout?: () => void;
+}) {
   const cached = loadedMedia.get(item.id);
   const [file, setFile] = useState<LoadedMedia | null>(cached && !("none" in cached) ? cached : null);
   const [missing, setMissing] = useState(Boolean(cached && "none" in cached));
@@ -187,7 +195,7 @@ function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void
     );
   }
   if (!file) {
-    return <div className="message-bubble media">{error || "Carregando mídia"}</div>;
+    return <div className="message-bubble media loading">{error || "Carregando mídia"}</div>;
   }
   if (file.kind === "audio") {
     return (
@@ -201,7 +209,13 @@ function ChatMedia({ item, onSaved }: { item: InboxMessage; onSaved?: () => void
   const documentName = file.kind === "document" ? (item.text.toLowerCase().endsWith(".pdf") ? item.text : "PDF") : "";
   return (
     <div className={`message-bubble media ${item.direction}`}>
-      {file.kind === "document" ? <span className="message-text">{documentName}</span> : file.kind === "video" ? <video src={file.url} controls /> : <img src={file.url} alt="" />}
+      {file.kind === "document" ? (
+        <span className="message-text">{documentName}</span>
+      ) : file.kind === "video" ? (
+        <video src={file.url} controls onLoadedData={() => onLayout?.()} />
+      ) : (
+        <img src={file.url} alt="" onLoad={() => onLayout?.()} />
+      )}
       {file.kind === "document" || !caption ? null : <p>{caption}</p>}
       <div className="media-actions">
         {file.kind === "document" ? null : (
@@ -535,6 +549,31 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     if (!box || !stickToBottom.current) return;
     box.scrollTop = box.scrollHeight;
   }, [messages.length, selected, signatureError]);
+
+  useEffect(() => {
+    const box = historyRef.current;
+    if (!box) return;
+    let previousHeight = box.scrollHeight;
+    const settle = () => {
+      const nextHeight = box.scrollHeight;
+      box.scrollTop = messageHistoryScrollTop({
+        stickToBottom: stickToBottom.current,
+        scrollTop: box.scrollTop,
+        previousHeight,
+        nextHeight,
+      });
+      previousHeight = nextHeight;
+    };
+    const observer = new ResizeObserver(() => settle());
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [selected]);
+
+  const settleHistoryAfterMedia = useCallback(() => {
+    const box = historyRef.current;
+    if (!box) return;
+    if (stickToBottom.current) box.scrollTop = box.scrollHeight;
+  }, []);
 
   function labelFor(conversationId: string) {
     const current = data?.conversations.find((item) => item.id === conversationId);
@@ -1518,7 +1557,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
                     </div>
                   ) : expectsMedia(item) ? (
-                    <ChatMedia item={item} key={item.id} onSaved={() => setSavedMedia((value) => value + 1)} />
+                    <ChatMedia
+                      item={item}
+                      key={item.id}
+                      onSaved={() => setSavedMedia((value) => value + 1)}
+                      onLayout={settleHistoryAfterMedia}
+                    />
                   ) : (
                     <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
                       <span className="message-text">{item.text}</span>

@@ -122,8 +122,9 @@ async function rememberBalance(
   };
   if (cents != null) update.balance_cents = cents;
   const { error } = await supabaseAdmin.from("meta_accounts").update(update).eq("id", accountRowId);
-  if (error && /prepaid_ledger/i.test(error.message) && cents != null) {
-    await supabaseAdmin
+  if (!error) return;
+  if (/prepaid_ledger/i.test(error.message) && cents != null) {
+    const fallback = await supabaseAdmin
       .from("meta_accounts")
       .update({
         balance_cents: cents,
@@ -131,7 +132,10 @@ async function rememberBalance(
         sync_status: "synced",
       })
       .eq("id", accountRowId);
+    if (!fallback.error) return;
+    fail("Não foi possível gravar o saldo da recarga.");
   }
+  fail("Não foi possível gravar o saldo da recarga.");
 }
 
 async function readFields(organizationId: string, accountId: string, fields: string) {
@@ -275,22 +279,18 @@ async function readMetaFields(organizationId: string, accountId: string): Promis
 export async function registerMetaCreditTopup(userId: string, cents: number) {
   const actor = await actorOf(userId);
   if (!actor.canAdd) fail("Você não tem permissão para adicionar saldo.");
-  if (!Number.isInteger(cents) || cents <= 0) fail("Informe o valor da recarga.");
+  const amount = Math.round(Number(cents));
+  if (!Number.isInteger(amount) || amount <= 0) fail("Informe o valor da recarga.");
   const account = await selectedAccount(actor.organizationId);
   if (!account) fail("Nenhuma conta de anúncio está integrada a este acesso.");
   const at = new Date().toISOString();
-  const ledger = creditTopupLedger(cents, at);
-  const spentCents = await spentSinceTopup(
-    actor.organizationId,
-    account.external_account_id,
-    at,
-  );
-  const availableCents = availableFromRegisteredCredit(cents, spentCents) ?? cents;
-  await rememberBalance(account.id, availableCents, ledger);
+  const ledger = creditTopupLedger(amount, at);
+  // The card shows the added amount right away. Later loads subtract campaign spend.
+  await rememberBalance(account.id, amount, ledger);
   return {
-    balanceCents: availableCents,
+    balanceCents: amount,
     creditTopupAt: at,
-    creditTopupCents: cents,
+    creditTopupCents: amount,
   };
 }
 

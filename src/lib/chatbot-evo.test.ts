@@ -37,6 +37,7 @@ import {
   audioDurationLabel,
   audioWaveBars,
   acceptSnapshot,
+  messageHistoryScrollTop,
   stickToLatestMessage,
   evolutionIncomingMessages,
   evolutionMessageText,
@@ -862,6 +863,18 @@ assert.equal(finishSnapshot(overlappedLoad), true);
 assert.equal(finishSnapshot(firstLoad), false);
 assert.equal(stickToLatestMessage(0), true);
 assert.equal(stickToLatestMessage(120), false);
+assert.equal(
+  messageHistoryScrollTop({ stickToBottom: true, scrollTop: 400, previousHeight: 800, nextHeight: 1200 }),
+  1200,
+);
+assert.equal(
+  messageHistoryScrollTop({ stickToBottom: false, scrollTop: 400, previousHeight: 800, nextHeight: 1200 }),
+  800,
+);
+assert.equal(
+  messageHistoryScrollTop({ stickToBottom: false, scrollTop: 400, previousHeight: 800, nextHeight: 800 }),
+  400,
+);
 assert.equal(evolutionIncomingMessages({ message: { key: { id: "2", remoteJid: "5511999999999@s.whatsapp.net" }, message: { conversation: "segunda" } } }).length, 1);
 assert.equal(evolutionIncomingMessages({ messages: { records: [{ key: { id: "1" } }] } }).length, 1);
 assert.equal(evolutionIncomingMessages({ key: { id: "1" }, message: { conversation: "Oi" } }).length, 1);

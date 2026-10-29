@@ -50,7 +50,11 @@ export const startFacebookLoginFn = createServerFn({ method: "POST" })
 
 export const registerMetaCreditTopupFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { cents: number }) => data)
+  .validator((data: { cents: number }) => {
+    const cents = Math.round(Number(data?.cents));
+    if (!Number.isInteger(cents) || cents <= 0) throw new Error("Informe o valor da recarga.");
+    return { cents };
+  })
   .handler(async ({ context, data }) => {
     const { registerMetaCreditTopup } = await import("@/server/meta-credit.server");
     return guard(() => registerMetaCreditTopup(context.userId, data.cents));

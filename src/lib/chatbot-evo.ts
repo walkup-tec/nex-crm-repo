@@ -425,6 +425,18 @@ export function stickToLatestMessage(distanceFromBottom: number) {
   return distanceFromBottom <= 80;
 }
 
+export function messageHistoryScrollTop(input: {
+  stickToBottom: boolean;
+  scrollTop: number;
+  previousHeight: number;
+  nextHeight: number;
+}) {
+  if (input.stickToBottom) return Math.max(0, input.nextHeight);
+  const delta = input.nextHeight - input.previousHeight;
+  if (delta === 0) return input.scrollTop;
+  return Math.max(0, input.scrollTop + delta);
+}
+
 export function inboxOrder<T extends { id: string; pinned: boolean; updatedAt: string }>(items: T[]) {
   return [...items].sort((left, right) => {
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;

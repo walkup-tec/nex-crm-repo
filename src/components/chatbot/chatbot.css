@@ -57,7 +57,7 @@
 .chatbot-app .conversation-row.pinned{background:color-mix(in srgb,var(--primary) 10%,var(--card))}
 .chatbot-app .conversation-row.pinned.selected{background:var(--soft-primary)}
 .chatbot-app .chat-area{position:relative;overflow:visible}
-.chatbot-app .message-history{flex:1 1 auto;min-height:0;overflow:auto}
+.chatbot-app .message-history{flex:1 1 auto;min-height:0;overflow:auto;overflow-anchor:none}
 .chatbot-app .composer{flex:0 0 auto;position:relative;z-index:2;border-top:1px solid var(--border);background:var(--card)}
 @media (min-width:601px){.chatbot-app .chat-area{display:grid;grid-template-rows:auto minmax(0,1fr) auto}}
 .chatbot-app .message-bubble.in{align-self:flex-start;background:var(--muted);color:var(--foreground)}
@@ -111,6 +111,7 @@
 .chatbot-app .team-form-actions{display:flex;gap:8px;align-items:center}
 .chatbot-app .team-form-actions button[type="submit"]{flex:1}
 .chatbot-app .message-bubble.media{align-self:flex-start;max-width:min(360px,86%);background:var(--card);color:var(--foreground);border:1px solid var(--border);padding:8px}
+.chatbot-app .message-bubble.media.loading{min-height:160px}
 .chatbot-app .message-bubble.media.out{align-self:flex-end}
 .chatbot-app .message-bubble.media img,.chatbot-app .message-bubble.media video{width:100%;max-height:280px;object-fit:contain;border-radius:6px;background:#000;display:block}
 .chatbot-app .message-bubble .message-when{display:block;margin-top:6px;font-size:10px;line-height:1;opacity:.72;text-align:right}

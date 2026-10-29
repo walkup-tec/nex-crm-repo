@@ -114,6 +114,7 @@ export function MetaCredits() {
   const [entering, setEntering] = useState(false);
   const [showReads, setShowReads] = useState(false);
   const [amountText, setAmountText] = useState("");
+  const [waitingPayment, setWaitingPayment] = useState(false);
   const [showPaymentDone, setShowPaymentDone] = useState(false);
   const [savingTopup, setSavingTopup] = useState(false);
   const [topupNote, setTopupNote] = useState("");
@@ -166,16 +167,30 @@ export function MetaCredits() {
     };
   }, []);
 
+  const clearPaymentWait = () => {
+    if (paymentTimerRef.current) window.clearTimeout(paymentTimerRef.current);
+    paymentTimerRef.current = null;
+    setWaitingPayment(false);
+  };
+
+  const startPaymentWait = () => {
+    clearPaymentWait();
+    setShowPaymentDone(false);
+    setTopupNote("");
+    setWaitingPayment(true);
+    paymentTimerRef.current = window.setTimeout(() => {
+      setWaitingPayment(false);
+      setShowPaymentDone(true);
+      paymentTimerRef.current = null;
+    }, 15000);
+  };
+
   const enter = () => {
     setEntering(true);
     setLoginError("");
     setTopupNote("");
+    clearPaymentWait();
     setShowPaymentDone(false);
-    if (paymentTimerRef.current) window.clearTimeout(paymentTimerRef.current);
-    paymentTimerRef.current = window.setTimeout(() => {
-      setShowPaymentDone(true);
-      paymentTimerRef.current = null;
-    }, 8000);
     const width = 520;
     const height = 720;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
@@ -217,6 +232,15 @@ export function MetaCredits() {
     })();
   };
 
+  const href = normalizeBalanceLink(view?.balanceUrl ?? "");
+  const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn && amountCents != null);
+
+  const openAddBalance = () => {
+    if (!href) return;
+    window.open(href, "_blank", "noopener,noreferrer");
+    startPaymentWait();
+  };
+
   const finishPayment = () => {
     if (amountCents == null) {
       setTopupNote("Informe o valor da recarga antes de finalizar.");
@@ -231,9 +255,21 @@ export function MetaCredits() {
           setTopupNote(result.message);
           return;
         }
+        setView((current) =>
+          current
+            ? {
+                ...current,
+                balanceCents: result.data.balanceCents,
+                balanceKind: "prepaid",
+                creditTopupAt: result.data.creditTopupAt,
+                creditTopupCents: result.data.creditTopupCents,
+              }
+            : current,
+        );
         setTopupNote("Pagamento registrado.");
         setShowPaymentDone(false);
-        await load();
+        clearPaymentWait();
+        void load();
       } catch {
         setTopupNote("Não foi possível registrar o pagamento. Tente de novo.");
       } finally {
@@ -241,9 +277,6 @@ export function MetaCredits() {
       }
     })();
   };
-
-  const href = normalizeBalanceLink(view?.balanceUrl ?? "");
-  const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn);
   const lowBalance =
     isLowMetaBalance(view?.balanceCents) ||
     view?.paymentError === true ||
@@ -254,8 +287,8 @@ export function MetaCredits() {
       <section className="order-1 rounded-lg border bg-card p-5 lg:col-start-1 lg:row-start-1">
         <h2 className="font-display text-lg font-semibold">Adicionar saldo</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Informe o valor da recarga, entre com o Facebook e, depois do pagamento na Meta, confirme
-          em Pagamento Finalizado.
+          Informe o valor, entre com o Facebook, abra Adicionar saldo na Meta e, depois do
+          pagamento, confirme em Pagamento Finalizado.
         </p>
         <div className="mt-5 max-w-xs">
           <label className="text-sm font-medium" htmlFor="meta-credit-amount">
@@ -282,13 +315,21 @@ export function MetaCredits() {
               {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
             </Button>
           )}
-          {canOpen && href && (
-            <Button asChild>
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                <ExternalLink />
-                Adicionar saldo
-              </a>
+          {canOpen && (
+            <Button
+              type="button"
+              onClick={openAddBalance}
+              disabled={savingTopup}
+              className={lowBalance && !showPaymentDone ? "animate-primary-wave" : ""}
+            >
+              <ExternalLink />
+              Adicionar saldo
             </Button>
+          )}
+          {waitingPayment && (
+            <p className="self-center text-sm text-muted-foreground">
+              Aguarde 15 segundos para confirmar o pagamento...
+            </p>
           )}
           {showPaymentDone && amountCents != null && (
             <Button

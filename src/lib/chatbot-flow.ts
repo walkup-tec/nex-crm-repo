@@ -384,8 +384,8 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
     const waiting = nodeById(flow.graph, run.nodeId);
     if (waiting?.label === "Menu") {
       const target = menuTarget(flow.graph, waiting, input.text);
-      if (target == null) return { actions: [], run };
-      return walk(flow, target ? [target] : [], input.text.trim(), input);
+      if (!target) return menuReprompt(flow, waiting, run.lastAnswer);
+      return walk(flow, [target], input.text.trim(), input);
     }
     if (waiting?.label === "Fazer pergunta" && !input.text.trim()) return { actions: [], run };
     return walk(flow, outgoing(flow.graph, run.nodeId), input.text.trim(), input);
@@ -404,11 +404,41 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
   return walk(flow, outgoing(flow.graph, trigger.id), "", input);
 }
 
+function foldMenuAnswer(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function menuReprompt(flow: SavedFlow, node: FlowNode, lastAnswer: string): FlowStep {
+  const options = flowMenuOptions(node.options);
+  const content = node.content.trim();
+  if (!content || !options.length) {
+    return {
+      actions: [],
+      run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer },
+    };
+  }
+  return {
+    actions: [{ type: "menu", text: content, options }],
+    run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer },
+  };
+}
+
 function menuTarget(graph: FlowGraph, node: FlowNode, text: string) {
-  const answer = text.trim().toLocaleLowerCase("pt-BR");
+  const raw = text.trim();
+  const answer = foldMenuAnswer(raw);
+  if (!answer) return null;
   const matched = flowMenuOptions(node.options).find((option) => {
-    const label = option.label.toLocaleLowerCase("pt-BR");
-    return option.id === text.trim() || label === answer || answer === `${option.id} - ${label}`;
+    const label = foldMenuAnswer(option.label);
+    return (
+      option.id === raw ||
+      label === answer ||
+      answer === foldMenuAnswer(`${option.id} - ${option.label}`)
+    );
   });
   if (!matched) return null;
   return graph.edges.find((edge) => edge.source === node.id && edge.sourceHandle === matched.id)?.target ?? "";
@@ -468,6 +498,12 @@ function walk(flow: SavedFlow, start: string[], lastAnswer: string, input: { tex
     if (node.label === "Adicionar etiqueta" && content) actions.push({ type: "tag", name: content });
     if ((node.label === "Kanban" || node.label === "Criar oportunidade") && content) actions.push({ type: "stage", name: content });
     if (node.label === "Encaminhar à fila") {
+      if (!actions.some((action) => action.type === "send" || action.type === "menu")) {
+        actions.push({
+          type: "send",
+          text: "Vou te encaminhar para um atendente. Em instantes alguém te responde.",
+        });
+      }
       actions.push({ type: "queue" });
       return { actions, run: doneRun(flow.id, node.id, lastAnswer) };
     }

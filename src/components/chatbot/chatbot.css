@@ -448,7 +448,7 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .agenda-legend .is-available,.chatbot-app .agenda-window.is-available{background:oklch(.32 .08 150);color:oklch(.95 .03 150)}
 .chatbot-app .agenda-legend .is-occupied,.chatbot-app .agenda-window.is-occupied{background:oklch(.4 .1 25);color:oklch(.97 .02 25)}
 .chatbot-app .agenda-legend .is-past,.chatbot-app .agenda-window.is-past{background:var(--muted);color:var(--muted-foreground)}
-.chatbot-app .agenda-month{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px}
+.chatbot-app .agenda-month{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;overflow-x:auto}
 .chatbot-app .agenda-day{position:relative;display:grid;align-content:start;gap:4px;min-height:96px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card)}
 .chatbot-app .agenda-day:has(.agenda-slot:hover),.chatbot-app .agenda-day:has(.agenda-slot:focus-within){z-index:8}
 .chatbot-app .agenda-day header{font-size:12px;font-weight:700}

@@ -80,9 +80,15 @@ assert.equal(meetingSlot({ date: "2026-10-24", time: "10:00" }, now), null);
 assert.deepEqual(meetingWindowStarts("2026-10-23"), [9, 10, 11]);
 assert.deepEqual(meetingWindowStarts("2026-10-26"), [13, 14, 15]);
 assert.deepEqual(meetingWindowStarts("2026-10-27"), [9, 10, 11, 12, 13, 14, 15]);
-assert.equal(meetingCalendar(now).length, 30);
-assert.equal(meetingCalendar(now)[0]?.closed, false);
-assert.equal(meetingCalendar(now)[1]?.closed, true);
+assert.equal(meetingCalendar(now).length, 20);
+assert.equal(meetingCalendar(now)[0]?.date, "2026-10-19");
+assert.equal(meetingCalendar(now)[4]?.date, "2026-10-23");
+assert.equal(meetingCalendar(now)[5]?.date, "2026-10-26");
+assert.equal(meetingCalendar(now).every((day) => !day.closed), true);
+assert.equal(meetingCalendar(now).every((day) => {
+  const weekday = new Date(`${day.date}T12:00:00-03:00`).getUTCDay();
+  return weekday >= 1 && weekday <= 5;
+}), true);
 assert.equal(meetingChoices(now)[0]?.date, "2026-10-26");
 assert.deepEqual(meetingChoices(now)[0]?.times, ["13:00", "14:00", "15:00"]);
 const painted = markMeetingCalendar(meetingCalendar(now), [{ start: "2026-10-26T16:00:00.000Z", end: "2026-10-26T17:00:00.000Z", note: "Marcelo" }]);

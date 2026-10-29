@@ -130,7 +130,14 @@ assert.equal(chooseFlow([manual], { text: "qual o preço?", outsideHours: false,
 assert.equal(chooseFlow([manual], { text: "", outsideHours: false, run: null, manualFlowId: "manual" })?.id, "manual");
 assert.equal(chooseFlow([manual], { text: "ok", outsideHours: false, run: { flowId: "manual", nodeId: "s", status: "waiting", waitUntil: 0, lastAnswer: "" } })?.id, "manual");
 const queued = previewFlowTurns({ nodes: [{ id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" }, { id: "q", label: "Encaminhar à fila", kind: "Ação", content: "" }], edges: [{ source: "t", target: "q" }] }, ["oi"], false, noon);
-assert.equal(queued.turns.find((turn) => turn.from === "bot")?.text, "Conversa enviada para a fila de atendimento do Chatbot.");
+assert.equal(
+  queued.turns.find((turn) => turn.from === "bot")?.text,
+  "Vou te encaminhar para um atendente. Em instantes alguém te responde.",
+);
+assert.equal(
+  queued.turns.some((turn) => turn.from === "bot" && turn.text.includes("fila de atendimento")),
+  true,
+);
 const priced = stepFlow(keyword, null, { text: "qual o preço?", at: noon, outsideHours: false });
 assert.equal(priced.actions[0]?.type, "send");
 
@@ -238,8 +245,9 @@ const numbered = stepFlow(menuFlow, menuStep.run, { text: "2 - Suporte", at: noo
 assert.equal(numbered.actions[0]?.type === "send" ? numbered.actions[0].text : "", "Time de suporte.");
 const menuWaiting = menuStep.run;
 const ignoredMenu = startInboundFlow([menuFlow], { text: "Oi", outsideHours: false, run: menuWaiting, at: noon });
-assert.equal(ignoredMenu?.restart, true);
+assert.equal(ignoredMenu?.restart, false);
 assert.equal(ignoredMenu?.step.actions[0]?.type, "menu");
+assert.equal(ignoredMenu?.step.run?.nodeId, "menu");
 const tappedMenu = startInboundFlow([menuFlow], { text: "Suporte", outsideHours: false, run: menuWaiting, at: noon });
 assert.equal(tappedMenu?.restart, false);
 assert.equal(tappedMenu?.step.actions[0]?.type === "send" ? tappedMenu.step.actions[0].text : "", "Time de suporte.");
@@ -287,7 +295,7 @@ assert.equal(duringWait?.restart, true);
 assert.equal(duringWait?.step.actions[0]?.type === "send" ? duringWait.step.actions[0].text : "", "Estamos abertos.");
 const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
 assert.equal(ignored.run?.nodeId, "menu");
-assert.equal(ignored.actions.length, 0);
+assert.equal(ignored.actions.filter((action) => action.type === "menu").length, 1);
 const duplicated = cloneFlowSelection(
   [{ id: "a", x: 10, y: 20 }, { id: "b", x: 40, y: 20 }, { id: "c", x: 80, y: 20 }],
   [{ id: "ab", source: "a", target: "b", sourceHandle: "1" as const }, { id: "bc", source: "b", target: "c" }],
@@ -438,8 +446,63 @@ const waitingMenu = opened.run;
 const chosen = stepFlow(repeatMenuFlow, waitingMenu, { text: "Não sou cliente", at: noon + 1000, outsideHours: false });
 assert.equal(chosen.actions.some((action) => action.type === "menu"), false);
 assert.equal(chosen.actions[0]?.type === "send" ? chosen.actions[0].text : "", "Qual seu nome?");
+const foldedChoice = stepFlow(repeatMenuFlow, waitingMenu, { text: "Nao sou cliente", at: noon + 1500, outsideHours: false });
+assert.equal(foldedChoice.actions[0]?.type === "send" ? foldedChoice.actions[0].text : "", "Qual seu nome?");
 const repeated = stepFlow(repeatMenuFlow, chosen.run, { text: "Não sou cliente", at: noon + 2000, outsideHours: false });
 assert.equal(repeated.actions.some((action) => action.type === "menu"), false);
 assert.equal(repeated.actions.some((action) => action.type === "send" && action.text === "Qual seu nome?"), false);
+const unmatched = stepFlow(repeatMenuFlow, waitingMenu, { text: "talvez", at: noon + 2500, outsideHours: false });
+assert.equal(unmatched.actions.filter((action) => action.type === "menu").length, 1);
+assert.equal(unmatched.run?.status, "waiting");
+assert.equal(unmatched.run?.nodeId, "menu");
+const danglingMenuFlow: SavedFlow = {
+  id: "dangling",
+  name: "Anuncio",
+  graph: {
+    nodes: [
+      { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+      {
+        id: "menu",
+        label: "Menu",
+        kind: "Ação",
+        content: "Você já fez (ou ainda faz) anúncio em alguma plataforma?",
+        options: [
+          { id: "1", label: "Sim" },
+          { id: "2", label: "Não" },
+        ],
+      },
+      { id: "next", label: "Enviar mensagem", kind: "Ação", content: "Perfeito, vamos seguir." },
+    ],
+    edges: [{ source: "t", target: "menu" }],
+  },
+};
+const danglingOpen = stepFlow(danglingMenuFlow, null, { text: "oi", at: noon, outsideHours: false });
+const danglingSim = stepFlow(danglingMenuFlow, danglingOpen.run, { text: "Sim", at: noon + 1000, outsideHours: false });
+assert.equal(danglingSim.actions.filter((action) => action.type === "menu").length, 1);
+assert.equal(danglingSim.run?.nodeId, "menu");
+const queueNotice = stepFlow(
+  {
+    id: "queue-only",
+    name: "Fila",
+    graph: {
+      nodes: [
+        { id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" },
+        { id: "q", label: "Encaminhar à fila", kind: "Ação", content: "" },
+      ],
+      edges: [{ source: "t", target: "q" }],
+    },
+  },
+  null,
+  { text: "oi", at: noon, outsideHours: false },
+);
+assert.equal(
+  queueNotice.actions.some(
+    (action) =>
+      action.type === "send" &&
+      action.text.includes("encaminhar para um atendente"),
+  ),
+  true,
+);
+assert.equal(queueNotice.actions.some((action) => action.type === "queue"), true);
 const secondHello = startInboundFlow([repeatMenuFlow], { text: "segunda mensagem", outsideHours: false, run: { flowId: "menu", nodeId: "ask", status: "done", waitUntil: 0, lastAnswer: "Ana" }, at: noon + 3000 });
 assert.equal(secondHello?.step.actions.filter((action) => action.type === "menu").length, 1);

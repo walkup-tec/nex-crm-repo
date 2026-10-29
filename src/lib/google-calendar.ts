@@ -204,10 +204,20 @@ export type MeetingCalendarDay = {
   windows: MeetingWindow[];
 };
 
-export function meetingCalendar(now = Date.now(), count = 30): MeetingCalendarDay[] {
-  const today = saoPauloDate(now);
-  return Array.from({ length: count }, (_, index) => {
-    const date = shiftDate(today, index);
+export const meetingCalendarWeeks = 4;
+
+function mondayOfWeek(date: string) {
+  const weekday = new Date(`${date}T12:00:00-03:00`).getUTCDay();
+  const offset = weekday === 0 ? -6 : 1 - weekday;
+  return shiftDate(date, offset);
+}
+
+export function meetingCalendar(now = Date.now(), weeks = meetingCalendarWeeks): MeetingCalendarDay[] {
+  const monday = mondayOfWeek(saoPauloDate(now));
+  return Array.from({ length: weeks * 5 }, (_, index) => {
+    const week = Math.floor(index / 5);
+    const weekday = index % 5;
+    const date = shiftDate(monday, week * 7 + weekday);
     const parsed = new Date(`${date}T12:00:00-03:00`);
     const title = `${new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, weekday: "short" }).format(parsed)} ${new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, day: "2-digit", month: "2-digit" }).format(parsed)}`;
     const windows = meetingWindowStarts(date).flatMap((hour) => {

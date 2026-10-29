@@ -145,7 +145,7 @@ export function RequestMeetingButton() {
                 </label>
               </>
             ) : (
-              <p className="composer-error">Não há horário disponível nos próximos 30 dias.</p>
+              <p className="composer-error">Não há horário disponível nas próximas 4 semanas.</p>
             )}
             <p className="meeting-zone">Horário de Brasília.</p>
             <label>

@@ -331,7 +331,7 @@ export function CalendarMeetings() {
         <span className="is-occupied">Ocupado</span>
         <span className="is-past">Encerrado</span>
       </div>
-      <p className="meeting-zone">Próximos 30 dias, no horário de Brasília.</p>
+      <p className="meeting-zone">Segunda a sexta, 4 semanas · horário de Brasília.</p>
       <div className="agenda-month">
         {days.map((day) => (
           <article className={`agenda-day${day.closed ? " is-closed" : ""}`} key={day.date}>

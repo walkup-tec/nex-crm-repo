@@ -109,6 +109,7 @@ async function rememberBalance(
   accountRowId: string,
   cents: number | null,
   ledger: ReturnType<typeof creditTopupLedger> | { manualCredit: false; entries: [] },
+  required = false,
 ) {
   const update: {
     prepaid_ledger: typeof ledger;
@@ -133,9 +134,12 @@ async function rememberBalance(
       })
       .eq("id", accountRowId);
     if (!fallback.error) return;
-    fail("Não foi possível gravar o saldo da recarga.");
+    if (required) fail("Não foi possível gravar o saldo da recarga.");
+    console.error("meta_prepaid_ledger", fallback.error.code ?? "error");
+    return;
   }
-  fail("Não foi possível gravar o saldo da recarga.");
+  if (required) fail("Não foi possível gravar o saldo da recarga.");
+  console.error("meta_prepaid_ledger", error.code ?? "error");
 }
 
 async function readFields(organizationId: string, accountId: string, fields: string) {
@@ -172,7 +176,6 @@ async function readBalance(
   ]);
   const chargeCents = moneyCents(account?.balance);
   if (!topup) {
-    await rememberBalance(accountRowId, null, { manualCredit: false, entries: [] });
     const prepayFlag = account?.is_prepay_account;
     const prepay = typeof prepayFlag === "boolean" ? prepayFlag : null;
     return { availableCents: null as number | null, chargeCents, prepay, paymentError, topup: null };
@@ -286,7 +289,7 @@ export async function registerMetaCreditTopup(userId: string, cents: number) {
   const at = new Date().toISOString();
   const ledger = creditTopupLedger(amount, at);
   // The card shows the added amount right away. Later loads subtract campaign spend.
-  await rememberBalance(account.id, amount, ledger);
+  await rememberBalance(account.id, amount, ledger, true);
   return {
     balanceCents: amount,
     creditTopupAt: at,

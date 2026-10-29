@@ -160,6 +160,10 @@ export function ContactRecord({
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const contactRef = useRef(contactId);
   contactRef.current = contactId;
+  const selectedTagIdsRef = useRef<string[]>([]);
+  const selectedProductIdsRef = useRef<string[]>([]);
+  const tagSaveChain = useRef(Promise.resolve());
+  const productSaveChain = useRef(Promise.resolve());
   const [extraOpen, setExtraOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [idCopied, setIdCopied] = useState(false);
@@ -174,6 +178,8 @@ export function ContactRecord({
   }, [contactId]);
 
   function applyProfile(data: ChatbotContactProfile) {
+    selectedTagIdsRef.current = data.tags.filter((item) => item.selected).map((item) => item.id);
+    selectedProductIdsRef.current = data.products.filter((item) => item.selected).map((item) => item.id);
     setProfile(data);
     setDraft(data.name);
     setDocumentDraft(applyMask("doc", data.document));
@@ -222,6 +228,8 @@ export function ContactRecord({
     let active = true;
     void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
       if (!active || !result.ok) return;
+      selectedTagIdsRef.current = result.data.tags.filter((item) => item.selected).map((item) => item.id);
+      selectedProductIdsRef.current = result.data.products.filter((item) => item.selected).map((item) => item.id);
       setProfile(result.data);
     });
     return () => {
@@ -404,12 +412,21 @@ export function ContactRecord({
     }
     setError("");
     const granted = result.data.tag;
-    const tags = granted
-      ? previous.tags.some((item) => item.id === granted.id)
-        ? previous.tags.map((item) => (item.id === granted.id ? { ...item, selected: true } : item))
-        : [...previous.tags, { id: granted.id, name: granted.name, color: granted.color, selected: true }]
-      : previous.tags;
-    setProfile({ ...previous, stage: result.data.stage, tags });
+    if (granted && !selectedTagIdsRef.current.includes(granted.id)) {
+      selectedTagIdsRef.current = [...selectedTagIdsRef.current, granted.id];
+    }
+    const selected = new Set(selectedTagIdsRef.current);
+    setProfile((current) => {
+      const base = current ?? previous;
+      const catalog = granted && !base.tags.some((item) => item.id === granted.id)
+        ? [...base.tags, { id: granted.id, name: granted.name, color: granted.color, selected: true }]
+        : base.tags;
+      return {
+        ...base,
+        stage: result.data.stage,
+        tags: catalog.map((item) => ({ ...item, selected: selected.has(item.id) || item.id === granted?.id })),
+      };
+    });
   }
 
   async function saveOrigin(value: string) {
@@ -428,34 +445,68 @@ export function ContactRecord({
     setProfile({ ...previous, origin: result.data.origin });
   }
 
-  async function toggleTag(tagId: string) {
-    if (!profile) return;
-    const previous = profile;
-    const selected = profile.tags.filter((item) => item.selected).map((item) => item.id);
-    const next = selected.includes(tagId) ? selected.filter((id) => id !== tagId) : [...selected, tagId];
-    setProfile({ ...profile, tags: profile.tags.map((item) => ({ ...item, selected: next.includes(item.id) })) });
-    const result = await setChatbotContactTagsFn({ data: { contactId: profile.id, tagIds: next } });
-    if (!result.ok) {
-      setProfile(previous);
-      setError(result.message);
-      return;
-    }
+  function toggleTag(tagId: string) {
+    if (!profile || !tagId) return;
+    const contactId = profile.id;
+    const next = selectedTagIdsRef.current.includes(tagId)
+      ? selectedTagIdsRef.current.filter((id) => id !== tagId)
+      : [...selectedTagIdsRef.current, tagId];
+    selectedTagIdsRef.current = next;
     setError("");
+    setProfile((current) =>
+      current
+        ? { ...current, tags: current.tags.map((item) => ({ ...item, selected: next.includes(item.id) })) }
+        : current,
+    );
+    tagSaveChain.current = tagSaveChain.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (contactRef.current !== contactId) return;
+        const tagIds = selectedTagIdsRef.current;
+        const result = await setChatbotContactTagsFn({ data: { contactId, tagIds } });
+        if (contactRef.current !== contactId) return;
+        if (result.ok) {
+          setError("");
+          return;
+        }
+        setError(result.message);
+        const refreshed = await chatbotContactProfileFn({ data: { contactId } });
+        if (contactRef.current !== contactId || !refreshed.ok) return;
+        selectedTagIdsRef.current = refreshed.data.tags.filter((item) => item.selected).map((item) => item.id);
+        setProfile((current) => (current ? { ...current, tags: refreshed.data.tags } : current));
+      });
   }
 
-  async function toggleProduct(productId: string) {
-    if (!profile) return;
-    const previous = profile;
-    const selected = profile.products.filter((item) => item.selected).map((item) => item.id);
-    const next = selected.includes(productId) ? selected.filter((id) => id !== productId) : [...selected, productId];
-    setProfile({ ...profile, products: profile.products.map((item) => ({ ...item, selected: next.includes(item.id) })) });
-    const result = await setChatbotContactProductsFn({ data: { contactId: profile.id, productIds: next } });
-    if (!result.ok) {
-      setProfile(previous);
-      setError(result.message);
-      return;
-    }
+  function toggleProduct(productId: string) {
+    if (!profile || !productId) return;
+    const contactId = profile.id;
+    const next = selectedProductIdsRef.current.includes(productId)
+      ? selectedProductIdsRef.current.filter((id) => id !== productId)
+      : [...selectedProductIdsRef.current, productId];
+    selectedProductIdsRef.current = next;
     setError("");
+    setProfile((current) =>
+      current
+        ? { ...current, products: current.products.map((item) => ({ ...item, selected: next.includes(item.id) })) }
+        : current,
+    );
+    productSaveChain.current = productSaveChain.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (contactRef.current !== contactId) return;
+        const productIds = selectedProductIdsRef.current;
+        const result = await setChatbotContactProductsFn({ data: { contactId, productIds } });
+        if (contactRef.current !== contactId) return;
+        if (result.ok) {
+          setError("");
+          return;
+        }
+        setError(result.message);
+        const refreshed = await chatbotContactProfileFn({ data: { contactId } });
+        if (contactRef.current !== contactId || !refreshed.ok) return;
+        selectedProductIdsRef.current = refreshed.data.products.filter((item) => item.selected).map((item) => item.id);
+        setProfile((current) => (current ? { ...current, products: refreshed.data.products } : current));
+      });
   }
 
   return (

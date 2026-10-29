@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
+  centsFromMetaAmount,
   classifyPrepaidRow,
   hasManualTopUp,
   prepaidAvailableCents,
@@ -133,16 +134,30 @@ const transactionFields =
   "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
 const datedTransactionFields = `${transactionFields},billing_end_time,billing_start_time`;
 
+function rowHasAmount(item: unknown) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  const record = item as { app_amount?: unknown; provider_amount?: unknown; amount?: unknown };
+  return (
+    centsFromMetaAmount(record.app_amount) != null ||
+    centsFromMetaAmount(record.provider_amount) != null ||
+    centsFromMetaAmount(record.amount) != null
+  );
+}
+
 async function transactionRows(organizationId: string, accountId: string) {
   const attempts = [
     { limit: "100", fields: datedTransactionFields },
     { limit: "100", fields: transactionFields },
     { limit: "100" },
   ];
+  // Keep the first page whose rows carry a parseable amount. Classification
+  // decides later which rows are prepaid credits/debits, so gating only on a
+  // full classify would throw away a valid payload whenever the manual top-up
+  // or a prepaid charge used an enum value we do not yet recognize.
   for (const params of attempts) {
     try {
       const rows = await listAdAccountEdge(organizationId, accountId, "transactions", params);
-      if (rows.some((item) => classifyPrepaidRow(item))) return rows;
+      if (rows.some((item) => classifyPrepaidRow(item) || rowHasAmount(item))) return rows;
     } catch (error) {
       console.error("meta_transactions", error instanceof Error ? error.name : "error");
     }

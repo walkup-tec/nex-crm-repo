@@ -178,7 +178,13 @@ export function manualTopUp(record: {
 }
 
 export function withinPrepaidHistory(at: string | null, now = Date.now()) {
-  if (!at) return false;
+  // Meta sends time=0 and billing_start_time=billing_end_time=0 for a manual
+  // prepaid top-up (the "Pagamento manual / Com saldo" funding row), so its date
+  // resolves to null even though the billing UI shows a date inside the window.
+  // The balance is always recomputed from the freshly fetched recent transactions
+  // page, so a dateless row still belongs to that page. Keeping it prevents the
+  // sole credit from being erased and collapsing Saldo disponível to null.
+  if (!at) return true;
   const parsed = Date.parse(at);
   if (!Number.isFinite(parsed)) return false;
   const since = now - metaBalanceHistoryDays * 24 * 60 * 60 * 1000;

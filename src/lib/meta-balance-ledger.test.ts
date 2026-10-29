@@ -11,6 +11,7 @@ import {
   readLedger,
   metaBalanceHistorySince,
   shouldUsePrepaidLedger,
+  withinPrepaidHistory,
 } from "./meta-balance-ledger";
 
 assert.equal(centsFromMetaAmount("200,00"), 20000);
@@ -485,5 +486,80 @@ assert.equal(
   }),
   null,
 );
+
+// A dateless row (Meta sends time=0 and billing_*_time=0 for a manual top-up)
+// must still be counted as within the recent window.
+assert.equal(withinPrepaidHistory(null), true);
+assert.equal(withinPrepaidHistory(null, Date.now()), true);
+// A real date outside the 30-day window is still dropped.
+assert.equal(
+  withinPrepaidHistory("2026-08-01T00:00:00.000Z", Date.parse("2026-10-28T23:00:00.000Z")),
+  false,
+);
+
+// Live CP Walkup payload: the manual top-up (the only credit) comes back with
+// time=0 and billing_start_time=billing_end_time=0, so its date is null even
+// though the billing UI shows 7 Oct. The prepaid charges are dated. Before the
+// fix the dateless credit was erased, no credit survived the window filter, and
+// prepaidAvailableCents returned null -> the em dash. It must now be 8551.
+const dashNow = Date.parse("2026-10-28T23:00:00.000Z");
+const dashRows = [
+  {
+    id: "29353659210991639-29241185882238978",
+    status: "completed",
+    payment_option: "stored_balance",
+    app_amount: { amount: "56.75", currency: "BRL" },
+    time: Date.parse("2026-10-28T16:00:00.000Z") / 1000,
+    billing_start_time: 0,
+    billing_end_time: 0,
+  },
+  {
+    id: "29270693555954871-29465309913159899",
+    status: "completed",
+    payment_option: "stored_balance",
+    app_amount: { amount: "24.73", currency: "BRL" },
+    time: Date.parse("2026-10-28T12:00:00.000Z") / 1000,
+    billing_start_time: 0,
+    billing_end_time: 0,
+  },
+  {
+    id: "29373632172327680-29236716052685959",
+    status: "completed",
+    payment_option: "stored_balance",
+    app_amount: { amount: "33.01", currency: "BRL" },
+    time: Date.parse("2026-10-27T15:00:00.000Z") / 1000,
+    billing_start_time: 0,
+    billing_end_time: 0,
+  },
+  {
+    id: "28936639426026954-2913029933327629",
+    status: "completed",
+    payment_option: "manual_payment",
+    app_amount: { amount: "200.00", currency: "BRL" },
+    time: 0,
+    billing_start_time: 0,
+    billing_end_time: 0,
+  },
+  {
+    id: "29007270588963838-28916370761387158",
+    status: "failed",
+    payment_option: "manual_payment",
+    app_amount: { amount: "500.00", currency: "BRL" },
+    time: 0,
+    billing_start_time: 0,
+    billing_end_time: 0,
+  },
+];
+const dashEntries = dashRows.flatMap((row) => {
+  const entry = classifyPrepaidRow(row);
+  return entry ? [entry] : [];
+});
+const dashCredit = dashEntries.find((entry) => entry.direction === "credit");
+assert.equal(dashCredit?.at, null);
+assert.equal(dashCredit?.cents, 20000);
+assert.equal(dashCredit?.manual, true);
+assert.equal(dashEntries.some((entry) => entry.cents === 50000), false);
+assert.equal(dashEntries.filter((entry) => entry.direction === "debit").length, 3);
+assert.equal(prepaidAvailableCents(dashEntries, dashNow), 8551);
 
 console.log("meta-balance-ledger tests ok");

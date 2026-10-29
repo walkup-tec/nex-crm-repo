@@ -161,15 +161,23 @@ export function meetingGuests(leadEmail: string, extra: string, organizerEmail =
   return { lead, emails } as const;
 }
 
-export const standardMeetingMinutes = 60;
+export const standardMeetingMinutes = 30;
+
+function padTimePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function halfHourTimes(hours: number[]) {
+  return hours.flatMap((hour) => [`${padTimePart(hour)}:00`, `${padTimePart(hour)}:30`]);
+}
 
 export function meetingWindowStarts(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [] as string[];
   const weekday = new Date(`${date}T12:00:00-03:00`).getUTCDay();
-  if (weekday === 1) return [13, 14, 15];
-  if (weekday >= 2 && weekday <= 4) return [9, 10, 11, 12, 13, 14, 15];
-  if (weekday === 5) return [9, 10, 11];
-  return [];
+  if (weekday === 1) return halfHourTimes([13, 14, 15]);
+  if (weekday >= 2 && weekday <= 4) return halfHourTimes([9, 10, 11, 12, 13, 14, 15]);
+  if (weekday === 5) return halfHourTimes([9, 10, 11]);
+  return [] as string[];
 }
 
 function saoPauloDate(instant: number) {
@@ -180,8 +188,10 @@ function shiftDate(date: string, days: number) {
   return saoPauloDate(Date.parse(`${date}T12:00:00-03:00`) + days * 24 * 60 * 60 * 1000);
 }
 
-function windowBounds(date: string, hour: number) {
-  const start = Date.parse(`${date}T${String(hour).padStart(2, "0")}:00:00-03:00`);
+function windowBounds(date: string, time: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return null;
+  const start = Date.parse(`${date}T${match[1]}:${match[2]}:00-03:00`);
   if (!Number.isFinite(start)) return null;
   return { start: new Date(start).toISOString(), end: new Date(start + standardMeetingMinutes * 60_000).toISOString() };
 }
@@ -220,11 +230,16 @@ export function meetingCalendar(now = Date.now(), weeks = meetingCalendarWeeks):
     const date = shiftDate(monday, week * 7 + weekday);
     const parsed = new Date(`${date}T12:00:00-03:00`);
     const title = `${new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, weekday: "short" }).format(parsed)} ${new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, day: "2-digit", month: "2-digit" }).format(parsed)}`;
-    const windows = meetingWindowStarts(date).flatMap((hour) => {
-      const bounds = windowBounds(date, hour);
+    const windows = meetingWindowStarts(date).flatMap((time) => {
+      const bounds = windowBounds(date, time);
       if (!bounds) return [];
-      const time = `${String(hour).padStart(2, "0")}:00`;
-      const finish = `${String(hour + 1).padStart(2, "0")}:00`;
+      const finishAt = Date.parse(bounds.end);
+      const finish = new Intl.DateTimeFormat("en-GB", {
+        timeZone: meetingTimeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(finishAt));
       return [{
         time,
         label: `${time}–${finish}`,
@@ -283,10 +298,12 @@ export function meetingForWindow<T extends { status: string; startAt: string; en
 
 export function meetingSlot(input: { date: string; time: string }, now = Date.now()) {
   const match = /^(\d{2}):(\d{2})$/.exec(input.time);
-  if (!match || Number(match[2]) !== 0) return null;
+  if (!match) return null;
   const hour = Number(match[1]);
-  if (!meetingWindowStarts(input.date).includes(hour)) return null;
-  const start = returnInstant({ date: input.date, hour, minute: 0 }, now);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || (minute !== 0 && minute !== 30)) return null;
+  if (!meetingWindowStarts(input.date).includes(input.time)) return null;
+  const start = returnInstant({ date: input.date, hour, minute }, now);
   if (!start) return null;
   return { start, end: new Date(Date.parse(start) + standardMeetingMinutes * 60_000).toISOString(), duration: standardMeetingMinutes };
 }

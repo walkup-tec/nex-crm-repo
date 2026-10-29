@@ -72,14 +72,30 @@ assert.deepEqual(meetingGuests("dono@empresa.com", "", "dono@empresa.com"), { le
 
 const slot = meetingSlot({ date: "2026-10-26", time: "13:00" }, now);
 assert.equal(slot?.start, "2026-10-26T16:00:00.000Z");
-assert.equal(slot?.end, "2026-10-26T17:00:00.000Z");
-assert.equal(slot?.duration, 60);
+assert.equal(slot?.end, "2026-10-26T16:30:00.000Z");
+assert.equal(slot?.duration, 30);
+assert.equal(meetingSlot({ date: "2026-10-26", time: "13:30" }, now)?.start, "2026-10-26T16:30:00.000Z");
 assert.equal(meetingSlot({ date: "2026-10-23", time: "11:00" }, now), null);
 assert.equal(meetingSlot({ date: "2026-10-23", time: "15:00" }, now), null);
 assert.equal(meetingSlot({ date: "2026-10-24", time: "10:00" }, now), null);
-assert.deepEqual(meetingWindowStarts("2026-10-23"), [9, 10, 11]);
-assert.deepEqual(meetingWindowStarts("2026-10-26"), [13, 14, 15]);
-assert.deepEqual(meetingWindowStarts("2026-10-27"), [9, 10, 11, 12, 13, 14, 15]);
+assert.deepEqual(meetingWindowStarts("2026-10-23"), ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30"]);
+assert.deepEqual(meetingWindowStarts("2026-10-26"), ["13:00", "13:30", "14:00", "14:30", "15:00", "15:30"]);
+assert.deepEqual(meetingWindowStarts("2026-10-27"), [
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "12:00",
+  "12:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+]);
 assert.equal(meetingCalendar(now).length, 20);
 assert.equal(meetingCalendar(now)[0]?.date, "2026-10-19");
 assert.equal(meetingCalendar(now)[4]?.date, "2026-10-23");
@@ -90,24 +106,27 @@ assert.equal(meetingCalendar(now).every((day) => {
   return weekday >= 1 && weekday <= 5;
 }), true);
 assert.equal(meetingChoices(now)[0]?.date, "2026-10-26");
-assert.deepEqual(meetingChoices(now)[0]?.times, ["13:00", "14:00", "15:00"]);
-const painted = markMeetingCalendar(meetingCalendar(now), [{ start: "2026-10-26T16:00:00.000Z", end: "2026-10-26T17:00:00.000Z", note: "Marcelo" }]);
+assert.deepEqual(meetingChoices(now)[0]?.times, ["13:00", "13:30", "14:00", "14:30", "15:00", "15:30"]);
+const painted = markMeetingCalendar(meetingCalendar(now), [{ start: "2026-10-26T16:00:00.000Z", end: "2026-10-26T16:30:00.000Z", note: "Marcelo" }]);
 assert.equal(painted.find((day) => day.date === "2026-10-26")?.windows[0]?.state, "occupied");
 assert.equal(painted.find((day) => day.date === "2026-10-26")?.windows[1]?.state, "available");
 assert.equal(
   meetingForWindow(
     [
-      { status: "cancelled", startAt: "2026-10-26T16:00:00.000Z", endAt: "2026-10-26T17:00:00.000Z" },
-      { status: "scheduled", startAt: "2026-10-26T16:00:00.000Z", endAt: "2026-10-26T17:00:00.000Z" },
+      { status: "cancelled", startAt: "2026-10-26T16:00:00.000Z", endAt: "2026-10-26T16:30:00.000Z" },
+      { status: "scheduled", startAt: "2026-10-26T16:00:00.000Z", endAt: "2026-10-26T16:30:00.000Z" },
     ],
     "2026-10-26T16:00:00.000Z",
-    "2026-10-26T17:00:00.000Z",
+    "2026-10-26T16:30:00.000Z",
   )?.status,
   "scheduled",
 );
-assert.equal(meetingForWindow([{ status: "scheduled", startAt: "2026-10-26T17:00:00.000Z", endAt: "2026-10-26T18:00:00.000Z" }], "2026-10-26T16:00:00.000Z", "2026-10-26T17:00:00.000Z"), null);
-assert.deepEqual(meetingChoices(now, painted).find((day) => day.date === "2026-10-26")?.times, ["14:00", "15:00"]);
-assert.deepEqual(meetingChoices(now, releaseMeetingSlot(painted, "2026-10-26T16:00:00.000Z", "2026-10-26T17:00:00.000Z")).find((day) => day.date === "2026-10-26")?.times, ["13:00", "14:00", "15:00"]);
+assert.equal(meetingForWindow([{ status: "scheduled", startAt: "2026-10-26T16:30:00.000Z", endAt: "2026-10-26T17:00:00.000Z" }], "2026-10-26T16:00:00.000Z", "2026-10-26T16:30:00.000Z"), null);
+assert.deepEqual(meetingChoices(now, painted).find((day) => day.date === "2026-10-26")?.times, ["13:30", "14:00", "14:30", "15:00", "15:30"]);
+assert.deepEqual(
+  meetingChoices(now, releaseMeetingSlot(painted, "2026-10-26T16:00:00.000Z", "2026-10-26T16:30:00.000Z")).find((day) => day.date === "2026-10-26")?.times,
+  ["13:00", "13:30", "14:00", "14:30", "15:00", "15:30"],
+);
 assert.deepEqual(agendaEmailList([{ email: " Ana@Empresa.com ", attendees: ["maria@empresa.com", "ana@empresa.com"] }]), ["ana@empresa.com", "maria@empresa.com"]);
 assert.deepEqual(lastMeetingFields({ email: " Mozart@Hotmart.com ", attendees: ["mozart@hotmart.com", "maria@empresa.com", "maria@empresa.com"] }), { email: "mozart@hotmart.com", attendees: "maria@empresa.com" });
 assert.deepEqual(lastMeetingFields({ email: "", attendees: ["ana@empresa.com"] }), { email: "ana@empresa.com", attendees: "" });

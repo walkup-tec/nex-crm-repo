@@ -3,10 +3,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import stepAccount from "@/assets/meta-saldo-etapa-1.webp";
 import stepPayment from "@/assets/meta-saldo-etapa-2.webp";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { isLowMetaBalance } from "@/lib/low-balance";
-import { getMetaCreditFn, startFacebookLoginFn } from "@/lib/meta-credit.functions";
-import type { MetaCreditView } from "@/lib/meta-credit";
+import { applyMask } from "@/lib/masks";
+import {
+  getMetaCreditFn,
+  registerMetaCreditTopupFn,
+  startFacebookLoginFn,
+} from "@/lib/meta-credit.functions";
+import { centsFromMoneyInput, type MetaCreditView } from "@/lib/meta-credit";
 
 const guide = [
   {
@@ -107,7 +113,14 @@ export function MetaCredits() {
   const [loginError, setLoginError] = useState("");
   const [entering, setEntering] = useState(false);
   const [showReads, setShowReads] = useState(false);
+  const [amountText, setAmountText] = useState("");
+  const [showPaymentDone, setShowPaymentDone] = useState(false);
+  const [savingTopup, setSavingTopup] = useState(false);
+  const [topupNote, setTopupNote] = useState("");
   const watchRef = useRef<number | null>(null);
+  const paymentTimerRef = useRef<number | null>(null);
+
+  const amountCents = centsFromMoneyInput(amountText);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,12 +162,20 @@ export function MetaCredits() {
     return () => {
       window.removeEventListener("message", onMessage);
       if (watchRef.current) window.clearInterval(watchRef.current);
+      if (paymentTimerRef.current) window.clearTimeout(paymentTimerRef.current);
     };
   }, []);
 
   const enter = () => {
     setEntering(true);
     setLoginError("");
+    setTopupNote("");
+    setShowPaymentDone(false);
+    if (paymentTimerRef.current) window.clearTimeout(paymentTimerRef.current);
+    paymentTimerRef.current = window.setTimeout(() => {
+      setShowPaymentDone(true);
+      paymentTimerRef.current = null;
+    }, 8000);
     const width = 520;
     const height = 720;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
@@ -196,20 +217,62 @@ export function MetaCredits() {
     })();
   };
 
+  const finishPayment = () => {
+    if (amountCents == null) {
+      setTopupNote("Informe o valor da recarga antes de finalizar.");
+      return;
+    }
+    setSavingTopup(true);
+    setTopupNote("");
+    void (async () => {
+      try {
+        const result = await registerMetaCreditTopupFn({ data: { cents: amountCents } });
+        if (!result.ok) {
+          setTopupNote(result.message);
+          return;
+        }
+        setTopupNote("Pagamento registrado.");
+        setShowPaymentDone(false);
+        await load();
+      } catch {
+        setTopupNote("Não foi possível registrar o pagamento. Tente de novo.");
+      } finally {
+        setSavingTopup(false);
+      }
+    })();
+  };
+
   const href = normalizeBalanceLink(view?.balanceUrl ?? "");
   const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn);
-  const lowBalance = isLowMetaBalance(view?.balanceCents);
+  const lowBalance =
+    isLowMetaBalance(view?.balanceCents) ||
+    view?.paymentError === true ||
+    (view != null && view.creditTopupCents == null);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
       <section className="order-1 rounded-lg border bg-card p-5 lg:col-start-1 lg:row-start-1">
         <h2 className="font-display text-lg font-semibold">Adicionar saldo</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Entre com o Facebook. Em seguida, abra a página da Meta em que o saldo desta conta de
-          anúncio é adicionado.
+          Informe o valor da recarga, entre com o Facebook e, depois do pagamento na Meta, confirme
+          em Pagamento Finalizado.
         </p>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          {!loggedIn && (
+        <div className="mt-5 max-w-xs">
+          <label className="text-sm font-medium" htmlFor="meta-credit-amount">
+            Informe o valor
+          </label>
+          <Input
+            id="meta-credit-amount"
+            className="mt-2"
+            inputMode="numeric"
+            placeholder="R$ 0,00"
+            value={amountText}
+            disabled={!view?.canAdd || loading || savingTopup}
+            onChange={(event) => setAmountText(applyMask("money", event.target.value))}
+          />
+        </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          {amountCents != null && !loggedIn && (
             <Button
               type="button"
               onClick={enter}
@@ -227,8 +290,28 @@ export function MetaCredits() {
               </a>
             </Button>
           )}
+          {showPaymentDone && amountCents != null && (
+            <Button
+              type="button"
+              onClick={finishPayment}
+              disabled={!view?.canAdd || savingTopup}
+            >
+              {savingTopup ? "Registrando..." : "Pagamento Finalizado"}
+            </Button>
+          )}
         </div>
         {loggedIn && <p className="mt-4 text-sm text-muted-foreground">Facebook conectado.</p>}
+        {topupNote && (
+          <p
+            className={
+              topupNote === "Pagamento registrado."
+                ? "mt-4 text-sm text-muted-foreground"
+                : "mt-4 text-sm text-destructive"
+            }
+          >
+            {topupNote}
+          </p>
+        )}
         {view && !view.canAdd && (
           <p className="mt-4 text-sm text-muted-foreground">
             Seu acesso pode consultar o saldo, mas não pode adicionar saldo.
@@ -278,7 +361,11 @@ export function MetaCredits() {
           <strong className="mt-2 block font-display text-3xl">
             {money(view?.balanceCents ?? null, view?.currency || "BRL")}
           </strong>
-          <p className="mt-2 text-xs opacity-80">Lançamentos dos últimos 30 dias.</p>
+          <p className="mt-2 text-xs opacity-80">
+            {view?.creditTopupCents != null
+              ? "Recarga registrada menos o gasto das campanhas ativas."
+              : "Sem recarga registrada."}
+          </p>
           <p className="mt-4 flex items-center gap-2 text-sm opacity-80">
             <CreditCard className="size-4" />
             Saldo a cobrar
@@ -320,7 +407,7 @@ export function MetaCredits() {
         <h2 className="mt-2 font-display text-lg font-semibold">O que fazer depois de entrar</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Depois de entrar, clique em Adicionar saldo. Na conta de anúncios da Meta, siga estes dois
-          passos.
+          passos. Ao concluir o pagamento, volte e clique em Pagamento Finalizado.
         </p>
         <ol className="mt-5 grid grid-cols-1 items-start gap-4 md:grid-cols-12">
           {guide.map((item) => (

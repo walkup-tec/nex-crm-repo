@@ -4,6 +4,7 @@ import { normalizeBalanceLink } from "@/lib/balance-link";
 import { clientDisplayName } from "@/lib/client-access";
 import { sanitizeMetaDebug } from "@/lib/meta-balance-debug";
 import { sanitizeAccountProbe, sanitizeProbeMessage } from "@/lib/meta-balance-probe";
+import { insightSpendToCents } from "@/lib/meta-credit-topup";
 import {
   assembleTransactionDiagnosis,
   rejectedTransactionField,
@@ -558,6 +559,41 @@ export async function listAdAccountEdge(
     if (!next) break;
   }
   return rows;
+}
+
+export async function activeCampaignSpendCents(
+  organizationId: string,
+  accountId: string,
+  since: string,
+  until: string,
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) return 0;
+  const rows = await listAdAccountEdge(organizationId, accountId, "campaigns", {
+    fields: `id,effective_status,insights.time_range({"since":"${since}","until":"${until}"}){spend}`,
+    effective_status: JSON.stringify(["ACTIVE"]),
+    limit: "100",
+  });
+  let total = 0;
+  for (const row of rows) {
+    if (row.effective_status && row.effective_status !== "ACTIVE") continue;
+    const insights = row.insights as { data?: { spend?: unknown }[] } | undefined;
+    total += insightSpendToCents(insights?.data?.[0]?.spend);
+  }
+  return total;
+}
+
+export async function hasBillingPaymentError(organizationId: string, accountId: string) {
+  try {
+    const rows = await listAdAccountEdge(organizationId, accountId, "campaigns", {
+      fields: "id,effective_status",
+      effective_status: JSON.stringify(["PENDING_BILLING_INFO"]),
+      limit: "25",
+    });
+    return rows.some((row) => row.effective_status === "PENDING_BILLING_INFO");
+  } catch (error) {
+    console.error("meta_billing_status", error instanceof Error ? error.name : "error");
+    return false;
+  }
 }
 
 async function loadToken(organizationId: string) {

@@ -19,6 +19,9 @@ export type MetaCreditView = {
   syncedAt: string | null;
   prepay: boolean | null;
   balanceUrl: string | null;
+  paymentError: boolean;
+  creditTopupAt: string | null;
+  creditTopupCents: number | null;
 };
 
 export type FundingSource = {

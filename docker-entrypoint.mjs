@@ -1,7 +1,7 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 
-const NEX_DEPLOY = "NEX-DEPLOY-CORPO";
+const NEX_DEPLOY = "NEX-DEPLOY-REGISTRO";
 const SHUTDOWN_GRACE_MS = 20000;
 const servers = new Set();
 

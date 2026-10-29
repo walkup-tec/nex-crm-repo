@@ -51,7 +51,21 @@ function WhatsAppIcon() {
   );
 }
 
-export function LowBalanceBell({ low, supervisor = false, connectionProblems = [] }: { low: boolean; supervisor?: boolean; connectionProblems?: MetaConnectionProblem[] }) {
+export function LowBalanceBell({
+  low,
+  missingTopup = false,
+  balanceLow = false,
+  paymentError = false,
+  supervisor = false,
+  connectionProblems = [],
+}: {
+  low: boolean;
+  missingTopup?: boolean;
+  balanceLow?: boolean;
+  paymentError?: boolean;
+  supervisor?: boolean;
+  connectionProblems?: MetaConnectionProblem[];
+}) {
   const navigate = useNavigate();
   const [incoming, setIncoming] = useState<QueueLead[]>([]);
   const [serverOffline, setServerOffline] = useState(false);
@@ -84,7 +98,13 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
       const sourceLeads = loaded ? incoming : current.queue.map((id) => ({ conversationId: id }));
       const sourceOffline = loaded ? serverOffline : current.offline;
       const next = applyClearedNotices(sourceLeads, sourceOffline, low, current).cleared;
-      if (next.queue.join("\n") === current.queue.join("\n") && next.offline === current.offline && next.balance === current.balance) return current;
+      if (
+        next.queue.join("\n") === current.queue.join("\n") &&
+        next.offline === current.offline &&
+        next.balance === current.balance
+      ) {
+        return current;
+      }
       rememberNotices(next);
       return next;
     });
@@ -113,7 +133,12 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
   }
 
   function clearAll() {
-    const next = clearVisibleNotices(leads.map((lead) => lead.conversationId), offline, view.low, cleared);
+    const next = clearVisibleNotices(
+      leads.map((lead) => lead.conversationId),
+      offline,
+      view.low,
+      cleared,
+    );
     rememberNotices(next);
     setCleared(next);
     setOpen(false);
@@ -121,10 +146,13 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
 
   const waiting = supervisor && leads.length > 0;
   const unavailable = supervisor && offline;
-  const showLow = view.low;
+  const showMeta = view.low;
+  const showMissing = showMeta && missingTopup;
+  const showBalance = showMeta && balanceLow && !missingTopup;
+  const showPayment = showMeta && paymentError;
   const broken = connectionProblems.length > 0;
   const attention = waiting || unavailable || broken;
-  if (!showLow && !attention) {
+  if (!showMeta && !attention) {
     return (
       <Button variant="ghost" size="icon" aria-label="Notificações">
         <Bell />
@@ -132,16 +160,32 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
     );
   }
 
+  const label = broken
+    ? "Conexão da Meta com problema"
+    : unavailable && waiting
+      ? "Leads na fila e nenhum atendente online"
+      : unavailable
+        ? "Nenhum atendente online"
+        : waiting
+          ? "Leads aguardando além do tempo da fila"
+          : showPayment
+            ? "Campanha parada por falta de pagamento"
+            : showMissing
+              ? "Saldo Meta sem registro"
+              : "Saldo Meta baixo";
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          aria-label={broken ? "Conexão da Meta com problema" : unavailable && waiting ? "Leads na fila e nenhum atendente online" : unavailable ? "Nenhum atendente online" : waiting ? "Leads aguardando além do tempo da fila" : "Saldo Meta baixo"}
+          aria-label={label}
           className={attention ? "relative text-warning" : "relative text-destructive"}
         >
-          <span className={`absolute inset-1 rounded-full ${attention ? "animate-warning-wave" : "animate-balance-wave"}`} />
+          <span
+            className={`absolute inset-1 rounded-full ${attention ? "animate-warning-wave" : "animate-balance-wave"}`}
+          />
           <Bell />
           {broken ? (
             <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[10px] font-bold text-background">
@@ -157,8 +201,13 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
       <PopoverContent align="end" className="w-80">
         <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
           <p className="text-sm font-semibold">Notificações</p>
-          {waiting || unavailable || showLow ? (
-            <Button type="button" variant="ghost" className="h-8 px-2 text-xs font-medium text-primary" onClick={clearAll}>
+          {waiting || unavailable || showMeta ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 px-2 text-xs font-medium text-primary"
+              onClick={clearAll}
+            >
               Limpar tudo
             </Button>
           ) : null}
@@ -166,7 +215,9 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
         {unavailable ? (
           <div className={waiting ? "mb-4 border-b pb-4" : ""}>
             <p className="text-sm font-semibold">Nenhum atendente online</p>
-            <p className="mt-2 text-sm text-muted-foreground">Não há atendente com o chatbot aberto.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Não há atendente com o chatbot aberto.
+            </p>
           </div>
         ) : null}
         {waiting ? (
@@ -176,7 +227,9 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
               <div key={lead.conversationId} className="grid gap-2 border-t pt-3">
                 <div>
                   <p className="text-sm font-semibold">{lead.name}</p>
-                  <p className="text-xs text-muted-foreground">Aguardando há {lead.waitingMinutes} min</p>
+                  <p className="text-xs text-muted-foreground">
+                    Aguardando há {lead.waitingMinutes} min
+                  </p>
                 </div>
                 <Button
                   type="button"
@@ -194,7 +247,7 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
           </div>
         ) : null}
         {broken ? (
-          <div className={waiting || unavailable || showLow ? "mb-4 border-b pb-4" : ""}>
+          <div className={waiting || unavailable || showMeta ? "mb-4 border-b pb-4" : ""}>
             <p className="text-sm font-semibold text-warning">Conexão da Meta</p>
             <div className="mt-3 grid gap-3">
               {connectionProblems.map((item) => (
@@ -209,12 +262,46 @@ export function LowBalanceBell({ low, supervisor = false, connectionProblems = [
             </Button>
           </div>
         ) : null}
-        {showLow ? (
-          <div className={waiting ? "mt-4 border-t pt-4" : ""}>
+        {showPayment ? (
+          <div className={waiting || unavailable || broken ? "mt-4 border-t pt-4" : ""}>
+            <p className="text-sm font-semibold text-destructive">
+              Campanha parada por falta de pagamento
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              A Meta sinalizou erro de pagamento em uma campanha desta conta.
+            </p>
+            <Button asChild className="mt-4 w-full">
+              <Link to="/creditos-meta">Adicione Saldo</Link>
+            </Button>
+          </div>
+        ) : null}
+        {showMissing ? (
+          <div
+            className={
+              waiting || unavailable || broken || showPayment ? "mt-4 border-t pt-4" : ""
+            }
+          >
+            <p className="text-sm font-semibold text-destructive">Saldo Meta sem registro</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Informe o valor da recarga e clique em Pagamento Finalizado para atualizar o saldo.
+            </p>
+            <Button asChild className="mt-4 w-full">
+              <Link to="/creditos-meta">Adicionar saldo</Link>
+            </Button>
+          </div>
+        ) : null}
+        {showBalance ? (
+          <div
+            className={
+              waiting || unavailable || broken || showPayment || showMissing
+                ? "mt-4 border-t pt-4"
+                : ""
+            }
+          >
             <p className="text-sm font-semibold text-destructive">Saldo Meta baixo</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              O saldo de anúncios da Meta está em R$ 50,00 ou menos. O aviso permanece até o saldo ficar
-              maior que R$ 50,00.
+              O saldo de anúncios da Meta está em R$ 50,00 ou menos. O aviso permanece até o saldo
+              ficar maior que R$ 50,00.
             </p>
             <Button asChild className="mt-4 w-full">
               <Link to="/creditos-meta">Adicionar saldo</Link>

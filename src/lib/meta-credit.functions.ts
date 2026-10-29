@@ -47,3 +47,11 @@ export const startFacebookLoginFn = createServerFn({ method: "POST" })
     const { startFacebookLogin } = await import("@/server/meta-credit.server");
     return guard(() => startFacebookLogin(context.userId));
   });
+
+export const registerMetaCreditTopupFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { cents: number }) => data)
+  .handler(async ({ context, data }) => {
+    const { registerMetaCreditTopup } = await import("@/server/meta-credit.server");
+    return guard(() => registerMetaCreditTopup(context.userId, data.cents));
+  });

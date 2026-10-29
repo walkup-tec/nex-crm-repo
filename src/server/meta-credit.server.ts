@@ -1,17 +1,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
-  centsFromMetaAmount,
-  classifyPrepaidRow,
-  hasManualTopUp,
-  prepaidAvailableCents,
-  type LedgerEntry,
-} from "@/lib/meta-balance-ledger";
-import {
-  isLowMetaBalance,
   lowBalanceAlertStamp,
   lowBalanceAlreadyDelivered,
-  lowBalanceSignal,
   shouldSendLowBalanceWhatsapp,
   whatsappNumber,
 } from "@/lib/low-balance";
@@ -20,8 +11,17 @@ import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
 import { formatMetaFieldRead, type MetaFieldReport } from "@/lib/meta-balance-debug";
 import { moneyCents, type MetaCreditView } from "@/lib/meta-credit";
 import {
+  availableFromRegisteredCredit,
+  creditTopupLedger,
+  metaCreditAlertState,
+  readCreditTopup,
+  todayDate,
+  topupSinceDate,
+} from "@/lib/meta-credit-topup";
+import {
+  activeCampaignSpendCents,
   debugMetaRead,
-  listAdAccountEdge,
+  hasBillingPaymentError,
   readAdAccountNode,
   startSimpleFacebookLogin,
 } from "@/server/meta.server";
@@ -108,11 +108,15 @@ async function selectedAccount(organizationId: string) {
 async function rememberBalance(
   accountRowId: string,
   cents: number | null,
-  entries: LedgerEntry[],
-  manualCredit: boolean,
+  ledger: ReturnType<typeof creditTopupLedger> | { manualCredit: false; entries: [] },
 ) {
-  const update: { prepaid_ledger: { entries: LedgerEntry[]; manualCredit: boolean }; last_synced_at: string; sync_status: string; balance_cents?: number } = {
-    prepaid_ledger: { entries, manualCredit },
+  const update: {
+    prepaid_ledger: typeof ledger;
+    last_synced_at: string;
+    sync_status: string;
+    balance_cents?: number;
+  } = {
+    prepaid_ledger: ledger,
     last_synced_at: new Date().toISOString(),
     sync_status: "synced",
   };
@@ -130,45 +134,6 @@ async function rememberBalance(
   }
 }
 
-const transactionFields =
-  "id,time,status,payment_option,charge_type,is_funding_event,billing_reason,app_amount,provider_amount,tracking_id";
-const datedTransactionFields = `${transactionFields},billing_end_time,billing_start_time`;
-
-function rowHasAmount(item: unknown) {
-  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
-  const record = item as { app_amount?: unknown; provider_amount?: unknown; amount?: unknown };
-  return (
-    centsFromMetaAmount(record.app_amount) != null ||
-    centsFromMetaAmount(record.provider_amount) != null ||
-    centsFromMetaAmount(record.amount) != null
-  );
-}
-
-async function transactionRows(organizationId: string, accountId: string) {
-  const attempts = [
-    { limit: "100", fields: datedTransactionFields },
-    { limit: "100", fields: transactionFields },
-    { limit: "100" },
-  ];
-  // Keep the first page whose rows carry a parseable amount. Classification
-  // decides later which rows are prepaid credits/debits, so gating only on a
-  // full classify would throw away a valid payload whenever the manual top-up
-  // or a prepaid charge used an enum value we do not yet recognize.
-  for (const params of attempts) {
-    try {
-      const rows = await listAdAccountEdge(organizationId, accountId, "transactions", params);
-      if (rows.some((item) => classifyPrepaidRow(item) || rowHasAmount(item))) return rows;
-    } catch (error) {
-      console.error("meta_transactions", error instanceof Error ? error.name : "error");
-    }
-  }
-  return [];
-}
-
-async function paymentRows(organizationId: string, accountId: string) {
-  return transactionRows(organizationId, accountId);
-}
-
 async function readFields(organizationId: string, accountId: string, fields: string) {
   try {
     return (await readAdAccountNode(organizationId, accountId, fields)) as Record<string, unknown>;
@@ -178,24 +143,42 @@ async function readFields(organizationId: string, accountId: string, fields: str
   }
 }
 
-async function readBalance(organizationId: string, accountId: string, accountRowId: string) {
-  const [account, rows] = await Promise.all([
-    readFields(organizationId, accountId, "name,account_id,currency,balance,is_prepay_account"),
-    paymentRows(organizationId, accountId),
-  ]);
-  if (!account && rows.length === 0) {
-    throw new Error("A Meta não respondeu como esperado. Tente de novo.");
+async function spentSinceTopup(organizationId: string, accountId: string, creditedAt: string) {
+  const since = topupSinceDate(creditedAt);
+  const until = todayDate();
+  if (!since || !until) return 0;
+  try {
+    return await activeCampaignSpendCents(organizationId, accountId, since, until);
+  } catch (error) {
+    console.error("meta_campaign_spend", error instanceof Error ? error.name : "error");
+    return 0;
   }
-  const entries = rows.flatMap((item) => {
-    const entry = classifyPrepaidRow(item);
-    return entry ? [entry] : [];
-  });
-  const availableCents = prepaidAvailableCents(entries);
+}
+
+async function readBalance(
+  organizationId: string,
+  accountId: string,
+  accountRowId: string,
+  prepaidLedger: unknown,
+) {
+  const topup = readCreditTopup(prepaidLedger);
+  const [account, paymentError] = await Promise.all([
+    readFields(organizationId, accountId, "name,account_id,currency,balance,is_prepay_account"),
+    hasBillingPaymentError(organizationId, accountId),
+  ]);
   const chargeCents = moneyCents(account?.balance);
-  await rememberBalance(accountRowId, availableCents, entries, hasManualTopUp(entries));
+  if (!topup) {
+    await rememberBalance(accountRowId, null, { manualCredit: false, entries: [] });
+    const prepayFlag = account?.is_prepay_account;
+    const prepay = typeof prepayFlag === "boolean" ? prepayFlag : null;
+    return { availableCents: null as number | null, chargeCents, prepay, paymentError, topup: null };
+  }
+  const spentCents = await spentSinceTopup(organizationId, accountId, topup.at);
+  const availableCents = availableFromRegisteredCredit(topup.cents, spentCents);
+  await rememberBalance(accountRowId, availableCents, creditTopupLedger(topup.cents, topup.at));
   const prepayFlag = account?.is_prepay_account;
   const prepay = typeof prepayFlag === "boolean" ? prepayFlag : null;
-  return { availableCents, chargeCents, prepay };
+  return { availableCents, chargeCents, prepay, paymentError, topup };
 }
 
 function emptyView(canAdd: boolean): MetaCreditView {
@@ -213,6 +196,9 @@ function emptyView(canAdd: boolean): MetaCreditView {
     syncedAt: null,
     prepay: null,
     balanceUrl: null,
+    paymentError: false,
+    creditTopupAt: null,
+    creditTopupCents: null,
   };
 }
 
@@ -221,10 +207,11 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
   const canDebug = await mmsMaster(actor.organizationId, actor.role);
   const account = await selectedAccount(actor.organizationId);
   if (!account) return { ...emptyView(actor.canAdd), canDebug };
-  const { availableCents, chargeCents, prepay } = await readBalance(
+  const { availableCents, chargeCents, prepay, paymentError, topup } = await readBalance(
     actor.organizationId,
     account.external_account_id,
     account.id,
+    account.prepaid_ledger,
   );
   return {
     accountName: account.name,
@@ -242,6 +229,9 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     syncedAt: new Date().toISOString(),
     prepay,
     balanceUrl: normalizeBalanceLink(account.balance_url ?? ""),
+    paymentError,
+    creditTopupAt: topup?.at ?? null,
+    creditTopupCents: topup?.cents ?? null,
   };
 }
 
@@ -282,22 +272,49 @@ async function readMetaFields(organizationId: string, accountId: string): Promis
   );
 }
 
+export async function registerMetaCreditTopup(userId: string, cents: number) {
+  const actor = await actorOf(userId);
+  if (!actor.canAdd) fail("Você não tem permissão para adicionar saldo.");
+  if (!Number.isInteger(cents) || cents <= 0) fail("Informe o valor da recarga.");
+  const account = await selectedAccount(actor.organizationId);
+  if (!account) fail("Nenhuma conta de anúncio está integrada a este acesso.");
+  const at = new Date().toISOString();
+  const ledger = creditTopupLedger(cents, at);
+  const spentCents = await spentSinceTopup(
+    actor.organizationId,
+    account.external_account_id,
+    at,
+  );
+  const availableCents = availableFromRegisteredCredit(cents, spentCents) ?? cents;
+  await rememberBalance(account.id, availableCents, ledger);
+  return {
+    balanceCents: availableCents,
+    creditTopupAt: at,
+    creditTopupCents: cents,
+  };
+}
+
 export async function getClientBalanceAlert(userId: string) {
+  const empty = {
+    low: false,
+    cents: null as number | null,
+    missingTopup: false,
+    balanceLow: false,
+    paymentError: false,
+  };
   const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select("organization_id, is_blocked")
     .eq("id", userId)
     .maybeSingle();
-  if (profileError || !profile?.organization_id || profile.is_blocked) {
-    return { low: false, cents: null };
-  }
+  if (profileError || !profile?.organization_id || profile.is_blocked) return empty;
   const { data: roles, error: roleError } = await supabaseAdmin
     .from("user_roles")
     .select("role")
     .eq("user_id", userId);
   const admin = (roles ?? []).some((row) => row.role === "client_admin" || row.role === "master");
   const attendant = (roles ?? []).some((row) => row.role === "client_user");
-  if (roleError || (!admin && !attendant)) return { low: false, cents: null };
+  if (roleError || (!admin && !attendant)) return empty;
   if (!admin && attendant) {
     const { data: perms, error: permError } = await supabaseAdmin
       .from("user_permissions")
@@ -305,32 +322,68 @@ export async function getClientBalanceAlert(userId: string) {
       .eq("user_id", userId)
       .maybeSingle();
     if (permError || (perms?.can_view_meta_balance !== true && perms?.can_add_meta_credit !== true)) {
-      return { low: false, cents: null };
+      return empty;
     }
   }
   const { data: accounts, error: accountError } = await supabaseAdmin
     .from("meta_accounts")
-    .select("external_account_id, balance_cents, last_synced_at, prepaid_ledger")
+    .select("id, external_account_id, balance_cents, last_synced_at, prepaid_ledger")
     .eq("organization_id", profile.organization_id)
     .eq("selected", true)
     .limit(1);
   if (accountError) {
-    if (/prepaid_ledger/i.test(accountError.message)) return { low: false, cents: null };
-    return { low: false, cents: null };
+    if (/prepaid_ledger/i.test(accountError.message)) return empty;
+    return empty;
   }
   const account = accounts?.[0];
-  const stored = account?.last_synced_at ? Number(account.balance_cents) : null;
-  const cents = stored != null && Number.isFinite(stored) ? stored : null;
-  const ledger = account?.prepaid_ledger;
-  const manualCredit =
-    !!ledger &&
-    typeof ledger === "object" &&
-    !Array.isArray(ledger) &&
-    (ledger as { manualCredit?: unknown }).manualCredit === true;
-  if (!manualCredit) return { low: false, cents };
-  const signal = lowBalanceSignal(cents);
-  if (signal !== "unknown") await syncLowBalanceWhatsapp(profile.organization_id, signal === "low");
-  return { low: signal === "low", cents };
+  if (!account) return empty;
+  const topup = readCreditTopup(account.prepaid_ledger);
+  let availableCents =
+    topup && account.last_synced_at && Number.isFinite(Number(account.balance_cents))
+      ? Number(account.balance_cents)
+      : topup
+        ? topup.cents
+        : null;
+  let paymentError = false;
+  try {
+    paymentError = await hasBillingPaymentError(
+      profile.organization_id,
+      account.external_account_id,
+    );
+  } catch {
+    paymentError = false;
+  }
+  if (topup) {
+    try {
+      const spentCents = await spentSinceTopup(
+        profile.organization_id,
+        account.external_account_id,
+        topup.at,
+      );
+      availableCents = availableFromRegisteredCredit(topup.cents, spentCents);
+      await rememberBalance(
+        account.id,
+        availableCents,
+        creditTopupLedger(topup.cents, topup.at),
+      );
+    } catch (error) {
+      console.error("meta_balance_alert", error instanceof Error ? error.name : "error");
+    }
+  }
+  const alert = metaCreditAlertState({
+    topup,
+    availableCents,
+    paymentError,
+  });
+  if (alert.balanceLow) await syncLowBalanceWhatsapp(profile.organization_id, true);
+  else if (topup) await syncLowBalanceWhatsapp(profile.organization_id, false);
+  return {
+    low: alert.low,
+    cents: availableCents,
+    missingTopup: alert.missingTopup,
+    balanceLow: alert.balanceLow,
+    paymentError: alert.paymentError,
+  };
 }
 
 async function syncLowBalanceWhatsapp(organizationId: string, low: boolean) {

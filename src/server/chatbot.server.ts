@@ -2970,7 +2970,9 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
   const stageReady = contact.stageReady && !stages.missing;
   const paths = files.map((row) => cell(row, "storage_path")).filter(Boolean);
   const [signed, nexClientId, contractSigned] = await Promise.all([
-    paths.length ? supabaseAdmin.storage.from(mediaBucket).createSignedUrls(paths, 60 * 30) : Promise.resolve({ data: [] as { path?: string; signedUrl?: string }[] }),
+    paths.length
+      ? supabaseAdmin.storage.from(mediaBucket).createSignedUrls(paths, 60 * 60)
+      : Promise.resolve({ data: [] as { path?: string; signedUrl?: string }[] }),
     nexClientIdForDocument(intake?.cnpj ?? ""),
     contractWasSigned(organizationId, contactId),
   ]);
@@ -3971,6 +3973,22 @@ export async function renameChatbotContactFile(userId: string, fileId: string, n
   if (updated.error) fail(schemaMessage(updated.error.message));
   if (!updated.data) fail("Essa mídia não pertence à sua empresa.");
   return { name: clean };
+}
+
+export async function chatbotContactFileUrl(userId: string, fileId: string) {
+  const { organizationId } = await membership(userId, "inbox");
+  const file = await table("chatbot_contact_files")
+    .select("id, name, storage_path")
+    .eq("id", fileId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (file.error) fail(schemaMessage(file.error.message));
+  if (!file.data) fail("Essa mídia não pertence à sua empresa.");
+  const path = cell(file.data, "storage_path");
+  if (!path) fail("Não foi possível abrir essa mídia.");
+  const signed = await supabaseAdmin.storage.from(mediaBucket).createSignedUrl(path, 60 * 10);
+  if (signed.error || !signed.data?.signedUrl) fail("Não foi possível abrir essa mídia.");
+  return { url: signed.data.signedUrl, name: cell(file.data, "name") };
 }
 
 export async function setChatbotContactStage(userId: string, contactId: string, stageName: string) {

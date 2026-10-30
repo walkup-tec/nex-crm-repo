@@ -554,6 +554,14 @@ export const renameChatbotContactFileFn = createServerFn({ method: "POST" })
     return guard(() => renameChatbotContactFile(context.userId, data.fileId, data.name));
   });
 
+export const chatbotContactFileUrlFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { fileId: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { chatbotContactFileUrl } = await import("@/server/chatbot.server");
+    return guard(() => chatbotContactFileUrl(context.userId, data.fileId));
+  });
+
 export const setChatbotContactStageFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { contactId: string; stage: string }) => data)

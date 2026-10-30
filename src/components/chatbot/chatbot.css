@@ -217,7 +217,9 @@ img.media-frame,video.media-frame{width:100%;max-height:75vh;object-fit:contain;
 .chatbot-app .contact-tags .tag-chip:not(.selected){opacity:.7}
 .chatbot-app .contact-files{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .chatbot-app .contact-files li{display:grid;gap:2px;font-size:11px}
-.chatbot-app .contact-files time,.chatbot-app .contact-files a{color:var(--muted-foreground)}
+.chatbot-app .contact-files time,.chatbot-app .contact-files a,.chatbot-app .contact-file-open{color:var(--muted-foreground)}
+.chatbot-app .contact-file-open{appearance:none;background:transparent;border:0;padding:0;margin:0;font:inherit;text-align:left;cursor:pointer}
+.chatbot-app .contact-file-open:disabled{opacity:.6;cursor:default}
 .chatbot-app .contact-file-error{font-size:10px;color:var(--destructive,#b91c1c)}
 .chatbot-app .contact-error{margin:0 18px 18px;font-size:11px;color:var(--destructive,#b91c1c)}
 .chatbot-app .tag-form{display:grid;gap:16px;max-width:520px;margin-bottom:24px}

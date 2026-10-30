@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
+  chatbotContactFileUrlFn,
   chatbotContactProfileFn,
   registerChatbotClientFn,
   registerChatbotNexClientFn,
@@ -107,6 +108,41 @@ function SavedMediaName({
     >
       {title}
     </button>
+  );
+}
+
+function SavedMediaRow({
+  file,
+  onRenamed,
+}: {
+  file: ChatbotContactProfile["files"][number];
+  onRenamed: (fileId: string, name: string) => void;
+}) {
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState("");
+
+  async function openFile() {
+    if (opening) return;
+    setOpening(true);
+    setOpenError("");
+    const result = await chatbotContactFileUrlFn({ data: { fileId: file.id } });
+    setOpening(false);
+    if (!result.ok) {
+      setOpenError(result.message);
+      return;
+    }
+    window.open(result.data.url, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <li>
+      <SavedMediaName file={file} onRenamed={onRenamed} />
+      <time dateTime={file.createdAt}>{messageClock(file.createdAt)}</time>
+      <button type="button" className="contact-file-open" disabled={opening} onClick={() => void openFile()}>
+        {opening ? "Abrindo" : "Abrir"}
+      </button>
+      {openError ? <span className="contact-file-error">{openError}</span> : null}
+    </li>
   );
 }
 
@@ -844,24 +880,22 @@ export function ContactRecord({
                 {profile.files.length ? (
                   <ul className="contact-files">
                     {profile.files.map((file) => (
-                      <li key={file.id}>
-                        <SavedMediaName
-                          file={file}
-                          onRenamed={(fileId, name) =>
-                            setProfile((current) =>
-                              current
-                                ? { ...current, files: current.files.map((item) => (item.id === fileId ? { ...item, name } : item)) }
-                                : current,
-                            )
-                          }
-                        />
-                        <time dateTime={file.createdAt}>{messageClock(file.createdAt)}</time>
-                        {file.url ? (
-                          <a href={file.url} target="_blank" rel="noreferrer">
-                            Abrir
-                          </a>
-                        ) : null}
-                      </li>
+                      <SavedMediaRow
+                        key={file.id}
+                        file={file}
+                        onRenamed={(fileId, name) =>
+                          setProfile((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  files: current.files.map((item) =>
+                                    item.id === fileId ? { ...item, name } : item,
+                                  ),
+                                }
+                              : current,
+                          )
+                        }
+                      />
                     ))}
                   </ul>
                 ) : (

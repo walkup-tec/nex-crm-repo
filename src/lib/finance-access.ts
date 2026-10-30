@@ -115,6 +115,13 @@ export function competenceOf(dueDate: string) {
   return `${dueDate.slice(0, 7)}-01`;
 }
 
+/** CNPJs com cobrança real no Master Financeiro (demais foram testes). */
+const liveMasterFinanceDocuments = new Set(["67141813000172"]);
+
+export function countsInMasterFinance(document: string) {
+  return liveMasterFinanceDocuments.has(document.replace(/\D/g, ""));
+}
+
 const localPaidCharge = {
   legalName: "MMS MARKETING E SISTEMAS DIGITAIS LTDA",
   competence: "2026-06-01",

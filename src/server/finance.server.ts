@@ -7,6 +7,7 @@ import {
   competenceLabel,
   competenceOf,
   daysPast,
+  countsInMasterFinance,
   keepsNominalValue,
   dropsLocalCharge,
   keepsAccessWithoutPayment,
@@ -155,6 +156,30 @@ async function removeDroppedInvoice() {
   }
 }
 
+/** Remove cobranças de teste; no Master só entram CNPJs de countsInMasterFinance. */
+async function removeNonLiveBillingInvoices() {
+  const { data: orgs, error } = await supabaseAdmin.from("organizations").select("id, document");
+  if (error || !orgs?.length) return;
+  const dropIds = orgs.filter((org) => !countsInMasterFinance(org.document ?? "")).map((org) => org.id);
+  if (!dropIds.length) return;
+  const chunk = 100;
+  for (let i = 0; i < dropIds.length; i += chunk) {
+    const ids = dropIds.slice(i, i + chunk);
+    await supabaseAdmin.from("billing_notices").delete().in("organization_id", ids);
+    await supabaseAdmin.from("invoices").delete().in("organization_id", ids);
+  }
+}
+
+async function isLiveBillingOrganization(organizationId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("document")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error || !data) return false;
+  return countsInMasterFinance(data.document ?? "");
+}
+
 async function keptLocally(organizationId: string, due: string) {
   const competence = competenceOf(due);
   if (competence !== "2026-06-01" || due !== "2026-06-27") return false;
@@ -208,6 +233,7 @@ async function savePayment(
   payment: AsaasPayment,
 ): Promise<"inserted" | "updated" | "skipped"> {
   if (!payment.id || !payment.dueDate || typeof payment.value !== "number") return "skipped";
+  if (!(await isLiveBillingOrganization(contract.organization_id))) return "skipped";
   const due = payment.dueDate.slice(0, 10);
   if (await keptLocally(contract.organization_id, due)) return "skipped";
   if (await droppedLocally(contract.organization_id, due, centsFromReais(payment.value))) return "skipped";
@@ -301,6 +327,7 @@ export async function syncFinance(userId: string, organizationId?: string) {
     fail("Você não pode sincronizar o financeiro deste cliente.");
   await markPreservedInvoicePaid();
   await removeDroppedInvoice();
+  await removeNonLiveBillingInvoices();
   const contracts = await contractsOf(target);
   if (contracts.some((contract) => contract.billing_provider === "cora")) {
     void ensureCoraPaidWebhook().catch((registerError) => {
@@ -573,7 +600,9 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
   const rows = await invoicesOf();
   const organizationIds = [...new Set(rows.map((row) => row.organization_id))];
   const [names, providers] = await Promise.all([namesOf(organizationIds), providersOf(organizationIds)]);
-  const charges = rows.map((row) => toCharge(row, names, providers));
+  const charges = rows
+    .map((row) => toCharge(row, names, providers))
+    .filter((item) => countsInMasterFinance(item.clientDocument));
   const month = todayKey().slice(0, 7);
   return {
     receivableCents: charges

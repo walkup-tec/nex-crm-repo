@@ -67,3 +67,9 @@ assert.deepEqual(
 assert.ok(snap.revenueClientsSeries.length === 6);
 assert.ok(snap.dueWeeks.length === 4);
 assert.equal(snap.statusSlices.find((item) => item.key === "inactive")?.value, 1);
+assert.equal(snap.kpiClients.activeClients.length, 2);
+assert.equal(snap.kpiClients.newClients.length, 1);
+assert.equal(snap.kpiClients.periodRevenue.length, 2);
+assert.equal(snap.kpiClients.overdueClients.length, 1);
+const october = snap.revenueClientsSeries.find((item) => item.key === "2026-10");
+assert.equal(october?.activeClients, 1);

@@ -17,6 +17,7 @@ export type DashboardClient = {
 export type DashboardDelta = {
   value: number;
   percent: number | null;
+  previous: number;
   label: string;
 };
 
@@ -67,6 +68,23 @@ export type DashboardWeekBucket = {
   cents: number;
 };
 
+export type DashboardClientRef = {
+  id: string;
+  name: string;
+  status: ClientStatus;
+  state: string | null;
+  cents: number | null;
+  detail: string;
+};
+
+export type DashboardKpiKey =
+  | "activeClients"
+  | "newClients"
+  | "periodRevenue"
+  | "overdueClients"
+  | "dueThisWeek"
+  | "dueNextWeek";
+
 export type MasterDashboard = {
   period: MetaPeriod;
   today: string;
@@ -84,15 +102,18 @@ export type MasterDashboard = {
   dueWeeks: DashboardWeekBucket[];
   statusSlices: DashboardSlice[];
   unknownGeoClients: number;
+  kpiClients: Record<DashboardKpiKey, DashboardClientRef[]>;
 };
 
-const REGIONS: { key: string; label: string; ufs: string[] }[] = [
+export const DASHBOARD_REGIONS: { key: string; label: string; ufs: string[] }[] = [
   { key: "SE", label: "Sudeste", ufs: ["SP", "RJ", "MG", "ES"] },
   { key: "S", label: "Sul", ufs: ["RS", "SC", "PR"] },
   { key: "NE", label: "Nordeste", ufs: ["BA", "PE", "CE", "MA", "PB", "RN", "AL", "SE", "PI"] },
   { key: "CO", label: "Centro-Oeste", ufs: ["GO", "MT", "MS", "DF"] },
   { key: "N", label: "Norte", ufs: ["AM", "PA", "RO", "AC", "RR", "AP", "TO"] },
 ];
+
+const REGIONS = DASHBOARD_REGIONS;
 
 const MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -166,10 +187,11 @@ function percentChange(current: number, previous: number) {
   return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
 }
 
-function deltaOf(current: number, previous: number, label = "vs período anterior"): DashboardDelta {
+function deltaOf(current: number, previous: number, label = "vs. período anterior"): DashboardDelta {
   return {
     value: current - previous,
     percent: percentChange(current, previous),
+    previous,
     label,
   };
 }
@@ -251,20 +273,25 @@ export function masterDashboardFrom(
   const inactiveNow = clients.filter((client) => isInactiveClient(client.status));
   const activeOnly = clients.filter((client) => client.status === "active").length;
 
-  const newIn = (range: { start: string; end: string } | null) =>
-    clients.filter((client) => inBounds(clientCreatedDay(client), range)).length;
+  const newClientsIn = (range: { start: string; end: string } | null) =>
+    clients.filter((client) => inBounds(clientCreatedDay(client), range));
+
+  const newIn = (range: { start: string; end: string } | null) => newClientsIn(range).length;
 
   const revenueIn = (range: { start: string; end: string } | null) =>
     invoicesInPeriod(clients, range).reduce((sum, row) => sum + row.invoice.totalCents, 0);
 
-  const overdueCountIn = (range: { start: string; end: string } | null) => {
-    if (!range) return overdueNow.length;
-    return new Set(
+  const overdueClientsIn = (range: { start: string; end: string } | null) => {
+    if (!range) return overdueNow;
+    const ids = new Set(
       invoicesInPeriod(clients, range)
         .filter((row) => row.invoice.status === "overdue")
         .map((row) => row.client.id),
-    ).size;
+    );
+    return clients.filter((client) => ids.has(client.id));
   };
+
+  const overdueCountIn = (range: { start: string; end: string } | null) => overdueClientsIn(range).length;
 
   const activeAt = (end: string) =>
     clients.filter((client) => {
@@ -280,13 +307,19 @@ export function masterDashboardFrom(
       return true;
     }).length;
 
-  const dueWindow = (start: string, end: string) => {
-    const rows = clients.flatMap((client) =>
-      client.invoices.filter((invoice) => openInvoice(invoice) && inBounds(dayOf(invoice.dueDate), { start, end })),
+  const dueWindowRows = (start: string, end: string) =>
+    clients.flatMap((client) =>
+      client.invoices
+        .filter((invoice) => openInvoice(invoice) && inBounds(dayOf(invoice.dueDate), { start, end }))
+        .map((invoice) => ({ client, invoice })),
     );
+
+  const dueWindow = (start: string, end: string) => {
+    const rows = dueWindowRows(start, end);
     return {
       count: rows.length,
-      cents: rows.reduce((sum, invoice) => sum + invoice.totalCents, 0),
+      cents: rows.reduce((sum, row) => sum + row.invoice.totalCents, 0),
+      clients: [...new Map(rows.map((row) => [row.client.id, row.client])).values()],
     };
   };
 
@@ -306,7 +339,8 @@ export function masterDashboardFrom(
       key,
       label: monthLabel(key),
       revenueCents: revenueIn(monthBounds),
-      activeClients: activeAt(end),
+      /** Clientes que contrataram no mês (não estoque acumulado). */
+      activeClients: newIn(monthBounds),
     });
   }
 
@@ -345,8 +379,7 @@ export function masterDashboardFrom(
 
   const ufs = [...ufCounts.entries()]
     .map(([uf, count]) => ({ uf, clients: count }))
-    .sort((left, right) => right.clients - left.clients || left.uf.localeCompare(right.uf))
-    .slice(0, 10);
+    .sort((left, right) => right.clients - left.clients || left.uf.localeCompare(right.uf));
 
   const revenueByClient = new Map<string, { id: string; name: string; revenueCents: number }>();
   for (const row of periodRows) {
@@ -392,6 +425,59 @@ export function masterDashboardFrom(
   const revenueCents = revenueIn(bounds);
   const previousRevenue = previous ? revenueIn(previous) : null;
 
+  const periodClientRevenue = new Map<string, { client: DashboardClient; cents: number }>();
+  for (const row of periodRows) {
+    const current = periodClientRevenue.get(row.client.id) ?? { client: row.client, cents: 0 };
+    current.cents += row.invoice.totalCents;
+    periodClientRevenue.set(row.client.id, current);
+  }
+
+  const refOf = (client: DashboardClient, cents: number | null = null, detail = ""): DashboardClientRef => ({
+    id: client.id,
+    name: clientDisplayName(client),
+    status: client.status,
+    state: client.state,
+    cents,
+    detail,
+  });
+
+  const overdueList = overdueClientsIn(bounds);
+  const newList = newClientsIn(bounds);
+
+  const kpiClients: Record<DashboardKpiKey, DashboardClientRef[]> = {
+    activeClients: activeNow
+      .map((client) => refOf(client, null, client.state ? `UF ${client.state}` : "Sem UF"))
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR")),
+    newClients: newList
+      .map((client) => refOf(client, null, clientCreatedDay(client) ? `Contratou em ${clientCreatedDay(client)}` : "Contratação"))
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR")),
+    periodRevenue: [...periodClientRevenue.values()]
+      .map((row) => refOf(row.client, row.cents, "Receita no período"))
+      .sort((left, right) => (right.cents ?? 0) - (left.cents ?? 0) || left.name.localeCompare(right.name, "pt-BR")),
+    overdueClients: overdueList
+      .map((client) => refOf(client, overdueCentsOf(client), "Em atraso"))
+      .sort((left, right) => (right.cents ?? 0) - (left.cents ?? 0) || left.name.localeCompare(right.name, "pt-BR")),
+    dueThisWeek: dueThisBounded.clients
+      .map((client) => {
+        const cents = client.invoices
+          .filter((invoice) => openInvoice(invoice) && inBounds(dayOf(invoice.dueDate), { start: today, end: shiftDate(today, 6) }))
+          .reduce((sum, invoice) => sum + invoice.totalCents, 0);
+        return refOf(client, cents, "Vence esta semana");
+      })
+      .sort((left, right) => (right.cents ?? 0) - (left.cents ?? 0) || left.name.localeCompare(right.name, "pt-BR")),
+    dueNextWeek: dueNext.clients
+      .map((client) => {
+        const cents = client.invoices
+          .filter(
+            (invoice) =>
+              openInvoice(invoice) && inBounds(dayOf(invoice.dueDate), { start: shiftDate(today, 7), end: shiftDate(today, 13) }),
+          )
+          .reduce((sum, invoice) => sum + invoice.totalCents, 0);
+        return refOf(client, cents, "Vence próxima semana");
+      })
+      .sort((left, right) => (right.cents ?? 0) - (left.cents ?? 0) || left.name.localeCompare(right.name, "pt-BR")),
+  };
+
   return {
     period,
     today,
@@ -399,8 +485,8 @@ export function masterDashboardFrom(
     newClients: kpi(newIn(bounds), previous ? newIn(previous) : null),
     periodRevenue: kpi(revenueCents, previousRevenue, revenueCents),
     overdueClients: kpi(overdueCountIn(bounds), previous ? overdueCountIn(previous) : null),
-    dueThisWeek: { value: dueThisBounded.count, cents: dueThisBounded.cents, delta: null },
-    dueNextWeek: { value: dueNext.count, cents: dueNext.cents, delta: null },
+    dueThisWeek: { value: dueThisBounded.clients.length, cents: dueThisBounded.cents, delta: null },
+    dueNextWeek: { value: dueNext.clients.length, cents: dueNext.cents, delta: null },
     revenueClientsSeries,
     paymentSlices,
     regions,
@@ -409,5 +495,6 @@ export function masterDashboardFrom(
     dueWeeks,
     statusSlices,
     unknownGeoClients,
+    kpiClients,
   };
 }

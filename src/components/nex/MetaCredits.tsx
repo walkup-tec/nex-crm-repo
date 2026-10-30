@@ -312,9 +312,10 @@ export function MetaCredits() {
           {canEnterFacebook && (
             <Button
               type="button"
+              variant={lowBalance ? "destructive" : "default"}
               onClick={enter}
               disabled={!view?.canAdd || !view.accountId || entering || loading}
-              className={lowBalance ? "animate-primary-wave" : ""}
+              className={lowBalance ? "animate-balance-wave" : ""}
             >
               {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
             </Button>
@@ -322,9 +323,10 @@ export function MetaCredits() {
           {canOpen && (
             <Button
               type="button"
+              variant={lowBalance && !showPaymentDone ? "destructive" : "default"}
               onClick={openAddBalance}
               disabled={savingTopup}
-              className={lowBalance && !showPaymentDone ? "animate-primary-wave" : ""}
+              className={lowBalance && !showPaymentDone ? "animate-balance-wave" : ""}
             >
               <ExternalLink />
               Adicionar saldo

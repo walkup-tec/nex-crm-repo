@@ -334,11 +334,26 @@ export async function getClientBalanceAlert(userId: string) {
     .eq("organization_id", profile.organization_id)
     .eq("selected", true)
     .limit(1);
+  let account = accounts?.[0] as
+    | {
+        id: string;
+        external_account_id: string;
+        balance_cents: number | null;
+        last_synced_at: string | null;
+        prepaid_ledger: unknown;
+      }
+    | undefined;
   if (accountError) {
-    if (/prepaid_ledger/i.test(accountError.message)) return empty;
-    return empty;
+    if (!/prepaid_ledger/i.test(accountError.message)) return empty;
+    const plain = await supabaseAdmin
+      .from("meta_accounts")
+      .select("id, external_account_id, balance_cents, last_synced_at")
+      .eq("organization_id", profile.organization_id)
+      .eq("selected", true)
+      .limit(1);
+    if (plain.error || !plain.data?.[0]) return empty;
+    account = { ...plain.data[0], prepaid_ledger: null };
   }
-  const account = accounts?.[0];
   if (!account) return empty;
   const topup = readCreditTopup(account.prepaid_ledger);
   let availableCents =
@@ -378,8 +393,11 @@ export async function getClientBalanceAlert(userId: string) {
     availableCents,
     paymentError,
   });
-  if (alert.low) await syncLowBalanceWhatsapp(profile.organization_id, true);
-  else await syncLowBalanceWhatsapp(profile.organization_id, false);
+  try {
+    await syncLowBalanceWhatsapp(profile.organization_id, alert.low);
+  } catch (error) {
+    console.error("meta_low_balance", error instanceof Error ? error.name : "error");
+  }
   return {
     low: alert.low,
     cents: availableCents,

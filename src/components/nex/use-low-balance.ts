@@ -23,17 +23,26 @@ export function useLowBalance(enabled: boolean): MetaCreditAlertView {
       return;
     }
     let active = true;
-    void getClientBalanceAlertFn().then((result) => {
-      if (!active || !result.ok) return;
-      setAlert({
-        low: result.data.low === true,
-        missingTopup: result.data.missingTopup === true,
-        balanceLow: result.data.balanceLow === true,
-        paymentError: result.data.paymentError === true,
+    const load = () => {
+      void getClientBalanceAlertFn().then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          console.error("meta_balance_alert", result.message);
+          return;
+        }
+        setAlert({
+          low: result.data.low === true,
+          missingTopup: result.data.missingTopup === true,
+          balanceLow: result.data.balanceLow === true,
+          paymentError: result.data.paymentError === true,
+        });
       });
-    });
+    };
+    load();
+    const timer = window.setInterval(load, 60000);
     return () => {
       active = false;
+      window.clearInterval(timer);
     };
   }, [enabled]);
   return alert;

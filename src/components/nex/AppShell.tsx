@@ -150,7 +150,7 @@ function Nav({
         }
         close?.();
       }}
-      className={`flex items-center gap-3 rounded-lg text-sm font-medium whitespace-normal text-left leading-snug transition ${nested ? "h-auto min-h-11 py-2 pr-3 pl-9" : "h-auto min-h-11 px-3 py-2"} ${path === to ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"} ${to === "/creditos-meta" && lowBalance ? "ring-2 ring-destructive text-destructive" : ""}`}
+      className={`flex items-center gap-3 rounded-lg text-sm font-medium whitespace-normal text-left leading-snug transition ${nested ? "h-auto min-h-11 py-2 pr-3 pl-9" : "h-auto min-h-11 px-3 py-2"} ${path === to ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"}`}
     >
       <Icon className="size-[18px]" />
       {label}

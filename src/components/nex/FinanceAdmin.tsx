@@ -9,18 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access";
-import { chargeInPeriod, chargeMatchesClient, competenceLabel, dailyChargeTotals, financePeriodBounds, todayKey, whenLabel, type FinanceCharge, type FinancePeriod, type MasterFinance } from "@/lib/finance-access";
+import { chargeInPeriod, chargeMatchesClient, competenceLabel, dailyChargeTotals, todayKey, whenLabel, type FinanceCharge, type MasterFinance } from "@/lib/finance-access";
 import { applyMask } from "@/lib/masks";
 import { listMasterFinanceFn, negotiateChargeFn } from "@/lib/finance.functions";
-
-const periods: { value: FinancePeriod; label: string }[] = [
-  { value: "all", label: "Todo o período" },
-  { value: "past-week", label: "Semana passada" },
-  { value: "next-week", label: "Semana seguinte" },
-  { value: "past-month", label: "Mês passado" },
-  { value: "current-month", label: "Mês atual" },
-];
+import type { MetaPeriod } from "@/lib/meta-access";
 
 export function FinanceAdmin() {
   const [snapshot, setSnapshot] = useState<MasterFinance | null>(null);
@@ -28,7 +22,7 @@ export function FinanceAdmin() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [period, setPeriod] = useState<FinancePeriod>("all");
+  const [period, setPeriod] = useState<MetaPeriod>({ mode: "total" });
   const [view, setView] = useState("lista");
   const [charge, setCharge] = useState<FinanceCharge | null>(null);
 
@@ -49,7 +43,7 @@ export function FinanceAdmin() {
   }, [load]);
 
   const today = todayKey();
-  const bounds = financePeriodBounds(period, today);
+  const bounds = period.mode === "total" ? null : { start: period.since, end: period.until };
   const listedStatus = (item: FinanceCharge) =>
     item.status === "pending" && item.dueDate.slice(0, 10) < today ? "overdue" : item.status;
   const inPeriod = (snapshot?.charges ?? []).filter((item) => chargeInPeriod(item.dueDate, bounds));
@@ -59,9 +53,19 @@ export function FinanceAdmin() {
     if (filter === "paid") return status === "paid";
     return true;
   }).filter((item) => chargeMatchesClient(item, query));
-  const receivableCents = period === "all" ? snapshot?.receivableCents ?? 0 : inPeriod.filter((item) => item.status === "pending" || item.status === "overdue").reduce((sum, item) => sum + item.totalCents, 0);
-  const overdueCents = inPeriod.filter((item) => listedStatus(item) === "overdue").reduce((sum, item) => sum + item.totalCents, 0);
-  const receivedCents = period === "all" ? snapshot?.receivedThisMonthCents ?? 0 : inPeriod.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.totalCents, 0);
+  const receivableCents =
+    period.mode === "total"
+      ? snapshot?.receivableCents ?? 0
+      : inPeriod
+          .filter((item) => item.status === "pending" || item.status === "overdue")
+          .reduce((sum, item) => sum + item.totalCents, 0);
+  const overdueCents = inPeriod
+    .filter((item) => listedStatus(item) === "overdue")
+    .reduce((sum, item) => sum + item.totalCents, 0);
+  const receivedCents =
+    period.mode === "total"
+      ? snapshot?.receivedThisMonthCents ?? 0
+      : inPeriod.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.totalCents, 0);
   const days = dailyChargeTotals(snapshot?.charges ?? [], bounds);
 
   return (
@@ -71,23 +75,21 @@ export function FinanceAdmin() {
       {snapshot?.notice && <p className="text-sm text-muted-foreground">{snapshot.notice}</p>}
       {snapshot && (
         <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            {periods.map((item) => (
-              <Button key={item.value} size="sm" variant={period === item.value ? "default" : "outline"} onClick={() => setPeriod(item.value)}>
-                {item.label}
-              </Button>
-            ))}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <PeriodPicker
+              value={period}
+              disabled={loading}
+              onApply={setPeriod}
+              totalHint="Exibe cobranças, totais e gráficos de todo o período disponível."
+            />
           </div>
-          {bounds && (
-            <p className="text-xs text-muted-foreground">
-              {dateBr(bounds.start)} a {dateBr(bounds.end)}
-              {period === "past-week" ? " · últimos 7 dias" : period === "next-week" ? " · próximos 7 dias" : ""}
-            </p>
-          )}
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="A receber" value={moneyFromCents(receivableCents)} />
             <Metric label="Vencidas" value={moneyFromCents(overdueCents)} />
-            <Metric label={period === "all" ? "Recebido no mês" : "Recebido no período"} value={moneyFromCents(receivedCents)} />
+            <Metric
+              label={period.mode === "total" ? "Recebido no mês" : "Recebido no período"}
+              value={moneyFromCents(receivedCents)}
+            />
           </div>
           <Tabs value={view} onValueChange={setView}>
             <TabsList>

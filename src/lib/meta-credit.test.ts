@@ -49,6 +49,11 @@ assert.equal(remainingSpendCents("1000", "1000"), 0);
 assert.equal(remainingSpendCents("0", "5773"), null);
 assert.equal(remainingSpendCents(null, "0"), null);
 
+assert.equal(centsFromMoneyInput("R$ 2.007,13"), 200713);
+assert.equal(centsFromMoneyInput(""), null);
+assert.equal(centsFromMoneyInput("0,00"), null);
+
+assert.equal(balanceGrew(1000, 2500, 1500), true);
 // spend_cap - amount_spent is the available balance whenever there is a limit,
 // without requiring is_prepay_account. This is the fix for CP Walkup showing
 // 200 instead of 142,27.
@@ -70,11 +75,6 @@ assert.deepEqual(
   { cents: 14227, kind: "available" },
 );
 
-assert.equal(centsFromMoneyInput("R$ 2.007,13"), 200713);
-assert.equal(centsFromMoneyInput(""), null);
-assert.equal(centsFromMoneyInput("0,00"), null);
-
-assert.equal(balanceGrew(1000, 2500, 1500), true);
 assert.equal(balanceGrew(1000, 2499, 1500), false);
 assert.equal(balanceGrew(null, 2500, 1500), false);
 

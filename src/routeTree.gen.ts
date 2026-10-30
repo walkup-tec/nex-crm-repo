@@ -12,12 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ContratacaoRouteImport } from './routes/contratacao'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
-import { Route as ContratacaoRouteImport } from './routes/contratacao'
-import { Route as ContratacaoContactIdRouteImport } from './routes/contratacao.$contactId'
-import { Route as CCodeRouteImport } from './routes/c.$code'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
@@ -28,10 +26,14 @@ import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authentic
 import { Route as AuthenticatedMasterRouteImport } from './routes/_authenticated/master'
 import { Route as AuthenticatedMinhaContaRouteImport } from './routes/_authenticated/minha-conta'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
+import { Route as AgendaMeetingIdRouteImport } from './routes/agenda.$meetingId'
+import { Route as ApiContratacaoRouteImport } from './routes/api/contratacao'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
+import { Route as CCodeRouteImport } from './routes/c.$code'
+import { Route as ContratacaoContactIdRouteImport } from './routes/contratacao.$contactId'
 import { Route as AuthenticatedChatbotIndexRouteImport } from './routes/_authenticated/chatbot.index'
-import { Route as AuthenticatedChatbotAtendimentoRouteImport } from './routes/_authenticated/chatbot.atendimento'
 import { Route as AuthenticatedChatbotAgendamentosRouteImport } from './routes/_authenticated/chatbot.agendamentos'
+import { Route as AuthenticatedChatbotAtendimentoRouteImport } from './routes/_authenticated/chatbot.atendimento'
 import { Route as AuthenticatedChatbotAutomacoesRouteImport } from './routes/_authenticated/chatbot.automacoes'
 import { Route as AuthenticatedChatbotClientesRouteImport } from './routes/_authenticated/chatbot.clientes'
 import { Route as AuthenticatedChatbotConfiguracoesRouteImport } from './routes/_authenticated/chatbot.configuracoes'
@@ -48,12 +50,11 @@ import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authe
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
+import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
 import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
 import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
-import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
-import { Route as ApiContratacaoRouteImport } from './routes/api/contratacao'
-import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthGoogleCallbackRouteImport } from './routes/auth.google.callback'
+import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
 
@@ -71,6 +72,11 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContratacaoRoute = ContratacaoRouteImport.update({
+  id: '/contratacao',
+  path: '/contratacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DemoRoute = DemoRouteImport.update({
   id: '/demo',
   path: '/demo',
@@ -84,21 +90,6 @@ const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
 const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
   id: '/primeiro-acesso',
   path: '/primeiro-acesso',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContratacaoRoute = ContratacaoRouteImport.update({
-  id: '/contratacao',
-  path: '/contratacao',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContratacaoContactIdRoute = ContratacaoContactIdRouteImport.update({
-  id: '/contratacao/$contactId',
-  path: '/contratacao/$contactId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CCodeRoute = CCodeRouteImport.update({
-  id: '/c/$code',
-  path: '/c/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -152,10 +143,30 @@ const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
   path: '/usuarios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AgendaMeetingIdRoute = AgendaMeetingIdRouteImport.update({
+  id: '/agenda/$meetingId',
+  path: '/agenda/$meetingId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiContratacaoRoute = ApiContratacaoRouteImport.update({
+  id: '/api/contratacao',
+  path: '/api/contratacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthRoute,
+} as any)
+const CCodeRoute = CCodeRouteImport.update({
+  id: '/c/$code',
+  path: '/c/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContratacaoContactIdRoute = ContratacaoContactIdRouteImport.update({
+  id: '/$contactId',
+  path: '/$contactId',
+  getParentRoute: () => ContratacaoRoute,
 } as any)
 const AuthenticatedChatbotIndexRoute =
   AuthenticatedChatbotIndexRouteImport.update({
@@ -163,16 +174,16 @@ const AuthenticatedChatbotIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedChatbotRoute,
   } as any)
-const AuthenticatedChatbotAtendimentoRoute =
-  AuthenticatedChatbotAtendimentoRouteImport.update({
-    id: '/atendimento',
-    path: '/atendimento',
-    getParentRoute: () => AuthenticatedChatbotRoute,
-  } as any)
 const AuthenticatedChatbotAgendamentosRoute =
   AuthenticatedChatbotAgendamentosRouteImport.update({
     id: '/agendamentos',
     path: '/agendamentos',
+    getParentRoute: () => AuthenticatedChatbotRoute,
+  } as any)
+const AuthenticatedChatbotAtendimentoRoute =
+  AuthenticatedChatbotAtendimentoRouteImport.update({
+    id: '/atendimento',
+    path: '/atendimento',
     getParentRoute: () => AuthenticatedChatbotRoute,
   } as any)
 const AuthenticatedChatbotAutomacoesRoute =
@@ -271,6 +282,11 @@ const AuthenticatedMasterFinanceiroRoute =
     path: '/financeiro',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
+const ApiAutentiqueWebhookRoute = ApiAutentiqueWebhookRouteImport.update({
+  id: '/api/autentique/webhook',
+  path: '/api/autentique/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiChatbotEvoRoute = ApiChatbotEvoRouteImport.update({
   id: '/api/chatbot/evo',
   path: '/api/chatbot/evo',
@@ -281,24 +297,14 @@ const ApiCoraWebhookRoute = ApiCoraWebhookRouteImport.update({
   path: '/api/cora/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAutentiqueWebhookRoute = ApiAutentiqueWebhookRouteImport.update({
-  id: '/api/autentique/webhook',
-  path: '/api/autentique/webhook',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiContratacaoRoute = ApiContratacaoRouteImport.update({
-  id: '/api/contratacao',
-  path: '/api/contratacao',
-  getParentRoute: () => rootRouteImport,
+const AuthGoogleCallbackRoute = AuthGoogleCallbackRouteImport.update({
+  id: '/google/callback',
+  path: '/google/callback',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthMetaCallbackRoute = AuthMetaCallbackRouteImport.update({
   id: '/meta/callback',
   path: '/meta/callback',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthGoogleCallbackRoute = AuthGoogleCallbackRouteImport.update({
-  id: '/google/callback',
-  path: '/google/callback',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthenticatedMasterFinanceiroOrgIdRoute =
@@ -317,12 +323,10 @@ const AuthenticatedMasterSuporteOrgIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/contratacao': typeof ContratacaoRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
-  '/contratacao': typeof ContratacaoRoute
-  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
-  '/c/$code': typeof CCodeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -333,9 +337,13 @@ export interface FileRoutesByFullPath {
   '/master': typeof AuthenticatedMasterRouteWithChildren
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/agenda/$meetingId': typeof AgendaMeetingIdRoute
+  '/api/contratacao': typeof ApiContratacaoRoute
+  '/c/$code': typeof CCodeRoute
+  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/auth/': typeof AuthIndexRoute
-  '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
+  '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
   '/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
   '/chatbot/configuracoes': typeof AuthenticatedChatbotConfiguracoesRoute
@@ -351,12 +359,11 @@ export interface FileRoutesByFullPath {
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
+  '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
-  '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
-  '/api/contratacao': typeof ApiContratacaoRoute
-  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
+  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -364,12 +371,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/contratacao': typeof ContratacaoRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
-  '/contratacao': typeof ContratacaoRoute
-  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
-  '/c/$code': typeof CCodeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -378,9 +383,13 @@ export interface FileRoutesByTo {
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/agenda/$meetingId': typeof AgendaMeetingIdRoute
+  '/api/contratacao': typeof ApiContratacaoRoute
+  '/c/$code': typeof CCodeRoute
+  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/auth': typeof AuthIndexRoute
-  '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
+  '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
   '/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
   '/chatbot/configuracoes': typeof AuthenticatedChatbotConfiguracoesRoute
@@ -396,12 +405,11 @@ export interface FileRoutesByTo {
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
+  '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
-  '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
-  '/api/contratacao': typeof ApiContratacaoRoute
-  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
+  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
   '/master': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -412,12 +420,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRouteWithChildren
+  '/contratacao': typeof ContratacaoRouteWithChildren
   '/demo': typeof DemoRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
-  '/contratacao': typeof ContratacaoRoute
-  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
-  '/c/$code': typeof CCodeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRouteWithChildren
@@ -428,9 +434,13 @@ export interface FileRoutesById {
   '/_authenticated/master': typeof AuthenticatedMasterRouteWithChildren
   '/_authenticated/minha-conta': typeof AuthenticatedMinhaContaRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
+  '/agenda/$meetingId': typeof AgendaMeetingIdRoute
+  '/api/contratacao': typeof ApiContratacaoRoute
+  '/c/$code': typeof CCodeRoute
+  '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/auth/': typeof AuthIndexRoute
-  '/_authenticated/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/_authenticated/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
+  '/_authenticated/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/_authenticated/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
   '/_authenticated/chatbot/clientes': typeof AuthenticatedChatbotClientesRoute
   '/_authenticated/chatbot/configuracoes': typeof AuthenticatedChatbotConfiguracoesRoute
@@ -446,12 +456,11 @@ export interface FileRoutesById {
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
+  '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
-  '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
-  '/api/contratacao': typeof ApiContratacaoRoute
-  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
+  '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
   '/_authenticated/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
@@ -462,12 +471,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/contratacao'
     | '/demo'
     | '/esqueci-senha'
     | '/primeiro-acesso'
-    | '/contratacao'
-    | '/contratacao/$contactId'
-    | '/c/$code'
     | '/reset-password'
     | '/campanhas'
     | '/chatbot'
@@ -478,9 +485,13 @@ export interface FileRouteTypes {
     | '/master'
     | '/minha-conta'
     | '/usuarios'
+    | '/agenda/$meetingId'
+    | '/api/contratacao'
+    | '/c/$code'
+    | '/contratacao/$contactId'
     | '/auth/'
-    | '/chatbot/atendimento'
     | '/chatbot/agendamentos'
+    | '/chatbot/atendimento'
     | '/chatbot/automacoes'
     | '/chatbot/clientes'
     | '/chatbot/configuracoes'
@@ -496,12 +507,11 @@ export interface FileRouteTypes {
     | '/master/configuracoes'
     | '/master/criativos'
     | '/master/financeiro'
+    | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
-    | '/api/autentique/webhook'
-    | '/api/contratacao'
-    | '/auth/meta/callback'
     | '/auth/google/callback'
+    | '/auth/meta/callback'
     | '/chatbot/'
     | '/master/'
     | '/master/financeiro/$orgId'
@@ -509,12 +519,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/contratacao'
     | '/demo'
     | '/esqueci-senha'
     | '/primeiro-acesso'
-    | '/contratacao'
-    | '/contratacao/$contactId'
-    | '/c/$code'
     | '/reset-password'
     | '/campanhas'
     | '/creditos-meta'
@@ -523,9 +531,13 @@ export interface FileRouteTypes {
     | '/financeiro'
     | '/minha-conta'
     | '/usuarios'
+    | '/agenda/$meetingId'
+    | '/api/contratacao'
+    | '/c/$code'
+    | '/contratacao/$contactId'
     | '/auth'
-    | '/chatbot/atendimento'
     | '/chatbot/agendamentos'
+    | '/chatbot/atendimento'
     | '/chatbot/automacoes'
     | '/chatbot/clientes'
     | '/chatbot/configuracoes'
@@ -541,12 +553,11 @@ export interface FileRouteTypes {
     | '/master/configuracoes'
     | '/master/criativos'
     | '/master/financeiro'
+    | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
-    | '/api/autentique/webhook'
-    | '/api/contratacao'
-    | '/auth/meta/callback'
     | '/auth/google/callback'
+    | '/auth/meta/callback'
     | '/chatbot'
     | '/master'
     | '/master/financeiro/$orgId'
@@ -556,12 +567,10 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/contratacao'
     | '/demo'
     | '/esqueci-senha'
     | '/primeiro-acesso'
-    | '/contratacao'
-    | '/contratacao/$contactId'
-    | '/c/$code'
     | '/reset-password'
     | '/_authenticated/campanhas'
     | '/_authenticated/chatbot'
@@ -572,9 +581,13 @@ export interface FileRouteTypes {
     | '/_authenticated/master'
     | '/_authenticated/minha-conta'
     | '/_authenticated/usuarios'
+    | '/agenda/$meetingId'
+    | '/api/contratacao'
+    | '/c/$code'
+    | '/contratacao/$contactId'
     | '/auth/'
-    | '/_authenticated/chatbot/atendimento'
     | '/_authenticated/chatbot/agendamentos'
+    | '/_authenticated/chatbot/atendimento'
     | '/_authenticated/chatbot/automacoes'
     | '/_authenticated/chatbot/clientes'
     | '/_authenticated/chatbot/configuracoes'
@@ -590,12 +603,11 @@ export interface FileRouteTypes {
     | '/_authenticated/master/configuracoes'
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
+    | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
-    | '/api/autentique/webhook'
-    | '/api/contratacao'
-    | '/auth/meta/callback'
     | '/auth/google/callback'
+    | '/auth/meta/callback'
     | '/_authenticated/chatbot/'
     | '/_authenticated/master/'
     | '/_authenticated/master/financeiro/$orgId'
@@ -606,17 +618,17 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
+  ContratacaoRoute: typeof ContratacaoRouteWithChildren
   DemoRoute: typeof DemoRoute
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
-  ContratacaoRoute: typeof ContratacaoRoute
-  ContratacaoContactIdRoute: typeof ContratacaoContactIdRoute
-  CCodeRoute: typeof CCodeRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  AgendaMeetingIdRoute: typeof AgendaMeetingIdRoute
+  ApiContratacaoRoute: typeof ApiContratacaoRoute
+  CCodeRoute: typeof CCodeRoute
+  ApiAutentiqueWebhookRoute: typeof ApiAutentiqueWebhookRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
-  ApiAutentiqueWebhookRoute: typeof ApiAutentiqueWebhookRoute
-  ApiContratacaoRoute: typeof ApiContratacaoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -642,6 +654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contratacao': {
+      id: '/contratacao'
+      path: '/contratacao'
+      fullPath: '/contratacao'
+      preLoaderRoute: typeof ContratacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/demo': {
       id: '/demo'
       path: '/demo'
@@ -661,27 +680,6 @@ declare module '@tanstack/react-router' {
       path: '/primeiro-acesso'
       fullPath: '/primeiro-acesso'
       preLoaderRoute: typeof PrimeiroAcessoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contratacao': {
-      id: '/contratacao'
-      path: '/contratacao'
-      fullPath: '/contratacao'
-      preLoaderRoute: typeof ContratacaoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contratacao/$contactId': {
-      id: '/contratacao/$contactId'
-      path: '/contratacao/$contactId'
-      fullPath: '/contratacao/$contactId'
-      preLoaderRoute: typeof ContratacaoContactIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/c/$code': {
-      id: '/c/$code'
-      path: '/c/$code'
-      fullPath: '/c/$code'
-      preLoaderRoute: typeof CCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -754,12 +752,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/agenda/$meetingId': {
+      id: '/agenda/$meetingId'
+      path: '/agenda/$meetingId'
+      fullPath: '/agenda/$meetingId'
+      preLoaderRoute: typeof AgendaMeetingIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/contratacao': {
+      id: '/api/contratacao'
+      path: '/api/contratacao'
+      fullPath: '/api/contratacao'
+      preLoaderRoute: typeof ApiContratacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/': {
       id: '/auth/'
       path: '/'
       fullPath: '/auth/'
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/c/$code': {
+      id: '/c/$code'
+      path: '/c/$code'
+      fullPath: '/c/$code'
+      preLoaderRoute: typeof CCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contratacao/$contactId': {
+      id: '/contratacao/$contactId'
+      path: '/$contactId'
+      fullPath: '/contratacao/$contactId'
+      preLoaderRoute: typeof ContratacaoContactIdRouteImport
+      parentRoute: typeof ContratacaoRoute
     }
     '/_authenticated/chatbot/': {
       id: '/_authenticated/chatbot/'
@@ -768,18 +794,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatbotIndexRouteImport
       parentRoute: typeof AuthenticatedChatbotRoute
     }
-    '/_authenticated/chatbot/atendimento': {
-      id: '/_authenticated/chatbot/atendimento'
-      path: '/atendimento'
-      fullPath: '/chatbot/atendimento'
-      preLoaderRoute: typeof AuthenticatedChatbotAtendimentoRouteImport
-      parentRoute: typeof AuthenticatedChatbotRoute
-    }
     '/_authenticated/chatbot/agendamentos': {
       id: '/_authenticated/chatbot/agendamentos'
       path: '/agendamentos'
       fullPath: '/chatbot/agendamentos'
       preLoaderRoute: typeof AuthenticatedChatbotAgendamentosRouteImport
+      parentRoute: typeof AuthenticatedChatbotRoute
+    }
+    '/_authenticated/chatbot/atendimento': {
+      id: '/_authenticated/chatbot/atendimento'
+      path: '/atendimento'
+      fullPath: '/chatbot/atendimento'
+      preLoaderRoute: typeof AuthenticatedChatbotAtendimentoRouteImport
       parentRoute: typeof AuthenticatedChatbotRoute
     }
     '/_authenticated/chatbot/automacoes': {
@@ -894,6 +920,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterFinanceiroRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
+    '/api/autentique/webhook': {
+      id: '/api/autentique/webhook'
+      path: '/api/autentique/webhook'
+      fullPath: '/api/autentique/webhook'
+      preLoaderRoute: typeof ApiAutentiqueWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/chatbot/evo': {
       id: '/api/chatbot/evo'
       path: '/api/chatbot/evo'
@@ -908,32 +941,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCoraWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/autentique/webhook': {
-      id: '/api/autentique/webhook'
-      path: '/api/autentique/webhook'
-      fullPath: '/api/autentique/webhook'
-      preLoaderRoute: typeof ApiAutentiqueWebhookRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/contratacao': {
-      id: '/api/contratacao'
-      path: '/api/contratacao'
-      fullPath: '/api/contratacao'
-      preLoaderRoute: typeof ApiContratacaoRouteImport
-      parentRoute: typeof rootRouteImport
+    '/auth/google/callback': {
+      id: '/auth/google/callback'
+      path: '/google/callback'
+      fullPath: '/auth/google/callback'
+      preLoaderRoute: typeof AuthGoogleCallbackRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/auth/meta/callback': {
       id: '/auth/meta/callback'
       path: '/meta/callback'
       fullPath: '/auth/meta/callback'
       preLoaderRoute: typeof AuthMetaCallbackRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/auth/google/callback': {
-      id: '/auth/google/callback'
-      path: '/google/callback'
-      fullPath: '/auth/google/callback'
-      preLoaderRoute: typeof AuthGoogleCallbackRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_authenticated/master/financeiro/$orgId': {
@@ -954,8 +973,8 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedChatbotRouteChildren {
-  AuthenticatedChatbotAtendimentoRoute: typeof AuthenticatedChatbotAtendimentoRoute
   AuthenticatedChatbotAgendamentosRoute: typeof AuthenticatedChatbotAgendamentosRoute
+  AuthenticatedChatbotAtendimentoRoute: typeof AuthenticatedChatbotAtendimentoRoute
   AuthenticatedChatbotAutomacoesRoute: typeof AuthenticatedChatbotAutomacoesRoute
   AuthenticatedChatbotClientesRoute: typeof AuthenticatedChatbotClientesRoute
   AuthenticatedChatbotConfiguracoesRoute: typeof AuthenticatedChatbotConfiguracoesRoute
@@ -970,8 +989,8 @@ interface AuthenticatedChatbotRouteChildren {
 }
 
 const AuthenticatedChatbotRouteChildren: AuthenticatedChatbotRouteChildren = {
-  AuthenticatedChatbotAtendimentoRoute: AuthenticatedChatbotAtendimentoRoute,
   AuthenticatedChatbotAgendamentosRoute: AuthenticatedChatbotAgendamentosRoute,
+  AuthenticatedChatbotAtendimentoRoute: AuthenticatedChatbotAtendimentoRoute,
   AuthenticatedChatbotAutomacoesRoute: AuthenticatedChatbotAutomacoesRoute,
   AuthenticatedChatbotClientesRoute: AuthenticatedChatbotClientesRoute,
   AuthenticatedChatbotConfiguracoesRoute:
@@ -1057,33 +1076,45 @@ const AuthenticatedRouteRouteWithChildren =
 
 interface AuthRouteChildren {
   AuthIndexRoute: typeof AuthIndexRoute
-  AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
   AuthGoogleCallbackRoute: typeof AuthGoogleCallbackRoute
+  AuthMetaCallbackRoute: typeof AuthMetaCallbackRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthIndexRoute: AuthIndexRoute,
-  AuthMetaCallbackRoute: AuthMetaCallbackRoute,
   AuthGoogleCallbackRoute: AuthGoogleCallbackRoute,
+  AuthMetaCallbackRoute: AuthMetaCallbackRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
+interface ContratacaoRouteChildren {
+  ContratacaoContactIdRoute: typeof ContratacaoContactIdRoute
+}
+
+const ContratacaoRouteChildren: ContratacaoRouteChildren = {
+  ContratacaoContactIdRoute: ContratacaoContactIdRoute,
+}
+
+const ContratacaoRouteWithChildren = ContratacaoRoute._addFileChildren(
+  ContratacaoRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
+  ContratacaoRoute: ContratacaoRouteWithChildren,
   DemoRoute: DemoRoute,
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
-  ContratacaoRoute: ContratacaoRoute,
-  ContratacaoContactIdRoute: ContratacaoContactIdRoute,
-  CCodeRoute: CCodeRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  AgendaMeetingIdRoute: AgendaMeetingIdRoute,
+  ApiContratacaoRoute: ApiContratacaoRoute,
+  CCodeRoute: CCodeRoute,
+  ApiAutentiqueWebhookRoute: ApiAutentiqueWebhookRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
   ApiCoraWebhookRoute: ApiCoraWebhookRoute,
-  ApiAutentiqueWebhookRoute: ApiAutentiqueWebhookRoute,
-  ApiContratacaoRoute: ApiContratacaoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

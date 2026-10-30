@@ -10,18 +10,20 @@ import {
   rejectedTransactionField,
 } from "@/lib/meta-transactions-diagnose";
 import { adsManagerResult, campaignDeliveryGroup } from "@/lib/meta-analysis";
-import type {
-  MetaAccountView,
-  MetaBusinessView,
-  MetaCampaignRow,
-  MetaConnectionView,
-  MetaCampaignSnapshot,
-  MetaDayPoint,
-  MetaKpis,
-  MetaPeriod,
-  MetaResultSeries,
-  MasterCampaignsView,
-  MetaPerformanceView,
+import {
+  campaignCreatedDay,
+  campaignCreatedInPeriod,
+  type MetaAccountView,
+  type MetaBusinessView,
+  type MetaCampaignRow,
+  type MetaConnectionView,
+  type MetaCampaignSnapshot,
+  type MetaDayPoint,
+  type MetaKpis,
+  type MetaPeriod,
+  type MetaResultSeries,
+  type MasterCampaignsView,
+  type MetaPerformanceView,
 } from "@/lib/meta-access";
 
 export type { MetaAccountView, MetaConnectionView };
@@ -135,6 +137,7 @@ type GraphCampaign = {
   id?: string;
   name?: string;
   effective_status?: string;
+  created_time?: string;
   insights?: { data?: GraphInsight[] };
   ads?: { data?: { effective_status?: string }[] };
   adsets?: { data?: { effective_status?: string }[] };
@@ -1194,7 +1197,7 @@ async function collectCampaigns(
     return null;
   });
   let next: string | null = null;
-  const fields = `id,name,effective_status,${campaignInsightField(period)}`;
+  const fields = `id,name,effective_status,created_time,${campaignInsightField(period)}`;
   for (let page = 0; page < 5; page += 1) {
     const body: GraphBody = next
       ? await graphFetch(new URL(next))
@@ -1208,6 +1211,7 @@ async function collectCampaigns(
         name: item.name?.trim() || `Campanha ${item.id}`,
         status: status.label,
         statusGroup: status.group,
+        createdAt: campaignCreatedDay(item.created_time),
         reach: stats.reach,
         impressions: stats.impressions,
         clicks: stats.clicks,
@@ -1618,6 +1622,7 @@ export async function listMasterCampaigns(
         period,
       );
       for (const row of collected.rows) {
+        if (!campaignCreatedInPeriod(row.createdAt, period)) continue;
         campaigns.push({
           ...row,
           organizationId,

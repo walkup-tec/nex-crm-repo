@@ -25,6 +25,36 @@ export type MetaConnectionView = {
 
 export type MetaPeriod = { mode: "total" } | { mode: "custom"; since: string; until: string };
 
+/** Dia (YYYY-MM-DD, São Paulo) a partir do created_time da Meta. */
+export function campaignCreatedDay(createdTime: string | null | undefined) {
+  if (!createdTime?.trim()) return null;
+  const trimmed = createdTime.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const normalized = trimmed.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(trimmed);
+    return match?.[1] ?? null;
+  }
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+}
+
+/** Em Campanhas globais o período filtra pela data de criação da campanha. */
+export function campaignCreatedInPeriod(
+  createdAt: string | null | undefined,
+  period: MetaPeriod,
+) {
+  if (period.mode === "total") return true;
+  if (!createdAt) return false;
+  const day = createdAt.slice(0, 10);
+  return day >= period.since && day <= period.until;
+}
+
 export type MetaKpis = {
   reach: number;
   impressions: number;
@@ -48,6 +78,7 @@ export type MetaCampaignRow = {
   name: string;
   status: string;
   statusGroup: "Ativa" | "Inativa" | "Encerrada" | "Outro";
+  createdAt: string | null;
   reach: number;
   impressions: number;
   clicks: number;

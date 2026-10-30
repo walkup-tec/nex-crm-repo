@@ -174,34 +174,10 @@ export function todayKey(now = new Date()) {
   }).format(now);
 }
 
-export type FinancePeriod = "all" | "past-week" | "next-week" | "past-month" | "current-month";
-
 export function shiftDate(iso: string, days: number) {
   const date = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
-}
-
-export function financePeriodBounds(
-  period: FinancePeriod,
-  today = todayKey(),
-): { start: string; end: string } | null {
-  if (period === "all") return null;
-  if (period === "past-week") return { start: shiftDate(today, -6), end: today };
-  if (period === "next-week") return { start: today, end: shiftDate(today, 6) };
-  const [yearText, monthText] = today.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  if (period === "current-month") {
-    const end = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    return {
-      start: `${yearText}-${monthText}-01`,
-      end: `${yearText}-${monthText}-${String(end).padStart(2, "0")}`,
-    };
-  }
-  const startDate = new Date(Date.UTC(year, month - 2, 1));
-  const endDate = new Date(Date.UTC(year, month - 1, 0));
-  return { start: startDate.toISOString().slice(0, 10), end: endDate.toISOString().slice(0, 10) };
 }
 
 export function chargeInPeriod(dueDate: string, bounds: { start: string; end: string } | null) {

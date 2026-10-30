@@ -92,6 +92,7 @@ function campaign(
   return {
     status: "Ativa",
     statusGroup: "Ativa",
+    createdAt: null,
     reach: 0,
     impressions: 0,
     clicks: 0,

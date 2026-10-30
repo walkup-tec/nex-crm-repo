@@ -250,7 +250,12 @@ export function MasterCampaigns() {
             <SelectItem value="Encerrada">Encerradas</SelectItem>
           </SelectContent>
         </Select>
-        <PeriodPicker value={period} disabled={loading} onApply={(next) => void load(next)} />
+        <PeriodPicker
+          value={period}
+          disabled={loading}
+          onApply={(next) => void load(next)}
+          totalHint="Lista todas as campanhas. Em Personalizado, o filtro usa a data de criação da campanha."
+        />
       </div>
 
       {loading && <p className="text-sm text-muted-foreground">Lendo as campanhas na Meta...</p>}

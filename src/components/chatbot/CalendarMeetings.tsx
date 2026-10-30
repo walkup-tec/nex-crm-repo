@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FocusEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleX, Clock3, Plus } from "lucide-react";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
+import { DashboardKpiCard } from "@/components/nex/DashboardKpiCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +20,6 @@ import {
   agendaDisplayStatus,
   agendaWeekStart,
   meetingOnContactCard,
-  meetingsInHour,
   meetingWhen,
   type AgendaBoardView,
   type AgendaDisplayStatus,
@@ -27,6 +27,7 @@ import {
   type LeadMeetingView,
   type MeetingWindow,
 } from "@/lib/google-calendar";
+import { cn } from "@/lib/utils";
 
 const openConversationKey = "nex-kanban-conversation";
 
@@ -36,10 +37,16 @@ const statusTone: Record<AgendaDisplayStatus, string> = {
   cancelled: "border-red-500/40 bg-red-500/15 text-red-300",
 };
 
-const statusDot: Record<AgendaDisplayStatus, string> = {
-  confirmed: "bg-emerald-400",
-  pending: "bg-amber-400",
-  cancelled: "bg-red-400",
+const eventTone: Record<AgendaDisplayStatus, string> = {
+  confirmed: "border-emerald-500/30 bg-[#064e3b]",
+  pending: "border-amber-500/35 bg-[#78350f]",
+  cancelled: "border-red-500/35 bg-[#7f1d1d]",
+};
+
+const eventDot: Record<AgendaDisplayStatus, string> = {
+  confirmed: "bg-emerald-500 shadow-[0_0_8px_#22c55e]",
+  pending: "bg-amber-500 shadow-[0_0_8px_#f59e0b]",
+  cancelled: "bg-red-500 shadow-[0_0_8px_#ef4444]",
 };
 
 function shiftWeek(weekStart: string, weeks: number) {
@@ -251,43 +258,72 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
   );
 }
 
-function MeetingBlock({
-  meeting,
-  calling,
-  onOpen,
-  onCall,
-}: {
-  meeting: LeadMeetingView;
-  calling: string;
-  onOpen: (meeting: LeadMeetingView) => void;
-  onCall: (leadId: string) => void;
-}) {
+function GoogleMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden>
+      <path fill="#FFC107" d="M43.6 20.5H24v7.1h11.3C33.7 32.8 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.3-5.3C33.6 6.2 29.1 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z" />
+      <path fill="#FF3D00" d="m6.3 14.7 5.9 4.3C13.8 15.1 18.5 12 24 12c3 0 5.7 1.1 7.8 2.9l5.3-5.3C33.6 6.2 29.1 4 24 4 16.3 4 9.6 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.1C29.2 35.5 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-5.9 4.5C10.5 39.6 16.7 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H24v7.1h11.3c-1.1 3.1-3.5 5.5-6.1 6.7l.1.1 6.2 5.1C38.3 37.2 44 32 44 24c0-1.2-.1-2.3-.4-3.5z" />
+    </svg>
+  );
+}
+
+function MeetingBlock({ meeting, onOpen }: { meeting: LeadMeetingView; onOpen: (meeting: LeadMeetingView) => void }) {
   const tone = agendaDisplayStatus(meeting.status);
   const start = agendaClock(meeting.startAt);
   const end = agendaClock(meeting.endAt);
   return (
     <button
       type="button"
-      className={`w-full rounded-md border px-2 py-1.5 text-left text-[11px] leading-tight transition hover:brightness-110 ${statusTone[tone]}`}
+      className={cn(
+        "grid w-full grid-cols-[8px_minmax(0,1fr)] items-start gap-x-2 rounded-[10px] border px-2.5 py-2.5 text-left transition hover:brightness-110",
+        eventTone[tone],
+      )}
       onClick={() => onOpen(meeting)}
     >
-      <p className="font-semibold">
-        {start} - {end}
-      </p>
-      <p className="mt-0.5 truncate">{meeting.leadName || meeting.title}</p>
-      {meeting.canManage && meeting.status === "scheduled" ? (
-        <span
-          className="mt-1 inline-flex text-[10px] underline"
-          onClick={(event) => {
-            event.stopPropagation();
-            onCall(meeting.leadId);
-          }}
-        >
-          {calling === meeting.leadId ? "Abrindo..." : "Chamar"}
+      <span className={cn("mt-1 size-2 rounded-full", eventDot[tone])} aria-hidden />
+      <span className="min-w-0">
+        <span className="block text-[11px] font-medium text-white/90">
+          {start} - {end}
         </span>
-      ) : null}
+        <span className="mt-0.5 block truncate text-[12.5px] font-semibold text-white">{meeting.leadName || meeting.title}</span>
+      </span>
     </button>
   );
+}
+
+function StatusFilter({
+  tone,
+  label,
+  checked,
+  onToggle,
+}: {
+  tone: AgendaDisplayStatus;
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const color =
+    tone === "confirmed" ? "text-emerald-400 border-emerald-400/50 bg-emerald-500/20" : tone === "pending" ? "text-amber-400 border-amber-400/50 bg-amber-500/20" : "text-red-400 border-red-400/50 bg-red-500/20";
+  return (
+    <button type="button" onClick={onToggle} className={cn("inline-flex items-center gap-1.5 text-[12.5px]", color.split(" ")[0])}>
+      <span className={cn("grid size-3.5 place-items-center rounded border", color)}>
+        {checked ? (
+          <svg viewBox="0 0 24 24" className="size-2.5" fill="none" stroke="currentColor" strokeWidth="3">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        ) : null}
+      </span>
+      {label}
+    </button>
+  );
+}
+
+function dayMeetingGroups(meetings: LeadMeetingView[]) {
+  const morning = meetings.filter((meeting) => agendaClock(meeting.startAt) < "13:00");
+  const afternoon = meetings.filter((meeting) => agendaClock(meeting.startAt) >= "13:00");
+  return { morning, afternoon, gap: morning.length > 0 && afternoon.length > 0 };
 }
 
 export function CalendarMeetings() {
@@ -303,6 +339,11 @@ export function CalendarMeetings() {
   const [calling, setCalling] = useState("");
   const [selected, setSelected] = useState<LeadMeetingView | null>(null);
   const [editing, setEditing] = useState<LeadMeetingView | null>(null);
+  const [statusFilter, setStatusFilter] = useState<Record<AgendaDisplayStatus, boolean>>({
+    confirmed: true,
+    pending: true,
+    cancelled: true,
+  });
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -417,38 +458,33 @@ export function CalendarMeetings() {
   if (!connection?.enabled) return <p className="text-sm text-muted-foreground">{note || "Nenhum agendamento."}</p>;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setWeekStart((value) => shiftWeek(value, -1))}>
-            <ChevronLeft className="size-4" />
-          </Button>
-          <div className="rounded-md border px-3 py-2 text-sm font-medium">{board?.rangeLabel ?? "—"}</div>
-          <Button type="button" variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setWeekStart((value) => shiftWeek(value, 1))}>
-            <ChevronRight className="size-4" />
-          </Button>
-          <Select value={preset} onValueChange={applyPreset}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="this">Esta semana</SelectItem>
-              <SelectItem value="prev">Semana anterior</SelectItem>
-              <SelectItem value="next">Próxima semana</SelectItem>
-            </SelectContent>
-          </Select>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="inline-flex h-[38px] items-center gap-2 rounded-[10px] border border-slate-400/20 bg-[#0d1628] px-3 text-[13px]">
+          <CalendarDays className="size-3.5 opacity-70" />
+          {board?.rangeLabel ?? "—"}
         </div>
+        <Select value={preset} onValueChange={applyPreset}>
+          <SelectTrigger className="h-[38px] w-44 rounded-[10px] border-slate-400/20 bg-[#0d1628]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="this">Esta semana</SelectItem>
+            <SelectItem value="prev">Semana anterior</SelectItem>
+            <SelectItem value="next">Próxima semana</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      <Card>
+      <Card className="border-slate-400/15 bg-gradient-to-b from-[#101a2e] to-[#0d1527] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)]">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-secondary">
-              <CalendarDays className="size-5 text-primary" />
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-10 flex-none place-items-center rounded-[10px] bg-white">
+              <GoogleMark />
             </span>
-            <div>
-              <p className="font-semibold">{connected ? connection.email || "Google Calendar" : "Google Calendar"}</p>
-              <p className="text-sm text-muted-foreground">
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-white">{connected ? connection.email || "Google Calendar" : "Google Calendar"}</p>
+              <p className="mt-0.5 text-[13px] text-slate-400">
                 {connected ? "Conta conectada. As próximas reuniões aparecem abaixo." : "Conecte a conta para criar reuniões com Google Meet."}
               </p>
             </div>
@@ -456,11 +492,11 @@ export function CalendarMeetings() {
           <div className="flex flex-wrap items-center gap-2">
             {connected ? (
               <>
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                  <span className="size-2 rounded-full bg-emerald-400" />
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                  <span className="size-1.5 rounded-full bg-emerald-400" />
                   Conectado
                 </span>
-                <Button type="button" variant="outline" disabled={pending === "disconnect"} onClick={() => void disconnect()}>
+                <Button type="button" variant="outline" className="h-[34px] border-slate-400/30 bg-[#0d1628]" disabled={pending === "disconnect"} onClick={() => void disconnect()}>
                   {pending === "disconnect" ? "Desconectando" : "Desconectar"}
                 </Button>
               </>
@@ -476,87 +512,78 @@ export function CalendarMeetings() {
       {note ? <p className="text-sm text-destructive">{note}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
+        <DashboardKpiCard
           label="Total de agendamentos"
           value={String(stats?.total ?? 0)}
-          detail={
-            delta == null ? null : (
-              <span className={`inline-flex items-center gap-1 ${delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {delta >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
-                {delta > 0 ? "+" : ""}
-                {delta}% vs. semana anterior
-              </span>
-            )
+          icon={CalendarDays}
+          accentColor="#3b82f6"
+          trend={
+            delta == null
+              ? undefined
+              : {
+                  direction: delta >= 0 ? "up" : "down",
+                  text: `${delta}%`,
+                  tone: delta >= 0 ? "positive" : "negative",
+                }
           }
+          comparison={delta == null ? undefined : "vs. semana anterior"}
         />
-        <StatCard label="Confirmados" value={String(stats?.confirmed ?? 0)} detail={`${confirmedShare}% do total`} tone="text-emerald-400" />
-        <StatCard label="Pendentes" value={String(stats?.pending ?? 0)} detail={`${pendingShare}% do total`} tone="text-amber-400" />
-        <StatCard label="Cancelados" value={String(stats?.cancelled ?? 0)} detail={`${cancelledShare}% do total`} tone="text-red-400" />
+        <DashboardKpiCard label="Confirmados" value={String(stats?.confirmed ?? 0)} icon={CheckCircle2} accentColor="#22c55e" subValue={`${confirmedShare}% do total`} />
+        <DashboardKpiCard label="Pendentes" value={String(stats?.pending ?? 0)} icon={Clock3} accentColor="#f59e0b" subValue={`${pendingShare}% do total`} />
+        <DashboardKpiCard label="Cancelados" value={String(stats?.cancelled ?? 0)} icon={CircleX} accentColor="#ef4444" subValue={`${cancelledShare}% do total`} />
       </div>
 
-      <Card>
+      <Card className="border-slate-400/15 bg-[#101a2e]">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={goToday}>
+              <Button type="button" variant="outline" size="sm" className="h-[34px] border-slate-400/20 bg-[#0d1628]" onClick={goToday}>
                 Hoje
               </Button>
-              <Button type="button" variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setWeekStart((value) => shiftWeek(value, -1))}>
+              <Button type="button" variant="outline" size="icon" className="size-[34px] border-slate-400/20 bg-[#0d1628]" aria-label="Semana anterior" onClick={() => setWeekStart((value) => shiftWeek(value, -1))}>
                 <ChevronLeft className="size-4" />
               </Button>
-              <Button type="button" variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setWeekStart((value) => shiftWeek(value, 1))}>
+              <Button type="button" variant="outline" size="icon" className="size-[34px] border-slate-400/20 bg-[#0d1628]" aria-label="Próxima semana" onClick={() => setWeekStart((value) => shiftWeek(value, 1))}>
                 <ChevronRight className="size-4" />
               </Button>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={`size-2 rounded-full ${statusDot.confirmed}`} /> Confirmado
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={`size-2 rounded-full ${statusDot.pending}`} /> Pendente
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={`size-2 rounded-full ${statusDot.cancelled}`} /> Cancelado
-                </span>
+              <div className="ml-1 flex flex-wrap items-center gap-3.5">
+                <StatusFilter tone="confirmed" label="Confirmado" checked={statusFilter.confirmed} onToggle={() => setStatusFilter((value) => ({ ...value, confirmed: !value.confirmed }))} />
+                <StatusFilter tone="pending" label="Pendente" checked={statusFilter.pending} onToggle={() => setStatusFilter((value) => ({ ...value, pending: !value.pending }))} />
+                <StatusFilter tone="cancelled" label="Cancelado" checked={statusFilter.cancelled} onToggle={() => setStatusFilter((value) => ({ ...value, cancelled: !value.cancelled }))} />
               </div>
             </div>
-            <Button type="button" onClick={() => void navigate({ to: "/chatbot" })}>
+            <Button type="button" className="bg-violet-500 shadow-[0_8px_20px_-10px_rgba(139,92,246,0.8)] hover:bg-violet-500/90" onClick={() => void navigate({ to: "/chatbot" })}>
               <Plus className="size-4" />
               Novo agendamento
             </Button>
           </div>
 
-          <div className="overflow-x-auto">
-            <div className="min-w-[860px]">
-              <div className="grid grid-cols-[64px_repeat(5,minmax(0,1fr))] gap-2 border-b pb-3">
-                <div />
-                {(board?.days ?? []).map((day) => (
-                  <div key={day.date} className="rounded-lg border bg-muted/20 px-3 py-2 text-center">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{day.weekday}</p>
-                    <p className="mt-1 text-sm font-semibold">{day.dayMonth}</p>
-                    <span className="mt-2 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                      {day.count}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="divide-y">
-                {(board?.hours ?? []).map((hour) => (
-                  <div key={hour} className="grid grid-cols-[64px_repeat(5,minmax(0,1fr))] gap-2 py-2">
-                    <div className="pt-2 text-xs text-muted-foreground">{hour}</div>
-                    {(board?.days ?? []).map((day) => {
-                      const items = meetingsInHour(day.meetings, hour);
-                      return (
-                        <div key={`${day.date}-${hour}`} className="min-h-14 space-y-1 rounded-md border border-transparent bg-muted/10 p-1">
-                          {items.map((meeting) => (
-                            <MeetingBlock key={meeting.id} meeting={meeting} calling={calling} onOpen={setSelected} onCall={(leadId) => void call(leadId)} />
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
+          <div className="overflow-x-auto pb-1">
+            <div className="grid min-w-[980px] grid-cols-5 gap-3 items-start">
+              {(board?.days ?? []).map((day) => {
+                const visible = day.meetings.filter((meeting) => statusFilter[agendaDisplayStatus(meeting.status)]);
+                const groups = dayMeetingGroups(visible);
+                return (
+                  <section key={day.date} className="flex min-h-[560px] flex-col overflow-hidden rounded-xl border border-slate-400/15 bg-[#0c1424]">
+                    <header className="relative border-b border-slate-400/10 px-2.5 pb-2.5 pt-3 text-center">
+                      <p className="text-[13px] font-semibold capitalize text-white">{day.weekday}</p>
+                      <p className="mt-0.5 text-xs font-medium text-slate-300">{day.dayMonth}</p>
+                      <span className="absolute right-2.5 top-3 grid h-[22px] min-w-[22px] place-items-center rounded-md border border-blue-400/30 bg-blue-500/15 px-1.5 text-[11px] font-bold text-blue-300">
+                        {visible.length}
+                      </span>
+                    </header>
+                    <div className="flex flex-1 flex-col gap-2 p-2.5">
+                      {groups.morning.map((meeting) => (
+                        <MeetingBlock key={meeting.id} meeting={meeting} onOpen={setSelected} />
+                      ))}
+                      {groups.gap ? <div className="h-[18px]" aria-hidden /> : null}
+                      {groups.afternoon.map((meeting) => (
+                        <MeetingBlock key={meeting.id} meeting={meeting} onOpen={setSelected} />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           </div>
 
@@ -600,8 +627,8 @@ export function CalendarMeetings() {
               ) : null}
               {selected.canManage && selected.status === "scheduled" ? (
                 <>
-                  <Button type="button" size="sm" variant="outline" onClick={() => void call(selected.leadId)}>
-                    Chamar no WhatsApp
+                  <Button type="button" size="sm" variant="outline" disabled={calling === selected.leadId} onClick={() => void call(selected.leadId)}>
+                    {calling === selected.leadId ? "Abrindo..." : "Chamar no WhatsApp"}
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => setEditing(selected)}>
                     Reagendar
@@ -631,27 +658,5 @@ export function CalendarMeetings() {
         }}
       />
     </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: string;
-  detail?: ReactNode;
-  tone?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <strong className={`mt-3 block font-display text-3xl ${tone ?? ""}`}>{value}</strong>
-        {detail ? <div className="mt-2 text-xs text-muted-foreground">{detail}</div> : null}
-      </CardContent>
-    </Card>
   );
 }

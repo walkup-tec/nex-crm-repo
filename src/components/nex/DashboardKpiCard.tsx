@@ -24,7 +24,8 @@ export type DashboardKpiCardProps = {
   trend?: KpiTrend;
   /** Ex.: "vs. 29 no mês anterior" */
   comparison?: string;
-  footerLabel: string;
+  /** Sem footer (ex.: KPIs da agenda) */
+  footerLabel?: string;
   onFooterClick?: () => void;
   className?: string;
 };
@@ -90,14 +91,16 @@ export function DashboardKpiCard({
         ) : null}
       </div>
 
-      <button
-        type="button"
-        onClick={onFooterClick}
-        className="group/foot flex w-full items-center justify-between border-t border-slate-400/10 bg-[#02060f]/60 py-2.5 pl-6 pr-3.5 text-left text-xs font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
-      >
-        <span>{footerLabel}</span>
-        <ChevronRight className="h-[15px] w-[15px] text-slate-500 transition group-hover/foot:translate-x-0.5 group-hover/foot:text-white" />
-      </button>
+      {footerLabel ? (
+        <button
+          type="button"
+          onClick={onFooterClick}
+          className="group/foot flex w-full items-center justify-between border-t border-slate-400/10 bg-[#02060f]/60 py-2.5 pl-6 pr-3.5 text-left text-xs font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
+        >
+          <span>{footerLabel}</span>
+          <ChevronRight className="h-[15px] w-[15px] text-slate-500 transition group-hover/foot:translate-x-0.5 group-hover/foot:text-white" />
+        </button>
+      ) : null}
     </article>
   );
 }

@@ -236,15 +236,18 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
   }, [leadId, tick, version]);
 
   if (!leadId) return null;
+  const visible = meetings.filter((meeting) => meetingOnContactCard(meeting.status, meeting.startAt));
+  if (!visible.length && !note) return null;
   return (
-    <>
+    <section className="contact-section">
+      <h3>Reuniões</h3>
       {note ? <p className="composer-error">{note}</p> : null}
       <MeetingCards
-        meetings={meetings.filter((meeting) => meetingOnContactCard(meeting.status))}
+        meetings={visible}
         empty="Nenhuma reunião agendada."
         onChanged={() => setVersion((value) => value + 1)}
       />
-    </>
+    </section>
   );
 }
 

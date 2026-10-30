@@ -16,8 +16,13 @@ export const googleCalendarScopes = [
 
 export type MeetingStatus = "scheduled" | "cancelled" | "failed";
 
-export function meetingOnContactCard(status: string) {
-  return status === "scheduled";
+/** No card do contato: só reunião agendada no dia de hoje (SP) ou no futuro. */
+export function meetingOnContactCard(status: string, startAt?: string, now = Date.now()) {
+  if (status !== "scheduled") return false;
+  if (!startAt) return true;
+  const day = agendaDayKey(startAt);
+  if (!day) return true;
+  return day >= saoPauloDate(now);
 }
 
 export type LeadMeetingView = {

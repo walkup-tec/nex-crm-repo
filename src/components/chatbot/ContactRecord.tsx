@@ -647,12 +647,7 @@ export function ContactRecord({
             />
             <p className="contact-note-count">{noteDraft.length}/300</p>
           </section>
-          {showMeetings ? (
-            <section className="contact-section">
-              <h3>Reuniões</h3>
-              <LeadMeetings leadId={profile.id} tick={meetingTick} />
-            </section>
-          ) : null}
+          {showMeetings ? <LeadMeetings leadId={profile.id} tick={meetingTick} /> : null}
           <section className="contact-section">
             <h3>Produtos e serviços</h3>
             {profile.catalogReady && profile.products.length ? (

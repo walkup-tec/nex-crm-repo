@@ -175,6 +175,10 @@ assert.equal(meetUrlFromEvent({ hangoutLink: "javascript:alert(1)" }), "");
 assert.equal(meetingOnContactCard("scheduled"), true);
 assert.equal(meetingOnContactCard("cancelled"), false);
 assert.equal(meetingOnContactCard("failed"), false);
+const contactNow = Date.parse("2026-11-04T12:00:00-03:00");
+assert.equal(meetingOnContactCard("scheduled", "2026-11-03T12:00:00.000Z", contactNow), false);
+assert.equal(meetingOnContactCard("scheduled", "2026-11-04T12:00:00.000Z", contactNow), true);
+assert.equal(meetingOnContactCard("scheduled", "2026-11-05T12:00:00.000Z", contactNow), true);
 
 const current = {
   startAt: "2026-10-23T18:00:00.000Z",

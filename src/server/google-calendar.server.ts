@@ -621,7 +621,11 @@ export async function listLeadMeetings(userId: string, leadId = "") {
     if (!gate.manager) query = query.eq("user_id", userId);
   }
   return decorate(
-    (await rows(query)).filter((row) => (leadId ? meetingOnContactCard(cell(row, "status")) : cell(row, "status") !== "failed")),
+    (await rows(query)).filter((row) =>
+      leadId
+        ? meetingOnContactCard(cell(row, "status"), cell(row, "start_at"))
+        : cell(row, "status") !== "failed",
+    ),
     userId,
     gate.manager,
   );

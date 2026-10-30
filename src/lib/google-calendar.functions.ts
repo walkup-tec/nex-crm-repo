@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { GoogleCalendarConnectionView, LeadMeetingView, MeetingCalendarDay } from "@/lib/google-calendar";
+import type { AgendaBoardView, GoogleCalendarConnectionView, LeadMeetingView, MeetingCalendarDay } from "@/lib/google-calendar";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -103,6 +103,14 @@ export const listMeetingCalendarFn = createServerFn({ method: "POST" })
   .handler(async ({ context }): Promise<Result<MeetingCalendarDay[]>> => {
     const { listMeetingCalendar } = await import("@/server/google-calendar.server");
     return guard(() => listMeetingCalendar(context.userId));
+  });
+
+export const listAgendaBoardFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data?: { weekStart?: string }) => ({ weekStart: text(data?.weekStart, 10) }))
+  .handler(async ({ context, data }): Promise<Result<AgendaBoardView>> => {
+    const { listAgendaBoard } = await import("@/server/google-calendar.server");
+    return guard(() => listAgendaBoard(context.userId, data.weekStart));
   });
 
 export const createLeadMeetingFn = createServerFn({ method: "POST" })

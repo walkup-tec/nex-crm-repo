@@ -1,19 +1,53 @@
-import { useEffect, useRef, useState, type FocusEvent } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { callChatbotContactFn } from "@/lib/chatbot.functions";
 import {
   cancelLeadMeetingFn,
   disconnectGoogleCalendarFn,
   googleCalendarConnectionFn,
+  listAgendaBoardFn,
   listLeadMeetingsFn,
-  listMeetingCalendarFn,
   startGoogleCalendarConnectFn,
 } from "@/lib/google-calendar.functions";
-import { meetingForWindow, meetingOnContactCard, meetingWhen, type GoogleCalendarConnectionView, type LeadMeetingView, type MeetingCalendarDay, type MeetingWindow } from "@/lib/google-calendar";
+import {
+  agendaClock,
+  agendaDisplayStatus,
+  agendaWeekStart,
+  meetingOnContactCard,
+  meetingsInHour,
+  meetingWhen,
+  type AgendaBoardView,
+  type AgendaDisplayStatus,
+  type GoogleCalendarConnectionView,
+  type LeadMeetingView,
+  type MeetingWindow,
+} from "@/lib/google-calendar";
 
 const openConversationKey = "nex-kanban-conversation";
+
+const statusTone: Record<AgendaDisplayStatus, string> = {
+  confirmed: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+  pending: "border-amber-500/40 bg-amber-500/15 text-amber-200",
+  cancelled: "border-red-500/40 bg-red-500/15 text-red-300",
+};
+
+const statusDot: Record<AgendaDisplayStatus, string> = {
+  confirmed: "bg-emerald-400",
+  pending: "bg-amber-400",
+  cancelled: "bg-red-400",
+};
+
+function shiftWeek(weekStart: string, weeks: number) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(weekStart);
+  if (!match) return weekStart;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + weeks * 7));
+  return date.toISOString().slice(0, 10);
+}
 
 function AgendaWindow({
   slot,
@@ -75,10 +109,13 @@ function AgendaWindow({
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  void navigator.clipboard.writeText(meet).then(() => {
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1600);
-                  }).catch(() => setCopied(false));
+                  void navigator.clipboard
+                    .writeText(meet)
+                    .then(() => {
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1600);
+                    })
+                    .catch(() => setCopied(false));
                 }}
               >
                 {copied ? "Link copiado" : "Copiar link"}
@@ -202,21 +239,67 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
   return (
     <>
       {note ? <p className="composer-error">{note}</p> : null}
-      <MeetingCards meetings={meetings.filter((meeting) => meetingOnContactCard(meeting.status))} empty="Nenhuma reunião agendada." onChanged={() => setVersion((value) => value + 1)} />
+      <MeetingCards
+        meetings={meetings.filter((meeting) => meetingOnContactCard(meeting.status))}
+        empty="Nenhuma reunião agendada."
+        onChanged={() => setVersion((value) => value + 1)}
+      />
     </>
+  );
+}
+
+function MeetingBlock({
+  meeting,
+  calling,
+  onOpen,
+  onCall,
+}: {
+  meeting: LeadMeetingView;
+  calling: string;
+  onOpen: (meeting: LeadMeetingView) => void;
+  onCall: (leadId: string) => void;
+}) {
+  const tone = agendaDisplayStatus(meeting.status);
+  const start = agendaClock(meeting.startAt);
+  const end = agendaClock(meeting.endAt);
+  return (
+    <button
+      type="button"
+      className={`w-full rounded-md border px-2 py-1.5 text-left text-[11px] leading-tight transition hover:brightness-110 ${statusTone[tone]}`}
+      onClick={() => onOpen(meeting)}
+    >
+      <p className="font-semibold">
+        {start} - {end}
+      </p>
+      <p className="mt-0.5 truncate">{meeting.leadName || meeting.title}</p>
+      {meeting.canManage && meeting.status === "scheduled" ? (
+        <span
+          className="mt-1 inline-flex text-[10px] underline"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCall(meeting.leadId);
+          }}
+        >
+          {calling === meeting.leadId ? "Abrindo..." : "Chamar"}
+        </span>
+      ) : null}
+    </button>
   );
 }
 
 export function CalendarMeetings() {
   const navigate = useNavigate();
   const [connection, setConnection] = useState<GoogleCalendarConnectionView | null>(null);
-  const [meetings, setMeetings] = useState<LeadMeetingView[]>([]);
-  const [days, setDays] = useState<MeetingCalendarDay[]>([]);
+  const [board, setBoard] = useState<AgendaBoardView | null>(null);
+  const [weekStart, setWeekStart] = useState(() => agendaWeekStart());
+  const [preset, setPreset] = useState("this");
   const [note, setNote] = useState("");
   const [pending, setPending] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [version, setVersion] = useState(0);
   const [calling, setCalling] = useState("");
+  const [selected, setSelected] = useState<LeadMeetingView | null>(null);
+  const [editing, setEditing] = useState<LeadMeetingView | null>(null);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -235,24 +318,24 @@ export function CalendarMeetings() {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const [linked, list, calendar] = await Promise.all([
+      const [linked, agenda] = await Promise.all([
         googleCalendarConnectionFn(),
-        listLeadMeetingsFn({ data: {} }),
-        listMeetingCalendarFn(),
+        listAgendaBoardFn({ data: { weekStart } }),
       ]);
       if (!active) return;
       if (!linked.ok) setNote(linked.message);
       else setConnection(linked.data);
-      if (!list.ok) setNote(list.message);
-      else setMeetings(list.data);
-      if (!calendar.ok) setNote(calendar.message);
-      else setDays(calendar.data);
+      if (!agenda.ok) setNote(agenda.message);
+      else {
+        setBoard(agenda.data);
+        if (agenda.data.weekStart !== weekStart) setWeekStart(agenda.data.weekStart);
+      }
       setLoaded(true);
     })();
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, weekStart]);
 
   function connect() {
     setNote("");
@@ -305,45 +388,267 @@ export function CalendarMeetings() {
     setVersion((value) => value + 1);
   }
 
+  function goToday() {
+    setPreset("this");
+    setWeekStart(agendaWeekStart());
+  }
+
+  function applyPreset(value: string) {
+    setPreset(value);
+    const today = agendaWeekStart();
+    if (value === "prev") setWeekStart(shiftWeek(today, -1));
+    else if (value === "next") setWeekStart(shiftWeek(today, 1));
+    else setWeekStart(today);
+  }
+
+  const stats = board?.stats;
+  const confirmedShare = stats && stats.total ? Math.round((stats.confirmed / stats.total) * 100) : 0;
+  const pendingShare = stats && stats.total ? Math.round((stats.pending / stats.total) * 100) : 0;
+  const cancelledShare = stats && stats.total ? Math.round((stats.cancelled / stats.total) * 100) : 0;
+  const delta = stats?.totalDeltaPercent;
   const connected = connection?.status === "connected";
-  if (!loaded) return <p className="meeting-empty">Carregando agendamentos.</p>;
-  if (!connection?.enabled) return <p className="meeting-empty">{note || "Nenhum agendamento."}</p>;
+
+  const selectedTone = selected ? agendaDisplayStatus(selected.status) : null;
+
+  if (!loaded) return <p className="text-sm text-muted-foreground">Carregando agendamentos...</p>;
+  if (!connection?.enabled) return <p className="text-sm text-muted-foreground">{note || "Nenhum agendamento."}</p>;
+
   return (
-    <section className="calendar-board">
-      <header className="calendar-toolbar">
-        <div>
-          <strong>{connected ? connection.email || "Google Calendar" : "Google Calendar"}</strong>
-          <p>{connected ? "Conta conectada. As próximas reuniões aparecem abaixo." : "Conecte a conta para criar reuniões com Google Meet."}</p>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setWeekStart((value) => shiftWeek(value, -1))}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <div className="rounded-md border px-3 py-2 text-sm font-medium">{board?.rangeLabel ?? "—"}</div>
+          <Button type="button" variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setWeekStart((value) => shiftWeek(value, 1))}>
+            <ChevronRight className="size-4" />
+          </Button>
+          <Select value={preset} onValueChange={applyPreset}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="this">Esta semana</SelectItem>
+              <SelectItem value="prev">Semana anterior</SelectItem>
+              <SelectItem value="next">Próxima semana</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        {connected ? (
-          <Button type="button" variant="outline" disabled={pending === "disconnect"} onClick={() => void disconnect()}>
-            {pending === "disconnect" ? "Desconectando" : "Desconectar"}
-          </Button>
-        ) : (
-          <Button type="button" disabled={pending === "connect"} onClick={connect}>
-            {pending === "connect" ? "Aguardando Google" : "Conectar Google Calendar"}
-          </Button>
-        )}
-      </header>
-      {note ? <p className="composer-error">{note}</p> : null}
-      <div className="agenda-legend">
-        <span className="is-available">Livre</span>
-        <span className="is-occupied">Ocupado</span>
-        <span className="is-past">Encerrado</span>
       </div>
-      <p className="meeting-zone">Segunda a sexta, 4 semanas · horário de Brasília.</p>
-      <div className="agenda-month">
-        {days.map((day) => (
-          <article className={`agenda-day${day.closed ? " is-closed" : ""}`} key={day.date}>
-            <header>{day.title}</header>
-            {day.closed ? <p>Sem expediente</p> : null}
-            {day.windows.map((slot) => (
-              <AgendaWindow key={slot.start} slot={slot} meeting={meetingForWindow(meetings, slot.start, slot.end)} calling={calling} onCall={(leadId) => void call(leadId)} />
-            ))}
-          </article>
-        ))}
+
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 place-items-center rounded-lg bg-secondary">
+              <CalendarDays className="size-5 text-primary" />
+            </span>
+            <div>
+              <p className="font-semibold">{connected ? connection.email || "Google Calendar" : "Google Calendar"}</p>
+              <p className="text-sm text-muted-foreground">
+                {connected ? "Conta conectada. As próximas reuniões aparecem abaixo." : "Conecte a conta para criar reuniões com Google Meet."}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {connected ? (
+              <>
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                  <span className="size-2 rounded-full bg-emerald-400" />
+                  Conectado
+                </span>
+                <Button type="button" variant="outline" disabled={pending === "disconnect"} onClick={() => void disconnect()}>
+                  {pending === "disconnect" ? "Desconectando" : "Desconectar"}
+                </Button>
+              </>
+            ) : (
+              <Button type="button" disabled={pending === "connect"} onClick={connect}>
+                {pending === "connect" ? "Aguardando Google" : "Conectar Google Calendar"}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {note ? <p className="text-sm text-destructive">{note}</p> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total de agendamentos"
+          value={String(stats?.total ?? 0)}
+          detail={
+            delta == null ? null : (
+              <span className={`inline-flex items-center gap-1 ${delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {delta >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
+                {delta > 0 ? "+" : ""}
+                {delta}% vs. semana anterior
+              </span>
+            )
+          }
+        />
+        <StatCard label="Confirmados" value={String(stats?.confirmed ?? 0)} detail={`${confirmedShare}% do total`} tone="text-emerald-400" />
+        <StatCard label="Pendentes" value={String(stats?.pending ?? 0)} detail={`${pendingShare}% do total`} tone="text-amber-400" />
+        <StatCard label="Cancelados" value={String(stats?.cancelled ?? 0)} detail={`${cancelledShare}% do total`} tone="text-red-400" />
       </div>
-      <MeetingCards meetings={meetings} empty="Nenhuma reunião próxima." onChanged={() => setVersion((value) => value + 1)} />
-    </section>
+
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={goToday}>
+                Hoje
+              </Button>
+              <Button type="button" variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setWeekStart((value) => shiftWeek(value, -1))}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button type="button" variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setWeekStart((value) => shiftWeek(value, 1))}>
+                <ChevronRight className="size-4" />
+              </Button>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className={`size-2 rounded-full ${statusDot.confirmed}`} /> Confirmado
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className={`size-2 rounded-full ${statusDot.pending}`} /> Pendente
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className={`size-2 rounded-full ${statusDot.cancelled}`} /> Cancelado
+                </span>
+              </div>
+            </div>
+            <Button type="button" onClick={() => void navigate({ to: "/chatbot" })}>
+              <Plus className="size-4" />
+              Novo agendamento
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[860px]">
+              <div className="grid grid-cols-[64px_repeat(5,minmax(0,1fr))] gap-2 border-b pb-3">
+                <div />
+                {(board?.days ?? []).map((day) => (
+                  <div key={day.date} className="rounded-lg border bg-muted/20 px-3 py-2 text-center">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{day.weekday}</p>
+                    <p className="mt-1 text-sm font-semibold">{day.dayMonth}</p>
+                    <span className="mt-2 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      {day.count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="divide-y">
+                {(board?.hours ?? []).map((hour) => (
+                  <div key={hour} className="grid grid-cols-[64px_repeat(5,minmax(0,1fr))] gap-2 py-2">
+                    <div className="pt-2 text-xs text-muted-foreground">{hour}</div>
+                    {(board?.days ?? []).map((day) => {
+                      const items = meetingsInHour(day.meetings, hour);
+                      return (
+                        <div key={`${day.date}-${hour}`} className="min-h-14 space-y-1 rounded-md border border-transparent bg-muted/10 p-1">
+                          {items.map((meeting) => (
+                            <MeetingBlock key={meeting.id} meeting={meeting} calling={calling} onOpen={setSelected} onCall={(leadId) => void call(leadId)} />
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {!board?.meetings.length ? (
+            <p className="text-sm text-muted-foreground">Nenhum agendamento nesta semana. Abra um lead na caixa de entrada para criar um novo.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {selected ? (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Detalhe do horário</p>
+                <h3 className="mt-1 text-lg font-semibold">{selected.title || "Reunião"}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {selected.leadName} · {meetingWhen(selected.startAt, selected.endAt)}
+                </p>
+              </div>
+              {selectedTone ? (
+                <span className={`rounded-full border px-3 py-1 text-xs font-medium ${statusTone[selectedTone]}`}>
+                  {selectedTone === "confirmed" ? "Confirmado" : selectedTone === "pending" ? "Pendente" : "Cancelado"}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selected.meetUrl ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href={selected.meetUrl} target="_blank" rel="noreferrer">
+                    Google Meet
+                  </a>
+                </Button>
+              ) : null}
+              {selected.calendarUrl ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href={selected.calendarUrl} target="_blank" rel="noreferrer">
+                    Google Calendar
+                  </a>
+                </Button>
+              ) : null}
+              {selected.canManage && selected.status === "scheduled" ? (
+                <>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void call(selected.leadId)}>
+                    Chamar no WhatsApp
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setEditing(selected)}>
+                    Reagendar
+                  </Button>
+                </>
+              ) : null}
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(null)}>
+                Fechar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <MeetingDialog
+        open={Boolean(editing)}
+        leadId={editing?.leadId ?? ""}
+        leadName={editing?.leadName ?? ""}
+        meeting={editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onSaved={() => {
+          setEditing(null);
+          setSelected(null);
+          setVersion((value) => value + 1);
+        }}
+      />
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail?: ReactNode;
+  tone?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <strong className={`mt-3 block font-display text-3xl ${tone ?? ""}`}>{value}</strong>
+        {detail ? <div className="mt-2 text-xs text-muted-foreground">{detail}</div> : null}
+      </CardContent>
+    </Card>
   );
 }

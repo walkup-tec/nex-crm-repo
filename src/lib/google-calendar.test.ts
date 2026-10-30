@@ -32,6 +32,12 @@ import {
   meetingCalendar,
   meetingChoices,
   releaseMeetingSlot,
+  agendaDisplayStatus,
+  agendaWeekStart,
+  agendaRangeLabel,
+  buildAgendaBoard,
+  meetingsInHour,
+  type LeadMeetingView,
 } from "./google-calendar";
 
 const now = Date.parse("2026-10-23T12:00:00-03:00");
@@ -188,3 +194,43 @@ assert.deepEqual(
     calendarUrl: "https://www.google.com/calendar/event?eid=1",
   },
 );
+
+assert.equal(agendaDisplayStatus("scheduled"), "confirmed");
+assert.equal(agendaDisplayStatus("failed"), "pending");
+assert.equal(agendaDisplayStatus("cancelled"), "cancelled");
+assert.equal(agendaWeekStart("2026-10-28"), "2026-10-26");
+assert.equal(agendaRangeLabel("2026-10-26"), "26/10/2026 - 01/11/2026");
+
+const sampleMeeting = (partial: Partial<LeadMeetingView> & Pick<LeadMeetingView, "id" | "startAt" | "status">): LeadMeetingView => ({
+  leadId: "lead",
+  leadName: "Almeida Cred",
+  userId: "user",
+  ownerName: "Marcelo",
+  title: "Apresentação",
+  description: "",
+  attendeeEmail: "a@empresa.com",
+  attendees: [],
+  endAt: "2026-10-26T12:30:00.000Z",
+  timezone: "America/Sao_Paulo",
+  meetUrl: "",
+  calendarUrl: "",
+  mine: true,
+  canManage: true,
+  ...partial,
+});
+
+const board = buildAgendaBoard(
+  "2026-10-26",
+  [
+    sampleMeeting({ id: "1", startAt: "2026-10-26T12:00:00.000Z", endAt: "2026-10-26T12:30:00.000Z", status: "scheduled" }),
+    sampleMeeting({ id: "2", startAt: "2026-10-27T14:00:00.000Z", endAt: "2026-10-27T14:30:00.000Z", status: "failed", leadName: "Drax" }),
+    sampleMeeting({ id: "3", startAt: "2026-10-28T17:00:00.000Z", endAt: "2026-10-28T17:30:00.000Z", status: "cancelled", leadName: "Soma" }),
+  ],
+  [sampleMeeting({ id: "4", startAt: "2026-10-20T12:00:00.000Z", endAt: "2026-10-20T12:30:00.000Z", status: "scheduled" })],
+);
+assert.equal(board.stats.total, 3);
+assert.equal(board.stats.confirmed, 1);
+assert.equal(board.stats.pending, 1);
+assert.equal(board.stats.cancelled, 1);
+assert.equal(board.days[0]?.count, 1);
+assert.equal(meetingsInHour(board.days[0]?.meetings ?? [], "09:00").length, 1);

@@ -295,6 +295,138 @@ export function meetingForWindow<T extends { status: string; startAt: string; en
   );
 }
 
+export type AgendaDisplayStatus = "confirmed" | "pending" | "cancelled";
+
+export type AgendaBoardStats = {
+  total: number;
+  confirmed: number;
+  pending: number;
+  cancelled: number;
+  totalDeltaPercent: number | null;
+};
+
+export type AgendaWeekDay = {
+  date: string;
+  weekday: string;
+  dayMonth: string;
+  count: number;
+  meetings: LeadMeetingView[];
+};
+
+export type AgendaBoardView = {
+  weekStart: string;
+  weekEnd: string;
+  rangeLabel: string;
+  stats: AgendaBoardStats;
+  days: AgendaWeekDay[];
+  hours: string[];
+  meetings: LeadMeetingView[];
+};
+
+export const agendaGridHours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+
+export function agendaWeekStart(date = saoPauloDate(Date.now())) {
+  return mondayOfWeek(date);
+}
+
+export function agendaDisplayStatus(status: string): AgendaDisplayStatus {
+  if (status === "cancelled") return "cancelled";
+  if (status === "failed") return "pending";
+  return "confirmed";
+}
+
+export function agendaDayKey(iso: string) {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return "";
+  return saoPauloDate(parsed);
+}
+
+export function agendaClock(iso: string) {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: meetingTimeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(parsed));
+}
+
+export function agendaRangeLabel(weekStart: string) {
+  const end = shiftDate(weekStart, 6);
+  const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+  return `${fmt(weekStart)} - ${fmt(end)}`;
+}
+
+function percentDelta(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+}
+
+export function agendaBoardStats(current: LeadMeetingView[], previous: LeadMeetingView[] = []): AgendaBoardStats {
+  const count = (list: LeadMeetingView[], tone: AgendaDisplayStatus) =>
+    list.filter((meeting) => agendaDisplayStatus(meeting.status) === tone).length;
+  const total = current.length;
+  const previousTotal = previous.length;
+  return {
+    total,
+    confirmed: count(current, "confirmed"),
+    pending: count(current, "pending"),
+    cancelled: count(current, "cancelled"),
+    totalDeltaPercent: previous.length || current.length ? percentDelta(total, previousTotal) : null,
+  };
+}
+
+export function agendaWeekDays(weekStart: string, meetings: LeadMeetingView[]): AgendaWeekDay[] {
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = shiftDate(weekStart, index);
+    const parsed = new Date(`${date}T12:00:00-03:00`);
+    const dayMeetings = meetings
+      .filter((meeting) => agendaDayKey(meeting.startAt) === date)
+      .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt));
+    return {
+      date,
+      weekday: new Intl.DateTimeFormat("pt-BR", { timeZone: meetingTimeZone, weekday: "short" })
+        .format(parsed)
+        .replace(".", ""),
+      dayMonth: new Intl.DateTimeFormat("pt-BR", {
+        timeZone: meetingTimeZone,
+        day: "2-digit",
+        month: "2-digit",
+      }).format(parsed),
+      count: dayMeetings.length,
+      meetings: dayMeetings,
+    };
+  });
+}
+
+export function meetingsInHour(meetings: LeadMeetingView[], hour: string) {
+  const prefix = hour.slice(0, 2);
+  return meetings.filter((meeting) => agendaClock(meeting.startAt).startsWith(prefix));
+}
+
+export function buildAgendaBoard(
+  weekStartInput: string,
+  meetings: LeadMeetingView[],
+  previousMeetings: LeadMeetingView[] = [],
+): AgendaBoardView {
+  const weekStart = agendaWeekStart(weekStartInput);
+  const weekEnd = shiftDate(weekStart, 6);
+  const inWeek = meetings.filter((meeting) => {
+    const day = agendaDayKey(meeting.startAt);
+    return day >= weekStart && day <= weekEnd;
+  });
+  return {
+    weekStart,
+    weekEnd,
+    rangeLabel: agendaRangeLabel(weekStart),
+    stats: agendaBoardStats(inWeek, previousMeetings),
+    days: agendaWeekDays(weekStart, inWeek),
+    hours: agendaGridHours,
+    meetings: inWeek,
+  };
+}
+
 export function meetingSlot(input: { date: string; time: string }, now = Date.now()) {
   const match = /^(\d{2}):(\d{2})$/.exec(input.time);
   if (!match) return null;

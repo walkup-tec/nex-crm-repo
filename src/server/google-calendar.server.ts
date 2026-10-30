@@ -627,6 +627,44 @@ export async function listLeadMeetings(userId: string, leadId = "") {
   );
 }
 
+function shiftIsoDay(date: string, days: number) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return date;
+  const next = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return next.toISOString().slice(0, 10);
+}
+
+export async function listAgendaBoard(userId: string, weekStartInput = "") {
+  const { agendaDayKey, agendaWeekStart, buildAgendaBoard } = await import("@/lib/google-calendar");
+  const gate = await access(userId, "schedules");
+  if (!(await mmsCalendar(gate.organizationId))) {
+    return buildAgendaBoard(agendaWeekStart(), [], []);
+  }
+  await syncQuietly(gate.organizationId, userId, gate.manager);
+  const weekStart = agendaWeekStart(/^\d{4}-\d{2}-\d{2}$/.test(weekStartInput) ? weekStartInput : undefined);
+  const prevStart = shiftIsoDay(weekStart, -7);
+  const nextStart = shiftIsoDay(weekStart, 7);
+  let query = from("lead_meetings")
+    .select("*")
+    .eq("organization_id", gate.organizationId)
+    .gte("start_at", `${prevStart}T00:00:00-03:00`)
+    .lt("start_at", `${nextStart}T00:00:00-03:00`)
+    .in("status", ["scheduled", "cancelled", "failed"])
+    .order("start_at", { ascending: true })
+    .limit(400);
+  if (!gate.manager) query = query.eq("user_id", userId);
+  const list = await decorate(await rows(query), userId, gate.manager);
+  const current = list.filter((meeting) => {
+    const day = agendaDayKey(meeting.startAt);
+    return day >= weekStart && day < nextStart;
+  });
+  const previous = list.filter((meeting) => {
+    const day = agendaDayKey(meeting.startAt);
+    return day >= prevStart && day < weekStart;
+  });
+  return buildAgendaBoard(weekStart, current, previous);
+}
+
 export async function listMeetingCalendar(userId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
   if (!(await mmsCalendar(gate.organizationId))) return [];

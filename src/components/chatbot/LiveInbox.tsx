@@ -44,12 +44,30 @@ type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | 
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
 
 function mediaCaption(text: string) {
-  if (text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]" || text === "[áudio]") return "";
+  if (
+    text === "[mensagem]" ||
+    text === "[imagem]" ||
+    text === "[vídeo]" ||
+    text === "[áudio]" ||
+    text === "[documento]"
+  ) {
+    return "";
+  }
   return text;
 }
 
 function expectsMedia(item: InboxMessage) {
-  return item.mediaKind === "image" || item.mediaKind === "video" || item.mediaKind === "audio" || item.mediaKind === "document" || item.text === "[mensagem]" || item.text === "[imagem]" || item.text === "[vídeo]" || item.text === "[áudio]";
+  return (
+    item.mediaKind === "image" ||
+    item.mediaKind === "video" ||
+    item.mediaKind === "audio" ||
+    item.mediaKind === "document" ||
+    item.text === "[mensagem]" ||
+    item.text === "[imagem]" ||
+    item.text === "[vídeo]" ||
+    item.text === "[áudio]" ||
+    item.text === "[documento]"
+  );
 }
 
 function downloadMedia(file: LoadedMedia, name = "") {

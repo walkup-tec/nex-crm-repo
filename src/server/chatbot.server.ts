@@ -2060,7 +2060,18 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     }
   } else if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
     const retry = await table("chatbot_messages")
-      .insert({ ...messageRow, text: storedText || (content.mediaKind === "video" ? "[vídeo]" : content.mediaKind === "audio" ? "[áudio]" : "[imagem]") })
+      .insert({
+        ...messageRow,
+        text:
+          storedText ||
+          (content.mediaKind === "video"
+            ? "[vídeo]"
+            : content.mediaKind === "audio"
+              ? "[áudio]"
+              : content.mediaKind === "document"
+                ? "[documento]"
+                : "[imagem]"),
+      })
       .select("id")
       .maybeSingle();
     if (retry.error && !duplicate(retry.error)) return;
@@ -2329,13 +2340,19 @@ async function fetchEvolutionMedia(instanceName: string, externalId: string, kin
 }
 
 function mediaPlaceholder(text: string) {
-  return text === "[mensagem]" || text === "[imagem]" || text === "[vídeo]" || text === "[áudio]";
+  return (
+    text === "[mensagem]" ||
+    text === "[imagem]" ||
+    text === "[vídeo]" ||
+    text === "[áudio]" ||
+    text === "[documento]"
+  );
 }
 
 function storedMediaKind(value: string, text: string): "image" | "video" | "audio" | "document" | "" {
   if (value === "video" || text === "[vídeo]") return "video";
   if (value === "audio" || text === "[áudio]") return "audio";
-  if (value === "document") return "document";
+  if (value === "document" || text === "[documento]") return "document";
   if (value === "image" || text === "[imagem]" || text === "[mensagem]") return "image";
   return "";
 }

@@ -773,6 +773,20 @@ assert.equal(evolutionMessageContent({ message: { viewOnceMessageV2: { message: 
 assert.equal(evolutionMessageContent({ messageType: "audioMessage", message: { audioMessage: { mimetype: "audio/ogg; codecs=opus" } } }).mediaKind, "audio");
 assert.equal(evolutionMessageContent({ messageType: "audioMessage", message: { audioMessage: { mimetype: "audio/ogg; codecs=opus" } } }).mediaMime, "audio/ogg");
 assert.equal(evolutionMediaFile({ mimetype: "audio/ogg", base64: "abc" }).kind, "audio");
+assert.equal(
+  evolutionMessageContent({
+    messageType: "documentMessage",
+    message: { documentMessage: { mimetype: "application/pdf", fileName: "boleto.pdf" } },
+  }).mediaKind,
+  "document",
+);
+assert.equal(
+  evolutionMessageContent({
+    messageType: "documentMessage",
+    message: { documentMessage: { mimetype: "application/pdf", fileName: "boleto.pdf" } },
+  }).text,
+  "boleto.pdf",
+);
 assert.equal(evolutionMessageContent({ message: { conversation: "Olá" } }).text, "Olá");
 assert.deepEqual(evolutionMediaFile({ mimetype: "image/jpeg", base64: "data:image/jpeg;base64,abc" }), { mime: "image/jpeg", base64: "abc", kind: "image" });
 assert.equal(evolutionMediaFile({ base64: "abc" }, "video").kind, "video");

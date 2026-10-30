@@ -13,8 +13,10 @@ import { moneyCents, type MetaCreditView } from "@/lib/meta-credit";
 import {
   availableFromRegisteredCredit,
   creditTopupLedger,
+  encodePrepaidSyncStatus,
   metaCreditAlertState,
   readCreditTopup,
+  resolveCreditTopup,
   todayDate,
   topupSinceDate,
 } from "@/lib/meta-credit-topup";
@@ -83,7 +85,7 @@ async function mmsMaster(organizationId: string, role: Role) {
 
 async function selectedAccount(organizationId: string) {
   const columns =
-    "id, external_account_id, name, currency, portfolio_id, balance_url, prepaid_ledger";
+    "id, external_account_id, name, currency, portfolio_id, balance_url, prepaid_ledger, sync_status, balance_cents, last_synced_at";
   const query = await supabaseAdmin
     .from("meta_accounts")
     .select(columns)
@@ -93,7 +95,9 @@ async function selectedAccount(organizationId: string) {
   if (query.error && /prepaid_ledger/i.test(query.error.message)) {
     const plain = await supabaseAdmin
       .from("meta_accounts")
-      .select("id, external_account_id, name, currency, portfolio_id, balance_url")
+      .select(
+        "id, external_account_id, name, currency, portfolio_id, balance_url, sync_status, balance_cents, last_synced_at",
+      )
       .eq("organization_id", organizationId)
       .eq("selected", true)
       .limit(1);
@@ -111,6 +115,9 @@ async function rememberBalance(
   ledger: ReturnType<typeof creditTopupLedger> | { manualCredit: false; entries: [] },
   required = false,
 ) {
+  const topup = readCreditTopup(ledger);
+  const syncedAt = topup?.at ?? new Date().toISOString();
+  const syncStatus = topup ? encodePrepaidSyncStatus(topup.cents, topup.at) : "synced";
   const update: {
     prepaid_ledger: typeof ledger;
     last_synced_at: string;
@@ -118,29 +125,34 @@ async function rememberBalance(
     balance_cents?: number;
   } = {
     prepaid_ledger: ledger,
-    last_synced_at: new Date().toISOString(),
-    sync_status: "synced",
+    last_synced_at: syncedAt,
+    sync_status: syncStatus,
   };
   if (cents != null) update.balance_cents = cents;
   const { error } = await supabaseAdmin.from("meta_accounts").update(update).eq("id", accountRowId);
   if (!error) return;
-  // Registering a top-up requires prepaid_ledger. Saving only balance_cents looks OK in the UI
-  // and then vanishes on refresh as "Sem recarga registrada".
-  if (required) fail("Não foi possível gravar o saldo da recarga.");
-  if (/prepaid_ledger/i.test(error.message) && cents != null) {
+  if (/prepaid_ledger/i.test(error.message)) {
+    // Production may not have run 0006_meta_prepaid_ledger.sql yet.
+    const fallbackUpdate: {
+      last_synced_at: string;
+      sync_status: string;
+      balance_cents?: number;
+    } = {
+      last_synced_at: syncedAt,
+      sync_status: syncStatus,
+    };
+    if (cents != null) fallbackUpdate.balance_cents = cents;
     const fallback = await supabaseAdmin
       .from("meta_accounts")
-      .update({
-        balance_cents: cents,
-        last_synced_at: update.last_synced_at,
-        sync_status: "synced",
-      })
+      .update(fallbackUpdate)
       .eq("id", accountRowId);
     if (!fallback.error) return;
     console.error("meta_prepaid_ledger", fallback.error.code ?? "error");
+    if (required) fail("Não foi possível gravar o saldo da recarga.");
     return;
   }
   console.error("meta_prepaid_ledger", error.code ?? "error");
+  if (required) fail("Não foi possível gravar o saldo da recarga.");
 }
 
 async function readFields(organizationId: string, accountId: string, fields: string) {
@@ -169,8 +181,9 @@ async function readBalance(
   accountId: string,
   accountRowId: string,
   prepaidLedger: unknown,
+  syncStatus: unknown = null,
 ) {
-  const topup = readCreditTopup(prepaidLedger);
+  const topup = resolveCreditTopup(prepaidLedger, syncStatus);
   const [account, paymentError] = await Promise.all([
     readFields(organizationId, accountId, "name,account_id,currency,balance,is_prepay_account"),
     hasBillingPaymentError(organizationId, accountId),
@@ -220,6 +233,7 @@ export async function getMetaCredit(userId: string): Promise<MetaCreditView> {
     account.external_account_id,
     account.id,
     account.prepaid_ledger,
+    account.sync_status,
   );
   return {
     accountName: account.name,
@@ -354,7 +368,7 @@ export async function getClientBalanceAlert(userId: string) {
   }
   const { data: accounts, error: accountError } = await supabaseAdmin
     .from("meta_accounts")
-    .select("id, external_account_id, balance_cents, last_synced_at, prepaid_ledger")
+    .select("id, external_account_id, balance_cents, last_synced_at, prepaid_ledger, sync_status")
     .eq("organization_id", profile.organization_id)
     .eq("selected", true)
     .limit(1);
@@ -365,13 +379,14 @@ export async function getClientBalanceAlert(userId: string) {
         balance_cents: number | null;
         last_synced_at: string | null;
         prepaid_ledger: unknown;
+        sync_status?: string | null;
       }
     | undefined;
   if (accountError) {
     if (!/prepaid_ledger/i.test(accountError.message)) return empty;
     const plain = await supabaseAdmin
       .from("meta_accounts")
-      .select("id, external_account_id, balance_cents, last_synced_at")
+      .select("id, external_account_id, balance_cents, last_synced_at, sync_status")
       .eq("organization_id", profile.organization_id)
       .eq("selected", true)
       .limit(1);
@@ -379,7 +394,7 @@ export async function getClientBalanceAlert(userId: string) {
     account = { ...plain.data[0], prepaid_ledger: null };
   }
   if (!account) return empty;
-  const topup = readCreditTopup(account.prepaid_ledger);
+  const topup = resolveCreditTopup(account.prepaid_ledger, account.sync_status);
   let availableCents =
     topup && account.last_synced_at && Number.isFinite(Number(account.balance_cents))
       ? Number(account.balance_cents)

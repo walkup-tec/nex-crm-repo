@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import {
   availableFromRegisteredCredit,
   creditTopupLedger,
+  encodePrepaidSyncStatus,
   hasRegisteredCreditTopup,
   insightSpendToCents,
   metaCreditAlertState,
   readCreditTopup,
+  readPrepaidSyncStatus,
+  resolveCreditTopup,
   todayDate,
   topupSinceDate,
 } from "./meta-credit-topup";
@@ -59,6 +62,17 @@ assert.deepEqual(
     paymentError: true,
   }),
   { missingTopup: false, balanceLow: false, paymentError: true, low: true },
+);
+
+assert.equal(encodePrepaidSyncStatus(15000, "2026-10-30T12:00:00.000Z"), "prepaid:15000:2026-10-30T12:00:00.000Z");
+assert.deepEqual(readPrepaidSyncStatus("prepaid:15000:2026-10-30T12:00:00.000Z"), {
+  cents: 15000,
+  at: "2026-10-30T12:00:00.000Z",
+});
+assert.equal(readPrepaidSyncStatus("synced"), null);
+assert.deepEqual(
+  resolveCreditTopup(null, "prepaid:15000:2026-10-30T12:00:00.000Z"),
+  { cents: 15000, at: "2026-10-30T12:00:00.000Z" },
 );
 
 console.log("meta-credit-topup tests ok");

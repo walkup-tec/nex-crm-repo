@@ -42,6 +42,34 @@ export function hasRegisteredCreditTopup(ledger: unknown) {
   return readCreditTopup(ledger) != null;
 }
 
+/** Fallback when meta_accounts.prepaid_ledger is missing in production. */
+const prepaidSyncPattern = /^prepaid:(\d+):(.+)$/;
+
+export function encodePrepaidSyncStatus(cents: number, at: string) {
+  if (!Number.isInteger(cents) || cents <= 0) {
+    throw new Error("Informe um valor de crédito válido.");
+  }
+  if (!at.trim() || Number.isNaN(Date.parse(at))) {
+    throw new Error("Informe a data da recarga.");
+  }
+  return `prepaid:${cents}:${at}`;
+}
+
+export function readPrepaidSyncStatus(syncStatus: unknown): CreditTopup | null {
+  if (typeof syncStatus !== "string") return null;
+  const match = prepaidSyncPattern.exec(syncStatus.trim());
+  if (!match) return null;
+  const cents = Number(match[1]);
+  const at = match[2] ?? "";
+  if (!Number.isInteger(cents) || cents <= 0) return null;
+  if (!at.trim() || Number.isNaN(Date.parse(at))) return null;
+  return { cents, at };
+}
+
+export function resolveCreditTopup(ledger: unknown, syncStatus: unknown = null) {
+  return readCreditTopup(ledger) ?? readPrepaidSyncStatus(syncStatus);
+}
+
 export function insightSpendToCents(spend: unknown) {
   if (typeof spend === "number") {
     if (!Number.isFinite(spend) || spend < 0) return 0;

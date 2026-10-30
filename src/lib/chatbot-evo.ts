@@ -1052,10 +1052,11 @@ function unwrapEvolutionMessage(message: Record<string, unknown>) {
   return current;
 }
 
-function mediaKindFromName(value: unknown): "" | "image" | "video" | "audio" {
+function mediaKindFromName(value: unknown): "" | "image" | "video" | "audio" | "document" {
   if (value === "imageMessage") return "image";
   if (value === "videoMessage" || value === "ptvMessage") return "video";
   if (value === "audioMessage" || value === "pttMessage") return "audio";
+  if (value === "documentMessage" || value === "documentWithCaptionMessage") return "document";
   return "";
 }
 
@@ -1064,7 +1065,19 @@ function mediaMime(value: unknown) {
   return value.split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
-export function evolutionMessageContent(data: unknown): { text: string; mediaKind: "" | "image" | "video" | "audio"; mediaMime: string } {
+function mediaKindFromMime(mime: string): "" | "image" | "video" | "audio" | "document" {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime === "application/pdf") return "document";
+  return "";
+}
+
+export function evolutionMessageContent(data: unknown): {
+  text: string;
+  mediaKind: "" | "image" | "video" | "audio" | "document";
+  mediaMime: string;
+} {
   const root = isRecord(data) ? data : {};
   const source = isRecord(root["message"]) ? root["message"] : root;
   const message = unwrapEvolutionMessage(source);
@@ -1076,15 +1089,40 @@ export function evolutionMessageContent(data: unknown): { text: string; mediaKin
         ? message["ptvMessage"]
         : isRecord(message["audioMessage"])
           ? message["audioMessage"]
-          : message;
+          : isRecord(message["documentMessage"])
+            ? message["documentMessage"]
+            : message;
+  const mime = mediaMime(nested["mimetype"]);
   const mediaKind =
     mediaKindFromName(root["messageType"]) ||
     mediaKindFromName(message["messageType"]) ||
-    (message["imageMessage"] ? "image" : message["videoMessage"] || message["ptvMessage"] ? "video" : message["audioMessage"] ? "audio" : "") ||
-    (mediaMime(nested["mimetype"]).startsWith("image/") ? "image" : mediaMime(nested["mimetype"]).startsWith("video/") ? "video" : mediaMime(nested["mimetype"]).startsWith("audio/") ? "audio" : "");
+    (message["imageMessage"]
+      ? "image"
+      : message["videoMessage"] || message["ptvMessage"]
+        ? "video"
+        : message["audioMessage"]
+          ? "audio"
+          : message["documentMessage"]
+            ? "document"
+            : "") ||
+    mediaKindFromMime(mime);
   if (!mediaKind) return { text: evolutionMessageText(message), mediaKind: "", mediaMime: "" };
   const caption = typeof nested["caption"] === "string" ? nested["caption"].trim() : "";
-  return { text: caption || (mediaKind === "audio" ? "[áudio]" : ""), mediaKind, mediaMime: mediaMime(nested["mimetype"]) };
+  const fileName =
+    typeof nested["fileName"] === "string"
+      ? nested["fileName"].trim()
+      : typeof nested["title"] === "string"
+        ? nested["title"].trim()
+        : "";
+  const text =
+    caption ||
+    fileName ||
+    (mediaKind === "audio" ? "[áudio]" : mediaKind === "document" ? "[documento]" : "");
+  return {
+    text,
+    mediaKind,
+    mediaMime: mime || (mediaKind === "document" ? "application/pdf" : ""),
+  };
 }
 
 export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video" | "audio" | "document" = ""): { mime: string; base64: string; kind: "" | "image" | "video" | "audio" | "document" } {

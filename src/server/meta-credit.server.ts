@@ -124,6 +124,9 @@ async function rememberBalance(
   if (cents != null) update.balance_cents = cents;
   const { error } = await supabaseAdmin.from("meta_accounts").update(update).eq("id", accountRowId);
   if (!error) return;
+  // Registering a top-up requires prepaid_ledger. Saving only balance_cents looks OK in the UI
+  // and then vanishes on refresh as "Sem recarga registrada".
+  if (required) fail("Não foi possível gravar o saldo da recarga.");
   if (/prepaid_ledger/i.test(error.message) && cents != null) {
     const fallback = await supabaseAdmin
       .from("meta_accounts")
@@ -134,11 +137,9 @@ async function rememberBalance(
       })
       .eq("id", accountRowId);
     if (!fallback.error) return;
-    if (required) fail("Não foi possível gravar o saldo da recarga.");
     console.error("meta_prepaid_ledger", fallback.error.code ?? "error");
     return;
   }
-  if (required) fail("Não foi possível gravar o saldo da recarga.");
   console.error("meta_prepaid_ledger", error.code ?? "error");
 }
 
@@ -290,10 +291,33 @@ export async function registerMetaCreditTopup(userId: string, cents: number) {
   const ledger = creditTopupLedger(amount, at);
   // The card shows the added amount right away. Later loads subtract campaign spend.
   await rememberBalance(account.id, amount, ledger, true);
+  let paymentError = false;
+  try {
+    paymentError = await hasBillingPaymentError(
+      actor.organizationId,
+      account.external_account_id,
+    );
+  } catch {
+    paymentError = false;
+  }
+  const alert = metaCreditAlertState({
+    topup: { cents: amount, at },
+    availableCents: amount,
+    paymentError,
+  });
+  try {
+    await syncLowBalanceWhatsapp(actor.organizationId, alert.low);
+  } catch (error) {
+    console.error("meta_low_balance", error instanceof Error ? error.name : "error");
+  }
   return {
     balanceCents: amount,
     creditTopupAt: at,
     creditTopupCents: amount,
+    low: alert.low,
+    missingTopup: alert.missingTopup,
+    balanceLow: alert.balanceLow,
+    paymentError: alert.paymentError,
   };
 }
 

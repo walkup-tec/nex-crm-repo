@@ -180,23 +180,16 @@ function Nav({
     const paths = section.paths.filter((to) => allowed(to));
     if (!paths.length) return null;
     const SectionIcon = section.icon;
-    const sectionLowBalance = lowBalance && paths.includes("/creditos-meta");
     return (
       <Collapsible key={section.label} defaultOpen>
         <div
           role="group"
           aria-label={section.label}
-          className={`mt-4 rounded-xl border bg-sidebar-foreground/[0.04] px-1 py-2 ${sectionLowBalance ? "border-destructive/70 ring-1 ring-destructive/80" : "border-sidebar-foreground/15"}`}
+          className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
         >
           <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground hover:bg-sidebar-accent/60 data-[state=open]:mb-1">
             <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
             <span className="flex-1">{section.label}</span>
-            {sectionLowBalance ? (
-              <span className="relative inline-flex size-4 shrink-0 items-center justify-center text-destructive" aria-label="Saldo Meta baixo">
-                <span className="absolute inset-0 rounded-full animate-balance-wave" />
-                <CircleAlert className="relative size-3.5" />
-              </span>
-            ) : null}
             <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent>

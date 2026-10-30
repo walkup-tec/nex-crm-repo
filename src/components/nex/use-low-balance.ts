@@ -15,6 +15,8 @@ const emptyAlert: MetaCreditAlertView = {
   paymentError: false,
 };
 
+export const metaCreditChangedEvent = "nex-meta-credit-changed";
+
 export function useLowBalance(enabled: boolean): MetaCreditAlertView {
   const [alert, setAlert] = useState<MetaCreditAlertView>(emptyAlert);
   useEffect(() => {
@@ -38,11 +40,25 @@ export function useLowBalance(enabled: boolean): MetaCreditAlertView {
         });
       });
     };
+    const onCreditChanged = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<MetaCreditAlertView>>).detail;
+      if (detail && typeof detail.low === "boolean") {
+        setAlert({
+          low: detail.low === true,
+          missingTopup: detail.missingTopup === true,
+          balanceLow: detail.balanceLow === true,
+          paymentError: detail.paymentError === true,
+        });
+      }
+      load();
+    };
     load();
     const timer = window.setInterval(load, 60000);
+    window.addEventListener(metaCreditChangedEvent, onCreditChanged);
     return () => {
       active = false;
       window.clearInterval(timer);
+      window.removeEventListener(metaCreditChangedEvent, onCreditChanged);
     };
   }, [enabled]);
   return alert;

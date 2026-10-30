@@ -13,6 +13,7 @@ import {
   startFacebookLoginFn,
 } from "@/lib/meta-credit.functions";
 import { centsFromMoneyInput, type MetaCreditView } from "@/lib/meta-credit";
+import { metaCreditChangedEvent } from "@/components/nex/use-low-balance";
 
 const guide = [
   {
@@ -123,8 +124,8 @@ export function MetaCredits() {
 
   const amountCents = centsFromMoneyInput(amountText);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError("");
     try {
       const result = await getMetaCreditFn();
@@ -136,7 +137,7 @@ export function MetaCredits() {
     } catch {
       setError("Não foi possível carregar o saldo. Tente de novo.");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -272,12 +273,24 @@ export function MetaCredits() {
                 balanceKind: "prepaid",
                 creditTopupAt: result.data.creditTopupAt,
                 creditTopupCents: result.data.creditTopupCents,
+                paymentError: result.data.paymentError === true,
               }
             : current,
         );
-        setTopupNote("Pagamento registrado.");
+        window.dispatchEvent(
+          new CustomEvent(metaCreditChangedEvent, {
+            detail: {
+              low: result.data.low === true,
+              missingTopup: result.data.missingTopup === true,
+              balanceLow: result.data.balanceLow === true,
+              paymentError: result.data.paymentError === true,
+            },
+          }),
+        );
         setShowPaymentDone(false);
         clearPaymentWait();
+        await load(true);
+        setTopupNote("Pagamento registrado.");
       } catch {
         setTopupNote("Não foi possível registrar o pagamento. Tente de novo.");
       } finally {

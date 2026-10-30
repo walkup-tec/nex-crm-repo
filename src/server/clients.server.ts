@@ -40,13 +40,68 @@ function migrationMessage(message: string) {
   if (/client_promotions/i.test(message)) {
     return "A migração do histórico de promoções ainda não foi aplicada no Supabase.";
   }
+  if (/commercial_name/i.test(message)) {
+    return "Falta a coluna commercial_name em organizations. Rode no Supabase: ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS commercial_name text NOT NULL DEFAULT '';";
+  }
   if (/ads_meta|ads_google/i.test(message)) {
     return "A migração das plataformas de anúncio ainda não foi aplicada no Supabase.";
   }
-  if (/billing_provider|promo_enabled|delinquency_mode|billing_notices|schema cache|does not exist/i.test(message)) {
-    return "A migração da cobrança Cora ainda não foi aplicada no Supabase.";
+  if (
+    /billing_provider|promo_enabled|promo_starts_on|promo_ends_on|after_promo_cents|delinquency_mode|delinquency_amount_cents|\bbilling_notices\b/i.test(
+      message,
+    )
+  ) {
+    return "A migração da cobrança Cora ainda não foi aplicada no Supabase. Rode drizzle/migrations/apply_cora_billing.sql no SQL Editor.";
   }
   return message;
+}
+
+async function insertOrganization(parsed: ReturnType<typeof parseDraft>) {
+  const full = {
+    legal_name: parsed.legalName,
+    commercial_name: parsed.commercialName,
+    document: parsed.document,
+    responsible_name: parsed.responsibleName,
+    responsible_email: parsed.responsibleEmail,
+    responsible_phone: parsed.whatsapp,
+    finance_phone: parsed.financePhone,
+    ads_meta: parsed.adsMeta,
+    ads_google: parsed.adsGoogle,
+    status: "active",
+  };
+  const first = await supabaseAdmin.from("organizations").insert(full).select("id").single();
+  if (!first.error && first.data) return first.data;
+  if (first.error && duplicateDocument(first.error.message, first.error.code)) {
+    fail("Já existe um cliente com este CPF ou CNPJ.");
+  }
+  if (first.error && /commercial_name/i.test(first.error.message)) {
+    const { commercial_name: _ignored, ...withoutCommercial } = full;
+    const second = await supabaseAdmin.from("organizations").insert(withoutCommercial).select("id").single();
+    if (!second.error && second.data) return second.data;
+    if (second.error && duplicateDocument(second.error.message, second.error.code)) {
+      fail("Já existe um cliente com este CPF ou CNPJ.");
+    }
+    if (second.error && /ads_meta|ads_google/i.test(second.error.message)) {
+      const { ads_meta: _a, ads_google: _b, ...basic } = withoutCommercial;
+      const third = await supabaseAdmin.from("organizations").insert(basic).select("id").single();
+      if (!third.error && third.data) return third.data;
+      if (third.error && duplicateDocument(third.error.message, third.error.code)) {
+        fail("Já existe um cliente com este CPF ou CNPJ.");
+      }
+      fail(migrationMessage(third.error?.message || "Não foi possível criar o cliente."));
+    }
+    fail(migrationMessage(second.error?.message || "Não foi possível criar o cliente."));
+  }
+  if (first.error && /ads_meta|ads_google/i.test(first.error.message)) {
+    const { ads_meta: _a, ads_google: _b, ...withoutAds } = full;
+    const second = await supabaseAdmin.from("organizations").insert(withoutAds).select("id").single();
+    if (!second.error && second.data) return second.data;
+    if (second.error && duplicateDocument(second.error.message, second.error.code)) {
+      fail("Já existe um cliente com este CPF ou CNPJ.");
+    }
+    fail(migrationMessage(second.error?.message || "Não foi possível criar o cliente."));
+  }
+  fail(migrationMessage(first.error?.message || "Não foi possível criar o cliente."));
 }
 
 function parseDraft(input: ClientDraft) {
@@ -518,29 +573,7 @@ async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeo
 
 export async function provisionClientShell(input: ClientDraft) {
   const parsed = parseDraft(input);
-  const { data: org, error: orgError } = await supabaseAdmin
-    .from("organizations")
-    .insert({
-      legal_name: parsed.legalName,
-      commercial_name: parsed.commercialName,
-      document: parsed.document,
-      responsible_name: parsed.responsibleName,
-      responsible_email: parsed.responsibleEmail,
-      responsible_phone: parsed.whatsapp,
-      finance_phone: parsed.financePhone,
-      ads_meta: parsed.adsMeta,
-      ads_google: parsed.adsGoogle,
-      status: "active",
-    })
-    .select("id")
-    .single();
-  if (orgError || !org) {
-    fail(
-      orgError && duplicateDocument(orgError.message, orgError.code)
-        ? "Já existe um cliente com este CPF ou CNPJ."
-        : migrationMessage(orgError?.message || "Não foi possível criar o cliente."),
-    );
-  }
+  const org = await insertOrganization(parsed);
   try {
     await saveContract(org.id, parsed);
   } catch (error) {
@@ -576,28 +609,7 @@ export async function removeProvisionedClient(organizationId: string) {
 export async function createClient(userId: string, input: ClientDraft) {
   await requireMaster(userId);
   const parsed = parseDraft(input);
-  const { data: org, error: orgError } = await supabaseAdmin
-    .from("organizations")
-    .insert({
-      legal_name: parsed.legalName,
-      commercial_name: parsed.commercialName,
-      document: parsed.document,
-      responsible_name: parsed.responsibleName,
-      responsible_email: parsed.responsibleEmail,
-      responsible_phone: parsed.whatsapp,
-      finance_phone: parsed.financePhone,
-      ads_meta: parsed.adsMeta,
-      ads_google: parsed.adsGoogle,
-      status: "active",
-    })
-    .select("id")
-    .single();
-  if (orgError || !org)
-    fail(
-      orgError && duplicateDocument(orgError.message, orgError.code)
-        ? "Já existe um cliente com este CPF ou CNPJ."
-        : migrationMessage(orgError?.message || "Não foi possível criar o cliente."),
-    );
+  const org = await insertOrganization(parsed);
   try {
     await saveContract(org.id, parsed);
     await issueCoraCharges(org.id, parsed);
@@ -637,21 +649,27 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
     .maybeSingle();
   if (currentError) fail(currentError.message);
   if (!current) fail("Cliente não encontrado.");
-  const { error } = await supabaseAdmin
-    .from("organizations")
-    .update({
-      legal_name: parsed.legalName,
-      commercial_name: parsed.commercialName,
-      document: parsed.document,
-      responsible_name: parsed.responsibleName,
-      responsible_email: parsed.responsibleEmail,
-      responsible_phone: parsed.whatsapp,
-      finance_phone: parsed.financePhone,
-      ads_meta: parsed.adsMeta,
-      ads_google: parsed.adsGoogle,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+  const orgPatch = {
+    legal_name: parsed.legalName,
+    commercial_name: parsed.commercialName,
+    document: parsed.document,
+    responsible_name: parsed.responsibleName,
+    responsible_email: parsed.responsibleEmail,
+    responsible_phone: parsed.whatsapp,
+    finance_phone: parsed.financePhone,
+    ads_meta: parsed.adsMeta,
+    ads_google: parsed.adsGoogle,
+    updated_at: new Date().toISOString(),
+  };
+  let { error } = await supabaseAdmin.from("organizations").update(orgPatch).eq("id", id);
+  if (error && /commercial_name/i.test(error.message)) {
+    const { commercial_name: _ignored, ...withoutCommercial } = orgPatch;
+    ({ error } = await supabaseAdmin.from("organizations").update(withoutCommercial).eq("id", id));
+  }
+  if (error && /ads_meta|ads_google/i.test(error.message)) {
+    const { ads_meta: _a, ads_google: _b, commercial_name: _c, ...basic } = orgPatch;
+    ({ error } = await supabaseAdmin.from("organizations").update(basic).eq("id", id));
+  }
   if (error)
     fail(
       duplicateDocument(error.message, error.code)

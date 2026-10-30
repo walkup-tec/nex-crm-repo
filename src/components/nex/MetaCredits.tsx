@@ -233,7 +233,16 @@ export function MetaCredits() {
   };
 
   const href = normalizeBalanceLink(view?.balanceUrl ?? "");
-  const canOpen = Boolean(view?.canAdd && view.accountId && href && loggedIn && amountCents != null);
+  const lowBalance =
+    isLowMetaBalance(view?.balanceCents) ||
+    view?.paymentError === true ||
+    (view != null && view.creditTopupCents == null);
+  const canEnterFacebook = Boolean(
+    view?.canAdd && view.accountId && !loggedIn && (amountCents != null || lowBalance),
+  );
+  const canOpen = Boolean(
+    view?.canAdd && view.accountId && href && loggedIn && (amountCents != null || lowBalance),
+  );
 
   const openAddBalance = () => {
     if (!href) return;
@@ -276,10 +285,6 @@ export function MetaCredits() {
       }
     })();
   };
-  const lowBalance =
-    isLowMetaBalance(view?.balanceCents) ||
-    view?.paymentError === true ||
-    (view != null && view.creditTopupCents == null);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -304,7 +309,7 @@ export function MetaCredits() {
           />
         </div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          {amountCents != null && !loggedIn && (
+          {canEnterFacebook && (
             <Button
               type="button"
               onClick={enter}

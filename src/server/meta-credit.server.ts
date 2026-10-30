@@ -378,8 +378,8 @@ export async function getClientBalanceAlert(userId: string) {
     availableCents,
     paymentError,
   });
-  if (alert.balanceLow) await syncLowBalanceWhatsapp(profile.organization_id, true);
-  else if (topup) await syncLowBalanceWhatsapp(profile.organization_id, false);
+  if (alert.low) await syncLowBalanceWhatsapp(profile.organization_id, true);
+  else await syncLowBalanceWhatsapp(profile.organization_id, false);
   return {
     low: alert.low,
     cents: availableCents,

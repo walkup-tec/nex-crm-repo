@@ -150,7 +150,7 @@ function Nav({
         }
         close?.();
       }}
-      className={`flex items-center gap-3 rounded-lg text-sm font-medium whitespace-normal text-left leading-snug transition ${nested ? "h-auto min-h-11 py-2 pr-3 pl-9" : "h-auto min-h-11 px-3 py-2"} ${path === to ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"} ${to === "/creditos-meta" && lowBalance ? "ring-1 ring-destructive" : ""}`}
+      className={`flex items-center gap-3 rounded-lg text-sm font-medium whitespace-normal text-left leading-snug transition ${nested ? "h-auto min-h-11 py-2 pr-3 pl-9" : "h-auto min-h-11 px-3 py-2"} ${path === to ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"} ${to === "/creditos-meta" && lowBalance ? "ring-2 ring-destructive text-destructive" : ""}`}
     >
       <Icon className="size-[18px]" />
       {label}
@@ -161,7 +161,10 @@ function Nav({
         </span>
       ) : null}
       {to === "/creditos-meta" && lowBalance ? (
-        <CircleAlert className="ml-auto size-4 text-destructive" aria-label="Saldo baixo" />
+        <span className="relative ml-auto inline-flex size-4 shrink-0 items-center justify-center text-destructive" aria-label="Saldo baixo">
+          <span className="absolute inset-0 rounded-full animate-balance-wave" />
+          <CircleAlert className="relative size-3.5" />
+        </span>
       ) : null}
     </Link>
   );
@@ -177,16 +180,23 @@ function Nav({
     const paths = section.paths.filter((to) => allowed(to));
     if (!paths.length) return null;
     const SectionIcon = section.icon;
+    const sectionLowBalance = lowBalance && paths.includes("/creditos-meta");
     return (
       <Collapsible key={section.label} defaultOpen>
         <div
           role="group"
           aria-label={section.label}
-          className="mt-4 rounded-xl border border-sidebar-foreground/15 bg-sidebar-foreground/[0.04] px-1 py-2"
+          className={`mt-4 rounded-xl border bg-sidebar-foreground/[0.04] px-1 py-2 ${sectionLowBalance ? "border-destructive/70 ring-1 ring-destructive/80" : "border-sidebar-foreground/15"}`}
         >
           <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-[.12em] text-sidebar-foreground hover:bg-sidebar-accent/60 data-[state=open]:mb-1">
             <SectionIcon className={section.icon === MetaMark ? "size-[1.3rem]" : "size-4"} />
             <span className="flex-1">{section.label}</span>
+            {sectionLowBalance ? (
+              <span className="relative inline-flex size-4 shrink-0 items-center justify-center text-destructive" aria-label="Saldo Meta baixo">
+                <span className="absolute inset-0 rounded-full animate-balance-wave" />
+                <CircleAlert className="relative size-3.5" />
+              </span>
+            ) : null}
             <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=closed]:-rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent>

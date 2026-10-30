@@ -39,11 +39,16 @@ export const listClientsFn = createServerFn({ method: "GET" })
     return guard(() => listClients(context.userId));
   });
 
-export const masterDashboardFn = createServerFn({ method: "GET" })
+export const masterDashboardFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Result<MasterDashboard>> => {
+  .validator((data?: { period?: string; since?: string; until?: string }) => data ?? {})
+  .handler(async ({ context, data }): Promise<Result<MasterDashboard>> => {
     const { masterDashboard } = await import("@/server/clients.server");
-    return guard(() => masterDashboard(context.userId));
+    const input: { period?: string; since?: string; until?: string } = {};
+    if (data?.period) input.period = data.period;
+    if (data?.since) input.since = data.since;
+    if (data?.until) input.until = data.until;
+    return guard(() => masterDashboard(context.userId, input));
   });
 
 export const createClientFn = createServerFn({ method: "POST" })

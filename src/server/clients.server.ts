@@ -2,7 +2,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { clientDisplayName, type ClientDraft, type ClientInvoice, type ClientStatus, type InvoiceStatus, type ListedClient } from "@/lib/client-access";
 import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionsOverlap } from "@/lib/billing-plan";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
-import { masterDashboardFrom, type MasterDashboard } from "@/lib/master-dashboard";
+import { masterDashboardFrom, type DashboardClient, type MasterDashboard } from "@/lib/master-dashboard";
+import type { MetaPeriod } from "@/lib/meta-access";
 import { createCoraInvoice } from "@/server/cora.server";
 
 function fail(message: string): never {
@@ -225,8 +226,8 @@ function financeLabel(invoices: ClientInvoice[]) {
 }
 
 async function loadOrganizations() {
-  const named = "id, legal_name, commercial_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status";
-  const legacy = "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status";
+  const named = "id, legal_name, commercial_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status, created_at";
+  const legacy = "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status, created_at";
   const full = await supabaseAdmin.from("organizations").select(`${named}, ads_meta, ads_google`).order("legal_name");
   if (!full.error) return full;
   if (/commercial_name/i.test(full.error.message)) {
@@ -249,6 +250,26 @@ async function loadOrganizations() {
     data: (basic.data ?? []).map((row) => ({ ...row, ads_meta: true, ads_google: false })),
     error: basic.error,
   };
+}
+
+async function loadClientStates() {
+  const result = await supabaseAdmin
+    .from("contracting_intakes")
+    .select("organization_id, state, created_at")
+    .order("created_at", { ascending: false });
+  if (result.error) {
+    if (/contracting_intakes|schema cache|does not exist/i.test(result.error.message)) {
+      return new Map<string, string>();
+    }
+    fail(result.error.message);
+  }
+  const states = new Map<string, string>();
+  for (const row of result.data ?? []) {
+    if (!row.organization_id || states.has(row.organization_id)) continue;
+    const state = String(row.state ?? "").trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(state)) states.set(row.organization_id, state);
+  }
+  return states;
 }
 
 type PromotionRow = {
@@ -397,6 +418,7 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       sameFinancePhone:
         org.finance_phone !== "não informado" && org.finance_phone === org.responsible_phone,
       status,
+      createdAt: "created_at" in org && typeof org.created_at === "string" ? org.created_at : null,
       balanceCents: orgAccounts.reduce((sum, row) => sum + Number(row.balance_cents), 0),
       balanceKnown,
       financeLabel: financeLabel(orgInvoices),
@@ -430,8 +452,29 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
   }).sort((left, right) => clientDisplayName(left).localeCompare(clientDisplayName(right), "pt-BR"));
 }
 
-export async function masterDashboard(userId: string): Promise<MasterDashboard> {
-  return masterDashboardFrom(await listClients(userId));
+export async function masterDashboard(
+  userId: string,
+  input: { period?: string; since?: string; until?: string } = {},
+): Promise<MasterDashboard> {
+  const [clients, states] = await Promise.all([listClients(userId), loadClientStates()]);
+  const period: MetaPeriod | null =
+    input.period === "custom" && input.since && input.until
+      ? { mode: "custom", since: input.since, until: input.until }
+      : input.period === "total"
+        ? { mode: "total" }
+        : null;
+  const rows: DashboardClient[] = clients.map((client) => ({
+    id: client.id,
+    legalName: client.legalName,
+    commercialName: client.commercialName,
+    status: client.status,
+    createdAt: client.createdAt,
+    startsOn: client.startsOn,
+    endsOn: client.endsOn,
+    state: states.get(client.id) ?? null,
+    invoices: client.invoices,
+  }));
+  return masterDashboardFrom(rows, period);
 }
 
 const contractColumns =

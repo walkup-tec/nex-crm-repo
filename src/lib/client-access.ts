@@ -62,6 +62,7 @@ export type ListedClient = {
   whatsapp: string;
   sameFinancePhone: boolean;
   status: ClientStatus;
+  createdAt: string | null;
   balanceCents: number;
   balanceKnown: boolean;
   financeLabel: string;

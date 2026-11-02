@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, LogOut, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, ShieldCheck, Smartphone, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
+import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, LogOut, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, ShieldCheck, Smartphone, Sparkles, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -85,7 +85,7 @@ const clientSections = [
     paths: ["/financeiro", "/usuarios", "/minha-conta"],
   },
 ] as const;
-const masterNav = [["/master", "Dashboard", Gauge], ["/master/clientes", "Clientes", BriefcaseBusiness], ["/usuarios", "Usuários", Users], ["/master/campanhas", "Campanhas", BarChart3], ["/master/creditos-meta", "Créditos Meta", WalletCards], ["/master/financeiro", "Financeiro", CircleDollarSign], ["/master/criativos", "Criativos", FileImage], ["/master/configuracoes", "Configurações", Settings]] as const;
+const masterNav = [["/master", "Dashboard", Gauge], ["/master/clientes", "Clientes", BriefcaseBusiness], ["/usuarios", "Usuários", Users], ["/master/campanhas", "Campanhas", BarChart3], ["/master/analytic-meta-ia", "Lab. Calibração IA", Sparkles], ["/master/creditos-meta", "Créditos Meta", WalletCards], ["/master/financeiro", "Financeiro", CircleDollarSign], ["/master/criativos", "Criativos", FileImage], ["/master/configuracoes", "Configurações", Settings]] as const;
 function useSignedInName() {
   const [name, setName] = useState("");
   useEffect(() => {

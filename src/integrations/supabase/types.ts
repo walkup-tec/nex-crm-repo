@@ -476,6 +476,86 @@ export type Database = {
           },
         ]
       }
+      meta_ai_executions: {
+        Row: {
+          id: string
+          organization_id: string
+          actor_id: string
+          created_at: string
+          status: string
+          data_contract_version: string
+          protocol_version: string
+          prompt_hash: string
+          model: string
+          account_id: string
+          account_name: string
+          client_name: string
+          period_since: string | null
+          period_until: string | null
+          period_timezone: string
+          input_json: Json
+          output_json: Json
+          analysis_markdown: string
+          warnings: Json
+          error_message: string
+          calibration_feedback: Json
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          actor_id: string
+          created_at?: string
+          status?: string
+          data_contract_version: string
+          protocol_version: string
+          prompt_hash: string
+          model: string
+          account_id?: string
+          account_name?: string
+          client_name?: string
+          period_since?: string | null
+          period_until?: string | null
+          period_timezone?: string
+          input_json?: Json
+          output_json?: Json
+          analysis_markdown?: string
+          warnings?: Json
+          error_message?: string
+          calibration_feedback?: Json
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          actor_id?: string
+          created_at?: string
+          status?: string
+          data_contract_version?: string
+          protocol_version?: string
+          prompt_hash?: string
+          model?: string
+          account_id?: string
+          account_name?: string
+          client_name?: string
+          period_since?: string | null
+          period_until?: string | null
+          period_timezone?: string
+          input_json?: Json
+          output_json?: Json
+          analysis_markdown?: string
+          warnings?: Json
+          error_message?: string
+          calibration_feedback?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ai_executions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_connections: {
         Row: {
           access_token_encrypted: string | null

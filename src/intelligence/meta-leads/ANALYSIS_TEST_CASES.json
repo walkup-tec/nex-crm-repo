@@ -1,0 +1,35 @@
+{
+  "protocol_version": "1.0.0",
+  "cases": [
+    {
+      "id": "leads-whatsapp-baseline",
+      "title": "Campanha WhatsApp com conversas e CPC elevado",
+      "focus": "whatsapp",
+      "expects": [
+        "Distinguir cliques totais de cliques no link",
+        "Não somar alcance entre anúncios",
+        "Recomendar revisão de frequência e custo por conversa"
+      ]
+    },
+    {
+      "id": "leads-landing-partial-data",
+      "title": "Landing page com insights diários ausentes",
+      "focus": "website",
+      "expects": [
+        "Declarar limitação por dados parciais",
+        "Não tratar null como zero",
+        "Evitar conclusões de tendência sem série diária"
+      ]
+    },
+    {
+      "id": "leads-instant-form",
+      "title": "Formulário instantâneo com CTR alto e conversão baixa",
+      "focus": "instant_form",
+      "expects": [
+        "Separar engajamento de conversão",
+        "Avaliar criativo e oferta",
+        "Recomendações fundamentadas no custo por lead"
+      ]
+    }
+  ]
+}

@@ -7,6 +7,13 @@ import type {
   MetaConnectionView,
   MetaPerformanceView,
 } from "@/lib/meta-access";
+import type {
+  MetaAiAnalysisResult,
+  MetaAiCalibrationFeedback,
+  MetaAiExecutionDetail,
+  MetaAiExecutionSummary,
+} from "@/lib/meta-ai-calibration";
+import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -21,6 +28,7 @@ function publicMessage(error: unknown) {
   if (message.includes("SUPABASE_SERVICE_ROLE_KEY"))
     return "O servidor ainda não tem a chave de administração do Supabase.";
   if (message.includes("migração da conexão Meta")) return message;
+  if (/OpenAI|OPENAI_/i.test(message)) return message;
   if (!message || /postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(message)) {
     return "Não foi possível concluir a conexão com a Meta.";
   }
@@ -135,6 +143,75 @@ export const listMasterCampaignsFn = createServerFn({ method: "POST" })
     if (data.until) input.until = data.until;
     return guard(() => listMasterCampaigns(context.userId, input));
   });
+
+export const exportMetaAnalysisFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (data: { organizationId: string; period?: string; since?: string; until?: string }) => data,
+  )
+  .handler(async ({ context, data }): Promise<Result<NexMetaAnalysisV1>> => {
+    const { exportMetaAnalysis } = await import("@/server/meta.server");
+    const input: { organizationId: string; period?: string; since?: string; until?: string } = {
+      organizationId: data.organizationId,
+    };
+    if (data.period) input.period = data.period;
+    if (data.since) input.since = data.since;
+    if (data.until) input.until = data.until;
+    return guard(() => exportMetaAnalysis(context.userId, input));
+  });
+
+export const analyzeMetaWithAiFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (data: { organizationId: string; period?: string; since?: string; until?: string }) => data,
+  )
+  .handler(async ({ context, data }): Promise<Result<MetaAiAnalysisResult>> => {
+    const { analyzeMetaWithAi } = await import("@/server/meta-ai.server");
+    const input: { organizationId: string; period?: string; since?: string; until?: string } = {
+      organizationId: data.organizationId,
+    };
+    if (data.period) input.period = data.period;
+    if (data.since) input.since = data.since;
+    if (data.until) input.until = data.until;
+    return guard(() => analyzeMetaWithAi(context.userId, input));
+  });
+
+export const listMetaAiExecutionsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId?: string; limit?: number }) => data)
+  .handler(async ({ context, data }): Promise<Result<MetaAiExecutionSummary[]>> => {
+    const { listMetaAiExecutions } = await import("@/server/meta-ai.server");
+    return guard(() => listMetaAiExecutions(context.userId, data));
+  });
+
+export const getMetaAiExecutionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { executionId: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<MetaAiExecutionDetail>> => {
+    const { getMetaAiExecution } = await import("@/server/meta-ai.server");
+    return guard(() => getMetaAiExecution(context.userId, data.executionId));
+  });
+
+export const saveMetaAiCalibrationFeedbackFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { executionId: string; feedback: MetaAiCalibrationFeedback }) => data)
+  .handler(async ({ context, data }): Promise<Result<MetaAiExecutionDetail>> => {
+    const { saveMetaAiCalibrationFeedback } = await import("@/server/meta-ai.server");
+    return guard(() => saveMetaAiCalibrationFeedback(context.userId, data));
+  });
+
+export const exportMetaAiCalibrationPackageFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { executionId: string }) => data)
+  .handler(
+    async ({
+      context,
+      data,
+    }): Promise<Result<{ fileName: string; base64: string; mimeType: string }>> => {
+      const { exportMetaAiCalibrationPackage } = await import("@/server/meta-ai.server");
+      return guard(() => exportMetaAiCalibrationPackage(context.userId, data.executionId));
+    },
+  );
 
 export const disconnectMetaFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

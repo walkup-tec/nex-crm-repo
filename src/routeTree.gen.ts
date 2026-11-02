@@ -48,6 +48,7 @@ import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
 import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
+import { Route as AuthenticatedMasterAnalyticMetaIaRouteImport } from './routes/_authenticated/master.analytic-meta-ia'
 import { Route as AuthenticatedMasterCreditosMetaRouteImport } from './routes/_authenticated/master.creditos-meta'
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
@@ -259,6 +260,12 @@ const AuthenticatedMasterCampanhasRoute =
     path: '/campanhas',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
+const AuthenticatedMasterAnalyticMetaIaRoute =
+  AuthenticatedMasterAnalyticMetaIaRouteImport.update({
+    id: '/analytic-meta-ia',
+    path: '/analytic-meta-ia',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
 const AuthenticatedMasterCreditosMetaRoute =
   AuthenticatedMasterCreditosMetaRouteImport.update({
     id: '/creditos-meta',
@@ -364,6 +371,7 @@ export interface FileRoutesByFullPath {
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
@@ -411,6 +419,7 @@ export interface FileRoutesByTo {
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
@@ -463,6 +472,7 @@ export interface FileRoutesById {
   '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/_authenticated/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/_authenticated/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
@@ -515,6 +525,7 @@ export interface FileRouteTypes {
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
+    | '/master/analytic-meta-ia'
     | '/master/creditos-meta'
     | '/master/criativos'
     | '/master/financeiro'
@@ -562,6 +573,7 @@ export interface FileRouteTypes {
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
+    | '/master/analytic-meta-ia'
     | '/master/creditos-meta'
     | '/master/criativos'
     | '/master/financeiro'
@@ -613,6 +625,7 @@ export interface FileRouteTypes {
     | '/_authenticated/master/campanhas'
     | '/_authenticated/master/clientes'
     | '/_authenticated/master/configuracoes'
+    | '/_authenticated/master/analytic-meta-ia'
     | '/_authenticated/master/creditos-meta'
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
@@ -905,6 +918,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterCampanhasRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
+    '/_authenticated/master/analytic-meta-ia': {
+      id: '/_authenticated/master/analytic-meta-ia'
+      path: '/analytic-meta-ia'
+      fullPath: '/master/analytic-meta-ia'
+      preLoaderRoute: typeof AuthenticatedMasterAnalyticMetaIaRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
     '/_authenticated/master/creditos-meta': {
       id: '/_authenticated/master/creditos-meta'
       path: '/creditos-meta'
@@ -1044,6 +1064,7 @@ const AuthenticatedMasterFinanceiroRouteWithChildren =
   )
 
 interface AuthenticatedMasterRouteChildren {
+  AuthenticatedMasterAnalyticMetaIaRoute: typeof AuthenticatedMasterAnalyticMetaIaRoute
   AuthenticatedMasterCampanhasRoute: typeof AuthenticatedMasterCampanhasRoute
   AuthenticatedMasterClientesRoute: typeof AuthenticatedMasterClientesRoute
   AuthenticatedMasterConfiguracoesRoute: typeof AuthenticatedMasterConfiguracoesRoute
@@ -1055,6 +1076,7 @@ interface AuthenticatedMasterRouteChildren {
 }
 
 const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
+  AuthenticatedMasterAnalyticMetaIaRoute: AuthenticatedMasterAnalyticMetaIaRoute,
   AuthenticatedMasterCampanhasRoute: AuthenticatedMasterCampanhasRoute,
   AuthenticatedMasterClientesRoute: AuthenticatedMasterClientesRoute,
   AuthenticatedMasterConfiguracoesRoute: AuthenticatedMasterConfiguracoesRoute,

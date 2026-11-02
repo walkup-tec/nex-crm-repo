@@ -11,6 +11,17 @@ import {
 } from "@/lib/meta-transactions-diagnose";
 import { adsManagerResult, campaignDeliveryGroup } from "@/lib/meta-analysis";
 import {
+  mapMetaDailyInsight,
+  mapMetaInsight,
+  moneyFromMetaBudget,
+  targetingSummary,
+  textOrNull,
+  type MetaExportAd,
+  type MetaExportAdset,
+  type MetaExportCampaign,
+  type NexMetaAnalysisV1,
+} from "@/lib/meta-export";
+import {
   campaignCreatedDay,
   campaignCreatedInPeriod,
   type MetaAccountView,
@@ -1782,4 +1793,326 @@ export async function getMetaPerformance(
     view.days = [];
     return view;
   }
+}
+
+const exportInsightFields =
+  "spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,inline_link_click_ctr,cpc,cost_per_inline_link_click,cpm,actions,results,cost_per_result,date_start,date_stop";
+
+const preferredResultTypes = [
+  "onsite_conversion.messaging_conversation_started_7d",
+  "messaging_conversation_started_7d",
+  "onsite_conversion.messaging_first_reply",
+  "messaging_first_reply",
+  "onsite_conversion.lead_grouped",
+  "lead",
+  "offsite_conversion.fb_pixel_lead",
+  "omni_purchase",
+  "purchase",
+  "offsite_conversion.fb_pixel_purchase",
+  "complete_registration",
+  "landing_page_view",
+  "link_click",
+];
+
+async function graphPages(
+  version: string,
+  path: string,
+  token: string,
+  params: Record<string, string>,
+  maxPages = 8,
+) {
+  const rows: Record<string, unknown>[] = [];
+  let next: string | null = null;
+  for (let page = 0; page < maxPages; page += 1) {
+    const body: GraphBody = next
+      ? await graphFetch(new URL(next))
+      : await graphGet(version, path, token, params);
+    for (const item of body.data ?? []) rows.push(item as Record<string, unknown>);
+    next = typeof body.paging?.next === "string" ? body.paging.next : null;
+    if (!next) break;
+  }
+  return rows;
+}
+
+function insightPeriodParams(period: MetaPeriod) {
+  return period.mode === "total"
+    ? { date_preset: "maximum" }
+    : { time_range: JSON.stringify({ since: period.since, until: period.until }) };
+}
+
+function nestedInsightField(period: MetaPeriod) {
+  const range =
+    period.mode === "total"
+      ? "date_preset(maximum)"
+      : `time_range({"since":"${period.since}","until":"${period.until}"})`;
+  return `insights.${range}.use_unified_attribution_setting(true){${exportInsightFields}}`;
+}
+
+async function collectDailyByLevel(
+  version: string,
+  token: string,
+  accountId: string,
+  period: MetaPeriod,
+  level: "campaign" | "adset" | "ad",
+) {
+  const map = new Map<string, ReturnType<typeof mapMetaDailyInsight>[]>();
+  const idField = level === "campaign" ? "campaign_id" : level === "adset" ? "adset_id" : "ad_id";
+  try {
+    const rows = await graphPages(version, `/act_${accountId}/insights`, token, {
+      level,
+      time_increment: "1",
+      fields: `${idField},${exportInsightFields}`,
+      use_unified_attribution_setting: "true",
+      limit: "500",
+      ...insightPeriodParams(period),
+    });
+    for (const row of rows) {
+      const id = textOrNull(row[idField]);
+      if (!id) continue;
+      const day = mapMetaDailyInsight(row, preferredResultTypes);
+      if (!day) continue;
+      const list = map.get(id) ?? [];
+      list.push(day);
+      map.set(id, list);
+    }
+  } catch (error) {
+    console.error("meta_export_daily", level, error instanceof Error ? error.message : "falha");
+  }
+  return map;
+}
+
+export async function exportMetaAnalysis(
+  userId: string,
+  input: { organizationId: string; period?: string; since?: string; until?: string },
+): Promise<NexMetaAnalysisV1> {
+  const period = periodOf(input);
+  const actor = await viewerContext(userId);
+  if (actor.role !== "master") fail("Só o Master exporta a análise Meta IA.");
+  await assertOrgAccess(userId, input.organizationId);
+
+  const warnings: string[] = [];
+  const { data: organization, error: orgError } = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name, commercial_name")
+    .eq("id", input.organizationId)
+    .maybeSingle();
+  const organizationRow =
+    orgError && /commercial_name/i.test(orgError.message)
+      ? await supabaseAdmin
+          .from("organizations")
+          .select("id, legal_name")
+          .eq("id", input.organizationId)
+          .maybeSingle()
+      : { data: organization, error: orgError };
+  if (organizationRow.error) schemaFail(organizationRow.error.message);
+  if (!organizationRow.data) fail("Cliente não encontrado.");
+  const clientName = clientDisplayName({
+    legalName: organizationRow.data.legal_name,
+    commercialName:
+      "commercial_name" in organizationRow.data ? organizationRow.data.commercial_name : "",
+  });
+
+  const selected = await selectedAccount(input.organizationId);
+  if (!selected) fail("Este cliente ainda não tem uma conta de anúncio selecionada.");
+  const { token } = await loadToken(input.organizationId);
+  const version = graphVersion();
+  const accountId = accountDigits(selected.external_account_id);
+  const accountNode = (await graphGet(version, `/act_${accountId}`, token, {
+    fields: "id,name,account_id,currency,timezone_name",
+  }).catch(() => null)) as Record<string, unknown> | null;
+  const currency = textOrNull(accountNode?.currency) || selected.currency || "BRL";
+  const timezone = textOrNull(accountNode?.timezone_name) || "America/Sao_Paulo";
+  const accountName =
+    textOrNull(accountNode?.name) || selected.name?.trim() || "Conta de anúncio";
+  const accountExternalId = textOrNull(accountNode?.id) || `act_${accountId}`;
+
+  const insightNest = nestedInsightField(period);
+  const [campaignRows, adsetRows, adRows, dailyCampaigns, dailyAdsets, dailyAds] = await Promise.all([
+    graphPages(version, `/act_${accountId}/campaigns`, token, {
+      fields: `id,name,objective,status,effective_status,buying_type,daily_budget,lifetime_budget,${insightNest}`,
+      limit: "100",
+    }).catch((error) => {
+      warnings.push(
+        `Campanhas: ${error instanceof Error ? error.message : "falha ao consultar a Meta."}`,
+      );
+      return [] as Record<string, unknown>[];
+    }),
+    graphPages(version, `/act_${accountId}/adsets`, token, {
+      fields: `id,name,campaign_id,status,effective_status,optimization_goal,billing_event,daily_budget,lifetime_budget,targeting{age_min,age_max,genders,geo_locations,publisher_platforms},${insightNest}`,
+      limit: "100",
+    }).catch((error) => {
+      warnings.push(
+        `Conjuntos: ${error instanceof Error ? error.message : "falha ao consultar a Meta."}`,
+      );
+      return [] as Record<string, unknown>[];
+    }),
+    graphPages(version, `/act_${accountId}/ads`, token, {
+      fields: `id,name,campaign_id,adset_id,status,effective_status,creative{id,title,body,call_to_action_type,object_type},${insightNest}`,
+      limit: "100",
+    }).catch((error) => {
+      warnings.push(
+        `Anúncios: ${error instanceof Error ? error.message : "falha ao consultar a Meta."}`,
+      );
+      return [] as Record<string, unknown>[];
+    }),
+    collectDailyByLevel(version, token, accountId, period, "campaign"),
+    collectDailyByLevel(version, token, accountId, period, "adset"),
+    collectDailyByLevel(version, token, accountId, period, "ad"),
+  ]);
+
+  if (!dailyCampaigns.size) warnings.push("Indicadores diários de campanhas indisponíveis ou vazios.");
+  if (!dailyAdsets.size) warnings.push("Indicadores diários de conjuntos indisponíveis ou vazios.");
+  if (!dailyAds.size) warnings.push("Indicadores diários de anúncios indisponíveis ou vazios.");
+
+  const campaigns: MetaExportCampaign[] = [];
+  for (const row of campaignRows) {
+    const id = textOrNull(row.id);
+    if (!id) continue;
+    const insightPayload = (row.insights as { data?: Record<string, unknown>[] } | undefined)?.data?.[0];
+    const insights = mapMetaInsight(insightPayload, preferredResultTypes);
+    const resultMetric =
+      insights?.results != null
+        ? resultsFromActionsSafe(insightPayload?.actions, preferredResultTypes)
+        : null;
+    campaigns.push({
+      id,
+      name: textOrNull(row.name) || `Campanha ${id}`,
+      objective: textOrNull(row.objective),
+      status: textOrNull(row.status),
+      effective_status: textOrNull(row.effective_status),
+      buying_type: textOrNull(row.buying_type),
+      daily_budget: moneyFromMetaBudget(row.daily_budget),
+      lifetime_budget: moneyFromMetaBudget(row.lifetime_budget),
+      optimization_goal: null,
+      result_metric: resultMetric,
+      insights,
+      daily_insights: (dailyCampaigns.get(id) ?? []).filter(Boolean) as NonNullable<
+        ReturnType<typeof mapMetaDailyInsight>
+      >[],
+      attribution_setting: null,
+    });
+  }
+
+  const adsets: MetaExportAdset[] = [];
+  for (const row of adsetRows) {
+    const id = textOrNull(row.id);
+    const campaignId = textOrNull(row.campaign_id);
+    if (!id || !campaignId) continue;
+    const targeting = (row.targeting as Record<string, unknown> | undefined) ?? null;
+    const placements = Array.isArray(targeting?.publisher_platforms)
+      ? targeting.publisher_platforms.map(String)
+      : null;
+    const insightPayload = (row.insights as { data?: Record<string, unknown>[] } | undefined)?.data?.[0];
+    adsets.push({
+      id,
+      campaign_id: campaignId,
+      name: textOrNull(row.name) || `Conjunto ${id}`,
+      status: textOrNull(row.status),
+      effective_status: textOrNull(row.effective_status),
+      optimization_goal: textOrNull(row.optimization_goal),
+      billing_event: textOrNull(row.billing_event),
+      daily_budget: moneyFromMetaBudget(row.daily_budget),
+      lifetime_budget: moneyFromMetaBudget(row.lifetime_budget),
+      targeting_summary: targetingSummary(targeting),
+      placements,
+      attribution_setting: null,
+      insights: mapMetaInsight(insightPayload, preferredResultTypes),
+      daily_insights: (dailyAdsets.get(id) ?? []).filter(Boolean) as NonNullable<
+        ReturnType<typeof mapMetaDailyInsight>
+      >[],
+    });
+  }
+
+  const ads: MetaExportAd[] = [];
+  for (const row of adRows) {
+    const id = textOrNull(row.id);
+    const campaignId = textOrNull(row.campaign_id);
+    const adsetId = textOrNull(row.adset_id);
+    if (!id || !campaignId || !adsetId) continue;
+    const creative = (row.creative as Record<string, unknown> | undefined) ?? {};
+    const insightPayload = (row.insights as { data?: Record<string, unknown>[] } | undefined)?.data?.[0];
+    ads.push({
+      id,
+      campaign_id: campaignId,
+      adset_id: adsetId,
+      name: textOrNull(row.name) || `Anúncio ${id}`,
+      status: textOrNull(row.status),
+      effective_status: textOrNull(row.effective_status),
+      creative: {
+        id: textOrNull(creative.id),
+        format: textOrNull(creative.object_type),
+        headline: textOrNull(creative.title),
+        body: textOrNull(creative.body),
+        destination_type: textOrNull(creative.call_to_action_type),
+      },
+      insights: mapMetaInsight(insightPayload, preferredResultTypes),
+      daily_insights: (dailyAds.get(id) ?? []).filter(Boolean) as NonNullable<
+        ReturnType<typeof mapMetaDailyInsight>
+      >[],
+    });
+  }
+
+  let since: string | null = period.mode === "custom" ? period.since : null;
+  let until: string | null = period.mode === "custom" ? period.until : null;
+  if (!since || !until) {
+    const dates = campaigns
+      .flatMap((item) => item.daily_insights.map((day) => day.date))
+      .sort();
+    since = dates[0] ?? since;
+    until = dates[dates.length - 1] ?? until;
+    if (!since || !until) {
+      warnings.push("Período total sem datas concretas nos indicadores diários.");
+    }
+  }
+
+  if (!campaigns.length) warnings.push("Nenhuma campanha retornada para a conta/período.");
+  warnings.push(
+    "Alcance não deve ser somado entre entidades. Médias e percentuais não devem ser reaggregados sem a definição da Meta.",
+  );
+
+  return {
+    schema_version: "1.0.0",
+    metadata: {
+      source: "NEX",
+      exported_at: new Date().toLocaleString("sv-SE", { timeZone: timezone }).replace(" ", "T") + "-03:00",
+      currency,
+      data_status: warnings.some((item) => /falha ao consultar|Nenhuma campanha/i.test(item))
+        ? "partial"
+        : "live",
+      organization_id: input.organizationId,
+      client_name: clientName,
+    },
+    account: { id: accountExternalId.startsWith("act_") ? accountExternalId : `act_${accountId}`, name: accountName },
+    period: { since, until, timezone },
+    attribution: {
+      setting: "unified",
+      note: "Insights solicitados com use_unified_attribution_setting=true.",
+    },
+    campaigns,
+    adsets,
+    ads,
+    business_outcomes: {
+      leads_received: null,
+      qualified_leads: null,
+      appointments: null,
+      sales: null,
+      revenue: null,
+    },
+    warnings,
+  };
+}
+
+function resultsFromActionsSafe(actions: unknown, preferred: string[]) {
+  if (!Array.isArray(actions)) return null;
+  for (const type of preferred) {
+    const found = actions.find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        "action_type" in entry &&
+        (entry as { action_type?: string }).action_type === type,
+    ) as { value?: string | number } | undefined;
+    if (found) return type;
+  }
+  return null;
 }

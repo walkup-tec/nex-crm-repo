@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Ban,
+  Check,
   Coins,
+  Copy,
   CreditCard,
   Search,
 } from "lucide-react";
 import { DashboardKpiCard } from "@/components/nex/DashboardKpiCard";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -81,11 +84,11 @@ function initialsOf(name: string) {
 }
 
 function accountLabel(client: ListedClient) {
-  const named = client.metaAccounts?.[0];
-  if (named?.id) return named.id.startsWith("act_") ? named.id : `act_${named.id}`;
-  const raw = client.adAccountIds?.[0];
-  if (!raw) return "—";
-  return raw.startsWith("act_") ? raw : `act_${raw}`;
+  const named = client.metaAccounts?.[0]?.id?.trim();
+  if (named) return named.replace(/^act_/i, "");
+  const raw = client.adAccountIds?.[0]?.trim();
+  if (!raw) return "";
+  return raw.replace(/^act_/i, "");
 }
 
 function toRows(clients: ListedClient[]): CreditRow[] {
@@ -116,6 +119,7 @@ export function MasterMetaCredits() {
   const [accountFilter, setAccountFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
+  const [copiedId, setCopiedId] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -329,8 +333,35 @@ export function MasterMetaCredits() {
                           <span className={cn("font-medium", dashStrong)}>{row.clientName}</span>
                         </div>
                       </td>
-                      <td className={cn("px-4 py-3 font-mono text-xs tabular-nums", dashBody)}>
-                        {row.accountId}
+                      <td className="px-4 py-3">
+                        {row.accountId ? (
+                          <div className="flex items-center gap-1">
+                            <span className={cn("font-mono text-xs tabular-nums", dashBody)}>
+                              {row.accountId}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                              aria-label={`Copiar ID ${row.accountId}`}
+                              onClick={() => {
+                                void navigator.clipboard.writeText(row.accountId).then(() => {
+                                  setCopiedId(row.accountId);
+                                  window.setTimeout(() => setCopiedId(""), 1500);
+                                });
+                              }}
+                            >
+                              {copiedId === row.accountId ? (
+                                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className={dashMuted}>—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className={cn("font-semibold tabular-nums", dashStrong)}>

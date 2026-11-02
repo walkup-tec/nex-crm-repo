@@ -10,6 +10,7 @@ import {
   validateStructuredRecommendation,
   type StructuredRecommendation,
 } from "./meta-recommendation-validation";
+// validateStructuredRecommendation used by Testes V–W (evidência E0–E3)
 import { buildChatgptMetaAnalysisPayload } from "./chatgpt-integration";
 import type { MetaAiExecutionDetail } from "./meta-ai-calibration";
 import { indexTracesById, type MetricTraceRecord } from "./meta-metric-traceability";
@@ -241,16 +242,39 @@ function goodRec(overrides: Partial<StructuredRecommendation> = {}): StructuredR
     level: "campaign",
     indicators_used: ["ctr", "cpc"],
     evidence: ["CTR 5% no período", "CPC estável em R$ 2"],
-    hypothesis: "Criativo mantém atenção relativa",
+    hypothesis: null,
     confidence: "medium",
-    recommended_action: "Rodar teste A/B de copy mantendo orçamento",
-    action_kind: "test",
+    recommended_action: "Monitorar CTR e CPC da campanha OK sem alterar orçamento",
+    action_kind: "monitor",
     validation_criterion: "CTR e CPC após 7 dias",
     trace_ids: [`trace-${id}-ctr`, `trace-${id}-cpc`],
     arbitrary_targets: [],
     uses_external_commercial_data: false,
     ...overrides,
   };
+}
+
+/** Recomendação estratégica com evidência E3 (comparação + hipótese + multi-indicador). */
+function e3CreativeRec(overrides: Partial<StructuredRecommendation> = {}): StructuredRecommendation {
+  const id = overrides.id ?? "rec-e3";
+  return goodRec({
+    id,
+    action_kind: "replace_creative",
+    recommended_action: "Testar novo criativo na campanha OK com controle no mesmo objetivo",
+    hypothesis: "A campanha OK gera mais cliques relativos que a campanha comparável (mesmo OUTCOME_LEADS)",
+    validation_criterion: "CTR e CPC da campanha OK vs controle em 7 dias com mesmo orçamento",
+    indicators_used: ["ctr", "cpc", "impressions"],
+    evidence: ["CTR 5% na campanha OK", "CTR 2% na campanha comparável", "Mesmo objective OUTCOME_LEADS"],
+    comparison: {
+      type: "campaign_vs_campaign",
+      entity_ids: ["camp_ok", "camp_bad"],
+      compatible: true,
+      absolute_difference: 3,
+      relative_difference_pct: 150,
+      volumes: { impressions_a: 1000, impressions_b: 500, clicks_a: 50, clicks_b: 20 },
+    },
+    ...overrides,
+  });
 }
 
 function makeCtrCpcTraces(claimId: string, entityId = "camp_ok"): MetricTraceRecord[] {
@@ -431,7 +455,7 @@ const quality = qualityWithBadResults();
   const md = processed.publishedMarkdown;
   assert.match(md, /Recomendações aprovadas/i, "Teste G seção");
   assert.ok(!/Aumentar orçamento da campanha ruim/.test(md), "Teste G sem ação rejeitada");
-  assert.match(md, /Rodar teste A\/B de copy/i, "Teste G mantém aprovada");
+  assert.match(md, /Monitorar CTR e CPC da campanha OK/i, "Teste G mantém aprovada");
 }
 
 // --- Teste H ---
@@ -525,7 +549,7 @@ const quality = qualityWithBadResults();
     periodSince: "2026-10-01",
     periodUntil: "2026-10-31",
     periodTimezone: "America/Sao_Paulo",
-    protocolVersion: "1.1.6",
+    protocolVersion: "1.1.7",
     dataContractVersion: "1.0.0",
     model: "gpt-4o-mini",
     promptHash: "abc123",
@@ -537,8 +561,8 @@ const quality = qualityWithBadResults();
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,
       recommendation_validation: ok.audit,
-      protocol_version: "1.1.6",
-      engine_version: "1.1.6",
+      protocol_version: "1.1.7",
+      engine_version: "1.1.7",
       analytical_status: ok.analyticalStatus,
     },
     calibrationFeedback: {},
@@ -546,7 +570,7 @@ const quality = qualityWithBadResults();
   const chatgpt = buildChatgptMetaAnalysisPayload(detail);
   assert.equal(chatgpt.execution_id, detail.id, "Teste J id");
   assert.equal(chatgpt.tool, "get_meta_analysis_execution", "Teste J tool");
-  assert.equal(chatgpt.protocol_version, "1.1.6", "Teste J protocol");
+  assert.equal(chatgpt.protocol_version, "1.1.7", "Teste J protocol");
   assert.equal(chatgpt.data_contract_version, "1.0.0", "Teste J contract");
   assert.ok(chatgpt.ai_analysis.markdown?.includes("Etapa 3"), "Teste J markdown");
   assert.ok(chatgpt.availability.output_json, "Teste J output");
@@ -714,7 +738,7 @@ const quality = qualityWithBadResults();
   assert.ok(!/ineficiência de camp_bad/i.test(result.publishedMarkdown), "Teste N sem juízo no resumo");
   assert.match(result.publishedMarkdown, /CTR estável e CPC consistente/i, "Teste N preserva descritivo ok");
   assert.match(result.publishedMarkdown, /engajamento verificáveis/i, "Teste N preserva exec ok");
-  assert.match(result.publishedMarkdown, /Rodar teste A\/B de copy/i, "Teste N recomenda aprovada");
+  assert.match(result.publishedMarkdown, /Monitorar CTR e CPC/i, "Teste N recomenda aprovada");
   assert.ok(result.audit.observations.some((o) => o.id === "obs-n1" && o.verdict === "REJECTED"));
   assert.ok(result.audit.observations.some((o) => o.id === "obs-n2" && o.verdict === "APPROVED"));
 }
@@ -942,4 +966,269 @@ const quality = qualityWithBadResults();
   assert.ok(totalFail.audit.schema_errors.length >= 1, "Teste T schema errors");
 }
 
-console.log("meta-recommendation-validation.test.ts: ok (A-T)");
+// --- Teste U: regressão 6d0d964b — CTR qualitativo sem comparação → REJECTED ---
+{
+  const qualitative = validateStructuredClaim(
+    {
+      id: "obs-u",
+      entity_id: "camp_ok",
+      level: "campaign",
+      metrics_used: ["ctr"],
+      trace_ids: ["trace-obs-u-ctr"],
+      claim_kind: "descriptive",
+      text: "A campanha OK apresentou CTR positivo/elevado de 1,94%, considerado aceitável.",
+    },
+    payload,
+    quality,
+    [],
+    indexTracesById({
+      version: "1.0",
+      records: [
+        {
+          trace_id: "trace-obs-u-ctr",
+          entity_level: "campaign",
+          entity_id: "camp_ok",
+          metric: "ctr",
+          source: "META_MARKETING_API",
+          source_level: "campaign",
+          source_field: "insights.clicks",
+          period: { since: "2026-10-01", until: "2026-10-31" },
+          calculation: {
+            type: "RATIO",
+            formula: "(clicks / impressions) * 100",
+            inputs: { clicks: 50, impressions: 1000 },
+            result: 5,
+          },
+          validation: {
+            status: "PASS",
+            dependencies: ["clicks", "impressions"],
+            check_codes: [],
+            reason: null,
+          },
+          used_by: ["obs-u"],
+        },
+      ],
+    }),
+  );
+  assert.equal(qualitative.verdict, "REJECTED", "Teste U qualitative rejected");
+  assert.ok(
+    qualitative.rejection_reasons.some((r) => r.includes("qualitative_judgment_without_validated_comparison")),
+    `Teste U reasons: ${qualitative.rejection_reasons.join(",")}`,
+  );
+}
+
+// --- Teste V: fato numérico E1 preservado; monitor E1 aprovado ---
+{
+  const factual = validateStructuredClaim(
+    {
+      id: "obs-v",
+      entity_id: "camp_ok",
+      level: "campaign",
+      metrics_used: ["ctr"],
+      trace_ids: ["trace-obs-v-ctr"],
+      claim_kind: "descriptive",
+      text: "A campanha OK registrou CTR de 1,94% no período.",
+    },
+    payload,
+    quality,
+    [],
+    indexTracesById({
+      version: "1.0",
+      records: [
+        {
+          trace_id: "trace-obs-v-ctr",
+          entity_level: "campaign",
+          entity_id: "camp_ok",
+          metric: "ctr",
+          source: "META_MARKETING_API",
+          source_level: "campaign",
+          source_field: "insights.clicks",
+          period: { since: "2026-10-01", until: "2026-10-31" },
+          calculation: {
+            type: "RATIO",
+            formula: "(clicks / impressions) * 100",
+            inputs: { clicks: 50, impressions: 1000 },
+            result: 5,
+          },
+          validation: {
+            status: "PASS",
+            dependencies: ["clicks", "impressions"],
+            check_codes: [],
+            reason: null,
+          },
+          used_by: ["obs-v"],
+        },
+      ],
+    }),
+  );
+  assert.equal(factual.verdict, "APPROVED", "Teste V factual E1");
+  assert.equal(factual.evidence_level, "E1", "Teste V level E1");
+
+  const monitorOnly = validateStructuredRecommendation(
+    goodRec({
+      id: "rec-v-mon",
+      action_kind: "monitor",
+      indicators_used: ["ctr"],
+      evidence: ["CTR 1,94% rastreável"],
+      recommended_action: "Monitorar CTR sem alterar criativo",
+      trace_ids: ["trace-rec-v-mon-ctr"],
+    }),
+    payload,
+    quality,
+    indexTracesById({
+      version: "1.0",
+      records: makeCtrCpcTraces("rec-v-mon").filter((t) => t.metric === "ctr").map((t) => ({
+        ...t,
+        trace_id: "trace-rec-v-mon-ctr",
+        used_by: ["rec-v-mon"],
+      })),
+    }),
+  );
+  assert.equal(monitorOnly.verdict, "APPROVED", "Teste V monitor");
+  assert.equal(monitorOnly.required_evidence_level, "E1");
+}
+
+// --- Teste W: criativo/test só com CTR → REJECTED; E3 completo → APPROVED ---
+{
+  const ctrOnlyCreative = validateStructuredRecommendation(
+    {
+      id: "rec-w-bad",
+      entity_id: "camp_ok",
+      level: "campaign",
+      indicators_used: ["ctr"],
+      evidence: ["CTR 1,94%"],
+      hypothesis: null,
+      confidence: "medium",
+      recommended_action: "Otimizar criativos da campanha OK",
+      action_kind: "replace_creative",
+      validation_criterion: "CTR sobe",
+      trace_ids: ["trace-rec-w-bad-ctr"],
+    },
+    payload,
+    quality,
+    indexTracesById({
+      version: "1.0",
+      records: makeCtrCpcTraces("rec-w-bad")
+        .filter((t) => t.metric === "ctr")
+        .map((t) => ({ ...t, trace_id: "trace-rec-w-bad-ctr", used_by: ["rec-w-bad"] })),
+    }),
+  );
+  assert.equal(ctrOnlyCreative.verdict, "REJECTED", "Teste W CTR-only creative rejected");
+  assert.ok(
+    ctrOnlyCreative.rejection_reasons.some(
+      (r) =>
+        r.includes("ctr_only_insufficient") ||
+        r.includes("evidence_level_insufficient") ||
+        r.includes("evidence_e3"),
+    ),
+    `Teste W reasons: ${ctrOnlyCreative.rejection_reasons.join(",")}`,
+  );
+
+  const e3Traces = indexTracesById({
+    version: "1.0",
+    records: [
+      ...makeCtrCpcTraces("rec-w-ok"),
+      {
+        trace_id: "trace-rec-w-ok-impressions",
+        entity_level: "campaign",
+        entity_id: "camp_ok",
+        metric: "impressions",
+        source: "META_MARKETING_API",
+        source_level: "campaign",
+        source_field: "insights.impressions",
+        period: { since: "2026-10-01", until: "2026-10-31" },
+        calculation: {
+          type: "DIRECT",
+          formula: "insights.impressions",
+          inputs: { impressions: 1000 },
+          result: 1000,
+        },
+        validation: { status: "PASS", dependencies: [], check_codes: [], reason: null },
+        used_by: ["rec-w-ok"],
+      },
+    ],
+  });
+  const e3approved = validateStructuredRecommendation(
+    e3CreativeRec({
+      id: "rec-w-ok",
+      trace_ids: ["trace-rec-w-ok-ctr", "trace-rec-w-ok-cpc", "trace-rec-w-ok-impressions"],
+    }),
+    payload,
+    quality,
+    e3Traces,
+  );
+  assert.equal(e3approved.verdict, "APPROVED", `Teste W E3: ${e3approved.rejection_reasons.join(",")}`);
+  assert.equal(e3approved.evidence_level, "E3");
+  assert.equal(e3approved.required_evidence_level, "E3");
+}
+
+// --- Teste X: resumo executivo não eleva fato a diagnóstico estratégico ---
+{
+  const exec = await processMetaAiRecommendations({
+    rawText: JSON.stringify({
+      format: "nex_intelligence_analysis_v1_1_7",
+      stage1_markdown: "ok",
+      observations: [
+        {
+          id: "obs-x",
+          entity_id: "camp_ok",
+          level: "campaign",
+          metrics_used: ["ctr"],
+          trace_ids: ["trace-obs-x-ctr"],
+          claim_kind: "descriptive",
+          text: "A campanha OK registrou CTR de 1,94%.",
+        },
+      ],
+      recommendations: [],
+      executive_points: [
+        {
+          id: "exec-x",
+          entity_id: "camp_ok",
+          level: "campaign",
+          metrics_used: ["ctr"],
+          trace_ids: ["trace-obs-x-ctr"],
+          claim_kind: "descriptive",
+          text: "CTR elevado indica desempenho positivo e justifica otimizar criativos.",
+        },
+      ],
+      metric_traceability: {
+        version: "1.0",
+        records: [
+          {
+            trace_id: "trace-obs-x-ctr",
+            entity_level: "campaign",
+            entity_id: "camp_ok",
+            metric: "ctr",
+            source: "META_MARKETING_API",
+            source_level: "campaign",
+            source_field: "insights.clicks",
+            period: { since: "2026-10-01", until: "2026-10-31" },
+            calculation: {
+              type: "RATIO",
+              formula: "(clicks / impressions) * 100",
+              inputs: { clicks: 50, impressions: 1000 },
+              result: 5,
+            },
+            validation: {
+              status: "PASS",
+              dependencies: ["clicks", "impressions"],
+              check_codes: [],
+              reason: null,
+            },
+            used_by: ["obs-x", "exec-x"],
+          },
+        ],
+      },
+      stage2_markdown: "",
+      stage4_markdown: "",
+    }),
+    payload,
+    quality,
+  });
+  assert.ok(exec.audit.observations.some((o) => o.id === "obs-x" && o.verdict === "APPROVED"), "Teste X obs");
+  assert.ok(exec.audit.executive_points.some((e) => e.id === "exec-x" && e.verdict === "REJECTED"), "Teste X exec");
+  assert.ok(!/desempenho positivo/i.test(exec.publishedMarkdown), "Teste X sem elevação");
+  assert.match(exec.publishedMarkdown, /CTR de 1,94%/i, "Teste X preserva fato");
+}
+
+console.log("meta-recommendation-validation.test.ts: ok (A-X)");

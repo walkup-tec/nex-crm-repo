@@ -1,5 +1,14 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.7 — 2026-11-02
+
+- Protocolo de evidências objetivas **E0–E3** aplicado a observations, recommendations e executive_points.
+- Rejeita classificações qualitativas (bom/ruim/elevado/aceitável/eficiente) sem comparação Meta compatível.
+- `monitor` permanece E1; intervenções (`test`, `replace_creative`, `scale_budget`, `pause`) exigem E3.
+- CTR isolado não autoriza otimização de criativo nem escala; fato numérico rastreável continua publicável.
+- Campo opcional `comparison` validado deterministicamente (objetivo/evento compatíveis).
+- Preserva 1.1.4–1.1.6; contrato de dados **1.0.0**.
+
 ## 1.1.6 — 2026-11-02
 
 - Recuperação parcial após falha de schema: seções (observations / recommendations / executive_points) validadas independentemente.

@@ -15,29 +15,30 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-assert.equal(META_AI_PROTOCOL_VERSION, "1.1.6");
-assert.equal(META_AI_ENGINE_VERSION, "1.1.6");
+assert.equal(META_AI_PROTOCOL_VERSION, "1.1.7");
+assert.equal(META_AI_ENGINE_VERSION, "1.1.7");
 assert.equal(META_AI_DATA_CONTRACT_VERSION, "1.0.0");
 assert.equal(META_AI_SCOPE, "meta_ads_performance_v1_1");
 assert.equal(metaAiPromptHash().length, 16);
 
 assert.match(META_AI_ANALYSIS_PROMPT, /metric_traceability/);
-assert.match(META_AI_ANALYSIS_PROMPT, /nex_intelligence_analysis_v1_1_6/);
+assert.match(META_AI_ANALYSIS_PROMPT, /nex_intelligence_analysis_v1_1_7/);
 assert.match(META_AI_ANALYSIS_PROMPT, /Eng\. WhatsApp/);
-assert.match(META_AI_ANALYSIS_PROMPT, /action_kind/);
-assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.6/);
-assert.match(META_AI_REGENERATION_PROMPT, /1\.1\.6/);
+assert.match(META_AI_ANALYSIS_PROMPT, /E0–E3|E3/);
+assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.7/);
+assert.match(META_AI_REGENERATION_PROMPT, /1\.1\.7/);
 
 const casesDoc = JSON.parse(
   readFileSync(join(here, "ANALYSIS_TEST_CASES.json"), "utf8"),
 ) as { protocol_version: string; data_contract_version: string; cases: Array<{ id: string }> };
-assert.equal(casesDoc.protocol_version, "1.1.6");
+assert.equal(casesDoc.protocol_version, "1.1.7");
 assert.equal(casesDoc.data_contract_version, "1.0.0");
 assert.ok(casesDoc.cases.some((c) => c.id === "meta-schema-partial-recovery"));
+assert.ok(casesDoc.cases.some((c) => c.id === "meta-objective-evidence-gate"));
 
 const changelog = readFileSync(join(here, "ANALYSIS_CHANGELOG.md"), "utf8");
+assert.match(changelog, /## 1\.1\.7/);
 assert.match(changelog, /## 1\.1\.6/);
 assert.match(changelog, /## 1\.1\.5/);
-assert.match(changelog, /## 1\.1\.4/);
 
 console.log("protocol-v1.1.test.ts: ok");

@@ -1,6 +1,6 @@
 {
-  "protocol_version": "1.1.6",
-  "engine_version": "1.1.6",
+  "protocol_version": "1.1.7",
+  "engine_version": "1.1.7",
   "data_contract_version": "1.0.0",
   "cases": [
     {
@@ -97,6 +97,18 @@
         "schema_errors inclui caminho do campo inválido",
         "analytical_status PARTIAL_VALIDATED ou FALLBACK_DETERMINISTIC conforme conteúdo",
         "Máximo de uma regeneração; Markdown bruto nunca publicado"
+      ]
+    },
+    {
+      "id": "meta-objective-evidence-gate",
+      "title": "CTR qualitativo e criativo só com CTR são rejeitados; fato E1 e monitor aprovados",
+      "focus": "integrity",
+      "expects": [
+        "Labels positivo/elevado/aceitável sem comparação são REJECTED",
+        "replace_creative/test só com CTR é REJECTED",
+        "Observação factual de CTR com trace é APPROVED (E1)",
+        "monitor com CTR rastreável é APPROVED (E1)",
+        "Resumo executivo não eleva fato descritivo a diagnóstico estratégico"
       ]
     }
   ]

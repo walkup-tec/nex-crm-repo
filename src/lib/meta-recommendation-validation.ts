@@ -13,6 +13,17 @@ import {
   validateTraceIdsForClaim,
   type MetricTraceability,
 } from "@/lib/meta-metric-traceability";
+import {
+  claimRequiresComparativeEvidence,
+  classifyAchievedEvidenceLevel,
+  evidenceLevelAtLeast,
+  requiredEvidenceLevelForAction,
+  textHasCausalPromise,
+  textHasInventedBenchmark,
+  textHasUnfoundedQualitativeLabel,
+  type EvidenceComparison,
+  type EvidenceLevel,
+} from "@/lib/meta-evidence-levels";
 
 export {
   buildCompromisedMetricIndex,
@@ -21,7 +32,9 @@ export {
   normalizeCanonicalMetric,
 } from "@/lib/meta-metric-traceability";
 
-export const META_AI_RECOMMENDATION_ENGINE = "1.1.6";
+export type { EvidenceComparison, EvidenceLevel } from "@/lib/meta-evidence-levels";
+
+export const META_AI_RECOMMENDATION_ENGINE = "1.1.7";
 
 export type RecommendationLevel = "campaign" | "adset" | "ad";
 export type ClaimLevel = "account" | RecommendationLevel;
@@ -64,7 +77,7 @@ const EXTERNAL_COMMERCIAL_MARKERS =
   /\b(crm|vendas?|receita|roi\b|roas\b|faturamento|agendamento|whatsapp\s+oficial\s+do\s+crm|lead\s+qualificado\s+no\s+crm|ticket\s+m[eé]dio)\b/i;
 
 const PERFORMANCE_JUDGMENT_RE =
-  /\b(desempenho\s+insuficiente|performance\s+(ruim|insuficiente|fraca)|convers[aã]o\s+insatisfat[oó]ria|inefici[eê]n(te|cia)|retorno\s+(inadequado|baixo|ruim)|baixo\s+retorno|custo\s+por\s+resultado\s+(alto|elevado|ruim)|cpr\s+(alto|elevado)|n[aã]o\s+est[aá]\s+performando|resultados?\s+(ruins|fracos|insuficientes)|investimento\s+ineficiente|sem\s+retorno\s+adequado)\b/i;
+  /\b(desempenho\s+insuficiente|performance\s+(ruim|insuficiente|fraca|positiva|elevada|aceit[aá]vel)|convers[aã]o\s+insatisfat[oó]ria|inefici[eê]n(te|cia)|retorno\s+(inadequado|baixo|ruim)|baixo\s+retorno|custo\s+por\s+resultado\s+(alto|elevado|ruim)|cpr\s+(alto|elevado)|n[aã]o\s+est[aá]\s+performando|resultados?\s+(ruins|fracos|insuficientes)|investimento\s+ineficiente|sem\s+retorno\s+adequado|ctr\s+(positiv[oa]|elevad[oa]|aceit[aá]vel|bom|alta?|baix[oa])|engajamento\s+(positiv[oa]|elevad[oa]|forte))\b/i;
 
 const INDIRECT_RECOMMENDATION_RE =
   /\b(recomend(a|amos|a-se)|suger(e|imos|e-se)|vale\s+(a\s+pena\s+)?(aumentar|escalar|pausar|investir)|deve(-se)?\s+(aumentar|escalar|pausar|investir)|aument(ar|e)\s+(o\s+)?or[cç]amento|escal(ar|e)\s+(a\s+)?(campanha|conjunto|investimento)|paus(ar|e)\s+(a\s+)?(campanha|conjunto|an[uú]ncio)|substitu(ir|a)\s+(o\s+)?criativo|investir\s+mais)\b/i;
@@ -82,6 +95,18 @@ const METRIC_MENTION_PATTERNS: Array<{ metric: string; re: RegExp }> = [
   { metric: "clicks", re: /\b(cliques?|clicks?)\b/i },
 ];
 
+export const evidenceComparisonSchema = z
+  .object({
+    type: z.enum(["period_vs_period", "campaign_vs_campaign", "adset_vs_adset", "ad_vs_ad", "other"]),
+    entity_ids: z.array(z.string()).optional().default([]),
+    compatible: z.boolean(),
+    absolute_difference: z.number().nullable().optional(),
+    relative_difference_pct: z.number().nullable().optional(),
+    volumes: z.record(z.number()).optional(),
+  })
+  .nullable()
+  .optional();
+
 export const structuredRecommendationSchema = z.object({
   id: z.string().min(1),
   entity_id: z.string().min(1),
@@ -94,6 +119,8 @@ export const structuredRecommendationSchema = z.object({
   action_kind: z.enum(["scale_budget", "pause", "replace_creative", "test", "monitor", "other"]),
   validation_criterion: z.string().min(1),
   trace_ids: z.array(z.string()).optional().default([]),
+  comparison: evidenceComparisonSchema,
+  evidence_level: z.enum(["E0", "E1", "E2", "E3"]).optional(),
   arbitrary_targets: z
     .array(
       z.object({
@@ -156,6 +183,8 @@ export type ValidatedRecommendation = StructuredRecommendation & {
   verdict: RecommendationVerdict;
   rejection_reasons: string[];
   trace_ids: string[];
+  evidence_level: EvidenceLevel;
+  required_evidence_level: EvidenceLevel;
   blocked_by: Array<{
     entity_id: string;
     metric: string;
@@ -168,6 +197,7 @@ export type ValidatedClaim = StructuredClaim & {
   verdict: RecommendationVerdict;
   rejection_reasons: string[];
   trace_ids: string[];
+  evidence_level: EvidenceLevel;
   blocked_by: Array<{
     entity_id: string;
     metric: string;
@@ -330,6 +360,7 @@ const ACTION_KIND_ALIASES: Record<string, RecommendationActionKind> = {
   change_creative: "replace_creative",
   new_creative: "replace_creative",
   test: "test",
+  creative_test: "test",
   ab_test: "test",
   experiment: "test",
   monitor: "monitor",
@@ -410,6 +441,8 @@ export function validateStructuredRecommendation(
       uses_external_commercial_data: false,
       verdict: "REJECTED",
       rejection_reasons: [`schema_invalid: ${detail || parsed.error.issues.map((i) => i.message).join("; ")}`],
+      evidence_level: "E0",
+      required_evidence_level: "E3",
       blocked_by: [],
     };
   }
@@ -420,15 +453,21 @@ export function validateStructuredRecommendation(
   const entities = buildEntityIndex(payload);
   const integrity = buildCompromisedMetricIndex(quality);
   const traceIds = rec.trace_ids ?? [];
+  const requiredLevel = requiredEvidenceLevelForAction(rec.action_kind);
+  const blob = `${rec.recommended_action} ${rec.validation_criterion} ${rec.hypothesis ?? ""} ${rec.evidence.join(" ")}`;
 
+  let entityOk = true;
   if (!entityExists(entities, rec.level, rec.entity_id)) {
     reasons.push(`entity_not_found:${rec.level}:${rec.entity_id}`);
+    entityOk = false;
   }
 
+  let metricsCompromised = false;
   for (const indicator of rec.indicators_used) {
     const hit = metricIntegrityForEntity(integrity, rec.entity_id, indicator);
     if (hit.blocked && hit.state) {
       reasons.push(`metric_compromised:${hit.metric}:${hit.state}`);
+      metricsCompromised = true;
       blockedBy.push({
         entity_id: rec.entity_id,
         metric: hit.metric,
@@ -438,27 +477,32 @@ export function validateStructuredRecommendation(
     }
   }
 
-  reasons.push(
-    ...validateTraceIdsForClaim({
-      claimId: rec.id,
-      metricsUsed: rec.indicators_used,
-      traceIds,
-      text: `${rec.recommended_action} ${rec.evidence.join(" ")}`,
-      requireTraces: true,
-      traces,
-      payload,
-      quality,
-      claimEntityId: rec.entity_id,
-      claimLevel: rec.level,
-    }),
-  );
+  const traceReasons = validateTraceIdsForClaim({
+    claimId: rec.id,
+    metricsUsed: rec.indicators_used,
+    traceIds,
+    text: `${rec.recommended_action} ${rec.evidence.join(" ")}`,
+    requireTraces: true,
+    traces,
+    payload,
+    quality,
+    claimEntityId: rec.entity_id,
+    claimLevel: rec.level,
+  });
+  reasons.push(...traceReasons);
+  const tracesOk = traceReasons.length === 0;
 
-  if (rec.action_kind === "scale_budget") {
+  if (rec.action_kind === "scale_budget" || rec.action_kind === "pause") {
     const resultsHit = metricIntegrityForEntity(integrity, rec.entity_id, "results");
     const spendHit = metricIntegrityForEntity(integrity, rec.entity_id, "spend");
     const cprHit = metricIntegrityForEntity(integrity, rec.entity_id, "cost_per_result");
     if (resultsHit.blocked || spendHit.blocked || cprHit.blocked) {
-      reasons.push("scale_blocked_by_compromised_results_or_spend");
+      reasons.push(
+        rec.action_kind === "scale_budget"
+          ? "scale_blocked_by_compromised_results_or_spend"
+          : "pause_blocked_by_compromised_results_or_spend",
+      );
+      metricsCompromised = true;
     }
   }
 
@@ -481,6 +525,19 @@ export function validateStructuredRecommendation(
     reasons.push("external_commercial_data");
   }
 
+  if (textHasUnfoundedQualitativeLabel(blob) && requiredLevel !== "E1") {
+    // Labels qualitativos em intervenção exigem comparação E2+; bloqueio explícito se sem comparison.
+    if (!rec.comparison) reasons.push("unfounded_qualitative_label_without_comparison");
+  }
+
+  if (textHasInventedBenchmark(blob)) {
+    reasons.push("invented_benchmark");
+  }
+
+  if (textHasCausalPromise(blob)) {
+    reasons.push("unproven_causality_claim");
+  }
+
   if (
     /\b(comprovado|prova(do)?|causalidade certa|erro comprovado)\b/i.test(rec.hypothesis ?? "") &&
     (rec.evidence?.length ?? 0) < 2
@@ -495,6 +552,32 @@ export function validateStructuredRecommendation(
     reasons.push("saturation_without_frequency");
   }
 
+  const achieved = classifyAchievedEvidenceLevel({
+    baseOk: entityOk,
+    tracesOk,
+    metricsCompromised,
+    comparison: (rec.comparison ?? null) as EvidenceComparison | null,
+    payload,
+    primaryEntityId: rec.entity_id,
+    hypothesis: rec.hypothesis,
+    validationCriterion: rec.validation_criterion,
+    indicatorsUsed: rec.indicators_used,
+    forIntervention: requiredLevel === "E3",
+  });
+  reasons.push(...achieved.reasons);
+
+  if (!evidenceLevelAtLeast(achieved.level, requiredLevel)) {
+    reasons.push(`evidence_level_insufficient:${achieved.level}<${requiredLevel}`);
+  }
+
+  // CTR isolado nunca autoriza intervenção estratégica (mesmo com traces).
+  if (
+    requiredLevel === "E3" &&
+    rec.indicators_used.map(normalizeCanonicalMetric).every((m) => m === "ctr" || m === "link_ctr")
+  ) {
+    reasons.push("ctr_only_insufficient_for_strategic_action");
+  }
+
   const uniqueReasons = [...new Set(reasons)];
   let verdict: RecommendationVerdict = "APPROVED";
   if (uniqueReasons.length) {
@@ -502,7 +585,11 @@ export function validateStructuredRecommendation(
       uniqueReasons.every((r) => r === "arbitrary_target_without_foundation") &&
       !uniqueReasons.some(
         (r) =>
-          r.startsWith("metric_compromised") || r === "entity_not_found" || r === "external_commercial_data",
+          r.startsWith("metric_compromised") ||
+          r === "entity_not_found" ||
+          r === "external_commercial_data" ||
+          r.startsWith("evidence_level_insufficient") ||
+          r.startsWith("ctr_only"),
       );
     verdict = softOnly ? "NEEDS_REVIEW" : "REJECTED";
   }
@@ -510,6 +597,8 @@ export function validateStructuredRecommendation(
   return {
     ...rec,
     trace_ids: traceIds,
+    evidence_level: achieved.level,
+    required_evidence_level: requiredLevel,
     verdict,
     rejection_reasons: uniqueReasons,
     blocked_by: blockedBy,
@@ -535,6 +624,7 @@ export function validateStructuredClaim(
       text: "",
       verdict: "REJECTED",
       rejection_reasons: [`schema_invalid: ${parsed.error.issues.map((i) => i.message).join("; ")}`],
+      evidence_level: "E0",
       blocked_by: [],
     };
   }
@@ -548,14 +638,21 @@ export function validateStructuredClaim(
     normalizeCanonicalMetric,
   );
   const traceIds = claim.trace_ids ?? [];
-  const kind =
+  let kind =
     claim.claim_kind === "descriptive" && detectClaimKindFromText(claim.text) !== "descriptive"
       ? detectClaimKindFromText(claim.text)
       : claim.claim_kind;
 
+  // Label qualitativo eleva claim descritivo a julgamento (exige E2).
+  if (kind === "descriptive" && textHasUnfoundedQualitativeLabel(claim.text)) {
+    kind = "performance_judgment";
+  }
+
+  let entityOk = true;
   if (claim.level !== "account" && claim.entity_id) {
     if (!entityExists(entities, claim.level, claim.entity_id)) {
       reasons.push(`entity_not_found:${claim.level}:${claim.entity_id}`);
+      entityOk = false;
     }
   }
 
@@ -566,6 +663,7 @@ export function validateStructuredClaim(
     if (!allowed) reasons.push("indirect_recommendation_unvalidated");
   }
 
+  let metricsCompromised = false;
   if (kind === "performance_judgment" || kind === "descriptive") {
     const scopedEntity = claim.entity_id && claim.level !== "account" ? claim.entity_id : null;
 
@@ -574,6 +672,7 @@ export function validateStructuredClaim(
         const hit = metricIntegrityForEntity(integrity, scopedEntity, metric);
         if (hit.blocked && hit.state) {
           reasons.push(`metric_compromised:${hit.metric}:${hit.state}`);
+          metricsCompromised = true;
           blockedBy.push({
             entity_id: scopedEntity,
             metric: hit.metric,
@@ -585,6 +684,7 @@ export function validateStructuredClaim(
         const hit = metricIntegrityForAccountClaim(integrity, metric);
         if (hit.blocked && hit.state) {
           reasons.push(`metric_compromised:${hit.metric}:${hit.state}`);
+          metricsCompromised = true;
           blockedBy.push({
             entity_id: payload.account.id,
             metric: hit.metric,
@@ -595,13 +695,13 @@ export function validateStructuredClaim(
       }
     }
 
-    // Julgamentos de conversão: só se metrics_used incluir results/spend/CPR (não CTR/CPC).
     if (kind === "performance_judgment" && scopedEntity) {
       for (const metric of metrics) {
         if (!["results", "spend", "cost_per_result"].includes(metric)) continue;
         const hit = metricIntegrityForEntity(integrity, scopedEntity, metric);
         if (hit.blocked && hit.state && !reasons.some((r) => r.includes(`metric_compromised:${hit.metric}`))) {
           reasons.push(`metric_compromised:${hit.metric}:${hit.state}`);
+          metricsCompromised = true;
           blockedBy.push({
             entity_id: scopedEntity,
             metric: hit.metric,
@@ -615,7 +715,6 @@ export function validateStructuredClaim(
     if (kind === "performance_judgment" && !scopedEntity) {
       const judgmentMetrics = metrics.length ? metrics : ["results", "cost_per_result", "spend"];
       for (const metric of judgmentMetrics) {
-        // CTR/CPC não disparam bloqueio account-wide por results/spend de campanhas.
         if (metric === "ctr" || metric === "cpc" || metric === "cpm" || metric === "clicks" || metric === "impressions") {
           continue;
         }
@@ -623,29 +722,55 @@ export function validateStructuredClaim(
           const canonical = normalizeCanonicalMetric(metric);
           if (map.has(canonical)) {
             reasons.push(`account_judgment_depends_on_compromised_entity:${entityId}:${canonical}`);
+            metricsCompromised = true;
           }
         }
       }
     }
   }
 
-  reasons.push(
-    ...validateTraceIdsForClaim({
-      claimId: claim.id,
-      metricsUsed: metrics,
-      traceIds,
-      text: claim.text,
-      requireTraces: mentionsNumericClaim(claim.text) || mentionsSimpleAverageCtr(claim.text),
-      traces,
-      payload,
-      quality,
-      claimEntityId: claim.entity_id,
-      claimLevel: claim.level,
-    }),
-  );
+  const traceReasons = validateTraceIdsForClaim({
+    claimId: claim.id,
+    metricsUsed: metrics,
+    traceIds,
+    text: claim.text,
+    requireTraces: mentionsNumericClaim(claim.text) || mentionsSimpleAverageCtr(claim.text),
+    traces,
+    payload,
+    quality,
+    claimEntityId: claim.entity_id,
+    claimLevel: claim.level,
+  });
+  reasons.push(...traceReasons);
+  const tracesOk = traceReasons.length === 0;
 
   if (EXTERNAL_COMMERCIAL_MARKERS.test(claim.text)) {
     reasons.push("external_commercial_data");
+  }
+
+  if (textHasInventedBenchmark(claim.text)) {
+    reasons.push("invented_benchmark");
+  }
+
+  // Julgamento qualitativo / labels sem comparação fundamentada → rejeita (E2 exigido, comparação ausente).
+  if (claimRequiresComparativeEvidence(claim.text, kind)) {
+    reasons.push("qualitative_judgment_without_validated_comparison");
+  }
+
+  const achieved = classifyAchievedEvidenceLevel({
+    baseOk: entityOk && kind !== "indirect_recommendation",
+    tracesOk,
+    metricsCompromised,
+    comparison: null,
+    payload,
+    primaryEntityId: claim.entity_id,
+    forIntervention: false,
+  });
+
+  // Fato numérico E1: se só há label qualitativo, não aprova mesmo com traces.
+  // Se é descritivo puro sem labels, E1 basta.
+  if (kind === "descriptive" && !textHasUnfoundedQualitativeLabel(claim.text) && achieved.level === "E1") {
+    // ok
   }
 
   return {
@@ -653,6 +778,7 @@ export function validateStructuredClaim(
     claim_kind: kind,
     metrics_used: metrics,
     trace_ids: traceIds,
+    evidence_level: reasons.length && !tracesOk ? "E0" : achieved.level,
     verdict: reasons.length ? "REJECTED" : "APPROVED",
     rejection_reasons: [...new Set(reasons)],
     blocked_by: blockedBy,

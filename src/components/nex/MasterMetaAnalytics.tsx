@@ -1,6 +1,15 @@
 import { Check, Copy, FlaskConical, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -72,6 +81,7 @@ export function MasterMetaAnalytics() {
     limitations: "",
     applicability: "",
   });
+  const [duplicateConfirm, setDuplicateConfirm] = useState<MetaAiExecutionSummary | null>(null);
 
   const copyExecutionId = (executionId: string) => {
     void navigator.clipboard.writeText(executionId).then(() => {
@@ -152,47 +162,97 @@ export function MasterMetaAnalytics() {
     });
   };
 
-  const runAnalysis = async () => {
+  const executeAnalysis = async () => {
     if (!organizationId) {
       setError("Selecione um cliente.");
       return;
     }
-    if (analyzingLock.current) return;
-    const duplicate = findRecentMetaAiDuplicate(executions, { organizationId, period });
-    if (duplicate) {
-      const when = new Date(duplicate.createdAt).toLocaleString("pt-BR");
-      const proceed = window.confirm(
-        `Já existe uma execução recente para este cliente/período (${when}). Executar novamente?`,
-      );
-      if (!proceed) {
-        setNotice("Execução cancelada — use o histórico à esquerda ou confirme para rodar de novo.");
-        setSelectedId(duplicate.id);
-        await openExecution(duplicate.id);
-        return;
-      }
+    if (analyzingLock.current) {
+      setNotice("Já existe uma análise em andamento. Aguarde a conclusão.");
+      return;
     }
     analyzingLock.current = true;
     setAnalyzing(true);
     setError("");
-    setNotice("");
+    setNotice("Exportando Meta e consultando a OpenAI — isso pode levar até alguns minutos…");
     setResult(null);
+    const orgId = organizationId;
+    let executionId = "";
     try {
-      const response = await analyzeMetaWithAiFn({
-        data: { organizationId, ...periodRequest(period) },
-      });
+      const response = await Promise.race([
+        analyzeMetaWithAiFn({
+          data: { organizationId: orgId, ...periodRequest(period) },
+        }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => {
+            reject(new Error("A análise excedeu o tempo limite. Tente novamente em instantes."));
+          }, 240000);
+        }),
+      ]);
       if (!response.ok) {
         setError(response.message);
-        await loadExecutions(organizationId);
+        setNotice("");
         return;
       }
+      executionId = response.data.executionId;
       setResult(response.data);
       setNotice("Análise concluída e registrada para calibração.");
-      await loadExecutions(organizationId);
-      await openExecution(response.data.executionId);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível concluir a análise.");
+      setNotice("");
+      return;
     } finally {
       analyzingLock.current = false;
       setAnalyzing(false);
     }
+
+    // Histórico/detalhe fora do lock de "Analisando…" — falha aqui não prende o botão.
+    try {
+      await loadExecutions(orgId);
+      if (executionId) await openExecution(executionId);
+    } catch {
+      setNotice(
+        executionId
+          ? `Análise concluída (${executionId}), mas o histórico não atualizou. Use Atualizar histórico.`
+          : "Análise concluída, mas o histórico não atualizou. Use Atualizar histórico.",
+      );
+    }
+  };
+
+  const runAnalysis = () => {
+    if (!organizationId) {
+      setError("Selecione um cliente.");
+      return;
+    }
+    if (analyzingLock.current || analyzing) {
+      setNotice("Já existe uma análise em andamento. Aguarde a conclusão.");
+      return;
+    }
+    const duplicate = findRecentMetaAiDuplicate(executions, { organizationId, period });
+    if (duplicate) {
+      setDuplicateConfirm(duplicate);
+      setError("");
+      setNotice("");
+      return;
+    }
+    void executeAnalysis();
+  };
+
+  const cancelDuplicateConfirm = () => {
+    const duplicate = duplicateConfirm;
+    setDuplicateConfirm(null);
+    if (!duplicate) return;
+    setNotice("Execução cancelada — use o histórico à esquerda ou confirme para rodar de novo.");
+    setSelectedId(duplicate.id);
+    void openExecution(duplicate.id);
+  };
+
+  const confirmDuplicateAndRun = () => {
+    setDuplicateConfirm(null);
+    // Próximo tick: evita conflito com o fechamento do AlertDialog.
+    window.setTimeout(() => {
+      void executeAnalysis();
+    }, 0);
   };
 
   const reviewCalibration = async () => {
@@ -298,7 +358,7 @@ export function MasterMetaAnalytics() {
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              onClick={() => void runAnalysis()}
+              onClick={runAnalysis}
               disabled={analyzing || !organizationId || loadingClients}
             >
               <Sparkles className="size-4" />
@@ -513,6 +573,35 @@ export function MasterMetaAnalytics() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog
+        open={duplicateConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open && !analyzing) setDuplicateConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Executar análise novamente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Já existe uma execução recente para este cliente e período
+              {duplicateConfirm
+                ? ` (${new Date(duplicateConfirm.createdAt).toLocaleString("pt-BR")})`
+                : ""}
+              . Confirme para enviar uma nova análise à OpenAI ou cancele para abrir a execução
+              existente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={analyzing} onClick={cancelDuplicateConfirm}>
+              Cancelar
+            </AlertDialogCancel>
+            <Button type="button" disabled={analyzing} onClick={confirmDuplicateAndRun}>
+              Executar novamente
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

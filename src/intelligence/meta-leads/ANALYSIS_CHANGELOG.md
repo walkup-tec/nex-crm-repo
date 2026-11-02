@@ -1,5 +1,13 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.5 — 2026-11-02
+
+- Vínculo rigoroso entidade↔nome↔`trace_id` (rejeita trace de outra campanha).
+- Recálculo determinístico de métricas derivadas a partir dos insights Meta da execução.
+- Período do trace deve coincidir com o período do export (não com execuções anteriores).
+- Status `PASS` da IA é revalidado; falha determinística prevalece.
+- Meta-only; contrato de dados **1.0.0**.
+
 ## 1.1.4 — 2026-11-02
 
 - Motor **1.1.4** com dependências matemáticas reais (CTR ← clicks/impressions; CPC ← spend/clicks).

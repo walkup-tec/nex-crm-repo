@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { DataQualityStatus, MetaDataQualityReport } from "@/lib/meta-data-quality";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
-import { computeCtr } from "@/lib/meta-metrics";
+import { computeCostPerResult, computeCpc, computeCpm, computeCtr } from "@/lib/meta-metrics";
 
 export const METRIC_TRACEABILITY_VERSION = "1.0";
+export const METRIC_TRACEABILITY_ENGINE = "1.1.5";
 
 const BLOCKING_STATES = new Set<DataQualityStatus>(["FAIL", "WARNING", "NOT_VERIFIABLE"]);
 
@@ -170,12 +171,162 @@ function insightsForEntity(payload: NexMetaAnalysisV1, level: string, entityId: 
   return null;
 }
 
+function entityName(payload: NexMetaAnalysisV1, level: string, entityId: string): string | null {
+  if (level === "account") return payload.account.name || null;
+  if (level === "campaign") return payload.campaigns.find((row) => row.id === entityId)?.name ?? null;
+  if (level === "adset") return payload.adsets.find((row) => row.id === entityId)?.name ?? null;
+  if (level === "ad") return payload.ads.find((row) => row.id === entityId)?.name ?? null;
+  return null;
+}
+
 function entityPresent(payload: NexMetaAnalysisV1, level: string, entityId: string): boolean {
   if (level === "account") return payload.account.id === entityId;
   if (level === "campaign") return payload.campaigns.some((row) => row.id === entityId);
   if (level === "adset") return payload.adsets.some((row) => row.id === entityId);
   if (level === "ad") return payload.ads.some((row) => row.id === entityId);
   return false;
+}
+
+export type NamedEntityHit = {
+  id: string;
+  level: "campaign" | "adset" | "ad";
+  name: string;
+};
+
+/** Nomes de entidades citados no texto (maior nome primeiro para evitar colisão parcial). */
+export function findNamedEntitiesInText(text: string, payload: NexMetaAnalysisV1): NamedEntityHit[] {
+  const lower = text.toLowerCase();
+  const candidates: NamedEntityHit[] = [
+    ...payload.campaigns.map((row) => ({ id: row.id, level: "campaign" as const, name: row.name })),
+    ...payload.adsets.map((row) => ({ id: row.id, level: "adset" as const, name: row.name })),
+    ...payload.ads.map((row) => ({ id: row.id, level: "ad" as const, name: row.name })),
+  ]
+    .filter((row) => row.name.trim().length >= 3)
+    .sort((a, b) => b.name.length - a.name.length);
+
+  const hits: NamedEntityHit[] = [];
+  for (const candidate of candidates) {
+    const key = candidate.name.toLowerCase();
+    if (!lower.includes(key)) continue;
+    // Já capturou nome mais longo que contém este (ordenados do maior para o menor).
+    if (hits.some((hit) => hit.name.toLowerCase().includes(key))) continue;
+    hits.push(candidate);
+  }
+  return hits;
+}
+
+type MetaDerived = {
+  inputs: Record<string, number | null>;
+  result: number | null;
+};
+
+/** Recalcula métrica derivada a partir dos insights Meta da entidade do trace. */
+export function recomputeMetricFromMeta(
+  payload: NexMetaAnalysisV1,
+  level: string,
+  entityId: string,
+  metricRaw: string,
+): MetaDerived | null {
+  const metric = normalizeCanonicalMetric(metricRaw);
+  const insights = insightsForEntity(payload, level, entityId);
+  if (!insights) return null;
+
+  if (metric === "ctr") {
+    return {
+      inputs: { clicks: insights.clicks, impressions: insights.impressions },
+      result: computeCtr(insights.clicks, insights.impressions),
+    };
+  }
+  if (metric === "cpc") {
+    return {
+      inputs: { spend: insights.spend, clicks: insights.clicks },
+      result: computeCpc(insights.spend, insights.clicks),
+    };
+  }
+  if (metric === "cpm") {
+    return {
+      inputs: { spend: insights.spend, impressions: insights.impressions },
+      result: computeCpm(insights.spend, insights.impressions),
+    };
+  }
+  if (metric === "cost_per_result") {
+    return {
+      inputs: { spend: insights.spend, results: insights.results },
+      result: computeCostPerResult(insights.spend, insights.results),
+    };
+  }
+  if (metric === "clicks" || metric === "impressions" || metric === "spend" || metric === "results" || metric === "reach" || metric === "frequency") {
+    const value = (insights as Record<string, number | null>)[metric] ?? null;
+    return { inputs: { [metric]: value }, result: value };
+  }
+  return null;
+}
+
+function numbersClose(a: number | null | undefined, b: number | null | undefined, tol = 0.05): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  return Math.abs(a - b) <= tol;
+}
+
+/** Status determinístico — não confia no PASS informado pela IA. */
+export function computeDeterministicTraceStatus(
+  record: MetricTraceRecord,
+  payload: NexMetaAnalysisV1,
+  quality: MetaDataQualityReport,
+): { status: DataQualityStatus; reasons: string[] } {
+  const reasons: string[] = [];
+  const metric = normalizeCanonicalMetric(record.metric);
+  const integrity = buildCompromisedMetricIndex(quality);
+
+  if (record.period.since !== payload.period.since || record.period.until !== payload.period.until) {
+    reasons.push("trace_period_mismatch_execution");
+  }
+
+  if (!entityPresent(payload, record.entity_level, record.entity_id)) {
+    reasons.push(`entity_missing:${record.entity_id}`);
+  }
+
+  if (record.entity_level !== "account" && record.source_level !== record.entity_level) {
+    reasons.push(`source_level_mismatch:${record.source_level}!=${record.entity_level}`);
+  }
+
+  for (const dep of integrityChecksForMetric(metric)) {
+    if (record.entity_level === "account") {
+      const hit = metricIntegrityForAccountClaim(integrity, dep);
+      if (hit.blocked && hit.state) reasons.push(`dependency_compromised:${hit.metric}:${hit.state}`);
+    } else {
+      const hit = metricIntegrityForEntity(integrity, record.entity_id, dep);
+      if (hit.blocked && hit.state) reasons.push(`dependency_compromised:${hit.metric}:${hit.state}`);
+    }
+  }
+
+  if (record.calculation.type === "RATIO" || record.calculation.type === "DIRECT") {
+    const recomputed = recomputeMetricFromMeta(payload, record.entity_level, record.entity_id, metric);
+    if (!recomputed) {
+      reasons.push("meta_insights_unavailable_for_recompute");
+    } else {
+      for (const [key, value] of Object.entries(recomputed.inputs)) {
+        const claimed = record.calculation.inputs[key];
+        if (typeof claimed === "number" || claimed === null) {
+          if (!numbersClose(claimed, value, metric === "spend" ? 0.02 : 0.05)) {
+            reasons.push(`meta_input_mismatch:${key}`);
+          }
+        }
+      }
+      if (
+        typeof record.calculation.result === "number" &&
+        recomputed.result != null &&
+        !numbersClose(record.calculation.result, recomputed.result, 0.05)
+      ) {
+        reasons.push("meta_result_mismatch");
+      }
+    }
+  }
+
+  if (reasons.some((r) => r.startsWith("dependency_compromised"))) {
+    return { status: "NOT_VERIFIABLE", reasons };
+  }
+  if (reasons.length) return { status: "FAIL", reasons };
+  return { status: "PASS", reasons: [] };
 }
 
 const SIMPLE_AVERAGE_CTR_RE =
@@ -207,48 +358,28 @@ export function validateMetricTraceRecord(
     issues.push({ trace_id: record.trace_id, reason: "source_not_meta" });
   }
 
-  if (!entityPresent(payload, record.entity_level, record.entity_id)) {
-    issues.push({ trace_id: record.trace_id, reason: `entity_missing:${record.entity_id}` });
+  // Recálculo determinístico a partir do payload Meta desta execução (não confia no PASS da IA).
+  const deterministic = computeDeterministicTraceStatus(record, payload, quality);
+  for (const reason of deterministic.reasons) {
+    issues.push({ trace_id: record.trace_id, reason });
   }
-
-  if (record.entity_level !== "account") {
-    for (const dep of integrityChecksForMetric(metric)) {
-      const hit = metricIntegrityForEntity(integrity, record.entity_id, dep);
-      if (hit.blocked && hit.state) {
-        // Só bloqueia o próprio registro se a dependência real estiver comprometida.
-        if (integrityChecksForMetric(metric).includes(hit.metric) || hit.metric === metric) {
-          if (record.validation.status === "PASS") {
-            issues.push({
-              trace_id: record.trace_id,
-              reason: `validation_pass_but_dependency_compromised:${hit.metric}:${hit.state}`,
-            });
-          }
-        }
-      }
-    }
+  if (record.validation.status === "PASS" && deterministic.status !== "PASS") {
+    issues.push({
+      trace_id: record.trace_id,
+      reason: `ai_pass_overridden:${deterministic.status}`,
+    });
+  }
+  if (deterministic.status === "FAIL" || deterministic.status === "NOT_VERIFIABLE") {
+    issues.push({
+      trace_id: record.trace_id,
+      reason: `deterministic_${deterministic.status.toLowerCase()}`,
+    });
   }
 
   if (record.calculation.type === "DIRECT") {
     const insights = insightsForEntity(payload, record.source_level, record.entity_id);
     if (!insights && record.entity_level !== "account") {
       issues.push({ trace_id: record.trace_id, reason: "insights_absent" });
-    }
-  }
-
-  if (metric === "ctr" && record.calculation.type === "RATIO") {
-    const clicks = record.calculation.inputs.clicks;
-    const impressions = record.calculation.inputs.impressions;
-    if (typeof clicks !== "number" || typeof impressions !== "number" || impressions <= 0) {
-      issues.push({ trace_id: record.trace_id, reason: "ctr_ratio_inputs_invalid" });
-    } else {
-      const expected = computeCtr(clicks, impressions);
-      if (
-        expected != null &&
-        typeof record.calculation.result === "number" &&
-        Math.abs(expected - record.calculation.result) > 0.05
-      ) {
-        issues.push({ trace_id: record.trace_id, reason: "ctr_ratio_result_mismatch" });
-      }
     }
   }
 
@@ -263,8 +394,10 @@ export function validateMetricTraceRecord(
     if (record.calculation.comparable === false) {
       issues.push({ trace_id: record.trace_id, reason: "aggregation_not_comparable" });
     }
-    // Proíbe média simples: fórmula deve ser ratio de totais.
-    if (!/\(?\s*clicks\s*\/\s*impressions/i.test(record.calculation.formula) && !/sum\(clicks\).*sum\(impressions\)/i.test(record.calculation.formula)) {
+    if (
+      !/\(?\s*clicks\s*\/\s*impressions/i.test(record.calculation.formula) &&
+      !/sum\(clicks\).*sum\(impressions\)/i.test(record.calculation.formula)
+    ) {
       issues.push({ trace_id: record.trace_id, reason: "aggregation_not_weighted_ctr" });
     }
 
@@ -314,10 +447,6 @@ export function validateMetricTraceRecord(
     }
   }
 
-  if (record.validation.status !== "PASS" && record.validation.status !== "WARNING") {
-    // FAIL/NOT_VERIFIABLE não podem sustentar conclusão APPROVED (avaliado no consumidor).
-  }
-
   return issues;
 }
 
@@ -353,12 +482,30 @@ export function validateTraceIdsForClaim(input: {
   traces: Map<string, MetricTraceRecord>;
   payload: NexMetaAnalysisV1;
   quality: MetaDataQualityReport;
+  claimEntityId?: string | null;
+  claimLevel?: "account" | "campaign" | "adset" | "ad";
 }): string[] {
   const reasons: string[] = [];
   const metrics = input.metricsUsed.map(normalizeCanonicalMetric);
+  const namedHits = findNamedEntitiesInText(input.text, input.payload);
+  const claimEntityId = input.claimEntityId ?? null;
+  const claimLevel = input.claimLevel ?? "account";
 
   if (mentionsSimpleAverageCtr(input.text)) {
     reasons.push("simple_average_ctr_forbidden");
+  }
+
+  // Nome citado no texto deve coincidir com o entity_id da conclusão.
+  if (claimEntityId && claimLevel !== "account" && namedHits.length) {
+    const mismatch = namedHits.find((hit) => hit.id !== claimEntityId);
+    if (mismatch) {
+      reasons.push(`claim_text_entity_mismatch:${mismatch.name}->${mismatch.id}!=${claimEntityId}`);
+    }
+  }
+
+  // Se o texto cita um nome e o claim não tem entity_id, exige vínculo explícito.
+  if (!claimEntityId && namedHits.length === 1 && claimLevel !== "account") {
+    reasons.push(`claim_missing_entity_for_named:${namedHits[0]!.name}`);
   }
 
   const needsTrace =
@@ -378,25 +525,57 @@ export function validateTraceIdsForClaim(input: {
     }
     const recordIssues = validateMetricTraceRecord(record, input.payload, input.quality);
     for (const issue of recordIssues) reasons.push(issue.reason);
-    if (record.validation.status === "FAIL" || record.validation.status === "NOT_VERIFIABLE") {
-      reasons.push(`trace_validation_${record.validation.status.toLowerCase()}:${traceId}`);
+
+    // Não confia no status da IA: usa apenas o determinístico.
+    const deterministic = computeDeterministicTraceStatus(record, input.payload, input.quality);
+    if (deterministic.status === "FAIL" || deterministic.status === "NOT_VERIFIABLE") {
+      reasons.push(`trace_validation_${deterministic.status.toLowerCase()}:${traceId}`);
     }
+
+    // Trace deve apontar para a mesma entidade da conclusão (exceto agregação de conta).
+    if (claimEntityId && claimLevel !== "account") {
+      if (record.entity_id !== claimEntityId) {
+        reasons.push(`trace_entity_id_mismatch:${traceId}:${record.entity_id}!=${claimEntityId}`);
+      }
+      if (record.entity_level !== claimLevel) {
+        reasons.push(`trace_entity_level_mismatch:${traceId}:${record.entity_level}!=${claimLevel}`);
+      }
+    }
+
+    // Nome no texto vs entidade do trace.
+    if (namedHits.length) {
+      const wrong = namedHits.find((hit) => hit.id !== record.entity_id && record.entity_level !== "account");
+      if (wrong && record.calculation.type !== "AGGREGATION") {
+        reasons.push(`trace_text_entity_mismatch:${wrong.name}->${record.entity_id}`);
+      }
+    }
+
+    const expectedName = entityName(input.payload, record.entity_level, record.entity_id);
+    if (
+      expectedName &&
+      claimEntityId === record.entity_id &&
+      namedHits.length === 1 &&
+      namedHits[0]!.id === claimEntityId &&
+      namedHits[0]!.name.toLowerCase() !== expectedName.toLowerCase()
+    ) {
+      reasons.push(`entity_name_mismatch:${namedHits[0]!.name}!=${expectedName}`);
+    }
+
     const recordMetric = normalizeCanonicalMetric(record.metric);
-    if (metrics.length && !metrics.includes(recordMetric) && !metrics.some((m) => dependenciesForMetric(m).includes(recordMetric))) {
-      // allow dependency traces (clicks/impressions for ctr)
+    if (
+      metrics.length &&
+      !metrics.includes(recordMetric) &&
+      !metrics.some((m) => dependenciesForMetric(m).includes(recordMetric))
+    ) {
       if (!metrics.some((m) => integrityChecksForMetric(m).includes(recordMetric))) {
         reasons.push(`trace_metric_mismatch:${traceId}:${recordMetric}`);
       }
-    }
-    if (!record.used_by.includes(input.claimId) && record.used_by.length > 0) {
-      // soft: prefer used_by linkage; if used_by empty, still ok if referenced
     }
     if (record.used_by.length && !record.used_by.includes(input.claimId)) {
       reasons.push(`trace_not_linked_to_claim:${traceId}`);
     }
   }
 
-  // Toda métrica usada precisa de ao menos um trace correspondente (ou de dependência).
   if (needsTrace && input.traceIds.length) {
     for (const metric of metrics) {
       const covered = input.traceIds.some((id) => {

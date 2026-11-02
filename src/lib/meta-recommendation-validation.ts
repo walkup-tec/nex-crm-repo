@@ -21,7 +21,7 @@ export {
   normalizeCanonicalMetric,
 } from "@/lib/meta-metric-traceability";
 
-export const META_AI_RECOMMENDATION_ENGINE = "1.1.4";
+export const META_AI_RECOMMENDATION_ENGINE = "1.1.5";
 
 export type RecommendationLevel = "campaign" | "adset" | "ad";
 export type ClaimLevel = "account" | RecommendationLevel;
@@ -332,6 +332,8 @@ export function validateStructuredRecommendation(
       traces,
       payload,
       quality,
+      claimEntityId: rec.entity_id,
+      claimLevel: rec.level,
     }),
   );
 
@@ -521,6 +523,8 @@ export function validateStructuredClaim(
       traces,
       payload,
       quality,
+      claimEntityId: claim.entity_id,
+      claimLevel: claim.level,
     }),
   );
 

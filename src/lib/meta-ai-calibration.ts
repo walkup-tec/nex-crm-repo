@@ -108,6 +108,9 @@ export function findRecentMetaAiDuplicate<T extends RecentDuplicateCandidate>(
       if (item.periodSince !== input.period.since || item.periodUntil !== input.period.until) {
         continue;
       }
+    } else if (item.periodSince != null || item.periodUntil != null) {
+      // "Total" só conflita com execuções também sem recorte de datas.
+      continue;
     }
     return item;
   }

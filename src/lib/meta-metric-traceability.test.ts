@@ -113,8 +113,8 @@ function payloadRef(): NexMetaAnalysisV1 {
 function qualitySpendResultsBad(): MetaDataQualityReport {
   return {
     status: "NOT_VERIFIABLE",
-    engine_version: "1.1.4",
-    protocol_version: "1.1.4",
+    engine_version: "1.1.5",
+    protocol_version: "1.1.5",
     validated_at: "2026-11-02T16:30:00.000Z",
     checks: [
       {
@@ -372,7 +372,156 @@ function ctrRatioTrace(claimId: string) {
   assert.ok(result.audit.observations.some((o) => o.id === "obs-001" && o.verdict === "APPROVED"));
   assert.ok(result.audit.executive_points.some((o) => o.id === "exec-bad" && o.verdict === "REJECTED"));
   assert.equal(result.audit.metric_traceability.records.length, 1);
-  assert.equal(result.audit.engine_version, "1.1.4");
+  assert.equal(result.audit.engine_version, "1.1.5");
 }
 
-console.log("meta-metric-traceability.test.ts: ok (3ff5318c scenarios)");
+// --- Regressão a589e9be: texto WhatsApp + trace Conv. Site → REJECTED ---
+{
+  const whatsappId = "camp_whatsapp";
+  const siteId = "camp_site";
+  const dual: NexMetaAnalysisV1 = {
+    ...payload,
+    campaigns: [
+      {
+        id: whatsappId,
+        name: "Nex Ads [Eng. WhatsApp]",
+        objective: "OUTCOME_ENGAGEMENT",
+        status: "ACTIVE",
+        effective_status: "ACTIVE",
+        buying_type: null,
+        daily_budget: null,
+        lifetime_budget: null,
+        optimization_goal: null,
+        result_metric: "messaging",
+        insights: insights({ spend: 80, impressions: 2000, clicks: 40, ctr: 2, cpc: 2, results: 8 }),
+        daily_insights: [],
+        attribution_setting: null,
+      },
+      {
+        id: siteId,
+        name: "Nex Ads [Conv. Site]",
+        objective: "OUTCOME_SALES",
+        status: "ACTIVE",
+        effective_status: "ACTIVE",
+        buying_type: null,
+        daily_budget: null,
+        lifetime_budget: null,
+        optimization_goal: null,
+        result_metric: "purchase",
+        insights: insights({ spend: 120, impressions: 1033, clicks: 20, ctr: 1.936108, cpc: 6, results: 4 }),
+        daily_insights: [],
+        attribution_setting: null,
+      },
+    ],
+  };
+  const qualityOk: MetaDataQualityReport = {
+    ...quality,
+    status: "PASS",
+    checks: [],
+    affected_metrics: [],
+    compromised_metrics: [],
+    verified_metrics: ["ctr", "clicks", "impressions"],
+  };
+
+  const wrongTrace = {
+    trace_id: "trace-wrong",
+    entity_level: "campaign" as const,
+    entity_id: siteId,
+    metric: "ctr",
+    source: "META_MARKETING_API" as const,
+    source_level: "campaign" as const,
+    source_field: "insights.clicks",
+    period: { since: "2026-10-19", until: "2026-11-01" },
+    calculation: {
+      type: "RATIO" as const,
+      formula: "(clicks / impressions) * 100",
+      inputs: { clicks: 20, impressions: 1033 },
+      result: 1.936108,
+    },
+    validation: {
+      status: "PASS" as const,
+      dependencies: ["clicks", "impressions"],
+      check_codes: [],
+      reason: null,
+    },
+    used_by: ["obs-wa"],
+  };
+
+  const mismatched = validateStructuredClaim(
+    {
+      id: "obs-wa",
+      entity_id: whatsappId,
+      level: "campaign",
+      metrics_used: ["ctr"],
+      trace_ids: ["trace-wrong"],
+      claim_kind: "descriptive",
+      text: "A campanha Nex Ads [Eng. WhatsApp] manteve CTR de 2%.",
+    },
+    dual,
+    qualityOk,
+    [],
+    indexTracesById({ version: "1.0", records: [wrongTrace] }),
+  );
+  assert.equal(mismatched.verdict, "REJECTED", "a589e9be mismatch rejected");
+  assert.ok(
+    mismatched.rejection_reasons.some(
+      (r) => r.includes("trace_entity_id_mismatch") || r.includes("trace_text_entity_mismatch") || r.includes("claim_text_entity"),
+    ),
+    `a589e9be reasons: ${mismatched.rejection_reasons.join(",")}`,
+  );
+
+  const rightTrace = {
+    ...wrongTrace,
+    trace_id: "trace-right",
+    entity_id: whatsappId,
+    calculation: {
+      type: "RATIO" as const,
+      formula: "(clicks / impressions) * 100",
+      inputs: { clicks: 40, impressions: 2000 },
+      result: 2,
+    },
+    used_by: ["obs-wa-ok"],
+  };
+  const aligned = validateStructuredClaim(
+    {
+      id: "obs-wa-ok",
+      entity_id: whatsappId,
+      level: "campaign",
+      metrics_used: ["ctr"],
+      trace_ids: ["trace-right"],
+      claim_kind: "descriptive",
+      text: "A campanha Nex Ads [Eng. WhatsApp] manteve CTR de 2%.",
+    },
+    dual,
+    qualityOk,
+    [],
+    indexTracesById({ version: "1.0", records: [rightTrace] }),
+  );
+  assert.equal(aligned.verdict, "APPROVED", "a589e9be aligned approved");
+
+  // PASS da IA com inputs que não batem com Meta → rejeitado
+  const fakePass = {
+    ...rightTrace,
+    trace_id: "trace-fake",
+    calculation: {
+      type: "RATIO" as const,
+      formula: "(clicks / impressions) * 100",
+      inputs: { clicks: 999, impressions: 2000 },
+      result: 49.95,
+    },
+    validation: {
+      status: "PASS" as const,
+      dependencies: ["clicks", "impressions"],
+      check_codes: [],
+      reason: null,
+    },
+    used_by: ["obs-fake"],
+  };
+  const fakeIssues = validateMetricTraceRecord(fakePass, dual, qualityOk);
+  assert.ok(
+    fakeIssues.some((i) => i.reason.includes("meta_input_mismatch") || i.reason.includes("ai_pass_overridden")),
+    "AI PASS overridden by Meta recompute",
+  );
+}
+
+console.log("meta-metric-traceability.test.ts: ok (3ff5318c + a589e9be)");

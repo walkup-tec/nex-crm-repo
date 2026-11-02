@@ -1,6 +1,6 @@
 {
-  "protocol_version": "1.1.4",
-  "engine_version": "1.1.4",
+  "protocol_version": "1.1.5",
+  "engine_version": "1.1.5",
   "data_contract_version": "1.0.0",
   "cases": [
     {
@@ -76,6 +76,16 @@
         "CPC permanece bloqueado quando spend está comprometido",
         "CTR médio sem AGGREGATION ponderada é rejeitado",
         "Conclusões numéricas exigem metric_traceability com trace_ids"
+      ]
+    },
+    {
+      "id": "meta-entity-trace-binding",
+      "title": "Trace de Conv. Site não pode aprovar observação de Eng. WhatsApp",
+      "focus": "integrity",
+      "expects": [
+        "Observação sobre Eng. WhatsApp com trace de Conv. Site é REJECTED",
+        "Observação com entity_id e trace do mesmo ID é APPROVED",
+        "PASS da IA não prevalece sobre recálculo Meta determinístico"
       ]
     }
   ]

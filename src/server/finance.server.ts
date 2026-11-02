@@ -607,15 +607,10 @@ async function financeMonitorOf(
   const [asaas, cora] = await Promise.all([probeAsaas(), probeCora()]);
   const asaasSync = asaasSyncMonitor(notice, asaas.ok);
   return [
-    { id: "asaas", label: "Integração Asaas", ok: asaas.ok, detail: asaas.detail },
-    { id: "cora", label: "Integração Cora", ok: cora.ok, detail: cora.detail },
-    { id: "asaas_sync", label: "Cobranças Asaas", ok: asaasSync.ok, detail: asaasSync.detail },
-    {
-      id: "cora_sync",
-      label: "Cobranças Cora",
-      ok: coraSync.ok,
-      detail: coraSync.detail,
-    },
+    { id: "cora", label: "Integração", ok: cora.ok, detail: cora.detail },
+    { id: "cora_sync", label: "Cobranças", ok: coraSync.ok, detail: coraSync.detail },
+    { id: "asaas", label: "Integração", ok: asaas.ok, detail: asaas.detail },
+    { id: "asaas_sync", label: "Cobranças", ok: asaasSync.ok, detail: asaasSync.detail },
   ];
 }
 

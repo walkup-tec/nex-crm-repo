@@ -31,6 +31,7 @@ import {
   chargeMatchesClient,
   competenceLabel,
   financeMonitorCaption,
+  financeMonitorGroups,
   pixQrPayload,
   todayKey,
   type ChargePix,
@@ -685,26 +686,32 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function FinanceIntegrationMonitor({ items }: { items: FinanceMonitorItem[] }) {
-  if (items.length === 0) return null;
+  const groups = financeMonitorGroups(items);
+  if (groups.length === 0) return null;
   return (
     <div
-      className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-card/60 px-4 py-3 text-sm"
+      className="flex flex-col gap-3 rounded-lg border bg-card/60 px-4 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-2"
       role="status"
       aria-label="Monitor de integração financeira"
     >
-      {items.map((item) => {
-        const caption = financeMonitorCaption(item);
-        return (
-          <div key={item.id} className="flex items-center gap-2 text-muted-foreground">
-            {item.ok ? (
-              <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden />
-            ) : (
-              <XCircle className="size-4 shrink-0 text-red-500" aria-hidden />
-            )}
-            <span className={item.ok ? "text-foreground/90" : "text-foreground/80"}>{caption}</span>
-          </div>
-        );
-      })}
+      {groups.map((group) => (
+        <div key={group.provider} className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="font-semibold text-foreground">{group.label}</span>
+          {group.items.map((item) => {
+            const caption = financeMonitorCaption(item);
+            return (
+              <div key={item.id} className="flex items-center gap-2 text-muted-foreground">
+                {item.ok ? (
+                  <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden />
+                ) : (
+                  <XCircle className="size-4 shrink-0 text-red-500" aria-hidden />
+                )}
+                <span className={item.ok ? "text-foreground/90" : "text-foreground/80"}>{caption}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }

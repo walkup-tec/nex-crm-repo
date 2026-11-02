@@ -34,6 +34,7 @@ export function pixQrPayload(code: string | null) {
 }
 
 export type FinanceMonitorId = "asaas" | "cora" | "asaas_sync" | "cora_sync";
+export type FinanceMonitorProvider = "cora" | "asaas";
 
 export type FinanceMonitorItem = {
   id: FinanceMonitorId;
@@ -42,9 +43,29 @@ export type FinanceMonitorItem = {
   detail: string;
 };
 
+export type FinanceMonitorGroup = {
+  provider: FinanceMonitorProvider;
+  label: string;
+  items: FinanceMonitorItem[];
+};
+
 export function financeMonitorCaption(item: FinanceMonitorItem) {
   if (item.ok) return `${item.label} OK`;
   return item.detail ? `${item.label}: ${item.detail}` : item.label;
+}
+
+export function financeMonitorGroups(items: FinanceMonitorItem[]): FinanceMonitorGroup[] {
+  const order: { provider: FinanceMonitorProvider; label: string }[] = [
+    { provider: "cora", label: "Cora" },
+    { provider: "asaas", label: "Asaas" },
+  ];
+  return order
+    .map(({ provider, label }) => ({
+      provider,
+      label,
+      items: items.filter((item) => item.id === provider || item.id === `${provider}_sync`),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function asaasSyncMonitor(notice: string, integrationOk: boolean): Pick<FinanceMonitorItem, "ok" | "detail"> {

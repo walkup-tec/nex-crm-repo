@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Eye, History, MoreHorizontal, Search } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  AlertCircle,
+  CircleDollarSign,
+  Copy,
+  Eye,
+  History,
+  MoreHorizontal,
+  Search,
+  Wallet,
+} from "lucide-react";
 import QRCode from "@/vendor/qrcode/lib/browser.js";
-import { Badge } from "@/components/ui/badge";
+import { DashboardKpiCard } from "@/components/nex/DashboardKpiCard";
+import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,14 +24,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access";
 import {
   chargeInPeriod,
   chargeMatchesClient,
   competenceLabel,
-  dailyChargeTotals,
   pixQrPayload,
   todayKey,
   whenLabel,
@@ -39,6 +45,7 @@ import {
   negotiateChargeFn,
 } from "@/lib/finance.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
+import { cn } from "@/lib/utils";
 
 export function FinanceAdmin() {
   const [snapshot, setSnapshot] = useState<MasterFinance | null>(null);
@@ -47,7 +54,6 @@ export function FinanceAdmin() {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState<MetaPeriod>({ mode: "total" });
-  const [view, setView] = useState("lista");
   const [charge, setCharge] = useState<FinanceCharge | null>(null);
   const [pixCharge, setPixCharge] = useState<FinanceCharge | null>(null);
   const [dueCharge, setDueCharge] = useState<FinanceCharge | null>(null);
@@ -76,6 +82,7 @@ export function FinanceAdmin() {
   const inPeriod = (snapshot?.charges ?? []).filter((item) => chargeInPeriod(item.dueDate, bounds));
   const charges = inPeriod.filter((item) => {
     const status = listedStatus(item);
+    if (filter === "pending") return status === "pending";
     if (filter === "overdue") return status === "overdue";
     if (filter === "paid") return status === "paid";
     return true;
@@ -93,129 +100,191 @@ export function FinanceAdmin() {
     period.mode === "total"
       ? snapshot?.receivedThisMonthCents ?? 0
       : inPeriod.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.totalCents, 0);
-  const days = dailyChargeTotals(snapshot?.charges ?? [], bounds);
 
   return (
     <div className="space-y-5">
-      {loading && <p className="text-sm text-muted-foreground">Consultando cobranças no Asaas...</p>}
+      {loading && <p className="text-sm text-muted-foreground">Consultando cobranças...</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {snapshot?.notice && <p className="text-sm text-muted-foreground">{snapshot.notice}</p>}
       {snapshot && (
         <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <PeriodPicker
-              value={period}
-              disabled={loading}
-              onApply={setPeriod}
-              allowFuture
-              totalHint="Exibe cobranças, totais e gráficos de todo o período disponível."
-            />
-          </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="A receber" value={moneyFromCents(receivableCents)} />
-            <Metric label="Vencidas" value={moneyFromCents(overdueCents)} />
-            <Metric
+            <DashboardKpiCard
+              icon={Wallet}
+              accentColor="#22c55e"
+              label="A receber"
+              value={moneyFromCents(receivableCents)}
+            />
+            <DashboardKpiCard
+              icon={CircleDollarSign}
+              accentColor="#3b82f6"
               label={period.mode === "total" ? "Recebido no mês" : "Recebido no período"}
               value={moneyFromCents(receivedCents)}
             />
+            <DashboardKpiCard
+              icon={AlertCircle}
+              accentColor="#ef4444"
+              label="Vencido (em atraso)"
+              value={moneyFromCents(overdueCents)}
+            />
           </div>
-          <Tabs value={view} onValueChange={setView}>
-            <TabsList>
-              <TabsTrigger value="lista">Lista</TabsTrigger>
-              <TabsTrigger value="graficos">Gráficos</TabsTrigger>
-            </TabsList>
-            <TabsContent value="lista" className="space-y-5">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+          <Card className="overflow-hidden">
+            <CardHeader className="space-y-4">
+              <div>
                 <CardTitle>Cobranças</CardTitle>
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                  <div className="relative sm:w-72">
-                    <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-                    <Input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Nome ou CNPJ"
-                      aria-label="Pesquisar por nome ou CNPJ"
-                      className="pl-9"
-                    />
-                  </div>
+                <p className="mt-1 text-sm text-muted-foreground">Lista de contas a receber por cliente.</p>
+              </div>
+              <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative w-full lg:max-w-sm">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Nome do cliente ou CNPJ"
+                    aria-label="Pesquisar por nome ou CNPJ"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
                   <Select value={filter} onValueChange={setFilter}>
-                    <SelectTrigger className="w-full sm:w-40">
+                    <SelectTrigger className="w-full sm:w-44" aria-label="Filtrar status">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos os status</SelectItem>
-                      <SelectItem value="overdue">Vencidas</SelectItem>
+                      <SelectItem value="pending">Em aberto</SelectItem>
+                      <SelectItem value="overdue">Vencido</SelectItem>
                       <SelectItem value="paid">Pagas</SelectItem>
                     </SelectContent>
                   </Select>
+                  <PeriodPicker
+                    value={period}
+                    disabled={loading}
+                    onApply={setPeriod}
+                    allowFuture
+                    totalLabel="Todo o período"
+                    totalHint="Exibe cobranças e totais de todo o período disponível."
+                  />
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {charges.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {snapshot.charges.length === 0 ? "Nenhuma cobrança gravada." : inPeriod.length === 0 ? "Nenhuma cobrança neste período." : query.trim() ? "Nenhum cliente encontrado para esta pesquisa." : "Nenhuma cobrança neste filtro."}
-                </p>
-              ) : (
-                charges.map((item) => (
-                  <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center">
-                    <div className="flex-1">
-                      <p className="font-semibold">{item.clientName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.clientDocument.replace(/\D/g, "") ? `${applyMask("doc", item.clientDocument)} • ` : ""}
-                        Competência {competenceLabel(item.competence)} • vencimento {dateBr(item.dueDate)}
-                      </p>
-                    </div>
-                    <strong>{moneyFromCents(item.totalCents)}</strong>
-                    <Badge variant={listedStatus(item) === "overdue" ? "destructive" : "outline"}>{listedStatus(item) === "paid" ? "Paga" : invoiceStatusLabel(listedStatus(item))}</Badge>
-                    <div className="flex items-center gap-2">
-                      {listedStatus(item) !== "paid" && listedStatus(item) !== "cancelled" ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          aria-label={`Ver Pix de ${item.clientName}`}
-                          onClick={() => setPixCharge(item)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                      ) : null}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button type="button" variant="outline" size="icon" aria-label={`Ações de ${item.clientName}`}>
-                            <MoreHorizontal className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={!item.canChangeDue}
-                            onSelect={() => setDueCharge(item)}
-                          >
-                            Mudar vencimento
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={!item.canNegotiate}
-                            onSelect={() => setCharge(item)}
-                          >
-                            Negociação
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={!item.canCancel || item.billingProvider !== "cora"}
-                            className="text-destructive focus:text-destructive"
-                            onSelect={() => setCancelCharge(item)}
-                          >
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                ))
-              )}
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[960px] text-left text-sm">
+                  <thead className="border-y bg-muted/40 text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                    <tr>
+                      <th className="px-5 py-3 font-medium">Cliente</th>
+                      <th className="px-4 py-3 font-medium">CNPJ</th>
+                      <th className="px-4 py-3 font-medium">Competência</th>
+                      <th className="px-4 py-3 font-medium">Vencimento</th>
+                      <th className="px-4 py-3 font-medium">Valor</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-5 py-3 font-medium">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {charges.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                          {snapshot.charges.length === 0
+                            ? "Nenhuma cobrança gravada."
+                            : inPeriod.length === 0
+                              ? "Nenhuma cobrança neste período."
+                              : query.trim()
+                                ? "Nenhum cliente encontrado para esta pesquisa."
+                                : "Nenhuma cobrança neste filtro."}
+                        </td>
+                      </tr>
+                    ) : (
+                      charges.map((item) => {
+                        const status = listedStatus(item);
+                        return (
+                          <tr key={item.id} className="hover:bg-muted/30">
+                            <td className="px-5 py-3 font-medium">{item.clientName}</td>
+                            <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                              {item.clientDocument.replace(/\D/g, "")
+                                ? applyMask("doc", item.clientDocument)
+                                : "—"}
+                            </td>
+                            <td className="px-4 py-3">{competenceLabel(item.competence)}</td>
+                            <td className="px-4 py-3 tabular-nums">{dateBr(item.dueDate)}</td>
+                            <td className="px-4 py-3 font-semibold tabular-nums">
+                              {moneyFromCents(item.totalCents)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+                                <span
+                                  className={cn(
+                                    "size-1.5 rounded-full",
+                                    status === "overdue"
+                                      ? "bg-red-500"
+                                      : status === "paid"
+                                        ? "bg-blue-500"
+                                        : "bg-emerald-500",
+                                  )}
+                                />
+                                {status === "paid" ? "Paga" : invoiceStatusLabel(status)}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                {status !== "paid" && status !== "cancelled" ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label={`Ver Pix de ${item.clientName}`}
+                                    onClick={() => setPixCharge(item)}
+                                  >
+                                    <Eye className="size-4" />
+                                  </Button>
+                                ) : null}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label={`Ações de ${item.clientName}`}
+                                    >
+                                      <MoreHorizontal className="size-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      disabled={!item.canChangeDue}
+                                      onSelect={() => setDueCharge(item)}
+                                    >
+                                      Mudar vencimento
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      disabled={!item.canNegotiate}
+                                      onSelect={() => setCharge(item)}
+                                    >
+                                      Negociação
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      disabled={!item.canCancel || item.billingProvider !== "cora"}
+                                      className="text-destructive focus:text-destructive"
+                                      onSelect={() => setCancelCharge(item)}
+                                    >
+                                      Excluir
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Auditoria financeira</CardTitle>
@@ -238,11 +307,6 @@ export function FinanceAdmin() {
               )}
             </CardContent>
           </Card>
-            </TabsContent>
-            <TabsContent value="graficos" className="space-y-5">
-              {view === "graficos" && <DailyCharts days={days} />}
-            </TabsContent>
-          </Tabs>
         </>
       )}
       <NegotiateDialog
@@ -271,80 +335,6 @@ export function FinanceAdmin() {
         }}
       />
     </div>
-  );
-}
-
-function DailyCharts({ days }: { days: { label: string; totalCents: number }[] }) {
-  const data = days.map((item) => ({ ...item, total: item.totalCents / 100 }));
-  if (data.length === 0) return <p className="text-sm text-muted-foreground">Nenhuma cobrança neste período para montar os gráficos.</p>;
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Total por dia</CardTitle>
-          <p className="text-sm text-muted-foreground">Soma das cobranças com vencimento em cada dia do período.</p>
-        </CardHeader>
-        <CardContent>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={24} />
-                <YAxis tickFormatter={axisMoney} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={72} />
-                <Tooltip content={<MoneyTooltip />} />
-                <Bar dataKey="total" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Evolução diária</CardTitle>
-          <p className="text-sm text-muted-foreground">Mesma soma diária, em linha, no período selecionado.</p>
-        </CardHeader>
-        <CardContent>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={24} />
-                <YAxis tickFormatter={axisMoney} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={72} />
-                <Tooltip content={<MoneyTooltip />} />
-                <Line type="monotone" dataKey="total" stroke="var(--primary)" strokeWidth={2} dot={data.length <= 31} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-    </>
-  );
-}
-
-function axisMoney(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-}
-
-function MoneyTooltip({ active, payload }: { active?: boolean; payload?: { payload?: { label?: string; totalCents?: number } }[] }) {
-  if (!active || !payload?.length) return null;
-  const row = payload[0]?.payload;
-  if (!row) return null;
-  return (
-    <div className="rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
-      <p className="font-semibold">{row.label}</p>
-      <p className="mt-1">{moneyFromCents(row.totalCents ?? 0)}</p>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <strong className="mt-3 block font-display text-2xl sm:text-3xl">{value}</strong>
-      </CardContent>
-    </Card>
   );
 }
 

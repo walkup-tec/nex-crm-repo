@@ -5,16 +5,22 @@ import { FinanceAdmin } from "@/components/nex/FinanceAdmin";
 export const Route = createFileRoute("/_authenticated/master/financeiro")({
   head: () => ({
     meta: [
-      { title: "Financeiro Master — NEX Ads" },
+      { title: "Contas a Receber — NEX Ads" },
       { name: "description", content: "Acompanhe cobranças, recebimentos e inadimplência." },
-      { property: "og:title", content: "Financeiro Master — NEX Ads" },
+      { property: "og:title", content: "Contas a Receber — NEX Ads" },
       { property: "og:description", content: "Acompanhe cobranças, recebimentos e inadimplência." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: () => (
-    <AppShell live notes={false} master title="Financeiro" subtitle="Acompanhe cobranças, recebimentos e inadimplência.">
+    <AppShell
+      live
+      notes={false}
+      master
+      title="Contas a Receber"
+      subtitle="Acompanhe cobranças, recebimentos e inadimplência."
+    >
       <FinanceAdmin />
     </AppShell>
   ),

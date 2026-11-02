@@ -112,8 +112,8 @@ function dayLabel(date: Date) {
   return format(date, "d 'de' MMM", { locale: ptBR }).replace(".", "");
 }
 
-function triggerLabel(period: MetaPeriod) {
-  if (period.mode === "total") return "Total";
+function triggerLabel(period: MetaPeriod, totalLabel: string) {
+  if (period.mode === "total") return totalLabel;
   return `Personalizado · ${dayLabel(fromIso(period.since))} – ${dayLabel(fromIso(period.until))}`;
 }
 
@@ -122,12 +122,14 @@ export function PeriodPicker({
   disabled,
   onApply,
   totalHint = "Exibe os indicadores de todo o período disponível, desde o início das campanhas.",
+  totalLabel = "Total",
   allowFuture = false,
 }: {
   value: MetaPeriod;
   disabled?: boolean;
   onApply: (period: MetaPeriod) => void;
   totalHint?: string;
+  totalLabel?: string;
   /** Permite escolher datas após hoje (ex.: vencimentos futuros no Financeiro). */
   allowFuture?: boolean;
 }) {
@@ -188,7 +190,7 @@ export function PeriodPicker({
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" className="w-full justify-start bg-background sm:w-72" disabled={disabled}>
           <CalendarRange />
-          {triggerLabel(value)}
+          {triggerLabel(value, totalLabel)}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto max-w-[calc(100vw-1rem)] p-0">
@@ -196,7 +198,7 @@ export function PeriodPicker({
           <div className="w-full shrink-0 border-b p-3 lg:w-56 lg:border-b-0 lg:border-r">
             <p className="px-2 text-xs font-medium text-muted-foreground">Período</p>
             <div className="mt-2 space-y-1">
-              <Choice checked={mode === "total"} label="Total" onSelect={() => setMode("total")} />
+              <Choice checked={mode === "total"} label={totalLabel} onSelect={() => setMode("total")} />
               <Choice checked={mode === "custom"} label="Personalizado" onSelect={chooseCustom} />
             </div>
             {mode === "custom" && (
@@ -242,7 +244,7 @@ export function PeriodPicker({
         <div className="flex flex-col gap-3 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm">
             {mode === "total" ? (
-              <p className="font-medium">Total</p>
+              <p className="font-medium">{totalLabel}</p>
             ) : (
               <p>
                 <span className="font-medium">{activeShortcut?.label ?? "Personalizado"}</span>

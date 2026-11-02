@@ -33,19 +33,37 @@ export function pixQrPayload(code: string | null) {
   return value.startsWith("000201") ? value : "";
 }
 
-export type FinanceAudit = {
-  id: string;
-  text: string;
-  actorName: string;
-  at: string;
+export type FinanceMonitorId = "asaas" | "cora" | "asaas_sync" | "cora_sync";
+
+export type FinanceMonitorItem = {
+  id: FinanceMonitorId;
+  label: string;
+  ok: boolean;
+  detail: string;
 };
+
+export function financeMonitorCaption(item: FinanceMonitorItem) {
+  if (item.ok) return `${item.label} OK`;
+  return item.detail ? `${item.label}: ${item.detail}` : item.label;
+}
+
+export function asaasSyncMonitor(notice: string, integrationOk: boolean): Pick<FinanceMonitorItem, "ok" | "detail"> {
+  if (!integrationOk) {
+    if (/chave recusada|foi recusada/i.test(notice)) return { ok: false, detail: "chave recusada" };
+    if (/não está configurado/i.test(notice)) return { ok: false, detail: "não configurado" };
+    return { ok: false, detail: notice.trim() ? "falhou" : "indisponível" };
+  }
+  if (!notice.trim() || /Nenhum contrato integrado/i.test(notice)) return { ok: true, detail: "OK" };
+  if (/foi recusada/i.test(notice)) return { ok: false, detail: "chave recusada" };
+  return { ok: false, detail: "falhou" };
+}
 
 export type MasterFinance = {
   receivableCents: number;
   overdueCents: number;
   receivedThisMonthCents: number;
   charges: FinanceCharge[];
-  audit: FinanceAudit[];
+  monitor: FinanceMonitorItem[];
   notice: string;
 };
 
@@ -349,14 +367,4 @@ export function penaltiesRemain(payment: {
     (payment.interest?.value ?? 0) > 0 ||
     (payment.interestValue ?? 0) > 0.009
   );
-}
-
-export function whenLabel(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "America/Sao_Paulo",
-  });
 }

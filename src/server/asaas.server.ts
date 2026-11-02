@@ -56,6 +56,19 @@ export function asaasConfigured() {
   return Boolean(key?.trim());
 }
 
+export async function probeAsaas(): Promise<{ ok: boolean; detail: string }> {
+  if (!asaasConfigured()) return { ok: false, detail: "não configurado" };
+  try {
+    await asaasGet<{ data?: unknown[] }>("/customers", { limit: "1" });
+    return { ok: true, detail: "OK" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/chave do Asaas foi recusada/i.test(message)) return { ok: false, detail: "chave recusada" };
+    if (/ainda não está configurado/i.test(message)) return { ok: false, detail: "não configurado" };
+    return { ok: false, detail: "indisponível" };
+  }
+}
+
 function asaasError(text: string) {
   try {
     const body = JSON.parse(text) as { errors?: { description?: string }[] };

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
+  CheckCircle2,
   CircleDollarSign,
   Copy,
   Eye,
-  History,
   MoreHorizontal,
   Search,
   Wallet,
+  XCircle,
 } from "lucide-react";
 import QRCode from "@/vendor/qrcode/lib/browser.js";
 import { DashboardKpiCard } from "@/components/nex/DashboardKpiCard";
@@ -29,11 +30,12 @@ import {
   chargeInPeriod,
   chargeMatchesClient,
   competenceLabel,
+  financeMonitorCaption,
   pixQrPayload,
   todayKey,
-  whenLabel,
   type ChargePix,
   type FinanceCharge,
+  type FinanceMonitorItem,
   type MasterFinance,
 } from "@/lib/finance-access";
 import { applyMask } from "@/lib/masks";
@@ -105,9 +107,9 @@ export function FinanceAdmin() {
     <div className="space-y-5">
       {loading && <p className="text-sm text-muted-foreground">Consultando cobranças...</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {snapshot?.notice && <p className="text-sm text-muted-foreground">{snapshot.notice}</p>}
       {snapshot && (
         <>
+          <FinanceIntegrationMonitor items={snapshot.monitor ?? []} />
           <div className="grid gap-3 sm:grid-cols-3">
             <DashboardKpiCard
               icon={Wallet}
@@ -282,29 +284,6 @@ export function FinanceAdmin() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Auditoria financeira</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {snapshot.audit.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma movimentação registrada.</p>
-              ) : (
-                snapshot.audit.map((item) => (
-                  <div key={item.id} className="flex gap-3 border-b pb-3 last:border-0">
-                    <History className="mt-0.5 size-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{item.text}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.actorName} • {whenLabel(item.at)}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
             </CardContent>
           </Card>
         </>
@@ -701,6 +680,31 @@ function Info({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function FinanceIntegrationMonitor({ items }: { items: FinanceMonitorItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-card/60 px-4 py-3 text-sm"
+      role="status"
+      aria-label="Monitor de integração financeira"
+    >
+      {items.map((item) => {
+        const caption = financeMonitorCaption(item);
+        return (
+          <div key={item.id} className="flex items-center gap-2 text-muted-foreground">
+            {item.ok ? (
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden />
+            ) : (
+              <XCircle className="size-4 shrink-0 text-red-500" aria-hidden />
+            )}
+            <span className={item.ok ? "text-foreground/90" : "text-foreground/80"}>{caption}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

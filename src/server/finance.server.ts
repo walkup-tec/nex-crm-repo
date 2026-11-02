@@ -19,8 +19,9 @@ import {
   replacementPayment,
   todayKey,
   waivedOnCharge,
-  type FinanceAudit,
+  asaasSyncMonitor,
   type FinanceCharge,
+  type FinanceMonitorItem,
   type MasterFinance,
   type OwnFinance,
 } from "@/lib/finance-access";
@@ -31,13 +32,20 @@ import {
   coraNegotiatedTerms,
   coraPaymentTerms,
 } from "@/lib/billing-plan";
-import { cancelCoraInvoice, createCoraInvoice, ensureCoraPaidWebhook, readCoraInvoice } from "@/server/cora.server";
+import {
+  cancelCoraInvoice,
+  createCoraInvoice,
+  ensureCoraPaidWebhook,
+  probeCora,
+  readCoraInvoice,
+} from "@/server/cora.server";
 import {
   asaasConfigured,
   createNominalPix,
   deletePayment,
   getPayment,
   listSubscriptionPayments,
+  probeAsaas,
   readPaymentPix,
   updatePaymentDueDate,
   waivePaymentPenalties,
@@ -565,41 +573,21 @@ async function namesOf(ids: string[]) {
   );
 }
 
-async function auditOf(): Promise<FinanceAudit[]> {
-  const { data, error } = await supabaseAdmin
-    .from("audit_logs")
-    .select("id, action, details, created_at, actor_id")
-    .in("action", ["finance.sync", "finance.negotiate"])
-    .order("created_at", { ascending: false })
-    .limit(12);
-  if (error) fail(error.message);
-  const rows = data ?? [];
-  const actorIds = [...new Set(rows.map((row) => row.actor_id))];
-  const { data: profiles } = actorIds.length
-    ? await supabaseAdmin.from("profiles").select("id, full_name").in("id", actorIds)
-    : { data: [] };
-  const names = new Map((profiles ?? []).map((row) => [row.id, row.full_name]));
-  return rows.map((row) => {
-    const details = (row.details ?? {}) as {
-      clientName?: string;
-      waiveFine?: boolean;
-      waiveInterest?: boolean;
-      count?: number;
-    };
-    const removed = [details.waiveFine ? "multa" : "", details.waiveInterest ? "juros" : ""]
-      .filter(Boolean)
-      .join(" e ");
-    const text =
-      row.action === "finance.negotiate"
-        ? `Removidos ${removed || "acréscimos"} da cobrança de ${details.clientName ?? "cliente"}.`
-        : `${details.count ?? 0} cobrança(s) sincronizada(s) pelo Asaas.`;
-    return {
-      id: row.id,
-      text,
-      actorName: names.get(row.actor_id) ?? "Sistema",
-      at: row.created_at,
-    };
-  });
+async function financeMonitorOf(notice: string): Promise<FinanceMonitorItem[]> {
+  const [asaas, cora, coraWebhook] = await Promise.all([probeAsaas(), probeCora(), ensureCoraPaidWebhook()]);
+  const asaasSync = asaasSyncMonitor(notice, asaas.ok);
+  const coraSyncOk = cora.ok && coraWebhook;
+  return [
+    { id: "asaas", label: "Integração Asaas", ok: asaas.ok, detail: asaas.detail },
+    { id: "cora", label: "Integração Cora", ok: cora.ok, detail: cora.detail },
+    { id: "asaas_sync", label: "Cobranças Asaas", ok: asaasSync.ok, detail: asaasSync.detail },
+    {
+      id: "cora_sync",
+      label: "Cobranças Cora",
+      ok: coraSyncOk,
+      detail: coraSyncOk ? "OK" : cora.ok ? "sincronização falhou" : cora.detail,
+    },
+  ];
 }
 
 export async function listMasterFinance(userId: string): Promise<MasterFinance> {
@@ -608,7 +596,11 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
   const notice = await syncFinance(userId);
   const rows = await invoicesOf();
   const organizationIds = [...new Set(rows.map((row) => row.organization_id))];
-  const [names, providers] = await Promise.all([namesOf(organizationIds), providersOf(organizationIds)]);
+  const [names, providers, monitor] = await Promise.all([
+    namesOf(organizationIds),
+    providersOf(organizationIds),
+    financeMonitorOf(notice),
+  ]);
   const charges = rows
     .map((row) => toCharge(row, names, providers))
     .filter((item) => countsInMasterFinance(item.clientDocument));
@@ -624,8 +616,8 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
       .filter((item) => item.status === "paid" && item.paidAt && monthKey(item.paidAt) === month)
       .reduce((sum, item) => sum + item.totalCents, 0),
     charges,
-    audit: await auditOf(),
-    notice,
+    monitor,
+    notice: "",
   };
 }
 

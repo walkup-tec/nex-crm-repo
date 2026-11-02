@@ -34,14 +34,40 @@ function pemEnv(valueName: string, pathName: string) {
   }
 }
 
-function coraRuntime() {
-  return resolveCoraSettings({
+function coraEnv() {
+  return {
     id: process.env["CORA_CLIENT_ID"],
     secret: process.env["CORA_CLIENT_SECRET"],
     base: process.env["CORA_API_URL"],
     cert: pemEnv("CORA_CERT", "CORA_CERT_PATH"),
     key: pemEnv("CORA_KEY", "CORA_KEY_PATH"),
-  });
+  };
+}
+
+function coraRuntime() {
+  return resolveCoraSettings(coraEnv());
+}
+
+export function coraConfigured() {
+  try {
+    coraRuntime();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function probeCora(): Promise<{ ok: boolean; detail: string }> {
+  if (!coraConfigured()) return { ok: false, detail: "não configurada" };
+  try {
+    await coraToken();
+    return { ok: true, detail: "OK" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/recusou as credenciais|recusou o acesso/i.test(message)) return { ok: false, detail: "credenciais recusadas" };
+    if (/ainda não está configurada|certificado e a private key/i.test(message)) return { ok: false, detail: "não configurada" };
+    return { ok: false, detail: "indisponível" };
+  }
 }
 
 function coraRequest(
@@ -214,23 +240,30 @@ export async function cancelCoraInvoice(id: string) {
 
 let paidWebhookReady = false;
 
-export async function ensureCoraPaidWebhook() {
-  if (paidWebhookReady) return;
-  const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
-  const url = `${base}/api/cora/webhook`;
-  const settings = coraRuntime();
-  const token = await coraToken();
-  const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
-  const created = await coraRequest(
-    settings,
-    "/v2/webhooks",
-    "POST",
-    { ...headers, "idempotency-key": idempotencyKey(`cora-paid-webhook:${url}`) },
-    JSON.stringify({ url, resource: "invoice", trigger: "paid" }),
-  );
-  if ((created.status >= 200 && created.status < 300) || created.status === 409) {
-    paidWebhookReady = true;
-    return;
+export async function ensureCoraPaidWebhook(): Promise<boolean> {
+  if (paidWebhookReady) return true;
+  if (!coraConfigured()) return false;
+  try {
+    const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
+    const url = `${base}/api/cora/webhook`;
+    const settings = coraRuntime();
+    const token = await coraToken();
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+    const created = await coraRequest(
+      settings,
+      "/v2/webhooks",
+      "POST",
+      { ...headers, "idempotency-key": idempotencyKey(`cora-paid-webhook:${url}`) },
+      JSON.stringify({ url, resource: "invoice", trigger: "paid" }),
+    );
+    if ((created.status >= 200 && created.status < 300) || created.status === 409) {
+      paidWebhookReady = true;
+      return true;
+    }
+    console.error("cora_webhook_register", created.status, coraMessage(created.text) || "falha");
+    return false;
+  } catch (error) {
+    console.error("cora_webhook_register", error instanceof Error ? error.message : "falha");
+    return false;
   }
-  console.error("cora_webhook_register", created.status, coraMessage(created.text) || "falha");
 }

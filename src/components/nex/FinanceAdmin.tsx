@@ -1,19 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
-import { History, Search } from "lucide-react";
+import { Copy, Eye, History, MoreHorizontal, Search } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import QRCode from "@/vendor/qrcode/lib/browser.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { dateBr, invoiceStatusLabel, moneyFromCents } from "@/lib/client-access";
-import { chargeInPeriod, chargeMatchesClient, competenceLabel, dailyChargeTotals, todayKey, whenLabel, type FinanceCharge, type MasterFinance } from "@/lib/finance-access";
+import {
+  chargeInPeriod,
+  chargeMatchesClient,
+  competenceLabel,
+  dailyChargeTotals,
+  pixQrPayload,
+  todayKey,
+  whenLabel,
+  type ChargePix,
+  type FinanceCharge,
+  type MasterFinance,
+} from "@/lib/finance-access";
 import { applyMask } from "@/lib/masks";
-import { listMasterFinanceFn, negotiateChargeFn } from "@/lib/finance.functions";
+import {
+  cancelMasterChargeFn,
+  changeInvoiceDueDateFn,
+  chargePixFn,
+  listMasterFinanceFn,
+  negotiateChargeFn,
+} from "@/lib/finance.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
 
 export function FinanceAdmin() {
@@ -25,6 +49,9 @@ export function FinanceAdmin() {
   const [period, setPeriod] = useState<MetaPeriod>({ mode: "total" });
   const [view, setView] = useState("lista");
   const [charge, setCharge] = useState<FinanceCharge | null>(null);
+  const [pixCharge, setPixCharge] = useState<FinanceCharge | null>(null);
+  const [dueCharge, setDueCharge] = useState<FinanceCharge | null>(null);
+  const [cancelCharge, setCancelCharge] = useState<FinanceCharge | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,11 +169,47 @@ export function FinanceAdmin() {
                     </div>
                     <strong>{moneyFromCents(item.totalCents)}</strong>
                     <Badge variant={listedStatus(item) === "overdue" ? "destructive" : "outline"}>{listedStatus(item) === "paid" ? "Paga" : invoiceStatusLabel(listedStatus(item))}</Badge>
-                    {item.canNegotiate && (
-                      <Button variant="outline" onClick={() => setCharge(item)}>
-                        Negociar
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {listedStatus(item) !== "paid" && listedStatus(item) !== "cancelled" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label={`Ver Pix de ${item.clientName}`}
+                          onClick={() => setPixCharge(item)}
+                        >
+                          <Eye className="size-4" />
+                        </Button>
+                      ) : null}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" variant="outline" size="icon" aria-label={`Ações de ${item.clientName}`}>
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            disabled={!item.canChangeDue}
+                            onSelect={() => setDueCharge(item)}
+                          >
+                            Mudar vencimento
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={!item.canNegotiate}
+                            onSelect={() => setCharge(item)}
+                          >
+                            Negociação
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={!item.canCancel || item.billingProvider !== "cora"}
+                            className="text-destructive focus:text-destructive"
+                            onSelect={() => setCancelCharge(item)}
+                          >
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 ))
               )}
@@ -186,6 +249,23 @@ export function FinanceAdmin() {
         onClose={() => setCharge(null)}
         onSaved={async () => {
           setCharge(null);
+          await load();
+        }}
+      />
+      <PixViewDialog charge={pixCharge} onClose={() => setPixCharge(null)} />
+      <DueDateDialog
+        charge={dueCharge}
+        onClose={() => setDueCharge(null)}
+        onSaved={async () => {
+          setDueCharge(null);
+          await load();
+        }}
+      />
+      <CancelChargeDialog
+        charge={cancelCharge}
+        onClose={() => setCancelCharge(null)}
+        onSaved={async () => {
+          setCancelCharge(null);
           await load();
         }}
       />
@@ -264,6 +344,290 @@ function Metric({ label, value }: { label: string; value: string }) {
         <strong className="mt-3 block font-display text-2xl sm:text-3xl">{value}</strong>
       </CardContent>
     </Card>
+  );
+}
+
+async function copyDataUrlImage(dataUrl: string) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+    const anchor = document.createElement("a");
+    anchor.href = dataUrl;
+    anchor.download = "pix-qrcode.png";
+    anchor.click();
+    return "download";
+  }
+  await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+  return "copied";
+}
+
+function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onClose: () => void }) {
+  const [pix, setPix] = useState<ChargePix | null>(null);
+  const [qrImage, setQrImage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    setPix(null);
+    setQrImage("");
+    setError("");
+    setNotice("");
+    if (!charge) return;
+    let alive = true;
+    void (async () => {
+      setLoading(true);
+      const result = await chargePixFn({ data: { invoiceId: charge.id } });
+      if (!alive) return;
+      setLoading(false);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setPix(result.data);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [charge?.id]);
+
+  useEffect(() => {
+    const payload = pix?.payload?.trim() || pixQrPayload(charge?.pixCode ?? null);
+    if (!payload) {
+      setQrImage(pix?.image ? `data:image/png;base64,${pix.image}` : "");
+      return;
+    }
+    if (pix?.image) {
+      setQrImage(pix.image.startsWith("data:") ? pix.image : `data:image/png;base64,${pix.image}`);
+      return;
+    }
+    let alive = true;
+    void QRCode.toDataURL(payload, {
+      width: 480,
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: { dark: "#111111", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (alive) setQrImage(url);
+      })
+      .catch(() => {
+        if (alive) setError("Não foi possível montar o QR Code Pix.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [pix, charge?.pixCode]);
+
+  const payload = pix?.payload?.trim() || pixQrPayload(charge?.pixCode ?? null);
+  const link = pix?.invoiceUrl?.trim() || charge?.invoiceUrl?.trim() || "";
+
+  return (
+    <Dialog open={charge !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pix da cobrança</DialogTitle>
+          <DialogDescription>
+            {charge ? `${charge.clientName} • ${competenceLabel(charge.competence)}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+        {loading ? <p className="text-sm text-muted-foreground">Carregando Pix...</p> : null}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {!loading && !error && charge ? (
+          <div className="space-y-4">
+            <div className="grid place-items-center rounded-xl border bg-white p-4">
+              {qrImage ? (
+                <img src={qrImage} alt="QR Code Pix" className="size-56" />
+              ) : (
+                <p className="text-sm text-muted-foreground">QR Code indisponível.</p>
+              )}
+            </div>
+            <p className="text-center text-lg font-semibold tabular-nums">
+              {moneyFromCents(pix?.totalCents ?? charge.totalCents)}
+            </p>
+            <div className="grid gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!qrImage}
+                onClick={() => {
+                  void copyDataUrlImage(qrImage)
+                    .then((mode) =>
+                      setNotice(mode === "download" ? "Imagem baixada." : "Imagem do QR Code copiada."),
+                    )
+                    .catch(() => setNotice("Não foi possível copiar a imagem."));
+                }}
+              >
+                <Copy className="size-4" />
+                Copiar imagem do QR Code
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!link && !payload}
+                onClick={() => {
+                  const value = link || payload;
+                  if (!value) return;
+                  void navigator.clipboard.writeText(value).then(() => {
+                    setNotice(link ? "Link do QR Code copiado." : "Código Pix copiado.");
+                  });
+                }}
+              >
+                <Copy className="size-4" />
+                {link ? "Copiar link do QR Code" : "Copiar código Pix"}
+              </Button>
+            </div>
+            {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DueDateDialog({
+  charge,
+  onClose,
+  onSaved,
+}: {
+  charge: FinanceCharge | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [dueDate, setDueDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setDueDate(charge?.dueDate.slice(0, 10) ?? "");
+    setSaving(false);
+    setError("");
+  }, [charge?.id, charge?.dueDate]);
+
+  const save = async () => {
+    if (!charge) return;
+    setSaving(true);
+    setError("");
+    const result = await changeInvoiceDueDateFn({ data: { invoiceId: charge.id, dueDate } });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    await onSaved();
+  };
+
+  return (
+    <Dialog open={charge !== null} onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Mudar vencimento</DialogTitle>
+          <DialogDescription>
+            {charge ? `${charge.clientName} • ${competenceLabel(charge.competence)}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+        {charge ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Vencimento atual: <strong>{dateBr(charge.dueDate)}</strong>
+              {charge.billingProvider === "cora"
+                ? " A Cora cancela o Pix atual e emite outro com a nova data."
+                : " O vencimento é atualizado no Asaas."}
+            </p>
+            <label className="grid gap-2 text-sm">
+              Novo vencimento
+              <Input
+                type="date"
+                value={dueDate}
+                min={todayKey()}
+                onChange={(event) => setDueDate(event.target.value)}
+              />
+            </label>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => void save()}
+            disabled={saving || !dueDate || dueDate === charge?.dueDate.slice(0, 10)}
+          >
+            {saving ? "Salvando..." : "Salvar vencimento"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CancelChargeDialog({
+  charge,
+  onClose,
+  onSaved,
+}: {
+  charge: FinanceCharge | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setSaving(false);
+    setError("");
+  }, [charge?.id]);
+
+  const save = async () => {
+    if (!charge) return;
+    setSaving(true);
+    setError("");
+    const result = await cancelMasterChargeFn({ data: { invoiceId: charge.id } });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    await onSaved();
+  };
+
+  return (
+    <Dialog open={charge !== null} onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir cobrança</DialogTitle>
+          <DialogDescription>
+            {charge ? `${charge.clientName} • ${competenceLabel(charge.competence)}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+        {charge ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {charge.billingProvider === "cora"
+                ? "A cobrança será cancelada na Cora e marcada como excluída no NEX."
+                : "A cobrança será removida no Asaas e marcada como excluída no NEX."}{" "}
+              Valor: <strong>{moneyFromCents(charge.totalCents)}</strong> • vencimento{" "}
+              <strong>{dateBr(charge.dueDate)}</strong>.
+            </p>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={() => void save()} disabled={saving}>
+            {saving ? "Excluindo..." : "Excluir cobrança"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

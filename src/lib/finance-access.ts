@@ -14,6 +14,8 @@ export type FinanceCharge = {
   invoiceUrl: string | null;
   pixCode: string | null;
   canNegotiate: boolean;
+  canCancel: boolean;
+  canChangeDue: boolean;
   billingProvider: "cora" | "asaas" | "";
 };
 

@@ -25,7 +25,12 @@ import {
   type OwnFinance,
 } from "@/lib/finance-access";
 import type { InvoiceStatus } from "@/lib/client-access";
-import { coraNegotiationDue, coraNegotiatedTerms } from "@/lib/billing-plan";
+import {
+  coraDelinquencyFine,
+  coraNegotiationDue,
+  coraNegotiatedTerms,
+  coraPaymentTerms,
+} from "@/lib/billing-plan";
 import { cancelCoraInvoice, createCoraInvoice, ensureCoraPaidWebhook, readCoraInvoice } from "@/server/cora.server";
 import {
   asaasConfigured,
@@ -34,6 +39,7 @@ import {
   getPayment,
   listSubscriptionPayments,
   readPaymentPix,
+  updatePaymentDueDate,
   waivePaymentPenalties,
   type AsaasPayment,
 } from "@/server/asaas.server";
@@ -512,6 +518,7 @@ function toCharge(
   const due = row.due_date.slice(0, 10);
   const open = row.status !== "paid" && row.status !== "cancelled";
   const provider = providers.get(row.organization_id) ?? "";
+  const linked = Boolean(row.external_charge_id);
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -525,7 +532,9 @@ function toCharge(
     paidAt: row.paid_at,
     invoiceUrl: row.invoice_url,
     pixCode: row.pix_code,
-    canNegotiate: open && Boolean(row.external_charge_id) && (row.status === "overdue" || due < todayKey()),
+    canNegotiate: open && linked && (row.status === "overdue" || due < todayKey()),
+    canCancel: open && linked,
+    canChangeDue: open && linked,
     billingProvider: provider,
   };
 }
@@ -1074,4 +1083,175 @@ export async function chargePix(userId: string, invoiceId: string) {
     fineCents: quote.fineCents,
     interestCents: quote.interestCents,
   };
+}
+
+export async function changeInvoiceDueDate(
+  userId: string,
+  input: { invoiceId: string; dueDate: string },
+) {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") fail("Só o Master altera o vencimento.");
+  const due = input.dueDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) fail("Informe uma data de vencimento válida.");
+  if (due < todayKey()) fail("O vencimento não pode ser anterior a hoje.");
+  const { data: invoice, error } = await supabaseAdmin
+    .from("invoices")
+    .select(
+      "id, organization_id, competence, due_date, base_amount_cents, total_amount_cents, status, paid_at, invoice_url, external_charge_id, contract_id, pix_code",
+    )
+    .eq("id", input.invoiceId)
+    .maybeSingle();
+  if (error) fail(error.message);
+  if (!invoice) fail("Cobrança não encontrada.");
+  if (invoice.status === "paid" || invoice.status === "cancelled") {
+    fail("Esta cobrança não pode mais ter o vencimento alterado.");
+  }
+  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada a um provedor.");
+  if (invoice.due_date.slice(0, 10) === due) fail("Informe um vencimento diferente do atual.");
+  const { data: contract, error: contractError } = await supabaseAdmin
+    .from("contracts")
+    .select(
+      "billing_provider, delinquency_mode, fine_percent, interest_percent_monthly, delinquency_amount_cents",
+    )
+    .eq("organization_id", invoice.organization_id)
+    .maybeSingle();
+  if (contractError) fail(contractError.message);
+  const rail = chargeRail(contract?.billing_provider ?? null, invoice.external_charge_id);
+  const names = await namesOf([invoice.organization_id]);
+  const clientName = names.get(invoice.organization_id)?.legalName ?? "cliente";
+
+  if (rail === "cora") {
+    const [{ data: org, error: orgError }] = await Promise.all([
+      supabaseAdmin
+        .from("organizations")
+        .select("legal_name, responsible_email, document")
+        .eq("id", invoice.organization_id)
+        .maybeSingle(),
+    ]);
+    if (orgError) fail(orgError.message);
+    if (!org?.legal_name || !org.responsible_email) {
+      fail("O cliente não tem nome e e-mail para reemitir a cobrança na Cora.");
+    }
+    const document = (org.document ?? "").replace(/\D/g, "");
+    if (document.length !== 11 && document.length !== 14) {
+      fail("O cliente não tem CPF ou CNPJ para reemitir a cobrança na Cora.");
+    }
+    const amountCents = Number(invoice.base_amount_cents);
+    if (!Number.isInteger(amountCents) || amountCents < 500) {
+      fail("Cada cobrança da Cora precisa ser de pelo menos R$ 5,00.");
+    }
+    const mode =
+      contract?.delinquency_mode === "amount" || contract?.delinquency_mode === "rate"
+        ? contract.delinquency_mode
+        : "rate";
+    const fineCents =
+      mode === "amount"
+        ? Math.max(
+            0,
+            coraDelinquencyFine(
+              amountCents,
+              contract?.delinquency_amount_cents == null
+                ? amountCents
+                : Number(contract.delinquency_amount_cents),
+            ),
+          )
+        : 0;
+    await cancelCoraInvoice(invoice.external_charge_id);
+    let created;
+    try {
+      created = await createCoraInvoice({
+        code: `${invoice.organization_id}:${due}:due:${Date.now()}`.slice(0, 64),
+        name: org.legal_name,
+        email: org.responsible_email,
+        document,
+        amountCents,
+        paymentTerms: coraPaymentTerms(
+          due,
+          mode,
+          Number(contract?.fine_percent ?? 0),
+          Number(contract?.interest_percent_monthly ?? 0),
+          fineCents,
+        ),
+      });
+    } catch (createError) {
+      const message =
+        createError instanceof Error ? createError.message : "Não foi possível gerar a cobrança na Cora.";
+      fail(`A cobrança anterior foi cancelada na Cora, mas o novo Pix não foi gerado. ${message}`);
+    }
+    const { error: updateError } = await supabaseAdmin
+      .from("invoices")
+      .update({
+        external_charge_id: created.id,
+        pix_code: created.pixCode,
+        invoice_url: created.url || null,
+        due_date: due,
+        status: due < todayKey() ? "overdue" : "pending",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoice.id);
+    if (updateError) fail(updateError.message);
+  } else {
+    await updatePaymentDueDate(invoice.external_charge_id, due);
+    const { error: updateError } = await supabaseAdmin
+      .from("invoices")
+      .update({
+        due_date: due,
+        status: due < todayKey() ? "overdue" : "pending",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoice.id);
+    if (updateError) fail(updateError.message);
+  }
+
+  await audit(actor.id, invoice.organization_id, "finance.due_change", invoice.id, {
+    clientName,
+    competence: invoice.competence,
+    from: invoice.due_date.slice(0, 10),
+    to: due,
+  });
+}
+
+export async function cancelMasterCharge(userId: string, invoiceId: string) {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") fail("Só o Master exclui cobranças.");
+  const { data: invoice, error } = await supabaseAdmin
+    .from("invoices")
+    .select(
+      "id, organization_id, competence, due_date, status, external_charge_id, pix_code",
+    )
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (error) fail(error.message);
+  if (!invoice) fail("Cobrança não encontrada.");
+  if (invoice.status === "paid") fail("Cobrança paga não pode ser excluída.");
+  if (invoice.status === "cancelled") fail("Esta cobrança já está cancelada.");
+  if (!invoice.external_charge_id) fail("Esta cobrança não está ligada a um provedor.");
+  const { data: contract, error: contractError } = await supabaseAdmin
+    .from("contracts")
+    .select("billing_provider")
+    .eq("organization_id", invoice.organization_id)
+    .maybeSingle();
+  if (contractError) fail(contractError.message);
+  const rail = chargeRail(contract?.billing_provider ?? null, invoice.external_charge_id);
+  if (rail === "cora") {
+    await cancelCoraInvoice(invoice.external_charge_id);
+  } else {
+    await deletePayment(invoice.external_charge_id);
+  }
+  const { error: updateError } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "cancelled",
+      pix_code: null,
+      invoice_url: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoice.id);
+  if (updateError) fail(updateError.message);
+  const names = await namesOf([invoice.organization_id]);
+  await audit(actor.id, invoice.organization_id, "finance.cancel", invoice.id, {
+    clientName: names.get(invoice.organization_id)?.legalName ?? "cliente",
+    competence: invoice.competence,
+    provider: rail,
+  });
 }

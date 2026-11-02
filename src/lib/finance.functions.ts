@@ -61,3 +61,25 @@ export const chargePixFn = createServerFn({ method: "POST" })
     const { chargePix } = await import("@/server/finance.server");
     return guard(() => chargePix(context.userId, data.invoiceId));
   });
+
+export const changeInvoiceDueDateFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { invoiceId: string; dueDate: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<true>> => {
+    const { changeInvoiceDueDate } = await import("@/server/finance.server");
+    return guard(async () => {
+      await changeInvoiceDueDate(context.userId, data);
+      return true as const;
+    });
+  });
+
+export const cancelMasterChargeFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { invoiceId: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<true>> => {
+    const { cancelMasterCharge } = await import("@/server/finance.server");
+    return guard(async () => {
+      await cancelMasterCharge(context.userId, data.invoiceId);
+      return true as const;
+    });
+  });

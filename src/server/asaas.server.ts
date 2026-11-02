@@ -188,6 +188,21 @@ export async function deletePayment(paymentId: string) {
   }
 }
 
+export async function updatePaymentDueDate(paymentId: string, dueDate: string) {
+  const id = externalId(paymentId, "A cobrança");
+  const due = dueDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) fail("Informe uma data de vencimento válida.");
+  const current = await getPayment(id);
+  if (!current.billingType || typeof current.value !== "number") fail("A cobrança do Asaas está incompleta.");
+  return asaasRequest<AsaasPayment>("PUT", `/payments/${id}`, {}, {
+    billingType: current.billingType,
+    value: current.value,
+    dueDate: due,
+    ...(current.fine ? { fine: current.fine } : {}),
+    ...(current.interest ? { interest: current.interest } : {}),
+  });
+}
+
 export async function readPaymentPix(paymentId: string): Promise<{ payload: string; image: string } | null> {
   const id = externalId(paymentId, "A cobrança");
   try {

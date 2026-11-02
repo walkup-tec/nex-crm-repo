@@ -31,6 +31,9 @@ function publicMessage(error: unknown) {
   if (/page\s+not\s+found|^404\b/i.test(message)) {
     return "Rota do servidor não encontrada (404). Confirme o deploy (marker NEX-DEPLOY-METAI120 em /health) e OPENAI_API_URL.";
   }
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+    return "A conexão com o servidor caiu antes da resposta. Confirme /health (NEX-DEPLOY-METAI120), recarregue e tente de novo.";
+  }
   if (/OpenAI|OPENAI_/i.test(message)) return message;
   if (!message || /postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(message)) {
     return "Não foi possível concluir a conexão com a Meta.";

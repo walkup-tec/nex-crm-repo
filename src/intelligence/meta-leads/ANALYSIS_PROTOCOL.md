@@ -1,18 +1,35 @@
-# NEX Intelligence — Protocolo de Análise Meta Ads (Leads) v1.0.0
+# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.0
 
 ## Escopo
 
-Análise exclusiva de campanhas Meta Ads com finalidade comercial de geração de leads:
+Motor de análise de **desempenho** de campanhas Meta Ads.
 
-- Destino WhatsApp
-- Website / landing page
-- Formulários instantâneos
-- Ligação
-- Outros objetivos cujo resultado comercial seja lead
+Fonte exclusiva: **Meta Marketing API** (contrato NEX Meta Analysis V1).
 
 Níveis: Campanha, Conjunto de anúncios e Anúncio.
 
 Não altera campanhas na Meta. Não inventa métricas. `null` ≠ `0`.
+
+## Fonte de dados
+
+Usar apenas indicadores da Meta: objetivo, evento de otimização, resultados reportados, custo por resultado, investimento, impressões, alcance, frequência, CTR, CPC, CPM, cliques e evolução temporal.
+
+**Não depender** de dados comerciais externos:
+
+- Vendas realizadas
+- Valores negociados
+- Agendamentos
+- Leads qualificados no CRM
+- Atendimento pelo chatbot
+- Informações preenchidas manualmente pelo cliente
+
+A ausência desses dados **não** gera alertas, ressalvas nem impede a análise.
+
+## Interpretação de resultados
+
+Interpretar cada resultado conforme o evento efetivamente reportado pela Meta.
+
+Exemplo: conversas iniciadas **não** devem ser automaticamente denominadas vendas ou leads qualificados.
 
 ## Princípios
 
@@ -20,14 +37,10 @@ Não altera campanhas na Meta. Não inventa métricas. `null` ≠ `0`.
 2. Não confundir cliques totais com cliques no link.
 3. Não somar alcance entre entidades.
 4. Não reaggregar médias/percentuais como totais.
-5. Identificar campos ausentes e limitações.
-6. Priorizar recomendações acionáveis e fundamentadas.
-
-## Diagnóstico
-
-Avaliar investimento, resultados, custo por resultado, CTR/CPC/CPM, frequência, entrega e evolução diária.
-
-Sinalizar incerteza quando dados forem parciais ou warnings existirem.
+5. Validar consistência entre campanhas, conjuntos, anúncios e séries diárias antes de concluir.
+6. Distinguir divergências de extração, atribuição e agregação.
+7. Recomendações fundamentadas em evidências Meta (volume, período, maturidade, comparabilidade).
+8. Não recomendar alterações com base em um único indicador isolado.
 
 ## Qualidade (calibração)
 

@@ -1,34 +1,47 @@
 {
-  "protocol_version": "1.0.0",
+  "protocol_version": "1.1.0",
+  "data_contract_version": "1.0.0",
   "cases": [
     {
-      "id": "leads-whatsapp-baseline",
+      "id": "meta-whatsapp-conversations",
       "title": "Campanha WhatsApp com conversas e CPC elevado",
       "focus": "whatsapp",
       "expects": [
+        "Nomear o resultado como o evento Meta reportado (ex.: conversas), não como vendas",
         "Distinguir cliques totais de cliques no link",
         "Não somar alcance entre anúncios",
-        "Recomendar revisão de frequência e custo por conversa"
+        "Recomendação baseada em mais de um indicador"
       ]
     },
     {
-      "id": "leads-landing-partial-data",
+      "id": "meta-landing-partial-daily",
       "title": "Landing page com insights diários ausentes",
       "focus": "website",
       "expects": [
-        "Declarar limitação por dados parciais",
+        "Declarar limitação apenas sobre dados Meta parciais",
         "Não tratar null como zero",
+        "Não alertar por ausência de CRM/vendas/agendamentos",
         "Evitar conclusões de tendência sem série diária"
       ]
     },
     {
-      "id": "leads-instant-form",
+      "id": "meta-instant-form-ctr",
       "title": "Formulário instantâneo com CTR alto e conversão baixa",
       "focus": "instant_form",
       "expects": [
-        "Separar engajamento de conversão",
-        "Avaliar criativo e oferta",
-        "Recomendações fundamentadas no custo por lead"
+        "Separar engajamento de resultado Meta",
+        "Avaliar criativo e entrega com evidências múltiplas",
+        "Não recomendar mudança só pelo CTR"
+      ]
+    },
+    {
+      "id": "meta-null-business-outcomes",
+      "title": "business_outcomes nulos não devem gerar alerta",
+      "focus": "integrity",
+      "expects": [
+        "Ignorar business_outcomes nulos sem ressalva",
+        "Concluir análise só com indicadores Meta",
+        "Não solicitar dados de CRM, chatbot ou vendas"
       ]
     }
   ]

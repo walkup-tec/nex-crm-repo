@@ -1,4 +1,14 @@
-# ANALYSIS_CHANGELOG — Meta Leads
+# ANALYSIS_CHANGELOG — Meta Ads
+
+## 1.1.0 — 2026-11-02
+
+- Redefine o motor como análise de desempenho Meta Ads (não depende de CRM/vendas).
+- Fonte exclusiva: Meta Marketing API / contrato NEX Meta Analysis V1.
+- Ausência de business_outcomes ou dados comerciais externos não gera alerta.
+- Exige interpretação fiel ao evento de resultado reportado pela Meta.
+- Fortalece checagem de consistência entre campanhas, conjuntos, anúncios e séries diárias.
+- Recomendações com múltiplas evidências (proíbe decisão por indicador isolado).
+- Contrato de dados permanece `1.0.0` (compatível com o plugin ChatGPT).
 
 ## 1.0.0 — 2026-11-02
 

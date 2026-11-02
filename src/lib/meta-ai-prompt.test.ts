@@ -40,11 +40,13 @@ const sample: NexMetaAnalysisV1 = {
   warnings: [],
 };
 
-assert.equal(META_AI_PROTOCOL_VERSION, "1.0.0");
-assert.match(META_AI_ANALYSIS_PROMPT, /leads/i);
+assert.equal(META_AI_PROTOCOL_VERSION, "1.1.0");
+assert.match(META_AI_ANALYSIS_PROMPT, /Meta Marketing API/i);
+assert.match(META_AI_ANALYSIS_PROMPT, /NÃO deve gerar alertas/i);
 assert.equal(metaAiPromptHash().length, 16);
 assert.match(metaAiUserPrompt(sample), /Walkup/);
 assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /calibração/i);
+assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.0/);
 
 const detail: MetaAiExecutionDetail = {
   id: "exec-1",

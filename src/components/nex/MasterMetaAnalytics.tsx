@@ -1,4 +1,4 @@
-import { FlaskConical, RefreshCw, Sparkles } from "lucide-react";
+import { Check, Copy, FlaskConical, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,8 @@ export function MasterMetaAnalytics() {
   const [executions, setExecutions] = useState<MetaAiExecutionSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<MetaAiExecutionDetail | null>(null);
+  const [copiedId, setCopiedId] = useState("");
+  const copiedTimer = useRef<number | null>(null);
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState({
     precision: "",
@@ -70,6 +72,21 @@ export function MasterMetaAnalytics() {
     limitations: "",
     applicability: "",
   });
+
+  const copyExecutionId = (executionId: string) => {
+    void navigator.clipboard.writeText(executionId).then(() => {
+      setCopiedId(executionId);
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopiedId(""), 1500);
+      setNotice("ID da execução copiado.");
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    };
+  }, []);
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === organizationId) ?? null,
@@ -301,10 +318,31 @@ export function MasterMetaAnalytics() {
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
           {result ? (
-            <p className="text-xs text-muted-foreground">
-              Última execução {result.executionId.slice(0, 8)} · protocolo {result.protocolVersion} ·
-              prompt {result.promptHash} · modelo {result.model}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>Última execução</span>
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                {result.executionId}
+              </code>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2"
+                aria-label="Copiar ID da execução"
+                onClick={() => copyExecutionId(result.executionId)}
+              >
+                {copiedId === result.executionId ? (
+                  <Check className="size-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="size-3.5" />
+                )}
+                {copiedId === result.executionId ? "Copiado" : "Copiar ID"}
+              </Button>
+              <span>
+                · protocolo {result.protocolVersion} · prompt {result.promptHash} · modelo{" "}
+                {result.model}
+              </span>
+            </div>
           ) : null}
         </CardContent>
       </Card>
@@ -330,6 +368,7 @@ export function MasterMetaAnalytics() {
                   }`}
                 >
                   <p className="font-medium">{item.clientName || "Cliente"}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">{item.id}</p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(item.createdAt).toLocaleString("pt-BR")} · {item.status} · v
                     {item.protocolVersion}
@@ -373,8 +412,26 @@ export function MasterMetaAnalytics() {
             {loadingDetail ? <p className="text-sm text-muted-foreground">Carregando detalhe...</p> : null}
             {detail ? (
               <>
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                  <span className="text-xs font-medium text-muted-foreground">ID da execução</span>
+                  <code className="break-all font-mono text-sm text-foreground">{detail.id}</code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1"
+                    aria-label="Copiar ID da execução"
+                    onClick={() => copyExecutionId(detail.id)}
+                  >
+                    {copiedId === detail.id ? (
+                      <Check className="size-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="size-3.5" />
+                    )}
+                    {copiedId === detail.id ? "Copiado" : "Copiar ID"}
+                  </Button>
+                </div>
                 <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                  <p>ID: {detail.id}</p>
                   <p>Status: {detail.status}</p>
                   <p>Protocolo: {detail.protocolVersion}</p>
                   <p>Contrato: {detail.dataContractVersion}</p>

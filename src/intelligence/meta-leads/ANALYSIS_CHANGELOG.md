@@ -1,5 +1,13 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.2.0 — 2026-11-02
+
+- Namespace `src/lib/nex-intelligence/` com pipeline vinculante A→B→C→OpenAI→D→CMS→D→[OpenAI#2]→E→Persistência.
+- CMS-E1 determinístico **sempre** antes de qualquer segunda chamada OpenAI (orçamento máx. 2).
+- `output_json` analítico estendido (`ai_original`, `validation`, `recovery`, `metric_traceability`, `report`).
+- Format IA preferido: `nex_intelligence_analysis_v1_2_0` (parse aceita fixtures `v1_1_*`).
+- Contrato de dados Meta export permanece **1.0.0**; deploy marker **NEX-DEPLOY-METAI120**.
+
 ## 1.1.8 — 2026-11-02
 
 - **CMS-E1**: monitoramento neutro aprovável com ≥1 métrica relevante rastreável (PASS).

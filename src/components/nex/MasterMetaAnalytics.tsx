@@ -201,7 +201,7 @@ export function MasterMetaAnalytics() {
       const raw = error instanceof Error ? error.message : "";
       setError(
         /page\s+not\s+found|^404\b/i.test(raw)
-          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI118 ) e OPENAI_API_URL."
+          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI120 ) e OPENAI_API_URL."
           : raw || "Não foi possível concluir a análise.",
       );
       setNotice("");

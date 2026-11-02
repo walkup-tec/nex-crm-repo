@@ -1,6 +1,6 @@
-# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.8
+# NEX Intelligence — Protocolo de Análise Meta Ads v1.2.0
 
-Protocolo analítico Meta-only (linha 1.1) com motor **1.1.8**, evidências **E0–E3** e **CMS-E1**.
+Protocolo analítico Meta-only com motor **1.2.0**, pipeline CMS-before-regen, evidências **E0–E3** e **CMS-E1**.
 
 ## CMS-E1 — condição mínima de suficiência (monitor)
 

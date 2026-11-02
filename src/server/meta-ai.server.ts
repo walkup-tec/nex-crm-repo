@@ -8,7 +8,6 @@ import {
   type MetaAiExecutionSummary,
 } from "@/lib/meta-ai-calibration";
 import { metaAiCalibrationReviewUserPrompt, metaAiUserPrompt } from "@/lib/meta-ai-prompt";
-import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 import {
   META_AI_ANALYSIS_PROMPT,
   META_AI_CALIBRATION_REVIEW_PROMPT,
@@ -20,11 +19,11 @@ import {
   metaAiPromptHash,
 } from "@/intelligence/meta-leads/protocol";
 import { attachDataQuality, validateMetaAnalysisData } from "@/lib/meta-data-quality";
+import { runMetaAnalysis } from "@/lib/nex-intelligence/pipeline/run-meta-analysis";
 import {
-  processMetaAiRecommendations,
-  regenerationUserPrompt,
-  structuralRegenerationUserPrompt,
-} from "@/lib/meta-recommendation-validation";
+  toMetaAiExecutionDetail,
+  toMetaAiExecutionSummary,
+} from "@/lib/nex-intelligence/persistence/map-row";
 import { exportMetaAnalysis } from "@/server/meta.server";
 import { requestOpenAiAnalysis } from "@/server/openai.server";
 
@@ -56,39 +55,6 @@ function migrationHint(message: string) {
   return message;
 }
 
-function toSummary(row: Record<string, unknown>): MetaAiExecutionSummary {
-  const warnings = Array.isArray(row.warnings) ? row.warnings : [];
-  return {
-    id: String(row.id),
-    createdAt: String(row.created_at),
-    status: (row.status as MetaAiExecutionStatus) || "ok",
-    organizationId: String(row.organization_id),
-    clientName: String(row.client_name ?? ""),
-    accountId: String(row.account_id ?? ""),
-    accountName: String(row.account_name ?? ""),
-    periodSince: row.period_since ? String(row.period_since).slice(0, 10) : null,
-    periodUntil: row.period_until ? String(row.period_until).slice(0, 10) : null,
-    protocolVersion: String(row.protocol_version ?? ""),
-    dataContractVersion: String(row.data_contract_version ?? ""),
-    model: String(row.model ?? ""),
-    promptHash: String(row.prompt_hash ?? ""),
-    warningCount: warnings.length,
-  };
-}
-
-function toDetail(row: Record<string, unknown>): MetaAiExecutionDetail {
-  return {
-    ...toSummary(row),
-    periodTimezone: String(row.period_timezone ?? "America/Sao_Paulo"),
-    analysisMarkdown: String(row.analysis_markdown ?? ""),
-    warnings: Array.isArray(row.warnings) ? row.warnings.map(String) : [],
-    errorMessage: String(row.error_message ?? ""),
-    inputJson: (row.input_json as NexMetaAnalysisV1) ?? {},
-    outputJson: (row.output_json as Record<string, unknown>) ?? {},
-    calibrationFeedback: (row.calibration_feedback as MetaAiCalibrationFeedback) ?? {},
-  };
-}
-
 export async function analyzeMetaWithAi(
   userId: string,
   input: { organizationId: string; period?: string; since?: string; until?: string },
@@ -102,76 +68,22 @@ export async function analyzeMetaWithAi(
   });
   const payload = attachDataQuality(rawPayload, quality);
 
-  let analysis = "";
-  let model = process.env["OPENAI_MODEL"]?.trim() || "gpt-4o-mini";
-  let status: MetaAiExecutionStatus =
-    payload.metadata.data_status === "partial" || quality.status !== "PASS" ? "partial" : "ok";
-  let errorMessage = "";
-  let recommendationValidation: Record<string, unknown> = {};
+  const run = await runMetaAnalysis({
+    payload,
+    quality,
+    promptHash,
+    analysisSystemPrompt: META_AI_ANALYSIS_PROMPT,
+    analysisUserPrompt: metaAiUserPrompt(payload),
+    structuralSystemPrompt: META_AI_STRUCTURAL_REGENERATION_PROMPT,
+    regenerationSystemPrompt: META_AI_REGENERATION_PROMPT,
+    requestOpenAi: (req) => requestOpenAiAnalysis(req),
+  });
 
-  let analyticalStatus: string | undefined;
-  let extraAiCallUsed = false;
-
-  try {
-    const ai = await requestOpenAiAnalysis({
-      system: META_AI_ANALYSIS_PROMPT,
-      user: metaAiUserPrompt(payload),
-    });
-    model = ai.model;
-    const processed = await processMetaAiRecommendations({
-      rawText: ai.text,
-      payload,
-      quality,
-      regenerateStructural: async (errors) => {
-        if (extraAiCallUsed) throw new Error("ai_call_budget_exhausted");
-        extraAiCallUsed = true;
-        const again = await requestOpenAiAnalysis({
-          system: META_AI_STRUCTURAL_REGENERATION_PROMPT,
-          user: structuralRegenerationUserPrompt(errors, payload),
-        });
-        return again.text;
-      },
-      regenerate: async (invalid) => {
-        if (extraAiCallUsed) throw new Error("ai_call_budget_exhausted");
-        extraAiCallUsed = true;
-        const again = await requestOpenAiAnalysis({
-          system: META_AI_REGENERATION_PROMPT,
-          user: regenerationUserPrompt(invalid, payload),
-        });
-        return again.text;
-      },
-    });
-    analysis = processed.publishedMarkdown;
-    recommendationValidation = processed.audit as unknown as Record<string, unknown>;
-    analyticalStatus = processed.analyticalStatus;
-    if (
-      processed.analyticalStatus === "PARTIAL_VALIDATED" ||
-      processed.analyticalStatus === "FALLBACK_DETERMINISTIC" ||
-      !processed.audit.parse_ok ||
-      processed.rejected.length ||
-      processed.needsReview.length
-    ) {
-      status = status === "error" ? status : "partial";
-    }
-    if (processed.analyticalStatus === "FAILED") {
-      status = "error";
-      errorMessage = processed.audit.parse_error || "Falha analítica sem fallback determinístico.";
-    }
-  } catch (error) {
-    status = "error";
-    errorMessage = error instanceof Error ? error.message : "Falha na OpenAI.";
-  }
-
-  const outputJson = {
-    analysis_markdown: analysis,
-    model,
-    protocol_version: META_AI_PROTOCOL_VERSION,
-    engine_version: META_AI_ENGINE_VERSION,
-    prompt_hash: promptHash,
-    data_quality_status: quality.status,
-    analytical_status: analyticalStatus ?? null,
-    recommendation_validation: recommendationValidation,
-  };
+  const status: MetaAiExecutionStatus = run.executionStatus;
+  const analysis = run.processed.publishedMarkdown;
+  const model = run.model;
+  const errorMessage = run.errorMessage;
+  const outputJson = run.outputJson;
 
   const { data, error } = await supabaseAdmin
     .from("meta_ai_executions")
@@ -237,7 +149,7 @@ export async function listMetaAiExecutions(
   if (input.organizationId) query = query.eq("organization_id", input.organizationId);
   const { data, error } = await query;
   if (error) fail(migrationHint(error.message));
-  return (data ?? []).map((row) => toSummary(row as Record<string, unknown>));
+  return (data ?? []).map((row) => toMetaAiExecutionSummary(row as Record<string, unknown>));
 }
 
 export async function getMetaAiExecution(
@@ -252,7 +164,7 @@ export async function getMetaAiExecution(
     .maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Execução não encontrada.");
-  return toDetail(data as Record<string, unknown>);
+  return toMetaAiExecutionDetail(data as Record<string, unknown>);
 }
 
 export async function saveMetaAiCalibrationFeedback(
@@ -283,7 +195,7 @@ export async function saveMetaAiCalibrationFeedback(
     .maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Execução não encontrada.");
-  return toDetail(data as Record<string, unknown>);
+  return toMetaAiExecutionDetail(data as Record<string, unknown>);
 }
 
 export async function reviewMetaAiCalibrationWithAi(
@@ -317,5 +229,5 @@ export async function reviewMetaAiCalibrationWithAi(
     .maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Execução não encontrada.");
-  return toDetail(data as Record<string, unknown>);
+  return toMetaAiExecutionDetail(data as Record<string, unknown>);
 }

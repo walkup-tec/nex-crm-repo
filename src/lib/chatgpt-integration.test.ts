@@ -166,4 +166,7 @@ const okAuth = authenticateChatgptIntegration(
 );
 assert.equal(okAuth, null);
 
+assert.ok(payload.analytical_evidences);
+assert.equal(payload.analytical_evidences.validation, null);
+
 console.log("chatgpt-integration.test.ts: ok");

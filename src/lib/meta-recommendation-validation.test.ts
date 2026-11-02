@@ -549,7 +549,7 @@ const quality = qualityWithBadResults();
     periodSince: "2026-10-01",
     periodUntil: "2026-10-31",
     periodTimezone: "America/Sao_Paulo",
-    protocolVersion: "1.1.8",
+    protocolVersion: "1.2.0",
     dataContractVersion: "1.0.0",
     model: "gpt-4o-mini",
     promptHash: "abc123",
@@ -561,8 +561,8 @@ const quality = qualityWithBadResults();
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,
       recommendation_validation: ok.audit,
-      protocol_version: "1.1.8",
-      engine_version: "1.1.8",
+      protocol_version: "1.2.0",
+      engine_version: "1.2.0",
       analytical_status: ok.analyticalStatus,
     },
     calibrationFeedback: {},
@@ -570,7 +570,7 @@ const quality = qualityWithBadResults();
   const chatgpt = buildChatgptMetaAnalysisPayload(detail);
   assert.equal(chatgpt.execution_id, detail.id, "Teste J id");
   assert.equal(chatgpt.tool, "get_meta_analysis_execution", "Teste J tool");
-  assert.equal(chatgpt.protocol_version, "1.1.8", "Teste J protocol");
+  assert.equal(chatgpt.protocol_version, "1.2.0", "Teste J protocol");
   assert.equal(chatgpt.data_contract_version, "1.0.0", "Teste J contract");
   assert.ok(chatgpt.ai_analysis.markdown?.includes("Etapa 3"), "Teste J markdown");
   assert.ok(chatgpt.availability.output_json, "Teste J output");

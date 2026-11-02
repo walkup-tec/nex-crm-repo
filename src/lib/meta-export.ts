@@ -114,46 +114,21 @@ export type NexMetaAnalysisV1 = {
   };
 };
 
-export function moneyFromMetaBudget(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
-  if (!Number.isFinite(parsed)) return null;
-  return Number((parsed / 100).toFixed(2));
-}
+export {
+  moneyFromMetaBudget,
+  numberOrNull,
+  textOrNull,
+} from "@/lib/nex-intelligence/meta/normalize";
+export {
+  resultsFromActions,
+  type InsightAction,
+} from "@/lib/nex-intelligence/meta/result-events";
 
-export function numberOrNull(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function textOrNull(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-
-type InsightAction = { action_type?: string; value?: string | number };
-
-export function resultsFromActions(
-  actions: InsightAction[] | undefined,
-  preferredTypes: string[],
-): { results: number | null; result_metric: string | null } {
-  if (!actions?.length) return { results: null, result_metric: null };
-  for (const type of preferredTypes) {
-    const found = actions.find((entry) => entry.action_type === type);
-    const value = numberOrNull(found?.value);
-    if (found && value != null && value > 0) return { results: value, result_metric: type };
-  }
-  let best: { results: number; result_metric: string } | null = null;
-  for (const entry of actions) {
-    const type = textOrNull(entry.action_type);
-    const value = numberOrNull(entry.value);
-    if (!type || value == null || value <= 0) continue;
-    if (!best || value > best.results) best = { results: value, result_metric: type };
-  }
-  return best ?? { results: null, result_metric: null };
-}
+import { numberOrNull, textOrNull } from "@/lib/nex-intelligence/meta/normalize";
+import {
+  resultsFromActions,
+  type InsightAction,
+} from "@/lib/nex-intelligence/meta/result-events";
 
 export function mapMetaInsight(
   insight: Record<string, unknown> | null | undefined,

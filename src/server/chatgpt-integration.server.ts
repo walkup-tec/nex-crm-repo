@@ -59,32 +59,7 @@ function clientKey(request: Request) {
   return forwarded || request.headers.get("cf-connecting-ip") || "unknown";
 }
 
-function toDetail(row: Record<string, unknown>): MetaAiExecutionDetail {
-  const warnings = Array.isArray(row.warnings) ? row.warnings.map(String) : [];
-  return {
-    id: String(row.id),
-    createdAt: String(row.created_at),
-    status: (row.status as MetaAiExecutionStatus) || "ok",
-    organizationId: String(row.organization_id),
-    clientName: String(row.client_name ?? ""),
-    accountId: String(row.account_id ?? ""),
-    accountName: String(row.account_name ?? ""),
-    periodSince: row.period_since ? String(row.period_since).slice(0, 10) : null,
-    periodUntil: row.period_until ? String(row.period_until).slice(0, 10) : null,
-    protocolVersion: String(row.protocol_version ?? ""),
-    dataContractVersion: String(row.data_contract_version ?? ""),
-    model: String(row.model ?? ""),
-    promptHash: String(row.prompt_hash ?? ""),
-    warningCount: warnings.length,
-    periodTimezone: String(row.period_timezone ?? "America/Sao_Paulo"),
-    analysisMarkdown: String(row.analysis_markdown ?? ""),
-    warnings,
-    errorMessage: String(row.error_message ?? ""),
-    inputJson: (row.input_json as NexMetaAnalysisV1) ?? {},
-    outputJson: (row.output_json as Record<string, unknown>) ?? {},
-    calibrationFeedback: (row.calibration_feedback as MetaAiCalibrationFeedback) ?? {},
-  };
-}
+import { toMetaAiExecutionDetail } from "@/lib/nex-intelligence/persistence/map-row";
 
 export async function getMetaAnalysisExecutionById(
   executionId: string,
@@ -127,7 +102,7 @@ export async function getMetaAnalysisExecutionById(
     };
   }
 
-  const detail = toDetail(data as Record<string, unknown>);
+  const detail = toMetaAiExecutionDetail(data as Record<string, unknown>);
   const allowlist = parseOrgAllowlist(process.env["CHATGPT_INTEGRATION_ORG_ALLOWLIST"]);
   if (!orgAllowed(detail.organizationId, allowlist)) {
     return {

@@ -127,6 +127,15 @@ export function chargeStatus(asaasStatus: string, dueDate: string, today: string
   return "pending";
 }
 
+/** Status local a partir da cobrança Cora (OPEN/LATE/PAID/CANCELLED). */
+export function coraChargeStatus(remoteStatus: string, dueDate: string, today: string): InvoiceStatus {
+  const status = remoteStatus.trim().toUpperCase();
+  if (status === "PAID") return "paid";
+  if (status === "CANCELLED" || status === "CANCELED") return "cancelled";
+  if (status === "LATE" || dueDate.slice(0, 10) < today) return "overdue";
+  return "pending";
+}
+
 export function centsFromReais(value: number) {
   return Math.round(value * 100);
 }

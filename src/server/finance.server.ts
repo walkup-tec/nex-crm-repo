@@ -20,6 +20,7 @@ import {
   todayKey,
   waivedOnCharge,
   asaasSyncMonitor,
+  coraChargeStatus,
   type FinanceCharge,
   type FinanceMonitorItem,
   type MasterFinance,
@@ -339,24 +340,32 @@ export async function syncFinance(userId: string, organizationId?: string) {
   if (actor.role !== "master" && !target) fail("Sua conta ainda não está ligada a uma empresa.");
   if (actor.role !== "master" && organizationId && organizationId !== actor.organizationId)
     fail("Você não pode sincronizar o financeiro deste cliente.");
+  const synced = await runFinanceSync(actor, target);
+  return synced.notice;
+}
+
+async function runFinanceSync(actor: Actor, target?: string) {
   await markPreservedInvoicePaid();
   await removeDroppedInvoice();
   await removeNonLiveBillingInvoices();
   const contracts = await contractsOf(target);
-  if (contracts.some((contract) => contract.billing_provider === "cora")) {
-    void ensureCoraPaidWebhook().catch((registerError) => {
-      console.error("cora_webhook_register", registerError instanceof Error ? registerError.message : "falha");
-    });
-  }
+  const coraSync = await syncCoraCharges(target);
   const linked = contracts.filter((contract) => contract.external_subscription_id);
   if (!asaasConfigured()) {
-    return linked.length
-      ? "O Asaas ainda não está configurado no servidor. As cobranças já gravadas continuam visíveis."
-      : "Nenhum contrato integrado ao Asaas.";
+    return {
+      notice: linked.length
+        ? "O Asaas ainda não está configurado no servidor. As cobranças já gravadas continuam visíveis."
+        : "Nenhum contrato integrado ao Asaas.",
+      coraSync,
+    };
   }
   if (!linked.length) {
-    if (contracts.some((contract) => contract.billing_provider === "cora")) return "";
-    return "Nenhum contrato integrado ao Asaas. A cobrança entra depois da integração.";
+    return {
+      notice: contracts.some((contract) => contract.billing_provider === "cora")
+        ? ""
+        : "Nenhum contrato integrado ao Asaas. A cobrança entra depois da integração.",
+      coraSync,
+    };
   }
   let inserted = 0;
   let problem = "";
@@ -378,7 +387,25 @@ export async function syncFinance(userId: string, organizationId?: string) {
   }
   await settleNominalPayments(target);
   await markPreservedInvoicePaid();
-  return problem;
+  return { notice: problem, coraSync };
+}
+
+async function syncCoraCharges(organizationId?: string): Promise<{ ok: boolean; detail: string }> {
+  const probe = await probeCora();
+  if (!probe.ok) return { ok: false, detail: probe.detail };
+  const contracts = await contractsOf(organizationId);
+  const organizationIds = [
+    ...new Set(contracts.filter((contract) => contract.billing_provider === "cora").map((contract) => contract.organization_id)),
+  ];
+  let failed = 0;
+  for (const organization of organizationIds) {
+    const refreshed = await refreshCoraPayments(organization);
+    if (!refreshed.ok) failed += 1;
+  }
+  void ensureCoraPaidWebhook().catch((registerError) => {
+    console.error("cora_webhook_register", registerError instanceof Error ? registerError.message : "falha");
+  });
+  return failed > 0 ? { ok: false, detail: "falhou" } : { ok: true, detail: "OK" };
 }
 
 const paidAsaas = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
@@ -573,10 +600,12 @@ async function namesOf(ids: string[]) {
   );
 }
 
-async function financeMonitorOf(notice: string): Promise<FinanceMonitorItem[]> {
-  const [asaas, cora, coraWebhook] = await Promise.all([probeAsaas(), probeCora(), ensureCoraPaidWebhook()]);
+async function financeMonitorOf(
+  notice: string,
+  coraSync: { ok: boolean; detail: string },
+): Promise<FinanceMonitorItem[]> {
+  const [asaas, cora] = await Promise.all([probeAsaas(), probeCora()]);
   const asaasSync = asaasSyncMonitor(notice, asaas.ok);
-  const coraSyncOk = cora.ok && coraWebhook;
   return [
     { id: "asaas", label: "Integração Asaas", ok: asaas.ok, detail: asaas.detail },
     { id: "cora", label: "Integração Cora", ok: cora.ok, detail: cora.detail },
@@ -584,8 +613,8 @@ async function financeMonitorOf(notice: string): Promise<FinanceMonitorItem[]> {
     {
       id: "cora_sync",
       label: "Cobranças Cora",
-      ok: coraSyncOk,
-      detail: coraSyncOk ? "OK" : cora.ok ? "sincronização falhou" : cora.detail,
+      ok: coraSync.ok,
+      detail: coraSync.detail,
     },
   ];
 }
@@ -593,13 +622,13 @@ async function financeMonitorOf(notice: string): Promise<FinanceMonitorItem[]> {
 export async function listMasterFinance(userId: string): Promise<MasterFinance> {
   const actor = await actorOf(userId);
   if (actor.role !== "master") fail("Só o Master consulta o financeiro geral.");
-  const notice = await syncFinance(userId);
+  const synced = await runFinanceSync(actor);
   const rows = await invoicesOf();
   const organizationIds = [...new Set(rows.map((row) => row.organization_id))];
   const [names, providers, monitor] = await Promise.all([
     namesOf(organizationIds),
     providersOf(organizationIds),
-    financeMonitorOf(notice),
+    financeMonitorOf(synced.notice, synced.coraSync),
   ]);
   const charges = rows
     .map((row) => toCharge(row, names, providers))
@@ -644,43 +673,71 @@ async function organizationBillingProfile(organizationId: string) {
   return { document: basic.data?.document ?? "", adsMeta: true, adsGoogle: false };
 }
 
-async function refreshCoraPayments(organizationId: string) {
+async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolean }> {
   const { data: contract, error } = await supabaseAdmin
     .from("contracts")
     .select("billing_provider")
     .eq("organization_id", organizationId)
     .limit(1);
-  if (error || contract?.[0]?.billing_provider !== "cora") return;
-  void ensureCoraPaidWebhook().catch((registerError) => {
-    console.error("cora_webhook_register", registerError instanceof Error ? registerError.message : "falha");
-  });
+  if (error || contract?.[0]?.billing_provider !== "cora") return { ok: true };
   const today = todayKey();
   const { data: invoices, error: invoiceError } = await supabaseAdmin
     .from("invoices")
     .select("id, external_charge_id, due_date, status")
     .eq("organization_id", organizationId)
     .in("status", ["pending", "overdue"]);
-  if (invoiceError) return;
+  if (invoiceError) {
+    console.error("cora_payment_list", invoiceError.message);
+    return { ok: false };
+  }
+  let failed = 0;
   for (const invoice of invoices ?? []) {
     if (!invoice.external_charge_id) continue;
-    if (!unpaidChargeBlocksClient(invoice.status, invoice.due_date, today)) continue;
     try {
       const remote = await readCoraInvoice(invoice.external_charge_id);
-      if (remote.status !== "PAID") continue;
-      await supabaseAdmin
-        .from("invoices")
-        .update({
-          status: "paid",
-          paid_at: remote.paidAt ?? new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", invoice.id)
-        .neq("status", "paid");
-      await stopOpenBillingNotices(organizationId, invoice.due_date, "Pagamento confirmado na Cora.");
+      const next = coraChargeStatus(remote.status, invoice.due_date, today);
+      if (next === invoice.status) continue;
+      if (next === "paid") {
+        await supabaseAdmin
+          .from("invoices")
+          .update({
+            status: "paid",
+            paid_at: remote.paidAt ?? new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", invoice.id)
+          .neq("status", "paid");
+        await stopOpenBillingNotices(organizationId, invoice.due_date, "Pagamento confirmado na Cora.");
+        continue;
+      }
+      if (next === "cancelled") {
+        await supabaseAdmin
+          .from("invoices")
+          .update({
+            status: "cancelled",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", invoice.id)
+          .in("status", ["pending", "overdue"]);
+        await stopOpenBillingNotices(organizationId, invoice.due_date, "Cobrança cancelada na Cora.");
+        continue;
+      }
+      if (next === "overdue" && invoice.status === "pending") {
+        await supabaseAdmin
+          .from("invoices")
+          .update({
+            status: "overdue",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", invoice.id)
+          .eq("status", "pending");
+      }
     } catch (checkError) {
+      failed += 1;
       console.error("cora_payment_check", checkError instanceof Error ? checkError.message : "falha");
     }
   }
+  return { ok: failed === 0 };
 }
 
 export async function applyCoraPaidNotice(externalChargeId: string) {
@@ -713,7 +770,6 @@ export async function applyCoraPaidNotice(externalChargeId: string) {
 export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const actor = await actorOf(userId);
   if (!actor.organizationId) fail("Sua conta ainda não está ligada a uma empresa.");
-  await refreshCoraPayments(actor.organizationId);
   const notice = await syncFinance(userId, actor.organizationId);
   const [contracts, rows, names, company, promotionResult] = await Promise.all([
     contractsOf(actor.organizationId),

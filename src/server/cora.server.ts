@@ -260,6 +260,13 @@ export async function ensureCoraPaidWebhook(): Promise<boolean> {
       paidWebhookReady = true;
       return true;
     }
+    if (
+      (created.status === 400 || created.status === 422) &&
+      /already|existe|registered|duplic|já cadastrad/i.test(created.text)
+    ) {
+      paidWebhookReady = true;
+      return true;
+    }
     console.error("cora_webhook_register", created.status, coraMessage(created.text) || "falha");
     return false;
   } catch (error) {

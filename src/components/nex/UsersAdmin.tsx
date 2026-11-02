@@ -1,6 +1,6 @@
 import { useRouteContext } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
-import { Check, CircleAlert, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, CircleAlert, Plus, Search } from "lucide-react";
 import { AppShell } from "@/components/nex/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,37 @@ function subtitleFor(role: UserRole) {
   return "Seu acesso consulta a conta, sem criar outros usuários.";
 }
 
+type ClientSearchInfo = {
+  name: string;
+  legalName: string;
+  commercialName: string;
+  document: string;
+};
+
+function userMatchesQuery(
+  user: ListedUser,
+  query: string,
+  clientsByOrg: Map<string, ClientSearchInfo>,
+) {
+  const text = query.trim().toLocaleLowerCase("pt-BR");
+  if (!text) return true;
+  const org = user.organizationId ? clientsByOrg.get(user.organizationId) : undefined;
+  const haystack = [
+    user.fullName,
+    user.email,
+    user.ownerName ?? "",
+    org?.name ?? "",
+    org?.legalName ?? "",
+    org?.commercialName ?? "",
+  ]
+    .join(" ")
+    .toLocaleLowerCase("pt-BR");
+  if (haystack.includes(text)) return true;
+  const digits = text.replace(/\D/g, "");
+  if (!digits) return false;
+  return (org?.document.replace(/\D/g, "") ?? "").includes(digits);
+}
+
 export function UsersAdmin() {
   const [snapshot, setSnapshot] = useState<UsersSnapshot | null>(null);
   const [knownRole, setKnownRole] = useState<UserRole | null>(null);
@@ -73,6 +104,8 @@ export function UsersAdmin() {
   const [removing, setRemoving] = useState<ListedUser | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [registeredClients, setRegisteredClients] = useState<RegisteredClient[]>([]);
+  const [clientsByOrg, setClientsByOrg] = useState<Map<string, ClientSearchInfo>>(() => new Map());
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,20 +117,37 @@ export function UsersAdmin() {
         setSnapshot(result.data);
         if (result.data.actor.role === "master") {
           const clientsResult = await listClientsFn();
-          setRegisteredClients(
-            clientsResult.ok
-              ? clientsResult.data.map((client) => ({
-                  id: client.id,
-                  name: clientDisplayName(client),
-                  email: client.responsibleEmail,
-                  whatsapp: client.whatsapp,
-                  adsMeta: client.adsMeta,
-                  adsGoogle: client.adsGoogle,
-                }))
-              : [],
-          );
+          if (clientsResult.ok) {
+            setRegisteredClients(
+              clientsResult.data.map((client) => ({
+                id: client.id,
+                name: clientDisplayName(client),
+                email: client.responsibleEmail,
+                whatsapp: client.whatsapp,
+                adsMeta: client.adsMeta,
+                adsGoogle: client.adsGoogle,
+              })),
+            );
+            setClientsByOrg(
+              new Map(
+                clientsResult.data.map((client) => [
+                  client.id,
+                  {
+                    name: clientDisplayName(client),
+                    legalName: client.legalName,
+                    commercialName: client.commercialName,
+                    document: client.document,
+                  },
+                ]),
+              ),
+            );
+          } else {
+            setRegisteredClients([]);
+            setClientsByOrg(new Map());
+          }
         } else {
           setRegisteredClients([]);
+          setClientsByOrg(new Map());
         }
       }
     } catch {
@@ -147,6 +197,10 @@ export function UsersAdmin() {
     return <main className="grid min-h-screen place-items-center text-sm text-muted-foreground">Carregando usuários...</main>;
   }
   const canCreate = role === "master" || role === "client_admin";
+  const filteredUsers = useMemo(
+    () => (snapshot?.users ?? []).filter((user) => userMatchesQuery(user, query, clientsByOrg)),
+    [snapshot?.users, query, clientsByOrg],
+  );
 
   return (
     <AppShell
@@ -157,14 +211,26 @@ export function UsersAdmin() {
       notes={role !== "master"}
     >
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <p className="text-sm text-muted-foreground lg:mr-auto">
             {loading
               ? "Consultando os acessos"
               : snapshot
-                ? `${snapshot.users.length} ${snapshot.users.length === 1 ? "acesso" : "acessos"}`
+                ? query.trim()
+                  ? `${filteredUsers.length} de ${snapshot.users.length} ${snapshot.users.length === 1 ? "acesso" : "acessos"}`
+                  : `${snapshot.users.length} ${snapshot.users.length === 1 ? "acesso" : "acessos"}`
                 : "A lista não foi carregada"}
           </p>
+          <div className="relative w-full lg:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar por nome, razão social ou CNPJ"
+              aria-label="Buscar usuários por nome, razão social ou CNPJ"
+              className="pl-9"
+            />
+          </div>
           {canCreate && (
             <Button onClick={() => setEditor({ mode: "create" })}>
               <Plus />
@@ -199,7 +265,16 @@ export function UsersAdmin() {
           </div>
         )}
 
-        {!loading && snapshot && snapshot.users.length > 0 && (
+        {!loading && snapshot && snapshot.users.length > 0 && filteredUsers.length === 0 && (
+          <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+            <p className="font-medium">Nenhum acesso encontrado</p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+              Tente outro nome, razão social ou CNPJ.
+            </p>
+          </div>
+        )}
+
+        {!loading && snapshot && filteredUsers.length > 0 && (
           <>
             <div className="hidden md:block">
               <Table>
@@ -214,7 +289,7 @@ export function UsersAdmin() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {snapshot.users.map((user) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell>
                         <p className="font-medium">{user.fullName}</p>
@@ -240,7 +315,7 @@ export function UsersAdmin() {
               </Table>
             </div>
             <ul className="space-y-3 md:hidden">
-              {snapshot.users.map((user) => (
+              {filteredUsers.map((user) => (
                 <li key={user.id} className="rounded-lg border p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>

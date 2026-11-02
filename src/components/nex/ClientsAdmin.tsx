@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, CircleDollarSign, MoreHorizontal, Pencil, Plus, Trash2, UserRoundCog } from "lucide-react";
+import { Check, CircleDollarSign, MoreHorizontal, Pencil, Plus, Search, Trash2, UserRoundCog } from "lucide-react";
 import { normalizeBalanceLink } from "@/lib/balance-link";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isLowMetaBalance } from "@/lib/low-balance";
@@ -116,6 +116,23 @@ function initials(name: string) {
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "CL";
 }
 
+function clientMatchesQuery(client: ListedClient, query: string) {
+  const text = query.trim().toLocaleLowerCase("pt-BR");
+  if (!text) return true;
+  const haystack = [
+    clientDisplayName(client),
+    client.legalName,
+    client.commercialName,
+    client.responsibleName,
+  ]
+    .join(" ")
+    .toLocaleLowerCase("pt-BR");
+  if (haystack.includes(text)) return true;
+  const digits = text.replace(/\D/g, "");
+  if (!digits) return false;
+  return client.document.replace(/\D/g, "").includes(digits);
+}
+
 export function ClientsAdmin() {
   const navigate = useNavigate();
   const [clients, setClients] = useState<ListedClient[]>([]);
@@ -123,6 +140,7 @@ export function ClientsAdmin() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState("active");
+  const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<ListedClient | null | "create">(null);
   const [selected, setSelected] = useState<ListedClient | null>(null);
   const [pendingStatus, setPendingStatus] = useState<ListedClient | null>(null);
@@ -144,8 +162,14 @@ export function ClientsAdmin() {
     void load();
   }, [load]);
 
-  const active = clients.filter((client) => !isInactiveClient(client.status));
-  const inactive = clients.filter((client) => isInactiveClient(client.status));
+  const matched = useMemo(
+    () => clients.filter((client) => clientMatchesQuery(client, query)),
+    [clients, query],
+  );
+  const active = matched.filter((client) => !isInactiveClient(client.status));
+  const inactive = matched.filter((client) => isInactiveClient(client.status));
+  const activeTotal = clients.filter((client) => !isInactiveClient(client.status)).length;
+  const inactiveTotal = clients.filter((client) => isInactiveClient(client.status)).length;
   const visible = tab === "active" ? active : inactive;
 
   const changeStatus = async () => {
@@ -185,22 +209,32 @@ export function ClientsAdmin() {
         </p>
       )}
       <Tabs value={tab} onValueChange={setTab}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <TabsList>
             <TabsTrigger value="active">
               Ativos{" "}
               <Badge variant="secondary" className="ml-2">
-                {active.length}
+                {query.trim() ? `${active.length}/${activeTotal}` : activeTotal}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="inactive">
               Inativos{" "}
               <Badge variant="secondary" className="ml-2">
-                {inactive.length}
+                {query.trim() ? `${inactive.length}/${inactiveTotal}` : inactiveTotal}
               </Badge>
             </TabsTrigger>
           </TabsList>
-          <Button className="sm:ml-auto" onClick={() => setEditor("create")}>
+          <div className="relative w-full lg:max-w-sm lg:ml-auto">
+            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar por nome, razão social ou CNPJ"
+              aria-label="Buscar clientes por nome, razão social ou CNPJ"
+              className="pl-9"
+            />
+          </div>
+          <Button className="lg:ml-0" onClick={() => setEditor("create")}>
             <Plus />
             Novo cliente
           </Button>
@@ -215,12 +249,18 @@ export function ClientsAdmin() {
           {!loading && visible.length === 0 && (
             <div className="rounded-lg border border-dashed px-4 py-10 text-center">
               <p className="font-medium">
-                {tab === "active" ? "Nenhum cliente ativo" : "Nenhum cliente inativo"}
+                {query.trim()
+                  ? "Nenhum cliente encontrado"
+                  : tab === "active"
+                    ? "Nenhum cliente ativo"
+                    : "Nenhum cliente inativo"}
               </p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                {tab === "active"
-                  ? "Cadastre a empresa e o contrato. O acesso do cliente continua em Usuários."
-                  : "Os clientes desativados, bloqueados ou com contrato encerrado ficam nesta lista."}
+                {query.trim()
+                  ? "Tente outro nome, razão social ou CNPJ."
+                  : tab === "active"
+                    ? "Cadastre a empresa e o contrato. O acesso do cliente continua em Usuários."
+                    : "Os clientes desativados, bloqueados ou com contrato encerrado ficam nesta lista."}
               </p>
             </div>
           )}

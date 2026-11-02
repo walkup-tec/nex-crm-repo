@@ -450,23 +450,78 @@ export function validateMetricTraceRecord(
   return issues;
 }
 
+export type MetricTraceParseIssue = {
+  path: string;
+  message: string;
+};
+
 export function parseMetricTraceability(raw: unknown): {
   ok: boolean;
   value: MetricTraceability;
   error?: string;
+  issues?: MetricTraceParseIssue[];
 } {
   if (raw == null) {
-    return { ok: true, value: { version: METRIC_TRACEABILITY_VERSION, records: [] } };
+    return { ok: true, value: { version: METRIC_TRACEABILITY_VERSION, records: [] }, issues: [] };
   }
   const parsed = metricTraceabilitySchema.safeParse(raw);
-  if (!parsed.success) {
+  if (parsed.success) {
+    return { ok: true, value: parsed.data, issues: [] };
+  }
+
+  // Recuperação parcial: aceita records individuais válidos quando o bloco falha.
+  const issues: MetricTraceParseIssue[] = parsed.error.issues.map((issue) => ({
+    path: issue.path.length ? `metric_traceability.${issue.path.join(".")}` : "metric_traceability",
+    message: issue.message,
+  }));
+  const version =
+    raw && typeof raw === "object" && typeof (raw as { version?: unknown }).version === "string"
+      ? String((raw as { version: string }).version)
+      : METRIC_TRACEABILITY_VERSION;
+  const rawRecords =
+    raw && typeof raw === "object" && Array.isArray((raw as { records?: unknown }).records)
+      ? ((raw as { records: unknown[] }).records)
+      : null;
+
+  if (!rawRecords) {
     return {
       ok: false,
       value: { version: METRIC_TRACEABILITY_VERSION, records: [] },
-      error: parsed.error.issues[0]?.message ?? "traceability_schema_invalid",
+      error: issues[0] ? `${issues[0].path}: ${issues[0].message}` : "traceability_schema_invalid",
+      issues,
     };
   }
-  return { ok: true, value: parsed.data };
+
+  const records: MetricTraceRecord[] = [];
+  for (let i = 0; i < rawRecords.length; i++) {
+    const item = metricTraceRecordSchema.safeParse(rawRecords[i]);
+    if (item.success) {
+      records.push(item.data);
+      continue;
+    }
+    for (const issue of item.error.issues) {
+      issues.push({
+        path: `metric_traceability.records[${i}]${issue.path.length ? `.${issue.path.join(".")}` : ""}`,
+        message: issue.message,
+      });
+    }
+  }
+
+  if (records.length === 0 && rawRecords.length > 0) {
+    return {
+      ok: false,
+      value: { version, records: [] },
+      error: issues[0] ? `${issues[0].path}: ${issues[0].message}` : "traceability_records_invalid",
+      issues,
+    };
+  }
+
+  return {
+    ok: true,
+    value: { version, records },
+    error: issues.length ? issues.map((i) => `${i.path}: ${i.message}`).join("; ") : undefined,
+    issues,
+  };
 }
 
 export function indexTracesById(traceability: MetricTraceability): Map<string, MetricTraceRecord> {

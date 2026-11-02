@@ -8,7 +8,7 @@ export function metaAiUserPrompt(payload: NexMetaAnalysisV1) {
     .data_quality;
   const computed = (payload as { computed_metrics?: { spend_total?: number | null } }).computed_metrics;
   return [
-    "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.1.5). Responda em JSON estruturado v1.1.5 com observations[], executive_points[] e metric_traceability (entity_id do trace = entity_id da conclusão).",
+    "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.1.6). Responda em JSON estruturado v1.1.6 com observations[], recommendations[] (action_kind/confidence nos enums oficiais), executive_points[] e metric_traceability (entity_id do trace = entity_id da conclusão).",
     `Cliente: ${payload.metadata.client_name}`,
     `Conta: ${payload.account.name} (${payload.account.id})`,
     `Período: ${payload.period.since ?? "?"} a ${payload.period.until ?? "?"} (${payload.period.timezone})`,

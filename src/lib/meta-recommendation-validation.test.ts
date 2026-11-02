@@ -492,7 +492,8 @@ const quality = qualityWithBadResults();
   });
   assert.equal(broken.audit.parse_ok, false, "Teste I parse");
   assert.equal(broken.approved.length, 0, "Teste I sem approve");
-  assert.match(broken.publishedMarkdown, /não foram publicadas|estruturada inválida/i, "Teste I aviso");
+  assert.equal(broken.analyticalStatus, "FALLBACK_DETERMINISTIC", "Teste I fallback");
+  assert.match(broken.publishedMarkdown, /determinístico|Conclusões da IA indisponíveis/i, "Teste I aviso");
   assert.ok(!/recomendações soltas/i.test(broken.publishedMarkdown), "Teste I sem markdown bruto");
 }
 
@@ -524,7 +525,7 @@ const quality = qualityWithBadResults();
     periodSince: "2026-10-01",
     periodUntil: "2026-10-31",
     periodTimezone: "America/Sao_Paulo",
-    protocolVersion: "1.1.5",
+    protocolVersion: "1.1.6",
     dataContractVersion: "1.0.0",
     model: "gpt-4o-mini",
     promptHash: "abc123",
@@ -536,15 +537,16 @@ const quality = qualityWithBadResults();
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,
       recommendation_validation: ok.audit,
-      protocol_version: "1.1.5",
-      engine_version: "1.1.5",
+      protocol_version: "1.1.6",
+      engine_version: "1.1.6",
+      analytical_status: ok.analyticalStatus,
     },
     calibrationFeedback: {},
   };
   const chatgpt = buildChatgptMetaAnalysisPayload(detail);
   assert.equal(chatgpt.execution_id, detail.id, "Teste J id");
   assert.equal(chatgpt.tool, "get_meta_analysis_execution", "Teste J tool");
-  assert.equal(chatgpt.protocol_version, "1.1.5", "Teste J protocol");
+  assert.equal(chatgpt.protocol_version, "1.1.6", "Teste J protocol");
   assert.equal(chatgpt.data_contract_version, "1.0.0", "Teste J contract");
   assert.ok(chatgpt.ai_analysis.markdown?.includes("Etapa 3"), "Teste J markdown");
   assert.ok(chatgpt.availability.output_json, "Teste J output");
@@ -735,4 +737,209 @@ const quality = qualityWithBadResults();
   assert.ok(sanitized.dropped >= 2, "Teste O dropped count");
 }
 
-console.log("meta-recommendation-validation.test.ts: ok (A-O)");
+// --- Teste P: regressão d0b340f5 — schema fail em recs preserva observations ---
+{
+  const parsed = parseStructuredAnalysis(
+    JSON.stringify({
+      format: "nex_intelligence_analysis_v1_1_6",
+      stage1_markdown: "Status data_quality PASS parcial.",
+      observations: [
+        {
+          id: "obs-p",
+          entity_id: "camp_ok",
+          level: "campaign",
+          metrics_used: ["ctr", "cpc"],
+          trace_ids: ["trace-obs-p-ctr", "trace-obs-p-cpc"],
+          claim_kind: "descriptive",
+          text: "A campanha OK manteve CTR de 5% com CPC estável.",
+        },
+      ],
+      recommendations: [
+        {
+          id: "rec-p-bad",
+          entity_id: "camp_ok",
+          level: "campaign",
+          indicators_used: ["ctr"],
+          evidence: ["x"],
+          confidence: "medium",
+          recommended_action: "Escalar orçamento",
+          action_kind: "totally_invalid_kind",
+          validation_criterion: "CPR",
+        },
+      ],
+      executive_points: [],
+      metric_traceability: { version: "1.0", records: makeCtrCpcTraces("obs-p") },
+      stage2_markdown: "NÃO PUBLICAR ESTE MARKDOWN BRUTO",
+      stage4_markdown: "",
+    }),
+  );
+  assert.equal(parsed.parse_ok, true, "Teste P envelope ok");
+  assert.equal(parsed.observations.length, 1, "Teste P obs recuperada");
+  assert.equal(parsed.recommendations.length, 0, "Teste P recs schema fail");
+  assert.ok(
+    parsed.schema_errors.some((e) => e.path.includes("recommendations[0].action_kind")),
+    `Teste P path error: ${parsed.schema_errors.map((e) => e.path).join(",")}`,
+  );
+  assert.match(parsed.parse_error ?? "", /recommendations_failed_schema/);
+
+  const result = await processMetaAiRecommendations({
+    rawText: JSON.stringify({
+      format: "nex_intelligence_analysis_v1_1_6",
+      stage1_markdown: "ok",
+      observations: [
+        {
+          id: "obs-p",
+          entity_id: "camp_ok",
+          level: "campaign",
+          metrics_used: ["ctr", "cpc"],
+          trace_ids: ["trace-obs-p-ctr", "trace-obs-p-cpc"],
+          claim_kind: "descriptive",
+          text: "A campanha OK manteve CTR de 5% com CPC estável.",
+        },
+      ],
+      recommendations: [
+        {
+          id: "rec-p-bad",
+          entity_id: "camp_ok",
+          level: "campaign",
+          indicators_used: ["ctr"],
+          evidence: ["x"],
+          confidence: "medium",
+          recommended_action: "Escalar",
+          action_kind: "totally_invalid_kind",
+          validation_criterion: "x",
+        },
+      ],
+      executive_points: [],
+      metric_traceability: { version: "1.0", records: makeCtrCpcTraces("obs-p") },
+      stage2_markdown: "NÃO PUBLICAR ESTE MARKDOWN BRUTO",
+      stage4_markdown: "",
+    }),
+    payload,
+    quality,
+  });
+  assert.equal(result.analyticalStatus, "PARTIAL_VALIDATED", "Teste P status");
+  assert.ok(result.audit.observations.some((o) => o.id === "obs-p" && o.verdict === "APPROVED"));
+  assert.equal(result.approved.length, 0, "Teste P sem rec aprovada");
+  assert.match(result.publishedMarkdown, /CTR de 5%/i, "Teste P publica obs");
+  assert.ok(!/NÃO PUBLICAR ESTE MARKDOWN BRUTO/.test(result.publishedMarkdown), "Teste P sem bruto");
+  assert.equal(result.audit.recovery.approved_observations, 1);
+  assert.equal(result.audit.recovery.approved_recommendations, 0);
+  assert.ok(result.audit.schema_errors.length >= 1);
+}
+
+// --- Teste Q: alias action_kind normalizado ---
+{
+  const parsed = parseStructuredAnalysis(
+    JSON.stringify({
+      stage1_markdown: "a",
+      recommendations: [
+        {
+          ...goodRec({ id: "rec-q" }),
+          action_kind: "scale",
+          indicators_used: ["ctr", "cpc", "spend"],
+          evidence: ["CTR ok", "CPC ok", "spend ok"],
+        },
+      ],
+      observations: [],
+      executive_points: [],
+      metric_traceability: { version: "1.0", records: makeCtrCpcTraces("rec-q") },
+      stage2_markdown: "",
+      stage4_markdown: "",
+    }),
+  );
+  assert.equal(parsed.recommendations[0]?.action_kind, "scale_budget", "Teste Q alias");
+}
+
+// --- Teste R: envelope inválido → structural regen → COMPLETED/PARTIAL ---
+{
+  let structuralCalls = 0;
+  let contentCalls = 0;
+  const recovered = await processMetaAiRecommendations({
+    rawText: "isto não é json",
+    payload,
+    quality,
+    regenerateStructural: async () => {
+      structuralCalls += 1;
+      return JSON.stringify({
+        format: "nex_intelligence_analysis_v1_1_6",
+        stage1_markdown: "recuperado",
+        observations: [
+          {
+            id: "obs-r",
+            entity_id: "camp_ok",
+            level: "campaign",
+            metrics_used: ["ctr", "cpc"],
+            trace_ids: ["trace-obs-r-ctr", "trace-obs-r-cpc"],
+            claim_kind: "descriptive",
+            text: "A campanha OK manteve CTR de 5% com CPC estável.",
+          },
+        ],
+        recommendations: [goodRec({ id: "rec-r" })],
+        executive_points: [],
+        metric_traceability: {
+          version: "1.0",
+          records: [...makeCtrCpcTraces("obs-r"), ...makeCtrCpcTraces("rec-r")],
+        },
+        stage2_markdown: "",
+        stage4_markdown: "",
+      });
+    },
+    regenerate: async () => {
+      contentCalls += 1;
+      return "{}";
+    },
+  });
+  assert.equal(structuralCalls, 1, "Teste R structural once");
+  assert.equal(contentCalls, 0, "Teste R sem content regen");
+  assert.equal(recovered.audit.recovery.regeneration_kind, "structural");
+  assert.ok(recovered.audit.observations.some((o) => o.verdict === "APPROVED"));
+  assert.ok(
+    recovered.analyticalStatus === "COMPLETED" || recovered.analyticalStatus === "PARTIAL_VALIDATED",
+    `Teste R status=${recovered.analyticalStatus}`,
+  );
+}
+
+// --- Teste S: duas falhas estruturais → FALLBACK_DETERMINISTIC ---
+{
+  let structuralCalls = 0;
+  const fallback = await processMetaAiRecommendations({
+    rawText: "markdown bruto da IA com recomendações soltas",
+    payload,
+    quality,
+    regenerateStructural: async () => {
+      structuralCalls += 1;
+      return "ainda inválido";
+    },
+  });
+  assert.equal(structuralCalls, 1, "Teste S uma regen");
+  assert.equal(fallback.analyticalStatus, "FALLBACK_DETERMINISTIC", "Teste S fallback");
+  assert.match(fallback.publishedMarkdown, /Relatório técnico determinístico/i);
+  assert.match(fallback.publishedMarkdown, /campanhas/i);
+  assert.ok(!/recomendações soltas/i.test(fallback.publishedMarkdown), "Teste S sem bruto");
+  assert.equal(fallback.audit.recovery.regeneration_attempted, true);
+  assert.equal(fallback.audit.recovery.regeneration_valid, false);
+  assert.equal(fallback.approved.length, 0);
+}
+
+// --- Teste T: falha total de schema nas recs + obs inválidas → fallback ---
+{
+  const totalFail = await processMetaAiRecommendations({
+    rawText: JSON.stringify({
+      stage1_markdown: "x",
+      observations: [{ id: "bad" }],
+      recommendations: [{ id: "bad-rec", action_kind: "nope" }],
+      executive_points: [],
+      metric_traceability: { version: "1.0", records: [] },
+      stage2_markdown: "BRUTO",
+      stage4_markdown: "BRUTO",
+    }),
+    payload,
+    quality,
+  });
+  assert.equal(totalFail.analyticalStatus, "FALLBACK_DETERMINISTIC", "Teste T fallback");
+  assert.ok(!/BRUTO/.test(totalFail.publishedMarkdown), "Teste T sem bruto");
+  assert.ok(totalFail.audit.schema_errors.length >= 1, "Teste T schema errors");
+}
+
+console.log("meta-recommendation-validation.test.ts: ok (A-T)");

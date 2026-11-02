@@ -21,7 +21,7 @@ export {
   normalizeCanonicalMetric,
 } from "@/lib/meta-metric-traceability";
 
-export const META_AI_RECOMMENDATION_ENGINE = "1.1.5";
+export const META_AI_RECOMMENDATION_ENGINE = "1.1.6";
 
 export type RecommendationLevel = "campaign" | "adset" | "ad";
 export type ClaimLevel = "account" | RecommendationLevel;
@@ -34,6 +34,31 @@ export type RecommendationActionKind =
   | "monitor"
   | "other";
 export type ClaimKind = "descriptive" | "performance_judgment" | "indirect_recommendation";
+export type AnalyticalStatus =
+  | "COMPLETED"
+  | "PARTIAL_VALIDATED"
+  | "FALLBACK_DETERMINISTIC"
+  | "FAILED";
+
+export type SchemaFieldError = {
+  path: string;
+  message: string;
+  section: "envelope" | "observations" | "recommendations" | "executive_points" | "metric_traceability";
+  attempt: "initial" | "regeneration";
+};
+
+export type RecoveryAudit = {
+  initial_generation_valid: boolean;
+  regeneration_attempted: boolean;
+  regeneration_valid: boolean | null;
+  regeneration_kind: "none" | "structural" | "recommendations";
+  recovery_mode: AnalyticalStatus;
+  approved_observations: number;
+  approved_recommendations: number;
+  approved_executive_points: number;
+  discarded_items: number;
+  errors: SchemaFieldError[];
+};
 
 const EXTERNAL_COMMERCIAL_MARKERS =
   /\b(crm|vendas?|receita|roi\b|roas\b|faturamento|agendamento|whatsapp\s+oficial\s+do\s+crm|lead\s+qualificado\s+no\s+crm|ticket\s+m[eé]dio)\b/i;
@@ -116,8 +141,15 @@ export type StructuredAnalysisPayload = {
   executive_points: StructuredClaim[];
   stage4_markdown: string;
   metric_traceability: MetricTraceability;
+  /** Envelope JSON + schema base válidos (seções podem ser parciais). */
   parse_ok: boolean;
+  /** True quando há conteúdo estruturado recuperável em qualquer seção. */
+  has_recoverable_content: boolean;
   parse_error?: string;
+  schema_errors: SchemaFieldError[];
+  discarded_recommendations: number;
+  discarded_observations: number;
+  discarded_executive_points: number;
 };
 
 export type ValidatedRecommendation = StructuredRecommendation & {
@@ -157,6 +189,9 @@ export type RecommendationValidationAudit = {
   parse_ok: boolean;
   parse_error?: string;
   regeneration_attempted: boolean;
+  analytical_status: AnalyticalStatus;
+  schema_errors: SchemaFieldError[];
+  recovery: RecoveryAudit;
   recommendations: ValidatedRecommendation[];
   observations: ValidatedClaim[];
   executive_points: ValidatedClaim[];
@@ -173,6 +208,7 @@ export type ProcessRecommendationsResult = {
   approved: ValidatedRecommendation[];
   rejected: ValidatedRecommendation[];
   needsReview: ValidatedRecommendation[];
+  analyticalStatus: AnalyticalStatus;
 };
 
 export function buildEntityIndex(payload: NexMetaAnalysisV1) {
@@ -270,14 +306,94 @@ export function resolveEntityFromText(
   return { entity_id: null, level: "account" };
 }
 
+export function formatZodIssues(
+  issues: z.ZodIssue[],
+  prefix: string,
+): Array<{ path: string; message: string }> {
+  return issues.map((issue) => ({
+    path: issue.path.length ? `${prefix}.${issue.path.join(".")}` : prefix,
+    message: issue.message,
+  }));
+}
+
+const ACTION_KIND_ALIASES: Record<string, RecommendationActionKind> = {
+  scale_budget: "scale_budget",
+  scale: "scale_budget",
+  increase_budget: "scale_budget",
+  raise_budget: "scale_budget",
+  boost_budget: "scale_budget",
+  pause: "pause",
+  pause_campaign: "pause",
+  pause_adset: "pause",
+  pause_ad: "pause",
+  replace_creative: "replace_creative",
+  change_creative: "replace_creative",
+  new_creative: "replace_creative",
+  test: "test",
+  ab_test: "test",
+  experiment: "test",
+  monitor: "monitor",
+  watch: "monitor",
+  observe: "monitor",
+  other: "other",
+};
+
+const CONFIDENCE_ALIASES: Record<string, "low" | "medium" | "high"> = {
+  low: "low",
+  baixo: "low",
+  medium: "medium",
+  med: "medium",
+  medio: "medium",
+  médio: "medium",
+  high: "high",
+  alto: "high",
+};
+
+/** Normaliza aliases comuns da IA antes da validação Zod estrita. */
+export function normalizeRecommendationDraft(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const row = { ...(raw as Record<string, unknown>) };
+  if (typeof row.action_kind === "string") {
+    const key = row.action_kind.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (ACTION_KIND_ALIASES[key]) row.action_kind = ACTION_KIND_ALIASES[key];
+  }
+  if (typeof row.confidence === "string") {
+    const key = row.confidence.trim().toLowerCase();
+    if (CONFIDENCE_ALIASES[key]) row.confidence = CONFIDENCE_ALIASES[key];
+  }
+  if (!Array.isArray(row.indicators_used) && typeof row.metrics_used !== "undefined") {
+    row.indicators_used = row.metrics_used;
+  }
+  if (!Array.isArray(row.evidence)) row.evidence = [];
+  if (!Array.isArray(row.trace_ids)) row.trace_ids = [];
+  return row;
+}
+
+export function normalizeClaimDraft(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const row = { ...(raw as Record<string, unknown>) };
+  if (!Array.isArray(row.metrics_used)) row.metrics_used = [];
+  if (!Array.isArray(row.trace_ids)) row.trace_ids = [];
+  if (typeof row.claim_kind === "string") {
+    const key = row.claim_kind.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (key === "judgment" || key === "performance") row.claim_kind = "performance_judgment";
+    if (key === "recommendation" || key === "indirect") row.claim_kind = "indirect_recommendation";
+    if (key === "fact" || key === "description") row.claim_kind = "descriptive";
+  }
+  return row;
+}
+
 export function validateStructuredRecommendation(
   raw: unknown,
   payload: NexMetaAnalysisV1,
   quality: MetaDataQualityReport,
   traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
 ): ValidatedRecommendation {
-  const parsed = structuredRecommendationSchema.safeParse(raw);
+  const parsed = structuredRecommendationSchema.safeParse(normalizeRecommendationDraft(raw));
   if (!parsed.success) {
+    const detail = formatZodIssues(parsed.error.issues, "recommendation")
+      .map((i) => `${i.path}: ${i.message}`)
+      .join("; ");
     return {
       id: typeof (raw as { id?: unknown })?.id === "string" ? String((raw as { id: string }).id) : "invalid",
       entity_id: "",
@@ -293,7 +409,7 @@ export function validateStructuredRecommendation(
       arbitrary_targets: [],
       uses_external_commercial_data: false,
       verdict: "REJECTED",
-      rejection_reasons: [`schema_invalid: ${parsed.error.issues.map((i) => i.message).join("; ")}`],
+      rejection_reasons: [`schema_invalid: ${detail || parsed.error.issues.map((i) => i.message).join("; ")}`],
       blocked_by: [],
     };
   }
@@ -407,7 +523,7 @@ export function validateStructuredClaim(
   approvedActions: string[] = [],
   traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
 ): ValidatedClaim {
-  const parsed = structuredClaimSchema.safeParse(raw);
+  const parsed = structuredClaimSchema.safeParse(normalizeClaimDraft(raw));
   if (!parsed.success) {
     return {
       id: "invalid-claim",
@@ -590,88 +706,161 @@ export function extractJsonObject(text: string): unknown | null {
   return null;
 }
 
-function parseClaimArray(items: unknown[]): StructuredClaim[] {
-  const out: StructuredClaim[] = [];
-  for (const item of items) {
-    const parsed = structuredClaimSchema.safeParse(item);
-    if (parsed.success) out.push(parsed.data);
+function parseClaimArray(
+  items: unknown[],
+  section: "observations" | "executive_points",
+  attempt: SchemaFieldError["attempt"] = "initial",
+): { claims: StructuredClaim[]; errors: SchemaFieldError[]; discarded: number } {
+  const claims: StructuredClaim[] = [];
+  const errors: SchemaFieldError[] = [];
+  let discarded = 0;
+  for (let i = 0; i < items.length; i++) {
+    const parsed = structuredClaimSchema.safeParse(normalizeClaimDraft(items[i]));
+    if (parsed.success) {
+      claims.push(parsed.data);
+      continue;
+    }
+    discarded += 1;
+    for (const issue of formatZodIssues(parsed.error.issues, `${section}[${i}]`)) {
+      errors.push({ path: issue.path, message: issue.message, section, attempt });
+    }
   }
-  return out;
+  return { claims, errors, discarded };
 }
 
-export function parseStructuredAnalysis(text: string): StructuredAnalysisPayload {
+function emptyStructuredPayload(
+  partial: Partial<StructuredAnalysisPayload> & {
+    parse_ok: boolean;
+    parse_error?: string;
+    schema_errors?: SchemaFieldError[];
+  },
+): StructuredAnalysisPayload {
   const emptyTrace: MetricTraceability = { version: "1.0", records: [] };
+  const schema_errors = partial.schema_errors ?? [];
+  const observations = partial.observations ?? [];
+  const recommendations = partial.recommendations ?? [];
+  const executive_points = partial.executive_points ?? [];
+  const metric_traceability = partial.metric_traceability ?? emptyTrace;
+  const has_recoverable_content =
+    observations.length > 0 ||
+    recommendations.length > 0 ||
+    executive_points.length > 0 ||
+    metric_traceability.records.length > 0 ||
+    Boolean(partial.stage1_markdown?.trim()) ||
+    Boolean(partial.stage2_markdown?.trim()) ||
+    Boolean(partial.stage4_markdown?.trim());
+  return {
+    format: partial.format,
+    stage1_markdown: partial.stage1_markdown ?? "",
+    stage2_markdown: partial.stage2_markdown ?? "",
+    observations,
+    recommendations,
+    executive_points,
+    stage4_markdown: partial.stage4_markdown ?? "",
+    metric_traceability,
+    parse_ok: partial.parse_ok,
+    has_recoverable_content,
+    parse_error: partial.parse_error,
+    schema_errors,
+    discarded_recommendations: partial.discarded_recommendations ?? 0,
+    discarded_observations: partial.discarded_observations ?? 0,
+    discarded_executive_points: partial.discarded_executive_points ?? 0,
+  };
+}
+
+export function parseStructuredAnalysis(
+  text: string,
+  attempt: SchemaFieldError["attempt"] = "initial",
+): StructuredAnalysisPayload {
   const raw = extractJsonObject(text);
   if (!raw || typeof raw !== "object") {
-    return {
-      stage1_markdown: "",
-      stage2_markdown: "",
-      observations: [],
-      recommendations: [],
-      executive_points: [],
-      stage4_markdown: "",
-      metric_traceability: emptyTrace,
+    return emptyStructuredPayload({
       parse_ok: false,
       parse_error: "structured_json_missing",
-    };
+      schema_errors: [
+        {
+          path: "(root)",
+          message: "structured_json_missing",
+          section: "envelope",
+          attempt,
+        },
+      ],
+    });
   }
   const base = structuredAnalysisSchema.safeParse(raw);
   if (!base.success) {
-    return {
-      stage1_markdown: "",
-      stage2_markdown: "",
-      observations: [],
-      recommendations: [],
-      executive_points: [],
-      stage4_markdown: "",
-      metric_traceability: emptyTrace,
+    return emptyStructuredPayload({
       parse_ok: false,
-      parse_error: `structured_schema_invalid: ${base.error.issues[0]?.message ?? "unknown"}`,
-    };
+      parse_error: `structured_schema_invalid: ${base.error.issues[0]?.path?.join(".") || "(root)"}: ${base.error.issues[0]?.message ?? "unknown"}`,
+      schema_errors: formatZodIssues(base.error.issues, "(root)").map((issue) => ({
+        path: issue.path,
+        message: issue.message,
+        section: "envelope" as const,
+        attempt,
+      })),
+    });
   }
-  const traceParsed = parseMetricTraceability(base.data.metric_traceability);
+
+  const schema_errors: SchemaFieldError[] = [];
   const recommendations: StructuredRecommendation[] = [];
-  for (const item of base.data.recommendations) {
-    const parsed = structuredRecommendationSchema.safeParse(item);
-    if (parsed.success) recommendations.push(parsed.data);
+  let discarded_recommendations = 0;
+  for (let i = 0; i < base.data.recommendations.length; i++) {
+    const parsed = structuredRecommendationSchema.safeParse(
+      normalizeRecommendationDraft(base.data.recommendations[i]),
+    );
+    if (parsed.success) {
+      recommendations.push(parsed.data);
+      continue;
+    }
+    discarded_recommendations += 1;
+    for (const issue of formatZodIssues(parsed.error.issues, `recommendations[${i}]`)) {
+      schema_errors.push({
+        path: issue.path,
+        message: issue.message,
+        section: "recommendations",
+        attempt,
+      });
+    }
   }
+
+  const obs = parseClaimArray(base.data.observations ?? [], "observations", attempt);
+  const exec = parseClaimArray(base.data.executive_points ?? [], "executive_points", attempt);
+  schema_errors.push(...obs.errors, ...exec.errors);
+
+  const traceParsed = parseMetricTraceability(base.data.metric_traceability);
+  for (const issue of traceParsed.issues ?? []) {
+    schema_errors.push({
+      path: issue.path,
+      message: issue.message,
+      section: "metric_traceability",
+      attempt,
+    });
+  }
+
+  const sectionErrors: string[] = [];
   if (base.data.recommendations.length > 0 && recommendations.length === 0) {
-    return {
-      stage1_markdown: base.data.stage1_markdown,
-      stage2_markdown: base.data.stage2_markdown,
-      observations: [],
-      recommendations: [],
-      executive_points: [],
-      stage4_markdown: base.data.stage4_markdown,
-      metric_traceability: emptyTrace,
-      parse_ok: false,
-      parse_error: "recommendations_failed_schema",
-    };
+    sectionErrors.push("recommendations_failed_schema");
   }
-  if (!traceParsed.ok) {
-    return {
-      stage1_markdown: base.data.stage1_markdown,
-      stage2_markdown: base.data.stage2_markdown,
-      observations: [],
-      recommendations: [],
-      executive_points: [],
-      stage4_markdown: base.data.stage4_markdown,
-      metric_traceability: emptyTrace,
-      parse_ok: false,
-      parse_error: `metric_traceability_invalid: ${traceParsed.error}`,
-    };
+  if (!traceParsed.ok && (base.data.metric_traceability != null)) {
+    sectionErrors.push(`metric_traceability_invalid: ${traceParsed.error ?? "unknown"}`);
   }
-  return {
+
+  return emptyStructuredPayload({
     format: base.data.format,
     stage1_markdown: base.data.stage1_markdown,
     stage2_markdown: base.data.stage2_markdown,
-    observations: parseClaimArray(base.data.observations ?? []),
+    observations: obs.claims,
     recommendations,
-    executive_points: parseClaimArray(base.data.executive_points ?? []),
+    executive_points: exec.claims,
     stage4_markdown: base.data.stage4_markdown,
     metric_traceability: traceParsed.value,
     parse_ok: true,
-  };
+    parse_error: sectionErrors.length ? sectionErrors.join("; ") : undefined,
+    schema_errors,
+    discarded_recommendations,
+    discarded_observations: obs.discarded,
+    discarded_executive_points: exec.discarded,
+  });
 }
 
 function splitNarrativeUnits(text: string): string[] {
@@ -841,64 +1030,185 @@ export function composePublishedMarkdown(input: {
   ].join("\n");
 }
 
+function needsStructuralRegeneration(parsed: StructuredAnalysisPayload): boolean {
+  if (!parsed.parse_ok) return true;
+  const hasAnySection =
+    parsed.observations.length > 0 ||
+    parsed.recommendations.length > 0 ||
+    parsed.executive_points.length > 0;
+  if (!hasAnySection && parsed.schema_errors.some((e) => e.section !== "envelope")) return true;
+  return false;
+}
+
+function mergeStructuredPayloads(
+  primary: StructuredAnalysisPayload,
+  secondary: StructuredAnalysisPayload | null,
+): StructuredAnalysisPayload {
+  if (!secondary) return primary;
+  const byObs = new Map(primary.observations.map((row) => [row.id, row]));
+  for (const row of secondary.observations) byObs.set(row.id, row);
+  const byRec = new Map(primary.recommendations.map((row) => [row.id, row]));
+  for (const row of secondary.recommendations) byRec.set(row.id, row);
+  const byExec = new Map(primary.executive_points.map((row) => [row.id, row]));
+  for (const row of secondary.executive_points) byExec.set(row.id, row);
+  const byTrace = new Map(primary.metric_traceability.records.map((row) => [row.trace_id, row]));
+  for (const row of secondary.metric_traceability.records) byTrace.set(row.trace_id, row);
+  return emptyStructuredPayload({
+    format: secondary.format ?? primary.format,
+    stage1_markdown: secondary.stage1_markdown || primary.stage1_markdown,
+    stage2_markdown: secondary.stage2_markdown || primary.stage2_markdown,
+    stage4_markdown: secondary.stage4_markdown || primary.stage4_markdown,
+    observations: [...byObs.values()],
+    recommendations: [...byRec.values()],
+    executive_points: [...byExec.values()],
+    metric_traceability: {
+      version: secondary.metric_traceability.version || primary.metric_traceability.version || "1.0",
+      records: [...byTrace.values()],
+    },
+    parse_ok: primary.parse_ok || secondary.parse_ok,
+    parse_error: [primary.parse_error, secondary.parse_error].filter(Boolean).join("; ") || undefined,
+    schema_errors: [...primary.schema_errors, ...secondary.schema_errors],
+    discarded_recommendations: primary.discarded_recommendations + secondary.discarded_recommendations,
+    discarded_observations: primary.discarded_observations + secondary.discarded_observations,
+    discarded_executive_points: primary.discarded_executive_points + secondary.discarded_executive_points,
+  });
+}
+
+/** Relatório técnico mínimo Meta-only — sem hipóteses nem recomendações estratégicas. */
+export function buildDeterministicFallbackReport(
+  payload: NexMetaAnalysisV1,
+  quality: MetaDataQualityReport,
+  reason: string,
+): string {
+  const verified = quality.verified_metrics ?? [];
+  const compromised = quality.compromised_metrics ?? [];
+  const checks = (quality.checks ?? [])
+    .filter((c) => c.state !== "PASS")
+    .slice(0, 12)
+    .map((c) => `- ${c.code ?? c.metric}: ${c.state}${c.description ? ` — ${c.description}` : ""}`);
+
+  const metricLines = verified.length
+    ? verified.map((m) => `- ${m}: verificável deterministicamente`).join("\n")
+    : "- Nenhuma métrica verificável disponível neste export.";
+
+  return [
+    "## Etapa 1 — Validação dos dados",
+    `_Status de integridade: ${quality.status}._`,
+    `_Período: ${payload.period.since ?? "?"} a ${payload.period.until ?? "?"} (${payload.period.timezone})._`,
+    `_Coleta: ${payload.campaigns.length} campanhas, ${payload.adsets.length} conjuntos, ${payload.ads.length} anúncios._`,
+    "",
+    "## Etapa 2 — Análise independente",
+    "_Relatório técnico determinístico (sem conclusões da IA)._",
+    "",
+    "### Métricas verificáveis",
+    metricLines,
+    "",
+    "### Inconsistências identificadas",
+    checks.length ? checks.join("\n") : "- Nenhuma inconsistência listada além do status acima.",
+    compromised.length ? `Métricas comprometidas: ${compromised.join(", ")}.` : "",
+    "",
+    "## Etapa 3 — Recomendações",
+    "### Recomendações aprovadas",
+    "_Nenhuma — fallback determinístico não gera recomendações._",
+    "",
+    "### Limitações relevantes",
+    `- Conclusões da IA indisponíveis: ${reason}`,
+    "- Markdown bruto da IA não foi publicado.",
+    "",
+    "## Etapa 4 — Resumo executivo",
+    "_Sem conclusões analíticas da IA. Apenas inventário e integridade Meta Marketing API._",
+  ]
+    .filter((line, idx, arr) => !(line === "" && arr[idx - 1] === ""))
+    .join("\n");
+}
+
+function resolveAnalyticalStatus(input: {
+  approvedObs: number;
+  approvedRecs: number;
+  approvedExec: number;
+  discarded: number;
+  schemaErrors: number;
+  rejectedOrReview: number;
+  usedFallback: boolean;
+}): AnalyticalStatus {
+  if (input.usedFallback) return "FALLBACK_DETERMINISTIC";
+  const approvedTotal = input.approvedObs + input.approvedRecs + input.approvedExec;
+  if (approvedTotal === 0) return "FALLBACK_DETERMINISTIC";
+  if (
+    approvedTotal > 0 &&
+    input.discarded === 0 &&
+    input.schemaErrors === 0 &&
+    input.rejectedOrReview === 0
+  ) {
+    return "COMPLETED";
+  }
+  return "PARTIAL_VALIDATED";
+}
+
 export async function processMetaAiRecommendations(input: {
   rawText: string;
   payload: NexMetaAnalysisV1;
   quality: MetaDataQualityReport;
   now?: string;
+  /** Regeneração de recomendações rejeitadas (conteúdo). No máx. 1 chamada extra por execução. */
   regenerate?: (invalid: ValidatedRecommendation[]) => Promise<string>;
+  /** Regeneração estrutural do JSON completo. Mutuamente exclusiva com `regenerate`. */
+  regenerateStructural?: (errors: SchemaFieldError[]) => Promise<string>;
 }): Promise<ProcessRecommendationsResult> {
   const now = input.now ?? new Date().toISOString();
-  const parsed = parseStructuredAnalysis(input.rawText);
+  let initial = parseStructuredAnalysis(input.rawText, "initial");
+  let regenerationAttempted = false;
+  let regenerationKind: RecoveryAudit["regeneration_kind"] = "none";
+  let regenerationValid: boolean | null = null;
+  let secondary: StructuredAnalysisPayload | null = null;
+  let extraAiCallUsed = false;
 
-  if (!parsed.parse_ok) {
-    const stage1 = sanitizeNarrativeText(parsed.stage1_markdown, input.payload, input.quality).text;
-    const audit: RecommendationValidationAudit = {
-      engine_version: META_AI_RECOMMENDATION_ENGINE,
-      validated_at: now,
-      parse_ok: false,
-      parse_error: parsed.parse_error,
-      regeneration_attempted: false,
-      recommendations: [],
-      observations: [],
-      executive_points: [],
-      published_recommendation_ids: [],
-      rejected_recommendation_ids: [],
-      needs_review_ids: [],
-      narrative_sanitization: {
-        stage2_dropped: 0,
-        stage4_dropped: 0,
-        stage2_source: "empty",
-        stage4_source: "approved_only",
-      },
-      metric_traceability: parsed.metric_traceability,
-    };
-    return {
-      publishedMarkdown: composePublishedMarkdown({
-        stage1,
-        stage2: "_Sem observações verificáveis — resposta estruturada inválida._",
-        stage4: composeExecutiveFromApproved([], [], ""),
-        approved: [],
-        rejected: [],
-        needsReview: [],
-        quality: input.quality,
-        parseError: parsed.parse_error,
-        narrativeNote: "Markdown bruto da IA não foi publicado.",
-      }),
-      audit,
-      approved: [],
-      rejected: [],
-      needsReview: [],
-    };
+  const initialGenerationValid =
+    initial.parse_ok &&
+    (initial.observations.length > 0 ||
+      initial.recommendations.length > 0 ||
+      initial.executive_points.length > 0 ||
+      initial.schema_errors.length === 0);
+
+  if (needsStructuralRegeneration(initial) && input.regenerateStructural && !extraAiCallUsed) {
+    regenerationAttempted = true;
+    regenerationKind = "structural";
+    extraAiCallUsed = true;
+    try {
+      const regeneratedText = await input.regenerateStructural(initial.schema_errors);
+      secondary = parseStructuredAnalysis(regeneratedText, "regeneration");
+      regenerationValid =
+        secondary.parse_ok &&
+        (secondary.observations.length > 0 ||
+          secondary.recommendations.length > 0 ||
+          secondary.executive_points.length > 0);
+    } catch (error) {
+      regenerationValid = false;
+      initial = emptyStructuredPayload({
+        ...initial,
+        schema_errors: [
+          ...initial.schema_errors,
+          {
+            path: "regeneration",
+            message: error instanceof Error ? error.message : "structural_regeneration_failed",
+            section: "envelope",
+            attempt: "regeneration",
+          },
+        ],
+      });
+    }
   }
 
-  const traces = indexTracesById(parsed.metric_traceability);
-  let validated = validateRecommendationList(parsed.recommendations, input.payload, input.quality, traces);
-  let regenerationAttempted = false;
+  const working = mergeStructuredPayloads(initial, secondary);
+
+  const traces = indexTracesById(working.metric_traceability);
+  let validated = validateRecommendationList(working.recommendations, input.payload, input.quality, traces);
 
   const invalid = validated.filter((row) => row.verdict !== "APPROVED");
-  if (invalid.length && input.regenerate) {
+  if (invalid.length && input.regenerate && !extraAiCallUsed && working.parse_ok) {
     regenerationAttempted = true;
+    regenerationKind = "recommendations";
+    extraAiCallUsed = true;
     try {
       const regeneratedText = await input.regenerate(invalid);
       const regeneratedParsed = extractJsonObject(regeneratedText);
@@ -910,6 +1220,7 @@ export async function processMetaAiRecommendations(input: {
         if (Array.isArray(row.recommendations)) candidates = row.recommendations;
       }
       const revalidated = validateRecommendationList(candidates, input.payload, input.quality, traces);
+      regenerationValid = revalidated.some((row) => row.verdict === "APPROVED");
       const byId = new Map(validated.map((row) => [row.id, row]));
       for (const row of revalidated) byId.set(row.id, row);
       for (const original of invalid) {
@@ -918,7 +1229,7 @@ export async function processMetaAiRecommendations(input: {
       }
       validated = [...byId.values()];
     } catch {
-      regenerationAttempted = true;
+      regenerationValid = false;
     }
   }
 
@@ -927,80 +1238,137 @@ export async function processMetaAiRecommendations(input: {
   const needsReview = validated.filter((row) => row.verdict === "NEEDS_REVIEW");
   const approvedActions = approved.map((row) => row.recommended_action);
 
-  let observations = validateClaimList(
-    parsed.observations,
+  const observations = validateClaimList(
+    working.observations,
     input.payload,
     input.quality,
     approvedActions,
     traces,
   );
-  let executivePoints = validateClaimList(
-    parsed.executive_points,
+  const executivePoints = validateClaimList(
+    working.executive_points,
     input.payload,
     input.quality,
     approvedActions,
     traces,
   );
 
+  const approvedObs = observations.filter((c) => c.verdict === "APPROVED");
+  const approvedExec = executivePoints.filter((c) => c.verdict === "APPROVED");
+  const discardedItems =
+    working.discarded_recommendations +
+    working.discarded_observations +
+    working.discarded_executive_points +
+    observations.filter((c) => c.verdict !== "APPROVED").length +
+    executivePoints.filter((c) => c.verdict !== "APPROVED").length +
+    rejected.length +
+    needsReview.length;
+
+  const hasApprovedConclusions =
+    approvedObs.length > 0 || approved.length > 0 || approvedExec.length > 0;
+
+  let usedFallback = false;
+  let publishedMarkdown = "";
   let stage2Source: NarrativeSanitizationAudit["stage2_source"] = "structured";
   let stage4Source: NarrativeSanitizationAudit["stage4_source"] = "structured";
   let stage2Dropped = observations.filter((c) => c.verdict !== "APPROVED").length;
   let stage4Dropped = executivePoints.filter((c) => c.verdict !== "APPROVED").length;
 
-  let stage2Text = renderClaimsMarkdown(
-    observations.filter((c) => c.verdict === "APPROVED"),
-    "",
-  );
-  if (!parsed.observations.length) {
-    const sanitized = sanitizeNarrativeText(
-      parsed.stage2_markdown,
-      input.payload,
-      input.quality,
-      approvedActions,
-    );
-    stage2Text = sanitized.text;
-    stage2Dropped = sanitized.dropped;
-    stage2Source = sanitized.text ? "sanitized_markdown" : "empty";
-  } else if (!stage2Text) {
+  if (!hasApprovedConclusions) {
+    usedFallback = true;
+    const reason =
+      working.parse_error ||
+      (working.schema_errors[0]
+        ? `${working.schema_errors[0].path}: ${working.schema_errors[0].message}`
+        : "nenhuma conclusão aprovada após validação determinística");
+    publishedMarkdown = buildDeterministicFallbackReport(input.payload, input.quality, reason);
     stage2Source = "empty";
-    stage2Text = "_Sem observações verificáveis após validação de integridade._";
-  }
-
-  const approvedExec = executivePoints.filter((c) => c.verdict === "APPROVED");
-  let stage4Text = "";
-  if (parsed.executive_points.length) {
-    stage4Text = composeExecutiveFromApproved(approvedExec, approved, "");
-    stage4Source = "structured";
+    stage4Source = "approved_only";
   } else {
-    const sanitized = sanitizeNarrativeText(
-      parsed.stage4_markdown,
+    let stage2Text = renderClaimsMarkdown(approvedObs, "");
+    if (!working.observations.length) {
+      stage2Text = "_Sem observações estruturadas verificáveis._";
+      stage2Dropped = 0;
+      stage2Source = "empty";
+    } else if (!stage2Text) {
+      stage2Source = "empty";
+      stage2Text = "_Sem observações verificáveis após validação de integridade._";
+    }
+
+    let stage4Text = "";
+    if (working.executive_points.length) {
+      stage4Text = composeExecutiveFromApproved(approvedExec, approved, "");
+      stage4Source = "structured";
+    } else {
+      stage4Text = composeExecutiveFromApproved([], approved, "");
+      stage4Source = "approved_only";
+    }
+
+    const stage1Sanitized = sanitizeNarrativeText(
+      working.stage1_markdown,
       input.payload,
       input.quality,
       approvedActions,
     );
-    stage4Dropped = sanitized.dropped;
-    stage4Text = composeExecutiveFromApproved([], approved, sanitized.text);
-    stage4Source = sanitized.text ? "sanitized_markdown" : "approved_only";
+
+    const rejectedClaims = [
+      ...observations.filter((c) => c.verdict !== "APPROVED"),
+      ...executivePoints.filter((c) => c.verdict !== "APPROVED"),
+    ];
+
+    publishedMarkdown = composePublishedMarkdown({
+      stage1: stage1Sanitized.text || `_Status determinístico: ${input.quality.status}._`,
+      stage2: stage2Text || "_Sem observações verificáveis._",
+      stage4: stage4Text,
+      approved,
+      rejected,
+      needsReview,
+      approvedObservations: stage2Source === "structured" ? approvedObs : undefined,
+      rejectedClaims,
+      quality: input.quality,
+      parseError: working.parse_error,
+      narrativeNote:
+        stage2Dropped || stage4Dropped || working.schema_errors.length
+          ? `Itens omitidos por schema/integridade (etapa2=${stage2Dropped}, etapa4=${stage4Dropped}, schema_errors=${working.schema_errors.length}). Markdown bruto da IA não foi publicado.`
+          : "Markdown bruto da IA não foi publicado.",
+    });
   }
 
-  // stage1: sanitiza julgamentos indevidos, preserva diagnóstico de data_quality.
-  const stage1Sanitized = sanitizeNarrativeText(
-    parsed.stage1_markdown,
-    input.payload,
-    input.quality,
-    approvedActions,
-  );
+  const analyticalStatus = resolveAnalyticalStatus({
+    approvedObs: approvedObs.length,
+    approvedRecs: approved.length,
+    approvedExec: approvedExec.length,
+    discarded: discardedItems,
+    schemaErrors: working.schema_errors.length,
+    rejectedOrReview: rejected.length + needsReview.length,
+    usedFallback,
+  });
 
-  const rejectedClaims = [
-    ...observations.filter((c) => c.verdict !== "APPROVED"),
-    ...executivePoints.filter((c) => c.verdict !== "APPROVED"),
-  ];
+  const finalStatus: AnalyticalStatus =
+    usedFallback && !input.payload?.account?.id ? "FAILED" : analyticalStatus;
+
+  const recovery: RecoveryAudit = {
+    initial_generation_valid: Boolean(initialGenerationValid),
+    regeneration_attempted: regenerationAttempted,
+    regeneration_valid: regenerationValid,
+    regeneration_kind: regenerationKind,
+    recovery_mode: finalStatus,
+    approved_observations: approvedObs.length,
+    approved_recommendations: approved.length,
+    approved_executive_points: approvedExec.length,
+    discarded_items: discardedItems,
+    errors: working.schema_errors,
+  };
 
   const audit: RecommendationValidationAudit = {
     engine_version: META_AI_RECOMMENDATION_ENGINE,
     validated_at: now,
-    parse_ok: true,
+    parse_ok: working.parse_ok,
+    parse_error: working.parse_error,
     regeneration_attempted: regenerationAttempted,
+    analytical_status: finalStatus,
+    schema_errors: working.schema_errors,
+    recovery,
     recommendations: validated,
     observations,
     executive_points: executivePoints,
@@ -1013,30 +1381,16 @@ export async function processMetaAiRecommendations(input: {
       stage2_source: stage2Source,
       stage4_source: stage4Source,
     },
-    metric_traceability: parsed.metric_traceability,
+    metric_traceability: working.metric_traceability,
   };
 
   return {
-    publishedMarkdown: composePublishedMarkdown({
-      stage1: stage1Sanitized.text || `_Status determinístico: ${input.quality.status}._`,
-      stage2: stage2Text || "_Sem observações verificáveis._",
-      stage4: stage4Text,
-      approved,
-      rejected,
-      needsReview,
-      approvedObservations:
-        stage2Source === "structured" ? observations.filter((c) => c.verdict === "APPROVED") : undefined,
-      rejectedClaims,
-      quality: input.quality,
-      narrativeNote:
-        stage2Dropped || stage4Dropped
-          ? `Trechos narrativos omitidos por integridade (etapa2=${stage2Dropped}, etapa4=${stage4Dropped}).`
-          : undefined,
-    }),
+    publishedMarkdown,
     audit,
     approved,
     rejected,
     needsReview,
+    analyticalStatus: finalStatus,
   };
 }
 
@@ -1044,6 +1398,7 @@ export function regenerationUserPrompt(invalid: ValidatedRecommendation[], paylo
   return [
     "Regenere APENAS as recomendações inválidas abaixo em JSON válido.",
     'Formato: { "recommendations": [ ...mesmo schema estruturado... ] }',
+    "action_kind ∈ scale_budget|pause|replace_creative|test|monitor|other; confidence ∈ low|medium|high.",
     "Não invente recomendações substitutas sem evidência Meta verificável.",
     "Não use métricas comprometidas nem dados comerciais externos.",
     "",
@@ -1062,6 +1417,30 @@ export function regenerationUserPrompt(invalid: ValidatedRecommendation[], paylo
     "Contexto resumido da conta:",
     JSON.stringify({
       account_id: payload.account.id,
+      campaign_ids: payload.campaigns.map((c) => c.id),
+      adset_ids: payload.adsets.map((a) => a.id),
+      ad_ids: payload.ads.map((a) => a.id),
+    }),
+  ].join("\n");
+}
+
+export function structuralRegenerationUserPrompt(
+  errors: SchemaFieldError[],
+  payload: NexMetaAnalysisV1,
+) {
+  return [
+    "A resposta anterior violou o schema estruturado NEX Intelligence v1.1.6.",
+    "Reemita o JSON COMPLETO válido (observations, recommendations, executive_points, metric_traceability).",
+    "Corrija exatamente os campos listados. Não invente evidências. Meta-only.",
+    "Enums: action_kind=scale_budget|pause|replace_creative|test|monitor|other; confidence=low|medium|high; claim_kind=descriptive|performance_judgment|indirect_recommendation.",
+    "",
+    "Erros de schema:",
+    JSON.stringify(errors, null, 2),
+    "",
+    "Contexto resumido:",
+    JSON.stringify({
+      account_id: payload.account.id,
+      period: payload.period,
       campaign_ids: payload.campaigns.map((c) => c.id),
       adset_ids: payload.adsets.map((a) => a.id),
       ad_ids: payload.ads.map((a) => a.id),

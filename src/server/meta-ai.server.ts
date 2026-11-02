@@ -16,12 +16,14 @@ import {
   META_AI_ENGINE_VERSION,
   META_AI_PROTOCOL_VERSION,
   META_AI_REGENERATION_PROMPT,
+  META_AI_STRUCTURAL_REGENERATION_PROMPT,
   metaAiPromptHash,
 } from "@/intelligence/meta-leads/protocol";
 import { attachDataQuality, validateMetaAnalysisData } from "@/lib/meta-data-quality";
 import {
   processMetaAiRecommendations,
   regenerationUserPrompt,
+  structuralRegenerationUserPrompt,
 } from "@/lib/meta-recommendation-validation";
 import { exportMetaAnalysis } from "@/server/meta.server";
 import { requestOpenAiAnalysis } from "@/server/openai.server";
@@ -107,6 +109,9 @@ export async function analyzeMetaWithAi(
   let errorMessage = "";
   let recommendationValidation: Record<string, unknown> = {};
 
+  let analyticalStatus: string | undefined;
+  let extraAiCallUsed = false;
+
   try {
     const ai = await requestOpenAiAnalysis({
       system: META_AI_ANALYSIS_PROMPT,
@@ -117,7 +122,18 @@ export async function analyzeMetaWithAi(
       rawText: ai.text,
       payload,
       quality,
+      regenerateStructural: async (errors) => {
+        if (extraAiCallUsed) throw new Error("ai_call_budget_exhausted");
+        extraAiCallUsed = true;
+        const again = await requestOpenAiAnalysis({
+          system: META_AI_STRUCTURAL_REGENERATION_PROMPT,
+          user: structuralRegenerationUserPrompt(errors, payload),
+        });
+        return again.text;
+      },
       regenerate: async (invalid) => {
+        if (extraAiCallUsed) throw new Error("ai_call_budget_exhausted");
+        extraAiCallUsed = true;
         const again = await requestOpenAiAnalysis({
           system: META_AI_REGENERATION_PROMPT,
           user: regenerationUserPrompt(invalid, payload),
@@ -127,8 +143,19 @@ export async function analyzeMetaWithAi(
     });
     analysis = processed.publishedMarkdown;
     recommendationValidation = processed.audit as unknown as Record<string, unknown>;
-    if (!processed.audit.parse_ok || processed.rejected.length || processed.needsReview.length) {
+    analyticalStatus = processed.analyticalStatus;
+    if (
+      processed.analyticalStatus === "PARTIAL_VALIDATED" ||
+      processed.analyticalStatus === "FALLBACK_DETERMINISTIC" ||
+      !processed.audit.parse_ok ||
+      processed.rejected.length ||
+      processed.needsReview.length
+    ) {
       status = status === "error" ? status : "partial";
+    }
+    if (processed.analyticalStatus === "FAILED") {
+      status = "error";
+      errorMessage = processed.audit.parse_error || "Falha analítica sem fallback determinístico.";
     }
   } catch (error) {
     status = "error";
@@ -142,6 +169,7 @@ export async function analyzeMetaWithAi(
     engine_version: META_AI_ENGINE_VERSION,
     prompt_hash: promptHash,
     data_quality_status: quality.status,
+    analytical_status: analyticalStatus ?? null,
     recommendation_validation: recommendationValidation,
   };
 

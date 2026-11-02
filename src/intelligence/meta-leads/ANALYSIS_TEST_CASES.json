@@ -1,6 +1,6 @@
 {
-  "protocol_version": "1.1.5",
-  "engine_version": "1.1.5",
+  "protocol_version": "1.1.6",
+  "engine_version": "1.1.6",
   "data_contract_version": "1.0.0",
   "cases": [
     {
@@ -86,6 +86,17 @@
         "Observação sobre Eng. WhatsApp com trace de Conv. Site é REJECTED",
         "Observação com entity_id e trace do mesmo ID é APPROVED",
         "PASS da IA não prevalece sobre recálculo Meta determinístico"
+      ]
+    },
+    {
+      "id": "meta-schema-partial-recovery",
+      "title": "Falha de schema em recomendações não descarta observações válidas",
+      "focus": "integrity",
+      "expects": [
+        "recommendations_failed_schema não zera observations válidas",
+        "schema_errors inclui caminho do campo inválido",
+        "analytical_status PARTIAL_VALIDATED ou FALLBACK_DETERMINISTIC conforme conteúdo",
+        "Máximo de uma regeneração; Markdown bruto nunca publicado"
       ]
     }
   ]

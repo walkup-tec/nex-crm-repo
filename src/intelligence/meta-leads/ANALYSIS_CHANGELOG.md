@@ -1,5 +1,14 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.6 — 2026-11-02
+
+- Recuperação parcial após falha de schema: seções (observations / recommendations / executive_points) validadas independentemente.
+- Erros de schema com caminho de campo (`recommendations[i].action_kind`); normalização de aliases comuns pré-Zod.
+- Máximo de 2 chamadas à IA (geração + 1 regeneração estrutural **ou** de conteúdo).
+- Estados analíticos: `COMPLETED`, `PARTIAL_VALIDATED`, `FALLBACK_DETERMINISTIC`, `FAILED` + auditoria `recovery`.
+- Fallback determinístico Meta-only quando não há conclusões aprovadas (sem recomendações inventadas; sem Markdown bruto).
+- Preserva 1.1.4–1.1.5 (rastreabilidade e binding entidade↔trace); contrato de dados **1.0.0**.
+
 ## 1.1.5 — 2026-11-02
 
 - Vínculo rigoroso entidade↔nome↔`trace_id` (rejeita trace de outra campanha).

@@ -1,10 +1,19 @@
-# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.5
+# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.6
 
-Protocolo analítico Meta-only (linha 1.1) com motor de integridade **1.1.5**.
+Protocolo analítico Meta-only (linha 1.1) com motor de integridade **1.1.6**.
 
 ## Escopo
 
 Fonte exclusiva: **Meta Marketing API** (`data_contract_version` 1.0.0).
+
+## Recuperação estrutural (1.1.6)
+
+- Máximo de **duas** chamadas à IA por execução (geração + uma regeneração).
+- Falha de schema em uma seção **não** descarta seções irmãs válidas.
+- Erros de schema registram o **caminho do campo** (`recommendations[0].action_kind`).
+- Estados analíticos: `COMPLETED` | `PARTIAL_VALIDATED` | `FALLBACK_DETERMINISTIC` | `FAILED`.
+- Sem conclusões aprovadas → relatório técnico determinístico (sem recomendações inventadas).
+- Nunca publica Markdown bruto da IA.
 
 ## Vínculo entidade ↔ rastreabilidade
 
@@ -22,4 +31,4 @@ CTR/CPC/CPM/CPR são recalculados dos insights Meta da entidade. Inputs/result d
 
 ## Proteções anteriores
 
-Preserva 1.1.1–1.1.4: `data_quality`, recomendações estruturadas, sanitização narrativa, dependências matemáticas, agregação ponderada de CTR.
+Preserva 1.1.1–1.1.5: `data_quality`, recomendações estruturadas, sanitização narrativa, dependências matemáticas, agregação ponderada de CTR, binding entidade↔trace.

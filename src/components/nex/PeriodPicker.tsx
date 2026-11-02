@@ -1,4 +1,4 @@
-import { format, startOfMonth, startOfWeek, subDays, subMonths } from "date-fns";
+import { addDays, addMonths, format, startOfMonth, startOfWeek, subDays, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarRange } from "lucide-react";
 import { useState } from "react";
@@ -10,6 +10,9 @@ import type { MetaPeriod } from "@/lib/meta-access";
 
 type ShortcutId =
   | "today"
+  | "next_7d"
+  | "next_15d"
+  | "next_30d"
   | "yesterday"
   | "last_7d"
   | "today_yesterday"
@@ -21,8 +24,7 @@ type ShortcutId =
   | "this_month"
   | "last_month";
 
-const shortcuts: { id: ShortcutId; label: string }[] = [
-  { id: "today", label: "Hoje" },
+const pastShortcuts: { id: ShortcutId; label: string }[] = [
   { id: "yesterday", label: "Ontem" },
   { id: "last_7d", label: "Últimos 7 dias" },
   { id: "today_yesterday", label: "Hoje e ontem" },
@@ -34,6 +36,23 @@ const shortcuts: { id: ShortcutId; label: string }[] = [
   { id: "this_month", label: "Este mês" },
   { id: "last_month", label: "Mês passado" },
 ];
+
+const futureShortcuts: { id: ShortcutId; label: string }[] = [
+  { id: "next_7d", label: "Próximos 7 dias" },
+  { id: "next_15d", label: "Próximos 15 dias" },
+  { id: "next_30d", label: "Próximos 30 dias" },
+];
+
+const allShortcuts: { id: ShortcutId; label: string }[] = [
+  { id: "today", label: "Hoje" },
+  ...futureShortcuts,
+  ...pastShortcuts,
+];
+
+function shortcutsFor(allowFuture: boolean) {
+  if (!allowFuture) return [{ id: "today" as const, label: "Hoje" }, ...pastShortcuts];
+  return allShortcuts;
+}
 
 function todayInSaoPaulo() {
   const iso = new Intl.DateTimeFormat("en-CA", {
@@ -60,6 +79,9 @@ function fromIso(value: string) {
 function rangeOf(id: ShortcutId, today: Date): DateRange {
   const yesterday = subDays(today, 1);
   if (id === "today") return { from: today, to: today };
+  if (id === "next_7d") return { from: today, to: addDays(today, 6) };
+  if (id === "next_15d") return { from: today, to: addDays(today, 14) };
+  if (id === "next_30d") return { from: today, to: addDays(today, 29) };
   if (id === "yesterday") return { from: yesterday, to: yesterday };
   if (id === "today_yesterday") return { from: yesterday, to: today };
   if (id === "last_7d") return { from: subDays(yesterday, 6), to: yesterday };
@@ -76,11 +98,11 @@ function rangeOf(id: ShortcutId, today: Date): DateRange {
   return { from: previous, to: subDays(startOfMonth(today), 1) };
 }
 
-function matchingShortcut(range: DateRange | undefined, today: Date) {
+function matchingShortcut(range: DateRange | undefined, today: Date, allowFuture: boolean) {
   if (!range?.from || !range.to) return null;
   const since = iso(range.from);
   const until = iso(range.to);
-  return shortcuts.find((item) => {
+  return shortcutsFor(allowFuture).find((item) => {
     const candidate = rangeOf(item.id, today);
     return candidate.from && candidate.to && iso(candidate.from) === since && iso(candidate.to) === until;
   });
@@ -100,11 +122,14 @@ export function PeriodPicker({
   disabled,
   onApply,
   totalHint = "Exibe os indicadores de todo o período disponível, desde o início das campanhas.",
+  allowFuture = false,
 }: {
   value: MetaPeriod;
   disabled?: boolean;
   onApply: (period: MetaPeriod) => void;
   totalHint?: string;
+  /** Permite escolher datas após hoje (ex.: vencimentos futuros no Financeiro). */
+  allowFuture?: boolean;
 }) {
   const today = todayInSaoPaulo();
   const [open, setOpen] = useState(false);
@@ -155,7 +180,8 @@ export function PeriodPicker({
     setOpen(false);
   };
 
-  const activeShortcut = matchingShortcut(range, today);
+  const listedShortcuts = shortcutsFor(allowFuture);
+  const activeShortcut = matchingShortcut(range, today, allowFuture);
 
   return (
     <Popover open={open} onOpenChange={openPanel}>
@@ -177,7 +203,7 @@ export function PeriodPicker({
               <div className="mt-4">
                 <p className="px-2 text-xs font-medium text-muted-foreground">Usados recentemente</p>
                 <div className="mt-2 max-h-64 space-y-1 overflow-auto">
-                  {shortcuts.map((item) => (
+                  {listedShortcuts.map((item) => (
                     <Choice
                       key={item.id}
                       checked={activeShortcut?.id === item.id}
@@ -201,9 +227,9 @@ export function PeriodPicker({
                 onSelect={setRange}
                 month={month}
                 onMonthChange={setMonth}
-                disabled={{ after: today }}
+                disabled={allowFuture ? undefined : { after: today }}
                 startMonth={subMonths(today, 37)}
-                endMonth={today}
+                endMonth={allowFuture ? addMonths(today, 24) : today}
               />
             </div>
           )}

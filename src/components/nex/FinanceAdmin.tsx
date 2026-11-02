@@ -107,6 +107,7 @@ export function FinanceAdmin() {
               value={period}
               disabled={loading}
               onApply={setPeriod}
+              allowFuture
               totalHint="Exibe cobranças, totais e gráficos de todo o período disponível."
             />
           </div>

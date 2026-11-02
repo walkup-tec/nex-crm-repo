@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -34,6 +34,7 @@ import { todayKey } from "@/lib/finance-access";
 import type { DashboardKpi, DashboardKpiKey, MasterDashboard } from "@/lib/master-dashboard";
 import { DASHBOARD_REGIONS, resolveDashboardPeriod } from "@/lib/master-dashboard";
 import type { MetaPeriod } from "@/lib/meta-access";
+import { cn } from "@/lib/utils";
 
 const kpiModalTitles: Record<DashboardKpiKey, string> = {
   activeClients: "Clientes ativos",
@@ -45,22 +46,43 @@ const kpiModalTitles: Record<DashboardKpiKey, string> = {
 };
 
 const paymentColors: Record<string, string> = {
-  paid: "#22c55e",
-  pending: "#3b82f6",
-  overdue: "#ef4444",
+  paid: "#16a34a",
+  pending: "#2563eb",
+  overdue: "#dc2626",
 };
-
-const dashPanel =
-  "rounded-xl border border-slate-400/[0.14] bg-gradient-to-b from-[#101a2e] to-[#0d1527] text-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)]";
-const dashMuted = "text-[#8190a6]";
-const chartTick = { fontSize: 12, fill: "#94a3b8" } as const;
-const chartGrid = "rgba(148,163,184,0.14)";
 
 const statusColors: Record<string, string> = {
-  active: "#22c55e",
-  overdue: "#ef4444",
-  inactive: "#3b82f6",
+  active: "#16a34a",
+  overdue: "#dc2626",
+  inactive: "#2563eb",
 };
+
+function useNexDark() {
+  const [dark, setDark] = useState(() =>
+    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
+  );
+  useEffect(() => {
+    const sync = () => setDark(document.documentElement.classList.contains("dark"));
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
+
+function ChartTip({ dark, children }: { dark: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-3 py-2 text-xs shadow-lg",
+        dark ? "border-slate-400/25 bg-[#0b1220] text-slate-100" : "border-slate-200 bg-white text-slate-800",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 
 function periodPayload(period: MetaPeriod) {
   if (period.mode === "custom") return { period: "custom", since: period.since, until: period.until };
@@ -109,6 +131,7 @@ function revenueComparison(kpi: DashboardKpi) {
 }
 
 export function MasterHome() {
+  const dark = useNexDark();
   const [period, setPeriod] = useState<MetaPeriod>(() => resolveDashboardPeriod(null, todayKey()));
   const [snapshot, setSnapshot] = useState<MasterDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,7 +139,33 @@ export function MasterHome() {
   const [ufRegion, setUfRegion] = useState("all");
   const [activeRegion, setActiveRegion] = useState("SE");
   const [kpiModal, setKpiModal] = useState<DashboardKpiKey | null>(null);
+  const [paymentHover, setPaymentHover] = useState(false);
+  const [statusHover, setStatusHover] = useState(false);
   const navigate = useNavigate();
+
+  const dashPanel = dark
+    ? "rounded-xl border border-slate-400/[0.14] bg-gradient-to-b from-[#101a2e] to-[#0d1527] text-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)]"
+    : "rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm";
+  const dashTitle = dark ? "text-white" : "text-slate-900";
+  const dashMuted = dark ? "text-[#8190a6]" : "text-slate-500";
+  const dashBody = dark ? "text-slate-200" : "text-slate-700";
+  const dashStrong = dark ? "text-white" : "text-slate-900";
+  const dashChip = dark
+    ? "border-slate-400/20 bg-[#0b1220] text-slate-200"
+    : "border-slate-200 bg-slate-50 text-slate-700";
+  const chartTick = { fontSize: 12, fill: dark ? "#94a3b8" : "#64748b" } as const;
+  const chartGrid = dark ? "rgba(148,163,184,0.14)" : "rgba(100,116,139,0.18)";
+  const chartLabel = dark ? "#e2e8f0" : "#0f172a";
+  const emptySlice = dark ? "#334155" : "#cbd5e1";
+  const tipStyle = {
+    borderRadius: 8,
+    border: dark ? "1px solid rgba(148,163,184,0.25)" : "1px solid #e2e8f0",
+    background: dark ? "#0b1220" : "#ffffff",
+    color: dark ? "#f1f5f9" : "#0f172a",
+    boxShadow: "0 10px 24px -12px rgba(15,23,42,0.35)",
+  } as const;
+  const tipItem = { color: dark ? "#f1f5f9" : "#0f172a" } as const;
+  const tipLabel = { color: dark ? "#e2e8f0" : "#334155", fontWeight: 600 } as const;
 
   const load = useCallback(async (next: MetaPeriod) => {
     setLoading(true);
@@ -265,23 +314,21 @@ export function MasterHome() {
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Receita e clientes</h2>
+                  <h2 className={`text-lg font-bold ${dashTitle}`}>Receita e clientes</h2>
                   <p className={`mt-1 text-[13px] ${dashMuted}`}>
                     Evolução mensal da receita e dos clientes que contrataram nos últimos 6 meses.
                   </p>
                 </div>
-                <span className="inline-flex h-9 items-center rounded-lg border border-slate-400/20 bg-[#0b1220] px-3 text-[13px] text-slate-200">
-                  Últimos 6 meses
-                </span>
+                <span className={`inline-flex h-9 items-center rounded-lg border px-3 text-[13px] ${dashChip}`}>Últimos 6 meses</span>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-5 text-xs text-slate-300">
+              <div className={cn("mt-4 flex flex-wrap gap-5 text-xs", dark ? "text-slate-300" : "text-slate-600")}>
                 <span className="inline-flex items-center gap-2">
-                  <span className="size-2.5 rounded-full bg-[#8b5cf6]" />
+                  <span className="size-2.5 rounded-full bg-[#7c3aed]" />
                   Receita (R$)
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <span className="size-2.5 rounded-full bg-[#22d3ee]" />
+                  <span className="size-2.5 rounded-full bg-[#0891b2]" />
                   Clientes contratados
                 </span>
               </div>
@@ -291,17 +338,15 @@ export function MasterHome() {
                   <ComposedChart data={series} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="dashRevenueBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#8b5cf6" />
-                        <stop offset="100%" stopColor="#3b82f6" />
+                        <stop offset="0%" stopColor="#7c3aed" />
+                        <stop offset="100%" stopColor="#2563eb" />
                       </linearGradient>
                     </defs>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={chartGrid} />
                     <XAxis dataKey="label" tick={chartTick} axisLine={false} tickLine={false} />
                     <YAxis
                       yAxisId="revenue"
-                      tickFormatter={(value: number) =>
-                        `R$ ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-                      }
+                      tickFormatter={(value: number) => `R$ ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`}
                       tick={chartTick}
                       axisLine={false}
                       tickLine={false}
@@ -309,16 +354,16 @@ export function MasterHome() {
                     />
                     <YAxis yAxisId="clients" orientation="right" tick={chartTick} axisLine={false} tickLine={false} width={32} />
                     <Tooltip
-                      cursor={{ fill: "rgba(148,163,184,0.06)" }}
+                      cursor={false}
                       content={({ active, payload, label }) => {
                         if (!active || !payload?.length) return null;
                         const row = payload[0]?.payload as { revenueCents?: number; activeClients?: number };
                         return (
-                          <div className="rounded-lg border border-slate-400/20 bg-[#0b1220] px-3 py-2 text-xs text-slate-200 shadow-lg">
-                            <p className="font-semibold text-white">{label}</p>
+                          <ChartTip dark={dark}>
+                            <p className={cn("font-semibold", dark ? "text-white" : "text-slate-900")}>{label}</p>
                             <p className="mt-1">Receita: {moneyFromCents(row.revenueCents ?? 0)}</p>
                             <p>Contratados: {row.activeClients ?? 0}</p>
-                          </div>
+                          </ChartTip>
                         );
                       }}
                     />
@@ -328,9 +373,9 @@ export function MasterHome() {
                       type="monotone"
                       dataKey="activeClients"
                       name="Contratados"
-                      stroke="#22d3ee"
+                      stroke="#0891b2"
                       strokeWidth={2.5}
-                      dot={{ r: 5, fill: "#22d3ee", stroke: "#fff", strokeWidth: 2 }}
+                      dot={{ r: 5, fill: "#0891b2", stroke: dark ? "#0b1220" : "#fff", strokeWidth: 2 }}
                       activeDot={{ r: 6 }}
                     />
                   </ComposedChart>
@@ -340,7 +385,7 @@ export function MasterHome() {
 
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div>
-                <h2 className="text-lg font-bold text-white">Receita por situação de pagamento</h2>
+                <h2 className={`text-lg font-bold ${dashTitle}`}>Receita por situação de pagamento</h2>
                 <p className={`mt-1 text-[13px] ${dashMuted}`}>Distribuição da receita do período por status.</p>
               </div>
 
@@ -357,26 +402,32 @@ export function MasterHome() {
                         paddingAngle={2.5}
                         startAngle={90}
                         endAngle={-270}
-                        stroke="none"
+                        stroke={dark ? "#0d1527" : "#ffffff"}
+                        strokeWidth={2}
+                        onMouseEnter={() => setPaymentHover(true)}
+                        onMouseLeave={() => setPaymentHover(false)}
                       >
                         {(paymentData.length ? paymentData : [{ key: "empty" }]).map((item) => (
-                          <Cell key={item.key} fill={paymentColors[item.key] ?? "#334155"} />
+                          <Cell key={item.key} fill={paymentColors[item.key] ?? emptySlice} />
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: number) => moneyFromCents(value)}
-                        contentStyle={{
-                          borderRadius: 8,
-                          border: "1px solid rgba(148,163,184,0.2)",
-                          background: "#0b1220",
-                          color: "#e2e8f0",
-                        }}
+                        formatter={(value: number, name) => [moneyFromCents(Number(value)), String(name)]}
+                        contentStyle={tipStyle}
+                        itemStyle={tipItem}
+                        labelStyle={tipLabel}
+                        wrapperStyle={{ zIndex: 30, outline: "none" }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <p className="text-[17px] font-bold tabular-nums text-white">{moneyFromCents(paymentTotal)}</p>
-                    <p className="text-xs text-slate-400">no período</p>
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center text-center transition-opacity",
+                      paymentHover && "opacity-0",
+                    )}
+                  >
+                    <p className={cn("text-[17px] font-bold tabular-nums", dashStrong)}>{moneyFromCents(paymentTotal)}</p>
+                    <p className={cn("text-xs", dashMuted)}>no período</p>
                   </div>
                 </div>
 
@@ -384,8 +435,8 @@ export function MasterHome() {
                   {snapshot.paymentSlices.map((item) => (
                     <div key={item.key} className="grid grid-cols-[10px_1fr_auto] items-center gap-x-2.5">
                       <span className="size-2.5 rounded-full" style={{ background: paymentColors[item.key] }} />
-                      <span className="text-sm text-slate-200">{item.label}</span>
-                      <span className="text-sm font-bold tabular-nums text-white">{item.percent}%</span>
+                      <span className={cn("text-sm", dashBody)}>{item.label}</span>
+                      <span className={cn("text-sm font-bold tabular-nums", dashStrong)}>{item.percent}%</span>
                       <span className={`col-span-2 col-start-2 text-[12.5px] tabular-nums ${dashMuted}`}>{moneyFromCents(item.cents)}</span>
                     </div>
                   ))}
@@ -397,7 +448,7 @@ export function MasterHome() {
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_1fr]">
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div>
-                <h2 className="text-lg font-bold text-white">Distribuição de clientes por região</h2>
+                <h2 className={`text-lg font-bold ${dashTitle}`}>Distribuição de clientes por região</h2>
                 <p className={`mt-1 text-[13px] ${dashMuted}`}>
                   {snapshot.unknownGeoClients
                     ? `${snapshot.unknownGeoClients} cliente(s) sem UF no cadastro de contratação.`
@@ -438,18 +489,18 @@ export function MasterHome() {
                         }`}
                       >
                         <span className="min-w-0">
-                          <span className="flex items-center gap-2 text-sm font-medium text-slate-100">
+                          <span className={cn("flex items-center gap-2 text-sm font-medium", dashBody)}>
                             <span className="size-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 0 3px color-mix(in srgb, ${color} 22%, transparent)` }} />
                             {region.label}
                           </span>
-                          <span className="mt-2 block h-1 overflow-hidden rounded-full bg-slate-400/10">
+                          <span className={cn("mt-2 block h-1 overflow-hidden rounded-full", dark ? "bg-slate-400/10" : "bg-slate-200")}>
                             <span
                               className="block h-full rounded-full"
                               style={{ width: `${Math.round((region.clients / regionMax) * 100)}%`, background: color }}
                             />
                           </span>
                         </span>
-                        <span className="self-start text-right text-sm font-semibold tabular-nums text-white">{region.clients}</span>
+                        <span className={cn("self-start text-right text-sm font-semibold tabular-nums", dashStrong)}>{region.clients}</span>
                         <span className={`self-start text-right text-sm tabular-nums ${dashMuted}`}>{region.percent}%</span>
                       </button>
                     );
@@ -461,7 +512,7 @@ export function MasterHome() {
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Clientes por UF</h2>
+                  <h2 className={`text-lg font-bold ${dashTitle}`}>Clientes por UF</h2>
                   <p className={`mt-1 text-[13px] ${dashMuted}`}>Top 10 estados com mais clientes.</p>
                 </div>
                 <Select
@@ -471,7 +522,7 @@ export function MasterHome() {
                     if (value !== "all") setActiveRegion(value);
                   }}
                 >
-                  <SelectTrigger className="h-9 w-full border-slate-400/20 bg-[#0b1220] text-[13px] text-slate-200 sm:w-[180px]">
+                  <SelectTrigger className={cn("h-9 w-full border text-[13px] sm:w-[180px]", dashChip)}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -493,8 +544,8 @@ export function MasterHome() {
                     <BarChart data={ufRows} margin={{ top: 24, right: 8, left: -8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="dashUfBar" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#8b5cf6" />
-                          <stop offset="100%" stopColor="#38bdf8" />
+                          <stop offset="0%" stopColor="#7c3aed" />
+                          <stop offset="100%" stopColor="#0284c7" />
                         </linearGradient>
                       </defs>
                       <CartesianGrid vertical={false} strokeDasharray="3 4" stroke={chartGrid} />
@@ -508,16 +559,15 @@ export function MasterHome() {
                         width={28}
                       />
                       <Tooltip
+                        cursor={false}
                         formatter={(value: number) => [`${value} cliente(s)`, "Clientes"]}
-                        contentStyle={{
-                          borderRadius: 8,
-                          border: "1px solid rgba(148,163,184,0.2)",
-                          background: "#0b1220",
-                          color: "#e2e8f0",
-                        }}
+                        contentStyle={tipStyle}
+                        itemStyle={tipItem}
+                        labelStyle={tipLabel}
+                        wrapperStyle={{ outline: "none" }}
                       />
                       <Bar dataKey="clients" fill="url(#dashUfBar)" radius={[6, 6, 0, 0]} maxBarSize={28}>
-                        <LabelList dataKey="clients" position="top" fill="#e2e8f0" fontSize={12} fontWeight={600} />
+                        <LabelList dataKey="clients" position="top" fill={chartLabel} fontSize={12} fontWeight={600} />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -530,11 +580,11 @@ export function MasterHome() {
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Top 5 clientes em receita</h2>
+                  <h2 className={`text-lg font-bold ${dashTitle}`}>Top 5 clientes em receita</h2>
                   <p className={`mt-1 text-[13px] ${dashMuted}`}>Clientes com maior receita no período selecionado.</p>
                 </div>
                 <Select value="period">
-                  <SelectTrigger className="h-9 w-full border-slate-400/20 bg-[#0b1220] text-[13px] text-slate-200 sm:w-[168px]">
+                  <SelectTrigger className={cn("h-9 w-full border text-[13px] sm:w-[168px]", dashChip)}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -561,18 +611,26 @@ export function MasterHome() {
                         key={client.id}
                         type="button"
                         onClick={() => openClient(client.id)}
-                        className="grid w-full grid-cols-[28px_minmax(0,1.2fr)_minmax(0,1fr)_88px_64px] items-center gap-2 border-b border-slate-400/[0.08] py-3 text-left last:border-0 hover:bg-white/[0.03]"
+                        className={cn(
+                          "grid w-full grid-cols-[28px_minmax(0,1.2fr)_minmax(0,1fr)_88px_64px] items-center gap-2 border-b border-slate-400/[0.08] py-3 text-left last:border-0",
+                          dark ? "hover:bg-white/[0.03]" : "hover:bg-slate-50",
+                        )}
                       >
-                        <span className="grid size-6 place-items-center rounded-full bg-slate-400/10 text-xs font-semibold text-slate-300">
+                        <span
+                          className={cn(
+                            "grid size-6 place-items-center rounded-full text-xs font-semibold",
+                            dark ? "bg-slate-400/10 text-slate-300" : "bg-slate-100 text-slate-600",
+                          )}
+                        >
                           {index + 1}
                         </span>
-                        <span className="truncate text-sm font-medium text-slate-100" title={client.name}>
+                        <span className={cn("truncate text-sm font-medium", dashBody)} title={client.name}>
                           {client.name}
                         </span>
-                        <span className="h-1.5 overflow-hidden rounded-full bg-slate-400/10">
-                          <span className="block h-full rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#3b82f6]" style={{ width: `${bar}%` }} />
+                        <span className={cn("h-1.5 overflow-hidden rounded-full", dark ? "bg-slate-400/10" : "bg-slate-200")}>
+                          <span className="block h-full rounded-full bg-gradient-to-r from-[#7c3aed] to-[#2563eb]" style={{ width: `${bar}%` }} />
                         </span>
-                        <span className="text-right text-sm font-semibold tabular-nums text-white">{moneyFromCents(client.revenueCents)}</span>
+                        <span className={cn("text-right text-sm font-semibold tabular-nums", dashStrong)}>{moneyFromCents(client.revenueCents)}</span>
                         <span className={`text-right text-sm tabular-nums ${dashMuted}`}>
                           {client.percent.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
                         </span>
@@ -586,12 +644,10 @@ export function MasterHome() {
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Vencimentos por semana</h2>
+                  <h2 className={`text-lg font-bold ${dashTitle}`}>Vencimentos por semana</h2>
                   <p className={`mt-1 text-[13px] ${dashMuted}`}>Soma dos vencimentos em aberto de cada semana.</p>
                 </div>
-                <span className="inline-flex h-9 items-center rounded-lg border border-slate-400/20 bg-[#0b1220] px-3 text-[13px] text-slate-200">
-                  Próximas 4 semanas
-                </span>
+                <span className={`inline-flex h-9 items-center rounded-lg border px-3 text-[13px] ${dashChip}`}>Próximas 4 semanas</span>
               </div>
 
               <div className="mt-4 h-72 w-full">
@@ -599,8 +655,8 @@ export function MasterHome() {
                   <BarChart data={dueWeekRows} margin={{ top: 28, right: 8, left: 4, bottom: 8 }}>
                     <defs>
                       <linearGradient id="dashDueBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#8b5cf6" />
-                        <stop offset="100%" stopColor="#3b82f6" />
+                        <stop offset="0%" stopColor="#7c3aed" />
+                        <stop offset="100%" stopColor="#2563eb" />
                       </linearGradient>
                     </defs>
                     <CartesianGrid vertical={false} strokeDasharray="3 4" stroke={chartGrid} />
@@ -613,22 +669,24 @@ export function MasterHome() {
                       width={64}
                     />
                     <Tooltip
-                      formatter={(_value: number, _name, item) => [
-                        moneyFromCents(Number(item?.payload?.cents ?? 0)),
-                        `${item?.payload?.count ?? 0} cobrança(s)`,
-                      ]}
-                      contentStyle={{
-                        borderRadius: 8,
-                        border: "1px solid rgba(148,163,184,0.2)",
-                        background: "#0b1220",
-                        color: "#e2e8f0",
+                      cursor={false}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0]?.payload as { displayLabel?: string; cents?: number; count?: number };
+                        return (
+                          <ChartTip dark={dark}>
+                            <p className={cn("font-semibold", dark ? "text-white" : "text-slate-900")}>{row.displayLabel}</p>
+                            <p className="mt-1">{moneyFromCents(row.cents ?? 0)}</p>
+                            <p>{row.count ?? 0} cobrança(s)</p>
+                          </ChartTip>
+                        );
                       }}
                     />
                     <Bar dataKey="cents" fill="url(#dashDueBar)" radius={[6, 6, 0, 0]} maxBarSize={44}>
                       <LabelList
                         dataKey="cents"
                         position="top"
-                        fill="#e2e8f0"
+                        fill={chartLabel}
                         fontSize={11}
                         fontWeight={600}
                         formatter={(value: number) => moneyFromCents(Number(value))}
@@ -641,7 +699,7 @@ export function MasterHome() {
 
             <section className={`${dashPanel} p-5 sm:p-6`}>
               <div>
-                <h2 className="text-lg font-bold text-white">Clientes por status</h2>
+                <h2 className={`text-lg font-bold ${dashTitle}`}>Clientes por status</h2>
                 <p className={`mt-1 text-[13px] ${dashMuted}`}>Quantidade de clientes por situação.</p>
               </div>
 
@@ -658,25 +716,32 @@ export function MasterHome() {
                         paddingAngle={2.5}
                         startAngle={90}
                         endAngle={-270}
-                        stroke="none"
+                        stroke={dark ? "#0d1527" : "#ffffff"}
+                        strokeWidth={2}
+                        onMouseEnter={() => setStatusHover(true)}
+                        onMouseLeave={() => setStatusHover(false)}
                       >
                         {(statusData.length ? statusData : [{ key: "empty" }]).map((item) => (
-                          <Cell key={item.key} fill={statusColors[item.key] ?? "#334155"} />
+                          <Cell key={item.key} fill={statusColors[item.key] ?? emptySlice} />
                         ))}
                       </Pie>
                       <Tooltip
-                        contentStyle={{
-                          borderRadius: 8,
-                          border: "1px solid rgba(148,163,184,0.2)",
-                          background: "#0b1220",
-                          color: "#e2e8f0",
-                        }}
+                        formatter={(value: number, name) => [`${value}`, String(name)]}
+                        contentStyle={tipStyle}
+                        itemStyle={tipItem}
+                        labelStyle={tipLabel}
+                        wrapperStyle={{ zIndex: 30, outline: "none" }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <p className="text-2xl font-bold tabular-nums text-white">{statusTotal}</p>
-                    <p className="text-xs text-slate-400">clientes</p>
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center text-center transition-opacity",
+                      statusHover && "opacity-0",
+                    )}
+                  >
+                    <p className={cn("text-2xl font-bold tabular-nums", dashStrong)}>{statusTotal}</p>
+                    <p className={cn("text-xs", dashMuted)}>clientes</p>
                   </div>
                 </div>
 
@@ -684,8 +749,8 @@ export function MasterHome() {
                   {snapshot.statusSlices.map((item) => (
                     <div key={item.key} className="grid grid-cols-[10px_1fr_auto_auto] items-center gap-x-3">
                       <span className="size-2.5 rounded-full" style={{ background: statusColors[item.key] }} />
-                      <span className="text-sm text-slate-200">{item.label}</span>
-                      <span className="text-sm font-semibold tabular-nums text-white">{item.value}</span>
+                      <span className={cn("text-sm", dashBody)}>{item.label}</span>
+                      <span className={cn("text-sm font-semibold tabular-nums", dashStrong)}>{item.value}</span>
                       <span className={`text-sm tabular-nums ${dashMuted}`}>{item.percent}%</span>
                     </div>
                   ))}
@@ -694,27 +759,37 @@ export function MasterHome() {
             </section>
           </div>
           <Dialog open={kpiModal != null} onOpenChange={(open) => !open && setKpiModal(null)}>
-            <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] max-w-lg overflow-hidden border-slate-400/20 bg-[#0d1527] text-white">
+            <DialogContent
+              className={cn(
+                "max-h-[85vh] w-[calc(100%-2rem)] max-w-lg overflow-hidden",
+                dark ? "border-slate-400/20 bg-[#0d1527] text-white" : "border-slate-200 bg-white text-slate-900",
+              )}
+            >
               <DialogHeader>
                 <DialogTitle>{kpiModal ? kpiModalTitles[kpiModal] : "Clientes"}</DialogTitle>
-                <DialogDescription className="text-slate-400">
+                <DialogDescription className={dashMuted}>
                   {kpiModalRows.length} cliente{kpiModalRows.length === 1 ? "" : "s"} neste indicador.
                 </DialogDescription>
               </DialogHeader>
               <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
                 {kpiModalRows.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-slate-400">Nenhum cliente neste indicador.</p>
+                  <p className={cn("py-6 text-center text-sm", dashMuted)}>Nenhum cliente neste indicador.</p>
                 ) : (
                   kpiModalRows.map((client) => (
                     <button
                       key={client.id}
                       type="button"
                       onClick={() => openClient(client.id)}
-                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-400/10 bg-[#0b1220]/70 px-3 py-2.5 text-left transition hover:border-slate-400/25 hover:bg-white/[0.03]"
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition",
+                        dark
+                          ? "border-slate-400/10 bg-[#0b1220]/70 hover:border-slate-400/25 hover:bg-white/[0.03]"
+                          : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100",
+                      )}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-white">{client.name}</span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-400">{client.detail || client.status}</span>
+                        <span className={cn("block truncate text-sm font-medium", dashStrong)}>{client.name}</span>
+                        <span className={cn("mt-0.5 block truncate text-xs", dashMuted)}>{client.detail || client.status}</span>
                       </span>
                       {client.cents != null ? (
                         <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-100">{moneyFromCents(client.cents)}</span>

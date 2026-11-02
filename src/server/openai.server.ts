@@ -19,12 +19,25 @@ function openaiConfig() {
   return { key, model, url: base };
 }
 
-function openaiPublicError(status: number, text: string) {
+/** Mensagem segura para UI a partir de falhas HTTP da OpenAI/proxy. */
+export function openaiPublicError(status: number, text: string) {
   if (status === 401 || status === 403) return "A chave da OpenAI foi recusada.";
   if (status === 429) return "A OpenAI está limitando as requisições. Tente de novo em instantes.";
+  const raw = text.trim();
+  // Proxies Go / URL errada costumam devolver exatamente "404 page not found".
+  if (
+    status === 404 ||
+    /^404(\s+page\s+not\s+found)?$/i.test(raw) ||
+    /page\s+not\s+found/i.test(raw)
+  ) {
+    return "A URL da OpenAI no servidor não foi encontrada (404). Verifique OPENAI_API_URL (ex.: https://api.openai.com/v1/responses) e o deploy.";
+  }
   try {
     const body = JSON.parse(text) as { error?: { message?: string } };
     const message = body.error?.message?.trim() ?? "";
+    if (/page\s+not\s+found|^404\b/i.test(message)) {
+      return "A URL da OpenAI no servidor não foi encontrada (404). Verifique OPENAI_API_URL e o deploy.";
+    }
     if (message && !/sk-|api[_-]?key|authorization/i.test(message)) return message.slice(0, 220);
   } catch {
     /* ignore */

@@ -198,7 +198,12 @@ export function MasterMetaAnalytics() {
       setResult(response.data);
       setNotice("Análise concluída e registrada para calibração.");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível concluir a análise.");
+      const raw = error instanceof Error ? error.message : "";
+      setError(
+        /page\s+not\s+found|^404\b/i.test(raw)
+          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI117 ) e OPENAI_API_URL."
+          : raw || "Não foi possível concluir a análise.",
+      );
       setNotice("");
       return;
     } finally {

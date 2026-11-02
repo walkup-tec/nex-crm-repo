@@ -26,6 +26,24 @@ Estruture a resposta em Markdown com:
 5. Riscos e limitações
 6. Recomendações prioritárias (máximo 5), cada uma com evidência e impacto esperado`;
 
+export const META_AI_CALIBRATION_REVIEW_PROMPT = `Você é o revisor de calibração do NEX Intelligence (Meta Ads / leads).
+
+Receberá o pacote completo de uma execução: metadados, input.json (contrato NEX), analysis.md e output.json.
+
+Tarefa:
+- Avaliar se a análise respeitou o protocolo (não inventar métricas, não somar alcance, não reaggregar médias, null ≠ 0).
+- Pontuar 0–5: precisão, consistência, fundamento, limitações, aplicabilidade.
+- Indicar falhas, pontos fortes e mudanças sugeridas no prompt/protocolo.
+- Separar mudanças aprováveis das que devem ser rejeitadas.
+
+Responda em português do Brasil, em Markdown, com seções:
+1. Notas 0–5 (uma linha por critério)
+2. Diagnóstico da análise
+3. Falhas / riscos
+4. Mudanças sugeridas (aprováveis)
+5. Mudanças a rejeitar
+6. Resumo executivo (3–5 linhas)`;
+
 export function metaAiPromptHash(prompt = META_AI_ANALYSIS_PROMPT) {
   return createHash("sha256").update(prompt).digest("hex").slice(0, 16);
 }

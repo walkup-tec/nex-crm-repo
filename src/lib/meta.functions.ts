@@ -200,18 +200,13 @@ export const saveMetaAiCalibrationFeedbackFn = createServerFn({ method: "POST" }
     return guard(() => saveMetaAiCalibrationFeedback(context.userId, data));
   });
 
-export const exportMetaAiCalibrationPackageFn = createServerFn({ method: "POST" })
+export const reviewMetaAiCalibrationWithAiFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { executionId: string }) => data)
-  .handler(
-    async ({
-      context,
-      data,
-    }): Promise<Result<{ fileName: string; base64: string; mimeType: string }>> => {
-      const { exportMetaAiCalibrationPackage } = await import("@/server/meta-ai.server");
-      return guard(() => exportMetaAiCalibrationPackage(context.userId, data.executionId));
-    },
-  );
+  .handler(async ({ context, data }): Promise<Result<MetaAiExecutionDetail>> => {
+    const { reviewMetaAiCalibrationWithAi } = await import("@/server/meta-ai.server");
+    return guard(() => reviewMetaAiCalibrationWithAi(context.userId, data.executionId));
+  });
 
 export const disconnectMetaFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -1,3 +1,4 @@
+import type { MetaAiExecutionDetail } from "@/lib/meta-ai-calibration";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 
 export type { MetaAiAnalysisResult } from "@/lib/meta-ai-calibration";
@@ -12,6 +13,46 @@ export function metaAiUserPrompt(payload: NexMetaAnalysisV1) {
     "",
     "JSON:",
     JSON.stringify(payload),
+  ].join("\n");
+}
+
+/** Monta o mesmo conteúdo do antigo pacote ZIP, já formatado para a OpenAI. */
+export function metaAiCalibrationReviewUserPrompt(detail: MetaAiExecutionDetail) {
+  const executionMetadata = {
+    execution_id: detail.id,
+    created_at: detail.createdAt,
+    status: detail.status,
+    organization_id: detail.organizationId,
+    client_name: detail.clientName,
+    account_id: detail.accountId,
+    account_name: detail.accountName,
+    period: {
+      since: detail.periodSince,
+      until: detail.periodUntil,
+      timezone: detail.periodTimezone,
+    },
+    data_contract_version: detail.dataContractVersion,
+    protocol_version: detail.protocolVersion,
+    prompt_hash: detail.promptHash,
+    model: detail.model,
+    warnings: detail.warnings,
+    error_message: detail.errorMessage || null,
+  };
+
+  return [
+    "Revise a calibração desta execução NEX Intelligence.",
+    "",
+    "## execution_metadata.json",
+    JSON.stringify(executionMetadata, null, 2),
+    "",
+    "## analysis.md",
+    detail.analysisMarkdown || "_Sem análise._",
+    "",
+    "## output.json",
+    JSON.stringify(detail.outputJson ?? {}, null, 2),
+    "",
+    "## input.json",
+    JSON.stringify(detail.inputJson ?? {}, null, 2),
   ].join("\n");
 }
 

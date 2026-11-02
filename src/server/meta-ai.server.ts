@@ -7,11 +7,11 @@ import {
   type MetaAiExecutionStatus,
   type MetaAiExecutionSummary,
 } from "@/lib/meta-ai-calibration";
-import { metaAiUserPrompt } from "@/lib/meta-ai-prompt";
+import { metaAiCalibrationReviewUserPrompt, metaAiUserPrompt } from "@/lib/meta-ai-prompt";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
-import { zipToBase64 } from "@/lib/simple-zip";
 import {
   META_AI_ANALYSIS_PROMPT,
+  META_AI_CALIBRATION_REVIEW_PROMPT,
   META_AI_DATA_CONTRACT_VERSION,
   META_AI_PROTOCOL_VERSION,
   metaAiPromptHash,
@@ -225,48 +225,36 @@ export async function saveMetaAiCalibrationFeedback(
   return toDetail(data as Record<string, unknown>);
 }
 
-export async function exportMetaAiCalibrationPackage(
+export async function reviewMetaAiCalibrationWithAi(
   userId: string,
   executionId: string,
-): Promise<{ fileName: string; base64: string; mimeType: string }> {
+): Promise<MetaAiExecutionDetail> {
   const detail = await getMetaAiExecution(userId, executionId);
-  const executionMetadata = {
-    execution_id: detail.id,
-    created_at: detail.createdAt,
-    status: detail.status,
-    organization_id: detail.organizationId,
-    client_name: detail.clientName,
-    account_id: detail.accountId,
-    account_name: detail.accountName,
-    period: {
-      since: detail.periodSince,
-      until: detail.periodUntil,
-      timezone: detail.periodTimezone,
-    },
-    data_contract_version: detail.dataContractVersion,
-    protocol_version: detail.protocolVersion,
-    prompt_hash: detail.promptHash,
-    model: detail.model,
-    warnings: detail.warnings,
-    error_message: detail.errorMessage || null,
+  if (!detail.analysisMarkdown.trim()) {
+    fail("Esta execução ainda não tem análise para revisar.");
+  }
+
+  const ai = await requestOpenAiAnalysis({
+    system: META_AI_CALIBRATION_REVIEW_PROMPT,
+    user: metaAiCalibrationReviewUserPrompt(detail),
+  });
+
+  const feedback: MetaAiCalibrationFeedback = {
+    ...detail.calibrationFeedback,
+    ai_review: ai.text,
+    ai_review_model: ai.model,
+    ai_reviewed_at: new Date().toISOString(),
+    reviewed_at: new Date().toISOString(),
+    reviewer: "openai",
   };
 
-  const base64 = zipToBase64([
-    { name: "input.json", content: JSON.stringify(detail.inputJson, null, 2) },
-    { name: "output.json", content: JSON.stringify(detail.outputJson, null, 2) },
-    { name: "analysis.md", content: detail.analysisMarkdown || "_Sem análise._\n" },
-    { name: "execution_metadata.json", content: JSON.stringify(executionMetadata, null, 2) },
-    {
-      name: "calibration_feedback.json",
-      content: JSON.stringify(detail.calibrationFeedback ?? {}, null, 2),
-    },
-  ]);
-
-  const stamp = detail.createdAt.slice(0, 19).replace(/[:T]/g, "-");
-  const account = detail.accountId.replace(/^act_/i, "") || "conta";
-  return {
-    fileName: `nex_calibration_${account}_${stamp}.zip`,
-    base64,
-    mimeType: "application/zip",
-  };
+  const { data, error } = await supabaseAdmin
+    .from("meta_ai_executions")
+    .update({ calibration_feedback: feedback })
+    .eq("id", executionId)
+    .select("*")
+    .maybeSingle();
+  if (error) fail(migrationHint(error.message));
+  if (!data) fail("Execução não encontrada.");
+  return toDetail(data as Record<string, unknown>);
 }

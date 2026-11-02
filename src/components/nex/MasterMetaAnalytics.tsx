@@ -1,5 +1,5 @@
-import { Download, FlaskConical, RefreshCw, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FlaskConical, RefreshCw, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,17 +14,18 @@ import {
 import { clientDisplayName, type ListedClient } from "@/lib/client-access";
 import { listClientsFn } from "@/lib/clients.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
-import type {
-  MetaAiAnalysisResult,
-  MetaAiCalibrationFeedback,
-  MetaAiExecutionDetail,
-  MetaAiExecutionSummary,
+import {
+  findRecentMetaAiDuplicate,
+  type MetaAiAnalysisResult,
+  type MetaAiCalibrationFeedback,
+  type MetaAiExecutionDetail,
+  type MetaAiExecutionSummary,
 } from "@/lib/meta-ai-calibration";
 import {
   analyzeMetaWithAiFn,
-  exportMetaAiCalibrationPackageFn,
   getMetaAiExecutionFn,
   listMetaAiExecutionsFn,
+  reviewMetaAiCalibrationWithAiFn,
   saveMetaAiCalibrationFeedbackFn,
 } from "@/lib/meta.functions";
 
@@ -43,28 +44,17 @@ function periodLabel(since: string | null, until: string | null) {
   return `${br(since)} – ${br(until)}`;
 }
 
-function downloadBase64(fileName: string, base64: string, mimeType: string) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  const blob = new Blob([bytes], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
 export function MasterMetaAnalytics() {
   const [clients, setClients] = useState<ListedClient[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [period, setPeriod] = useState<MetaPeriod>({ mode: "total" });
   const [loadingClients, setLoadingClients] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const analyzingLock = useRef(false);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const reviewingLock = useRef(false);
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -150,37 +140,62 @@ export function MasterMetaAnalytics() {
       setError("Selecione um cliente.");
       return;
     }
+    if (analyzingLock.current) return;
+    const duplicate = findRecentMetaAiDuplicate(executions, { organizationId, period });
+    if (duplicate) {
+      const when = new Date(duplicate.createdAt).toLocaleString("pt-BR");
+      const proceed = window.confirm(
+        `Já existe uma execução recente para este cliente/período (${when}). Executar novamente?`,
+      );
+      if (!proceed) {
+        setNotice("Execução cancelada — use o histórico à esquerda ou confirme para rodar de novo.");
+        setSelectedId(duplicate.id);
+        await openExecution(duplicate.id);
+        return;
+      }
+    }
+    analyzingLock.current = true;
     setAnalyzing(true);
     setError("");
     setNotice("");
     setResult(null);
-    const response = await analyzeMetaWithAiFn({
-      data: { organizationId, ...periodRequest(period) },
-    });
-    setAnalyzing(false);
-    if (!response.ok) {
-      setError(response.message);
+    try {
+      const response = await analyzeMetaWithAiFn({
+        data: { organizationId, ...periodRequest(period) },
+      });
+      if (!response.ok) {
+        setError(response.message);
+        await loadExecutions(organizationId);
+        return;
+      }
+      setResult(response.data);
+      setNotice("Análise concluída e registrada para calibração.");
       await loadExecutions(organizationId);
-      return;
+      await openExecution(response.data.executionId);
+    } finally {
+      analyzingLock.current = false;
+      setAnalyzing(false);
     }
-    setResult(response.data);
-    setNotice("Análise concluída e registrada para calibração.");
-    await loadExecutions(organizationId);
-    await openExecution(response.data.executionId);
   };
 
-  const exportPackage = async () => {
-    if (!selectedId) return;
-    setExporting(true);
+  const reviewCalibration = async () => {
+    if (!selectedId || reviewingLock.current) return;
+    reviewingLock.current = true;
+    setReviewing(true);
     setError("");
-    const response = await exportMetaAiCalibrationPackageFn({ data: { executionId: selectedId } });
-    setExporting(false);
-    if (!response.ok) {
-      setError(response.message);
-      return;
+    setNotice("");
+    try {
+      const response = await reviewMetaAiCalibrationWithAiFn({ data: { executionId: selectedId } });
+      if (!response.ok) {
+        setError(response.message);
+        return;
+      }
+      setDetail(response.data);
+      setNotice("Revisão de calibração concluída direto na OpenAI.");
+    } finally {
+      reviewingLock.current = false;
+      setReviewing(false);
     }
-    downloadBase64(response.data.fileName, response.data.base64, response.data.mimeType);
-    setNotice("Pacote de calibração baixado. Envie o ZIP ao ChatGPT para revisão.");
   };
 
   const saveFeedback = async () => {
@@ -188,6 +203,7 @@ export function MasterMetaAnalytics() {
     setSavingFeedback(true);
     setError("");
     const feedback: MetaAiCalibrationFeedback = {
+      ...detail?.calibrationFeedback,
       notes: notes.trim() || undefined,
       scores: {
         precision: scores.precision === "" ? null : Number(scores.precision),
@@ -196,6 +212,7 @@ export function MasterMetaAnalytics() {
         limitations: scores.limitations === "" ? null : Number(scores.limitations),
         applicability: scores.applicability === "" ? null : Number(scores.applicability),
       },
+      reviewer: "master",
     };
     const response = await saveMetaAiCalibrationFeedbackFn({
       data: { executionId: selectedId, feedback },
@@ -218,8 +235,8 @@ export function MasterMetaAnalytics() {
             NEX Intelligence — Laboratório de Calibração
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Executa análises reais de leads Meta, registra versões e exporta o pacote para revisão
-            no ChatGPT. Só Master.
+            Envia os dados Meta direto para a OpenAI, registra a execução e revisa a calibração sem
+            download. Só Master.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -334,11 +351,11 @@ export function MasterMetaAnalytics() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={!selectedId || exporting}
-                onClick={() => void exportPackage()}
+                disabled={!selectedId || reviewing || !detail?.analysisMarkdown}
+                onClick={() => void reviewCalibration()}
               >
-                <Download className="size-4" />
-                {exporting ? "Gerando ZIP..." : "Exportar Pacote de Calibração IA"}
+                <Sparkles className="size-4" />
+                {reviewing ? "Revisando na OpenAI..." : "Revisar calibração na OpenAI"}
               </Button>
             </div>
             {detail ? (
@@ -348,7 +365,7 @@ export function MasterMetaAnalytics() {
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Selecione uma execução para ver o diagnóstico e exportar o pacote.
+                Selecione uma execução para ver o diagnóstico e pedir revisão na OpenAI.
               </p>
             )}
           </CardHeader>
@@ -378,8 +395,22 @@ export function MasterMetaAnalytics() {
                   {detail.analysisMarkdown || "Sem análise."}
                 </div>
 
+                {detail.calibrationFeedback.ai_review ? (
+                  <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-4">
+                    <p className="text-sm font-medium">
+                      Revisão OpenAI
+                      {detail.calibrationFeedback.ai_review_model
+                        ? ` · ${detail.calibrationFeedback.ai_review_model}`
+                        : ""}
+                    </p>
+                    <div className="whitespace-pre-wrap text-sm leading-6">
+                      {detail.calibrationFeedback.ai_review}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="space-y-3 rounded-lg border p-4">
-                  <p className="text-sm font-medium">Avaliação de calibração (0–5)</p>
+                  <p className="text-sm font-medium">Avaliação manual de calibração (0–5)</p>
                   <div className="grid gap-2 sm:grid-cols-5">
                     {(
                       [

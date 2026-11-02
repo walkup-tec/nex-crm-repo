@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
-import { extractOpenAiResponseText, metaAiUserPrompt } from "./meta-ai-prompt";
+import type { MetaAiExecutionDetail } from "./meta-ai-calibration";
+import {
+  extractOpenAiResponseText,
+  metaAiCalibrationReviewUserPrompt,
+  metaAiUserPrompt,
+} from "./meta-ai-prompt";
 import type { NexMetaAnalysisV1 } from "./meta-export";
-import { META_AI_ANALYSIS_PROMPT, META_AI_PROTOCOL_VERSION, metaAiPromptHash } from "../intelligence/meta-leads/protocol";
+import {
+  META_AI_ANALYSIS_PROMPT,
+  META_AI_CALIBRATION_REVIEW_PROMPT,
+  META_AI_PROTOCOL_VERSION,
+  metaAiPromptHash,
+} from "../intelligence/meta-leads/protocol";
 import { buildZipStore } from "./simple-zip";
 
 const sample: NexMetaAnalysisV1 = {
@@ -34,6 +44,33 @@ assert.equal(META_AI_PROTOCOL_VERSION, "1.0.0");
 assert.match(META_AI_ANALYSIS_PROMPT, /leads/i);
 assert.equal(metaAiPromptHash().length, 16);
 assert.match(metaAiUserPrompt(sample), /Walkup/);
+assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /calibração/i);
+
+const detail: MetaAiExecutionDetail = {
+  id: "exec-1",
+  createdAt: "2026-11-02T14:32:50.000Z",
+  status: "ok",
+  organizationId: "org-1",
+  clientName: "Walkup",
+  accountId: "act_1",
+  accountName: "Conta",
+  periodSince: "2026-10-01",
+  periodUntil: "2026-10-31",
+  periodTimezone: "America/Sao_Paulo",
+  protocolVersion: "1.0.0",
+  dataContractVersion: "1.0.0",
+  model: "gpt-4o-mini",
+  promptHash: "abc",
+  warningCount: 0,
+  analysisMarkdown: "# Análise",
+  warnings: [],
+  errorMessage: "",
+  inputJson: sample,
+  outputJson: { analysis_markdown: "# Análise" },
+  calibrationFeedback: {},
+};
+assert.match(metaAiCalibrationReviewUserPrompt(detail), /input\.json/);
+assert.match(metaAiCalibrationReviewUserPrompt(detail), /Walkup/);
 
 assert.equal(
   extractOpenAiResponseText({

@@ -12,6 +12,7 @@ import {
 } from "./meta-recommendation-validation";
 import { buildChatgptMetaAnalysisPayload } from "./chatgpt-integration";
 import type { MetaAiExecutionDetail } from "./meta-ai-calibration";
+import { indexTracesById, type MetricTraceRecord } from "./meta-metric-traceability";
 
 const emptyInsights = {
   spend: null as number | null,
@@ -233,8 +234,9 @@ function qualityWithBadResults(): MetaDataQualityReport {
 }
 
 function goodRec(overrides: Partial<StructuredRecommendation> = {}): StructuredRecommendation {
+  const id = overrides.id ?? "rec-ok";
   return {
-    id: "rec-ok",
+    id,
     entity_id: "camp_ok",
     level: "campaign",
     indicators_used: ["ctr", "cpc"],
@@ -244,10 +246,59 @@ function goodRec(overrides: Partial<StructuredRecommendation> = {}): StructuredR
     recommended_action: "Rodar teste A/B de copy mantendo orçamento",
     action_kind: "test",
     validation_criterion: "CTR e CPC após 7 dias",
+    trace_ids: [`trace-${id}-ctr`, `trace-${id}-cpc`],
     arbitrary_targets: [],
     uses_external_commercial_data: false,
     ...overrides,
   };
+}
+
+function makeCtrCpcTraces(claimId: string, entityId = "camp_ok"): MetricTraceRecord[] {
+  return [
+    {
+      trace_id: `trace-${claimId}-ctr`,
+      entity_level: "campaign",
+      entity_id: entityId,
+      metric: "ctr",
+      source: "META_MARKETING_API",
+      source_level: "campaign",
+      source_field: "insights.clicks",
+      period: { since: "2026-10-01", until: "2026-10-31" },
+      calculation: {
+        type: "RATIO",
+        formula: "(clicks / impressions) * 100",
+        inputs: { clicks: 50, impressions: 1000 },
+        result: 5,
+      },
+      validation: { status: "PASS", dependencies: ["clicks", "impressions"], check_codes: [], reason: null },
+      used_by: [claimId],
+    },
+    {
+      trace_id: `trace-${claimId}-cpc`,
+      entity_level: "campaign",
+      entity_id: entityId,
+      metric: "cpc",
+      source: "META_MARKETING_API",
+      source_level: "campaign",
+      source_field: "insights.spend",
+      period: { since: "2026-10-01", until: "2026-10-31" },
+      calculation: {
+        type: "RATIO",
+        formula: "spend / clicks",
+        inputs: { spend: 100, clicks: 50 },
+        result: 2,
+      },
+      validation: { status: "PASS", dependencies: ["spend", "clicks"], check_codes: [], reason: null },
+      used_by: [claimId],
+    },
+  ];
+}
+
+function tracesFor(...claimIds: string[]) {
+  return indexTracesById({
+    version: "1.0",
+    records: claimIds.flatMap((id) => makeCtrCpcTraces(id)),
+  });
 }
 
 const payload = basePayload();
@@ -273,7 +324,12 @@ const quality = qualityWithBadResults();
 
 // --- Teste B ---
 {
-  const approved = validateStructuredRecommendation(goodRec({ id: "rec-b" }), payload, quality);
+  const approved = validateStructuredRecommendation(
+    goodRec({ id: "rec-b" }),
+    payload,
+    quality,
+    tracesFor("rec-b"),
+  );
   assert.equal(approved.verdict, "APPROVED", "Teste B");
 }
 
@@ -283,13 +339,15 @@ const quality = qualityWithBadResults();
     goodRec({
       id: "rec-c",
       entity_id: "camp_ok",
-      indicators_used: ["spend", "ctr"],
-      evidence: ["Spend reconciliado", "CTR 5%"],
+      indicators_used: ["ctr", "cpc"],
+      evidence: ["CTR 5%", "CPC estável"],
       recommended_action: "Monitorar distribuição de investimento",
       action_kind: "monitor",
+      trace_ids: ["trace-rec-c-ctr", "trace-rec-c-cpc"],
     }),
     payload,
     quality,
+    tracesFor("rec-c"),
   );
   assert.equal(other.verdict, "APPROVED", "Teste C — campanha ok não bloqueada");
 }
@@ -358,12 +416,13 @@ const quality = qualityWithBadResults();
   assert.equal(rejected.verdict, "REJECTED");
   const processed = await processMetaAiRecommendations({
     rawText: JSON.stringify({
-      format: "nex_intelligence_analysis_v1_1_3",
+      format: "nex_intelligence_analysis_v1_1_4",
       stage1_markdown: "Integridade parcial.",
       observations: [],
-      recommendations: [approved, rejected],
+      recommendations: [goodRec({ id: "rec-g-ok" }), rejected],
       executive_points: [],
-      stage2_markdown: "Análise descritiva com CTR estável na campanha OK.",
+      metric_traceability: { version: "1.0", records: makeCtrCpcTraces("rec-g-ok") },
+      stage2_markdown: "Análise descritiva sem métricas numéricas.",
       stage4_markdown: "Priorize: Aumentar orçamento da campanha ruim e também teste de copy.",
     }),
     payload,
@@ -379,11 +438,12 @@ const quality = qualityWithBadResults();
 {
   let regenerateCalls = 0;
   const structured = {
-    format: "nex_intelligence_analysis_v1_1_3",
+    format: "nex_intelligence_analysis_v1_1_4",
     stage1_markdown: "dq",
     stage2_markdown: "an",
     observations: [],
     executive_points: [],
+    metric_traceability: { version: "1.0", records: [] },
     recommendations: [
       goodRec({
         id: "rec-h",
@@ -392,6 +452,7 @@ const quality = qualityWithBadResults();
         indicators_used: ["results", "spend"],
         evidence: ["a", "b"],
         recommended_action: "Escalar campanha comprometida",
+        trace_ids: [],
       }),
     ],
     stage4_markdown: "resumo",
@@ -439,20 +500,21 @@ const quality = qualityWithBadResults();
 {
   const ok = await processMetaAiRecommendations({
     rawText: JSON.stringify({
-      format: "nex_intelligence_analysis_v1_1_3",
+      format: "nex_intelligence_analysis_v1_1_4",
       stage1_markdown: "ok",
-      stage2_markdown: "CTR da campanha OK permanece estável.",
+      stage2_markdown: "Sem métricas neste fallback.",
       observations: [],
       executive_points: [],
       recommendations: [goodRec({ id: "rec-j" })],
-      stage4_markdown: "resumo j com CTR",
+      metric_traceability: { version: "1.0", records: makeCtrCpcTraces("rec-j") },
+      stage4_markdown: "resumo j",
     }),
     payload,
     quality,
   });
   assert.equal(ok.audit.engine_version, META_AI_RECOMMENDATION_ENGINE);
   const detail: MetaAiExecutionDetail = {
-    id: "78632113-95dc-4288-96c5-bda6b2d22c0d",
+    id: "3ff5318c-affb-40d8-a486-139decc5d554",
     createdAt: "2026-11-02T16:00:00.000Z",
     status: "partial",
     organizationId: "org-1",
@@ -462,7 +524,7 @@ const quality = qualityWithBadResults();
     periodSince: "2026-10-01",
     periodUntil: "2026-10-31",
     periodTimezone: "America/Sao_Paulo",
-    protocolVersion: "1.1.3",
+    protocolVersion: "1.1.4",
     dataContractVersion: "1.0.0",
     model: "gpt-4o-mini",
     promptHash: "abc123",
@@ -474,18 +536,19 @@ const quality = qualityWithBadResults();
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,
       recommendation_validation: ok.audit,
-      protocol_version: "1.1.3",
-      engine_version: "1.1.3",
+      protocol_version: "1.1.4",
+      engine_version: "1.1.4",
     },
     calibrationFeedback: {},
   };
   const chatgpt = buildChatgptMetaAnalysisPayload(detail);
   assert.equal(chatgpt.execution_id, detail.id, "Teste J id");
   assert.equal(chatgpt.tool, "get_meta_analysis_execution", "Teste J tool");
-  assert.equal(chatgpt.protocol_version, "1.1.3", "Teste J protocol");
+  assert.equal(chatgpt.protocol_version, "1.1.4", "Teste J protocol");
   assert.equal(chatgpt.data_contract_version, "1.0.0", "Teste J contract");
   assert.ok(chatgpt.ai_analysis.markdown?.includes("Etapa 3"), "Teste J markdown");
   assert.ok(chatgpt.availability.output_json, "Teste J output");
+  assert.ok(chatgpt.ai_analysis.output?.recommendation_validation, "Teste J audit");
   assert.ok(!JSON.stringify(chatgpt).includes("sk-"), "Teste J no secret");
 }
 
@@ -547,11 +610,14 @@ const quality = qualityWithBadResults();
       entity_id: "camp_ok",
       level: "campaign",
       metrics_used: ["ctr", "cpc"],
+      trace_ids: ["trace-obs-m-ctr", "trace-obs-m-cpc"],
       claim_kind: "descriptive",
       text: "A campanha camp_ok manteve CTR de 5% com CPC estável.",
     },
     payload,
     quality,
+    [],
+    tracesFor("obs-m"),
   );
   assert.equal(okObs.verdict, "APPROVED", "Teste M");
 }
@@ -560,7 +626,7 @@ const quality = qualityWithBadResults();
 {
   const result = await processMetaAiRecommendations({
     rawText: JSON.stringify({
-      format: "nex_intelligence_analysis_v1_1_3",
+      format: "nex_intelligence_analysis_v1_1_4",
       stage1_markdown: "data_quality.status = NOT_VERIFIABLE para results/spend em camp_bad.",
       observations: [
         {
@@ -576,6 +642,7 @@ const quality = qualityWithBadResults();
           entity_id: "camp_ok",
           level: "campaign",
           metrics_used: ["ctr", "cpc"],
+          trace_ids: ["trace-obs-n2-ctr", "trace-obs-n2-cpc"],
           claim_kind: "descriptive",
           text: "camp_ok apresenta CTR estável e CPC consistente.",
         },
@@ -596,6 +663,7 @@ const quality = qualityWithBadResults();
           indicators_used: ["results", "spend"],
           evidence: ["CPR aparente", "volume aparente"],
           recommended_action: "Aumentar orçamento de camp_bad",
+          trace_ids: [],
         }),
         goodRec({ id: "rec-n-ok" }),
       ],
@@ -613,10 +681,23 @@ const quality = qualityWithBadResults();
           entity_id: "camp_ok",
           level: "campaign",
           metrics_used: ["ctr"],
+          trace_ids: ["trace-exec-n2-ctr"],
           claim_kind: "descriptive",
-          text: "camp_ok mantém indicadores de engajamento verificáveis.",
+          text: "camp_ok mantém indicadores de engajamento verificáveis com CTR 5%.",
         },
       ],
+      metric_traceability: {
+        version: "1.0",
+        records: [
+          ...makeCtrCpcTraces("obs-n2"),
+          ...makeCtrCpcTraces("rec-n-ok"),
+          {
+            ...makeCtrCpcTraces("exec-n2")[0],
+            trace_id: "trace-exec-n2-ctr",
+            used_by: ["exec-n2"],
+          },
+        ],
+      },
       stage2_markdown: "",
       stage4_markdown: "",
     }),
@@ -641,7 +722,7 @@ const quality = qualityWithBadResults();
   const sanitized = sanitizeNarrativeText(
     [
       "A campanha BAD apresenta desempenho insuficiente e conversão insatisfatória.",
-      "A campanha OK manteve CTR elevado no período.",
+      "A campanha OK manteve entrega ativa no período.",
       "Recomendamos aumentar o orçamento imediatamente.",
     ].join("\n\n"),
     payload,
@@ -650,7 +731,7 @@ const quality = qualityWithBadResults();
   );
   assert.ok(!/desempenho insuficiente/i.test(sanitized.text), "Teste O drop juízo");
   assert.ok(!/aumentar o orçamento/i.test(sanitized.text), "Teste O drop indireta");
-  assert.match(sanitized.text, /CTR elevado/i, "Teste O keep descritivo");
+  assert.match(sanitized.text, /entrega ativa/i, "Teste O keep descritivo sem métrica numérica");
   assert.ok(sanitized.dropped >= 2, "Teste O dropped count");
 }
 

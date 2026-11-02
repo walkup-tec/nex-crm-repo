@@ -1,8 +1,27 @@
 import { z } from "zod";
 import type { MetaDataQualityReport, DataQualityStatus } from "@/lib/meta-data-quality";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+import {
+  buildCompromisedMetricIndex,
+  indexTracesById,
+  mentionsNumericClaim,
+  mentionsSimpleAverageCtr,
+  metricIntegrityForAccountClaim,
+  metricIntegrityForEntity,
+  normalizeCanonicalMetric,
+  parseMetricTraceability,
+  validateTraceIdsForClaim,
+  type MetricTraceability,
+} from "@/lib/meta-metric-traceability";
 
-export const META_AI_RECOMMENDATION_ENGINE = "1.1.3";
+export {
+  buildCompromisedMetricIndex,
+  metricIntegrityForAccountClaim,
+  metricIntegrityForEntity,
+  normalizeCanonicalMetric,
+} from "@/lib/meta-metric-traceability";
+
+export const META_AI_RECOMMENDATION_ENGINE = "1.1.4";
 
 export type RecommendationLevel = "campaign" | "adset" | "ad";
 export type ClaimLevel = "account" | RecommendationLevel;
@@ -15,21 +34,6 @@ export type RecommendationActionKind =
   | "monitor"
   | "other";
 export type ClaimKind = "descriptive" | "performance_judgment" | "indirect_recommendation";
-
-const BLOCKING_STATES = new Set<DataQualityStatus>(["FAIL", "WARNING", "NOT_VERIFIABLE"]);
-
-const METRIC_ALIASES: Record<string, string[]> = {
-  results: ["results", "result", "resultados", "cost_per_result", "custo_por_resultado", "cpr", "conversao", "conversão"],
-  spend: ["spend", "investimento", "cost_per_result", "custo_por_resultado", "cpr", "cpc", "cpm"],
-  impressions: ["impressions", "impressoes", "impressões", "cpm", "ctr", "frequency", "frequencia", "frequência"],
-  reach: ["reach", "alcance", "frequency", "frequencia", "frequência"],
-  clicks: ["clicks", "cliques", "ctr", "cpc"],
-  ctr: ["ctr"],
-  cpc: ["cpc"],
-  cpm: ["cpm"],
-  frequency: ["frequency", "frequencia", "frequência", "saturacao", "saturação"],
-  cost_per_result: ["cost_per_result", "custo_por_resultado", "cpr", "results", "spend", "conversao", "conversão"],
-};
 
 const EXTERNAL_COMMERCIAL_MARKERS =
   /\b(crm|vendas?|receita|roi\b|roas\b|faturamento|agendamento|whatsapp\s+oficial\s+do\s+crm|lead\s+qualificado\s+no\s+crm|ticket\s+m[eé]dio)\b/i;
@@ -64,6 +68,7 @@ export const structuredRecommendationSchema = z.object({
   recommended_action: z.string().min(1),
   action_kind: z.enum(["scale_budget", "pause", "replace_creative", "test", "monitor", "other"]),
   validation_criterion: z.string().min(1),
+  trace_ids: z.array(z.string()).optional().default([]),
   arbitrary_targets: z
     .array(
       z.object({
@@ -84,6 +89,7 @@ export const structuredClaimSchema = z.object({
   entity_id: z.string().nullable().optional().default(null),
   level: z.enum(["account", "campaign", "adset", "ad"]).default("account"),
   metrics_used: z.array(z.string()).default([]),
+  trace_ids: z.array(z.string()).optional().default([]),
   claim_kind: z.enum(["descriptive", "performance_judgment", "indirect_recommendation"]),
   text: z.string().min(1),
 });
@@ -98,6 +104,7 @@ export const structuredAnalysisSchema = z.object({
   recommendations: z.array(z.unknown()).default([]),
   executive_points: z.array(z.unknown()).optional().default([]),
   stage4_markdown: z.string().default(""),
+  metric_traceability: z.unknown().optional(),
 });
 
 export type StructuredAnalysisPayload = {
@@ -108,6 +115,7 @@ export type StructuredAnalysisPayload = {
   recommendations: StructuredRecommendation[];
   executive_points: StructuredClaim[];
   stage4_markdown: string;
+  metric_traceability: MetricTraceability;
   parse_ok: boolean;
   parse_error?: string;
 };
@@ -115,6 +123,7 @@ export type StructuredAnalysisPayload = {
 export type ValidatedRecommendation = StructuredRecommendation & {
   verdict: RecommendationVerdict;
   rejection_reasons: string[];
+  trace_ids: string[];
   blocked_by: Array<{
     entity_id: string;
     metric: string;
@@ -126,6 +135,7 @@ export type ValidatedRecommendation = StructuredRecommendation & {
 export type ValidatedClaim = StructuredClaim & {
   verdict: RecommendationVerdict;
   rejection_reasons: string[];
+  trace_ids: string[];
   blocked_by: Array<{
     entity_id: string;
     metric: string;
@@ -154,6 +164,7 @@ export type RecommendationValidationAudit = {
   rejected_recommendation_ids: string[];
   needs_review_ids: string[];
   narrative_sanitization: NarrativeSanitizationAudit;
+  metric_traceability: MetricTraceability;
 };
 
 export type ProcessRecommendationsResult = {
@@ -163,31 +174,6 @@ export type ProcessRecommendationsResult = {
   rejected: ValidatedRecommendation[];
   needsReview: ValidatedRecommendation[];
 };
-
-function normalizeMetric(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[^a-z0-9_]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function expandIndicators(indicators: string[]): string[] {
-  const out = new Set<string>();
-  for (const indicator of indicators) {
-    const key = normalizeMetric(indicator);
-    out.add(key);
-    for (const [base, aliases] of Object.entries(METRIC_ALIASES)) {
-      if (key === base || aliases.includes(key)) {
-        out.add(base);
-        for (const alias of aliases) out.add(alias);
-      }
-    }
-  }
-  return [...out];
-}
 
 export function buildEntityIndex(payload: NexMetaAnalysisV1) {
   const campaigns = new Map(payload.campaigns.map((row) => [row.id, row]));
@@ -204,63 +190,6 @@ export function buildEntityIndex(payload: NexMetaAnalysisV1) {
     if (row.name) nameToId.set(row.name.trim().toLowerCase(), { id: row.id, level: "ad" });
   }
   return { campaigns, adsets, ads, accountId: payload.account.id, nameToId };
-}
-
-/** Métricas bloqueadas por entidade (FAIL|WARNING|NOT_VERIFIABLE), com checagens de conta. */
-export function buildCompromisedMetricIndex(report: MetaDataQualityReport) {
-  const byEntity = new Map<string, Map<string, { code: string; state: DataQualityStatus }>>();
-  const accountWide = new Map<string, { code: string; state: DataQualityStatus }>();
-
-  for (const check of report.checks) {
-    if (!BLOCKING_STATES.has(check.state)) continue;
-    const metric = normalizeMetric(check.metric);
-    const entry = { code: check.code, state: check.state };
-    if (check.level === "account" || !check.entity_id) {
-      accountWide.set(metric, entry);
-      for (const alias of expandIndicators([metric])) {
-        if (!accountWide.has(alias)) accountWide.set(alias, entry);
-      }
-      continue;
-    }
-    if (!byEntity.has(check.entity_id)) byEntity.set(check.entity_id, new Map());
-    const map = byEntity.get(check.entity_id)!;
-    map.set(metric, entry);
-    for (const alias of expandIndicators([metric])) {
-      if (!map.has(alias)) map.set(alias, entry);
-    }
-  }
-
-  return { byEntity, accountWide };
-}
-
-export function metricIntegrityForEntity(
-  index: ReturnType<typeof buildCompromisedMetricIndex>,
-  entityId: string,
-  metricRaw: string,
-): { blocked: boolean; metric: string; code: string | null; state: DataQualityStatus | null } {
-  const metric = normalizeMetric(metricRaw);
-  const candidates = expandIndicators([metric]);
-  for (const candidate of candidates) {
-    const local = index.byEntity.get(entityId)?.get(candidate);
-    if (local) return { blocked: true, metric: candidate, code: local.code, state: local.state };
-    const account = index.accountWide.get(candidate);
-    if (account) return { blocked: true, metric: candidate, code: account.code, state: account.state };
-  }
-  return { blocked: false, metric, code: null, state: null };
-}
-
-/** Bloqueio de claim no nível conta: só métricas account-wide, não herda falha de uma campanha. */
-export function metricIntegrityForAccountClaim(
-  index: ReturnType<typeof buildCompromisedMetricIndex>,
-  metricRaw: string,
-): { blocked: boolean; metric: string; code: string | null; state: DataQualityStatus | null } {
-  const metric = normalizeMetric(metricRaw);
-  const candidates = expandIndicators([metric]);
-  for (const candidate of candidates) {
-    const account = index.accountWide.get(candidate);
-    if (account) return { blocked: true, metric: candidate, code: account.code, state: account.state };
-  }
-  return { blocked: false, metric, code: null, state: null };
 }
 
 function entityExists(
@@ -345,6 +274,7 @@ export function validateStructuredRecommendation(
   raw: unknown,
   payload: NexMetaAnalysisV1,
   quality: MetaDataQualityReport,
+  traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
 ): ValidatedRecommendation {
   const parsed = structuredRecommendationSchema.safeParse(raw);
   if (!parsed.success) {
@@ -359,6 +289,7 @@ export function validateStructuredRecommendation(
       recommended_action: "",
       action_kind: "other",
       validation_criterion: "",
+      trace_ids: [],
       arbitrary_targets: [],
       uses_external_commercial_data: false,
       verdict: "REJECTED",
@@ -372,6 +303,7 @@ export function validateStructuredRecommendation(
   const blockedBy: ValidatedRecommendation["blocked_by"] = [];
   const entities = buildEntityIndex(payload);
   const integrity = buildCompromisedMetricIndex(quality);
+  const traceIds = rec.trace_ids ?? [];
 
   if (!entityExists(entities, rec.level, rec.entity_id)) {
     reasons.push(`entity_not_found:${rec.level}:${rec.entity_id}`);
@@ -389,6 +321,19 @@ export function validateStructuredRecommendation(
       });
     }
   }
+
+  reasons.push(
+    ...validateTraceIdsForClaim({
+      claimId: rec.id,
+      metricsUsed: rec.indicators_used,
+      traceIds,
+      text: `${rec.recommended_action} ${rec.evidence.join(" ")}`,
+      requireTraces: true,
+      traces,
+      payload,
+      quality,
+    }),
+  );
 
   if (rec.action_kind === "scale_budget") {
     const resultsHit = metricIntegrityForEntity(integrity, rec.entity_id, "results");
@@ -427,16 +372,17 @@ export function validateStructuredRecommendation(
 
   if (
     /\bsatura/i.test(`${rec.recommended_action} ${rec.hypothesis ?? ""}`) &&
-    !rec.indicators_used.map(normalizeMetric).includes("frequency")
+    !rec.indicators_used.map(normalizeCanonicalMetric).includes("frequency")
   ) {
     reasons.push("saturation_without_frequency");
   }
 
+  const uniqueReasons = [...new Set(reasons)];
   let verdict: RecommendationVerdict = "APPROVED";
-  if (reasons.length) {
+  if (uniqueReasons.length) {
     const softOnly =
-      reasons.every((r) => r === "arbitrary_target_without_foundation") &&
-      !reasons.some(
+      uniqueReasons.every((r) => r === "arbitrary_target_without_foundation") &&
+      !uniqueReasons.some(
         (r) =>
           r.startsWith("metric_compromised") || r === "entity_not_found" || r === "external_commercial_data",
       );
@@ -445,8 +391,9 @@ export function validateStructuredRecommendation(
 
   return {
     ...rec,
+    trace_ids: traceIds,
     verdict,
-    rejection_reasons: reasons,
+    rejection_reasons: uniqueReasons,
     blocked_by: blockedBy,
   };
 }
@@ -456,6 +403,7 @@ export function validateStructuredClaim(
   payload: NexMetaAnalysisV1,
   quality: MetaDataQualityReport,
   approvedActions: string[] = [],
+  traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
 ): ValidatedClaim {
   const parsed = structuredClaimSchema.safeParse(raw);
   if (!parsed.success) {
@@ -464,6 +412,7 @@ export function validateStructuredClaim(
       entity_id: null,
       level: "account",
       metrics_used: [],
+      trace_ids: [],
       claim_kind: "descriptive",
       text: "",
       verdict: "REJECTED",
@@ -477,7 +426,10 @@ export function validateStructuredClaim(
   const blockedBy: ValidatedClaim["blocked_by"] = [];
   const integrity = buildCompromisedMetricIndex(quality);
   const entities = buildEntityIndex(payload);
-  const metrics = claim.metrics_used.length ? claim.metrics_used : inferMetricsFromText(claim.text);
+  const metrics = (claim.metrics_used.length ? claim.metrics_used : inferMetricsFromText(claim.text)).map(
+    normalizeCanonicalMetric,
+  );
+  const traceIds = claim.trace_ids ?? [];
   const kind =
     claim.claim_kind === "descriptive" && detectClaimKindFromText(claim.text) !== "descriptive"
       ? detectClaimKindFromText(claim.text)
@@ -512,7 +464,6 @@ export function validateStructuredClaim(
           });
         }
       } else {
-        // Conta: bloqueia só métrica account-wide; julgamentos ainda exigem escopo limpo (abaixo).
         const hit = metricIntegrityForAccountClaim(integrity, metric);
         if (hit.blocked && hit.state) {
           reasons.push(`metric_compromised:${hit.metric}:${hit.state}`);
@@ -526,9 +477,10 @@ export function validateStructuredClaim(
       }
     }
 
+    // Julgamentos de conversão: só se metrics_used incluir results/spend/CPR (não CTR/CPC).
     if (kind === "performance_judgment" && scopedEntity) {
-      for (const metric of ["results", "spend", "cost_per_result"]) {
-        if (metrics.length && !expandIndicators(metrics).includes(normalizeMetric(metric))) continue;
+      for (const metric of metrics) {
+        if (!["results", "spend", "cost_per_result"].includes(metric)) continue;
         const hit = metricIntegrityForEntity(integrity, scopedEntity, metric);
         if (hit.blocked && hit.state && !reasons.some((r) => r.includes(`metric_compromised:${hit.metric}`))) {
           reasons.push(`metric_compromised:${hit.metric}:${hit.state}`);
@@ -542,21 +494,35 @@ export function validateStructuredClaim(
       }
     }
 
-    // Julgamento account-wide sobre conversão/CPR/spend não pode ser publicado como comprovado
-    // se qualquer entidade tiver essas métricas comprometidas (exige escopo verificável).
     if (kind === "performance_judgment" && !scopedEntity) {
       const judgmentMetrics = metrics.length ? metrics : ["results", "cost_per_result", "spend"];
       for (const metric of judgmentMetrics) {
+        // CTR/CPC não disparam bloqueio account-wide por results/spend de campanhas.
+        if (metric === "ctr" || metric === "cpc" || metric === "cpm" || metric === "clicks" || metric === "impressions") {
+          continue;
+        }
         for (const [entityId, map] of integrity.byEntity) {
-          for (const candidate of expandIndicators([metric])) {
-            if (map.has(candidate)) {
-              reasons.push(`account_judgment_depends_on_compromised_entity:${entityId}:${candidate}`);
-            }
+          const canonical = normalizeCanonicalMetric(metric);
+          if (map.has(canonical)) {
+            reasons.push(`account_judgment_depends_on_compromised_entity:${entityId}:${canonical}`);
           }
         }
       }
     }
   }
+
+  reasons.push(
+    ...validateTraceIdsForClaim({
+      claimId: claim.id,
+      metricsUsed: metrics,
+      traceIds,
+      text: claim.text,
+      requireTraces: mentionsNumericClaim(claim.text) || mentionsSimpleAverageCtr(claim.text),
+      traces,
+      payload,
+      quality,
+    }),
+  );
 
   if (EXTERNAL_COMMERCIAL_MARKERS.test(claim.text)) {
     reasons.push("external_commercial_data");
@@ -566,6 +532,7 @@ export function validateStructuredClaim(
     ...claim,
     claim_kind: kind,
     metrics_used: metrics,
+    trace_ids: traceIds,
     verdict: reasons.length ? "REJECTED" : "APPROVED",
     rejection_reasons: [...new Set(reasons)],
     blocked_by: blockedBy,
@@ -576,8 +543,9 @@ export function validateRecommendationList(
   items: unknown[],
   payload: NexMetaAnalysisV1,
   quality: MetaDataQualityReport,
+  traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
 ): ValidatedRecommendation[] {
-  return items.map((item) => validateStructuredRecommendation(item, payload, quality));
+  return items.map((item) => validateStructuredRecommendation(item, payload, quality, traces));
 }
 
 export function validateClaimList(
@@ -585,8 +553,9 @@ export function validateClaimList(
   payload: NexMetaAnalysisV1,
   quality: MetaDataQualityReport,
   approvedActions: string[] = [],
+  traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
 ): ValidatedClaim[] {
-  return items.map((item) => validateStructuredClaim(item, payload, quality, approvedActions));
+  return items.map((item) => validateStructuredClaim(item, payload, quality, approvedActions, traces));
 }
 
 export function extractJsonObject(text: string): unknown | null {
@@ -627,6 +596,7 @@ function parseClaimArray(items: unknown[]): StructuredClaim[] {
 }
 
 export function parseStructuredAnalysis(text: string): StructuredAnalysisPayload {
+  const emptyTrace: MetricTraceability = { version: "1.0", records: [] };
   const raw = extractJsonObject(text);
   if (!raw || typeof raw !== "object") {
     return {
@@ -636,6 +606,7 @@ export function parseStructuredAnalysis(text: string): StructuredAnalysisPayload
       recommendations: [],
       executive_points: [],
       stage4_markdown: "",
+      metric_traceability: emptyTrace,
       parse_ok: false,
       parse_error: "structured_json_missing",
     };
@@ -649,10 +620,12 @@ export function parseStructuredAnalysis(text: string): StructuredAnalysisPayload
       recommendations: [],
       executive_points: [],
       stage4_markdown: "",
+      metric_traceability: emptyTrace,
       parse_ok: false,
       parse_error: `structured_schema_invalid: ${base.error.issues[0]?.message ?? "unknown"}`,
     };
   }
+  const traceParsed = parseMetricTraceability(base.data.metric_traceability);
   const recommendations: StructuredRecommendation[] = [];
   for (const item of base.data.recommendations) {
     const parsed = structuredRecommendationSchema.safeParse(item);
@@ -666,8 +639,22 @@ export function parseStructuredAnalysis(text: string): StructuredAnalysisPayload
       recommendations: [],
       executive_points: [],
       stage4_markdown: base.data.stage4_markdown,
+      metric_traceability: emptyTrace,
       parse_ok: false,
       parse_error: "recommendations_failed_schema",
+    };
+  }
+  if (!traceParsed.ok) {
+    return {
+      stage1_markdown: base.data.stage1_markdown,
+      stage2_markdown: base.data.stage2_markdown,
+      observations: [],
+      recommendations: [],
+      executive_points: [],
+      stage4_markdown: base.data.stage4_markdown,
+      metric_traceability: emptyTrace,
+      parse_ok: false,
+      parse_error: `metric_traceability_invalid: ${traceParsed.error}`,
     };
   }
   return {
@@ -678,6 +665,7 @@ export function parseStructuredAnalysis(text: string): StructuredAnalysisPayload
     recommendations,
     executive_points: parseClaimArray(base.data.executive_points ?? []),
     stage4_markdown: base.data.stage4_markdown,
+    metric_traceability: traceParsed.value,
     parse_ok: true,
   };
 }
@@ -879,6 +867,7 @@ export async function processMetaAiRecommendations(input: {
         stage2_source: "empty",
         stage4_source: "approved_only",
       },
+      metric_traceability: parsed.metric_traceability,
     };
     return {
       publishedMarkdown: composePublishedMarkdown({
@@ -899,7 +888,8 @@ export async function processMetaAiRecommendations(input: {
     };
   }
 
-  let validated = validateRecommendationList(parsed.recommendations, input.payload, input.quality);
+  const traces = indexTracesById(parsed.metric_traceability);
+  let validated = validateRecommendationList(parsed.recommendations, input.payload, input.quality, traces);
   let regenerationAttempted = false;
 
   const invalid = validated.filter((row) => row.verdict !== "APPROVED");
@@ -915,7 +905,7 @@ export async function processMetaAiRecommendations(input: {
         const row = regeneratedParsed as { recommendations?: unknown[] };
         if (Array.isArray(row.recommendations)) candidates = row.recommendations;
       }
-      const revalidated = validateRecommendationList(candidates, input.payload, input.quality);
+      const revalidated = validateRecommendationList(candidates, input.payload, input.quality, traces);
       const byId = new Map(validated.map((row) => [row.id, row]));
       for (const row of revalidated) byId.set(row.id, row);
       for (const original of invalid) {
@@ -933,12 +923,19 @@ export async function processMetaAiRecommendations(input: {
   const needsReview = validated.filter((row) => row.verdict === "NEEDS_REVIEW");
   const approvedActions = approved.map((row) => row.recommended_action);
 
-  let observations = validateClaimList(parsed.observations, input.payload, input.quality, approvedActions);
+  let observations = validateClaimList(
+    parsed.observations,
+    input.payload,
+    input.quality,
+    approvedActions,
+    traces,
+  );
   let executivePoints = validateClaimList(
     parsed.executive_points,
     input.payload,
     input.quality,
     approvedActions,
+    traces,
   );
 
   let stage2Source: NarrativeSanitizationAudit["stage2_source"] = "structured";
@@ -1012,6 +1009,7 @@ export async function processMetaAiRecommendations(input: {
       stage2_source: stage2Source,
       stage4_source: stage4Source,
     },
+    metric_traceability: parsed.metric_traceability,
   };
 
   return {

@@ -1,5 +1,14 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.4 — 2026-11-02
+
+- Motor **1.1.4** com dependências matemáticas reais (CTR ← clicks/impressions; CPC ← spend/clicks).
+- Inconsistência em spend/results **não** invalida CTR automaticamente.
+- Campo opcional `metric_traceability` (v1.0) com rastros DIRECT/RATIO/AGGREGATION.
+- Conclusões numéricas exigem `trace_ids`; CTR agregado só por sum(clicks)/sum(impressions) com cobertura full.
+- Proibida média simples de CTR entre campanhas.
+- Meta-only; contrato de dados **1.0.0**.
+
 ## 1.1.3 — 2026-11-02
 
 - Motor **1.1.3**: validação de integridade também nas conclusões (Etapa 2) e no resumo (Etapa 4).

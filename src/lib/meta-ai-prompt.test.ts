@@ -40,14 +40,14 @@ const sample: NexMetaAnalysisV1 = {
   warnings: [],
 };
 
-assert.equal(META_AI_PROTOCOL_VERSION, "1.1.3");
+assert.equal(META_AI_PROTOCOL_VERSION, "1.1.4");
 assert.match(META_AI_ANALYSIS_PROMPT, /Meta Marketing API/i);
 assert.match(META_AI_ANALYSIS_PROMPT, /data_quality/i);
 assert.equal(metaAiPromptHash().length, 16);
 assert.match(metaAiUserPrompt(sample), /Walkup/);
-assert.match(metaAiUserPrompt(sample), /motor 1\.1\.3/);
+assert.match(metaAiUserPrompt(sample), /motor 1\.1\.4/);
 assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /calibração/i);
-assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.3/);
+assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.4/);
 
 const detail: MetaAiExecutionDetail = {
   id: "exec-1",

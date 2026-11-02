@@ -55,6 +55,8 @@ import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_aut
 import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
 import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
 import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
+import { Route as ApiIntegrationsChatgptOpenapiRouteImport } from './routes/api/integrations/chatgpt/openapi'
+import { Route as ApiIntegrationsChatgptAnalysesExecutionIdRouteImport } from './routes/api/integrations/chatgpt/analyses/$executionId'
 import { Route as AuthGoogleCallbackRouteImport } from './routes/auth.google.callback'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
@@ -311,6 +313,18 @@ const ApiCoraWebhookRoute = ApiCoraWebhookRouteImport.update({
   path: '/api/cora/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsChatgptOpenapiRoute =
+  ApiIntegrationsChatgptOpenapiRouteImport.update({
+    id: '/api/integrations/chatgpt/openapi',
+    path: '/api/integrations/chatgpt/openapi',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptAnalysesExecutionIdRoute =
+  ApiIntegrationsChatgptAnalysesExecutionIdRouteImport.update({
+    id: '/api/integrations/chatgpt/analyses/$executionId',
+    path: '/api/integrations/chatgpt/analyses/$executionId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthGoogleCallbackRoute = AuthGoogleCallbackRouteImport.update({
   id: '/google/callback',
   path: '/google/callback',
@@ -378,6 +392,8 @@ export interface FileRoutesByFullPath {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
+  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
@@ -426,6 +442,8 @@ export interface FileRoutesByTo {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
+  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
@@ -479,6 +497,8 @@ export interface FileRoutesById {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
+  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
@@ -532,6 +552,8 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/integrations/chatgpt/openapi'
+    | '/api/integrations/chatgpt/analyses/$executionId'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/chatbot/'
@@ -580,6 +602,8 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/integrations/chatgpt/openapi'
+    | '/api/integrations/chatgpt/analyses/$executionId'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/chatbot'
@@ -632,6 +656,8 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/integrations/chatgpt/openapi'
+    | '/api/integrations/chatgpt/analyses/$executionId'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/_authenticated/chatbot/'
@@ -655,6 +681,8 @@ export interface RootRouteChildren {
   ApiAutentiqueWebhookRoute: typeof ApiAutentiqueWebhookRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
+  ApiIntegrationsChatgptOpenapiRoute: typeof ApiIntegrationsChatgptOpenapiRoute
+  ApiIntegrationsChatgptAnalysesExecutionIdRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -981,6 +1009,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCoraWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/chatgpt/openapi': {
+      id: '/api/integrations/chatgpt/openapi'
+      path: '/api/integrations/chatgpt/openapi'
+      fullPath: '/api/integrations/chatgpt/openapi'
+      preLoaderRoute: typeof ApiIntegrationsChatgptOpenapiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/analyses/$executionId': {
+      id: '/api/integrations/chatgpt/analyses/$executionId'
+      path: '/api/integrations/chatgpt/analyses/$executionId'
+      fullPath: '/api/integrations/chatgpt/analyses/$executionId'
+      preLoaderRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/google/callback': {
       id: '/auth/google/callback'
       path: '/google/callback'
@@ -1159,6 +1201,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAutentiqueWebhookRoute: ApiAutentiqueWebhookRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
   ApiCoraWebhookRoute: ApiCoraWebhookRoute,
+  ApiIntegrationsChatgptOpenapiRoute: ApiIntegrationsChatgptOpenapiRoute,
+  ApiIntegrationsChatgptAnalysesExecutionIdRoute:
+    ApiIntegrationsChatgptAnalysesExecutionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

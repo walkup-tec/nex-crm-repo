@@ -252,8 +252,8 @@ export function MasterMetaAnalytics() {
             NEX Intelligence — Laboratório de Calibração
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Envia os dados Meta direto para a OpenAI, registra a execução e revisa a calibração sem
-            download. Só Master.
+            Envia os dados Meta para a OpenAI, registra a execução com UUID e permite consulta pelo
+            ChatGPT Actions (`get_meta_analysis_execution`). Só Master.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">

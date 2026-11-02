@@ -564,6 +564,7 @@ export async function listAdAccountEdge(
   return rows;
 }
 
+/** Gasto da conta no período (todas as campanhas), usado para reduzir o saldo da recarga. */
 export async function activeCampaignSpendCents(
   organizationId: string,
   accountId: string,
@@ -571,18 +572,14 @@ export async function activeCampaignSpendCents(
   until: string,
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) return 0;
-  const rows = await listAdAccountEdge(organizationId, accountId, "campaigns", {
-    fields: `id,effective_status,insights.time_range({"since":"${since}","until":"${until}"}){spend}`,
-    effective_status: JSON.stringify(["ACTIVE"]),
-    limit: "100",
+  const digits = accountId.trim().replace(/^act_/i, "");
+  if (!/^\d+$/.test(digits)) return 0;
+  const { token } = await loadToken(organizationId);
+  const body = await graphGet(graphVersion(), `/act_${digits}/insights`, token, {
+    fields: "spend",
+    time_range: JSON.stringify({ since, until }),
   });
-  let total = 0;
-  for (const row of rows) {
-    if (row.effective_status && row.effective_status !== "ACTIVE") continue;
-    const insights = row.insights as { data?: { spend?: unknown }[] } | undefined;
-    total += insightSpendToCents(insights?.data?.[0]?.spend);
-  }
-  return total;
+  return insightSpendToCents(body.data?.[0]?.spend);
 }
 
 export async function hasBillingPaymentError(organizationId: string, accountId: string) {

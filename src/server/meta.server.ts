@@ -1819,19 +1819,21 @@ async function graphPages(
   path: string,
   token: string,
   params: Record<string, string>,
-  maxPages = 8,
-) {
+  maxPages = 20,
+): Promise<{ rows: Record<string, unknown>[]; pages: number; truncated: boolean }> {
   const rows: Record<string, unknown>[] = [];
   let next: string | null = null;
+  let pages = 0;
   for (let page = 0; page < maxPages; page += 1) {
     const body: GraphBody = next
       ? await graphFetch(new URL(next))
       : await graphGet(version, path, token, params);
+    pages += 1;
     for (const item of body.data ?? []) rows.push(item as Record<string, unknown>);
     next = typeof body.paging?.next === "string" ? body.paging.next : null;
-    if (!next) break;
+    if (!next) return { rows, pages, truncated: false };
   }
-  return rows;
+  return { rows, pages, truncated: Boolean(next) };
 }
 
 function insightPeriodParams(period: MetaPeriod) {
@@ -1858,7 +1860,7 @@ async function collectDailyByLevel(
   const map = new Map<string, ReturnType<typeof mapMetaDailyInsight>[]>();
   const idField = level === "campaign" ? "campaign_id" : level === "adset" ? "adset_id" : "ad_id";
   try {
-    const rows = await graphPages(version, `/act_${accountId}/insights`, token, {
+    const listed = await graphPages(version, `/act_${accountId}/insights`, token, {
       level,
       time_increment: "1",
       fields: `${idField},${exportInsightFields}`,
@@ -1866,7 +1868,7 @@ async function collectDailyByLevel(
       limit: "500",
       ...insightPeriodParams(period),
     });
-    for (const row of rows) {
+    for (const row of listed.rows) {
       const id = textOrNull(row[idField]);
       if (!id) continue;
       const day = mapMetaDailyInsight(row, preferredResultTypes);
@@ -1874,6 +1876,9 @@ async function collectDailyByLevel(
       const list = map.get(id) ?? [];
       list.push(day);
       map.set(id, list);
+    }
+    if (listed.truncated) {
+      console.warn("meta_export_daily_truncated", level, listed.pages);
     }
   } catch (error) {
     console.error("meta_export_daily", level, error instanceof Error ? error.message : "falha");
@@ -1927,38 +1932,67 @@ export async function exportMetaAnalysis(
   const accountExternalId = textOrNull(accountNode?.id) || `act_${accountId}`;
 
   const insightNest = nestedInsightField(period);
-  const [campaignRows, adsetRows, adRows, dailyCampaigns, dailyAdsets, dailyAds] = await Promise.all([
+  /** Inclui pausados/arquivados para reconciliar entrega histórica no período. */
+  const effectiveStatusFilter = JSON.stringify([
+    {
+      field: "effective_status",
+      operator: "IN",
+      value: ["ACTIVE", "PAUSED", "ARCHIVED", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "WITH_ISSUES"],
+    },
+  ]);
+  const emptyPage = {
+    rows: [] as Record<string, unknown>[],
+    pages: 0,
+    truncated: false,
+  };
+  const [campaignPage, adsetPage, adPage, dailyCampaigns, dailyAdsets, dailyAds] = await Promise.all([
     graphPages(version, `/act_${accountId}/campaigns`, token, {
       fields: `id,name,objective,status,effective_status,buying_type,daily_budget,lifetime_budget,${insightNest}`,
-      limit: "100",
+      limit: "200",
+      filtering: effectiveStatusFilter,
     }).catch((error) => {
       warnings.push(
         `Campanhas: ${error instanceof Error ? error.message : "falha ao consultar a Meta."}`,
       );
-      return [] as Record<string, unknown>[];
+      return emptyPage;
     }),
     graphPages(version, `/act_${accountId}/adsets`, token, {
       fields: `id,name,campaign_id,status,effective_status,optimization_goal,billing_event,daily_budget,lifetime_budget,targeting{age_min,age_max,genders,geo_locations,publisher_platforms},${insightNest}`,
-      limit: "100",
+      limit: "200",
+      filtering: effectiveStatusFilter,
     }).catch((error) => {
       warnings.push(
         `Conjuntos: ${error instanceof Error ? error.message : "falha ao consultar a Meta."}`,
       );
-      return [] as Record<string, unknown>[];
+      return emptyPage;
     }),
     graphPages(version, `/act_${accountId}/ads`, token, {
       fields: `id,name,campaign_id,adset_id,status,effective_status,creative{id,title,body,call_to_action_type,object_type},${insightNest}`,
-      limit: "100",
+      limit: "200",
+      filtering: effectiveStatusFilter,
     }).catch((error) => {
       warnings.push(
         `Anúncios: ${error instanceof Error ? error.message : "falha ao consultar a Meta."}`,
       );
-      return [] as Record<string, unknown>[];
+      return emptyPage;
     }),
     collectDailyByLevel(version, token, accountId, period, "campaign"),
     collectDailyByLevel(version, token, accountId, period, "adset"),
     collectDailyByLevel(version, token, accountId, period, "ad"),
   ]);
+
+  const campaignRows = campaignPage.rows;
+  const adsetRows = adsetPage.rows;
+  const adRows = adPage.rows;
+  if (campaignPage.truncated) {
+    warnings.push("Coleta de campanhas truncada por paginação — hierarquia pode ficar incompleta.");
+  }
+  if (adsetPage.truncated) {
+    warnings.push("Coleta de conjuntos truncada por paginação — anúncios podem referenciar conjuntos ausentes.");
+  }
+  if (adPage.truncated) {
+    warnings.push("Coleta de anúncios truncada por paginação — investimento por anúncio pode ficar incompleto.");
+  }
 
   if (!dailyCampaigns.size) warnings.push("Indicadores diários de campanhas indisponíveis ou vazios.");
   if (!dailyAdsets.size) warnings.push("Indicadores diários de conjuntos indisponíveis ou vazios.");
@@ -2076,7 +2110,9 @@ export async function exportMetaAnalysis(
       source: "NEX",
       exported_at: new Date().toLocaleString("sv-SE", { timeZone: timezone }).replace(" ", "T") + "-03:00",
       currency,
-      data_status: warnings.some((item) => /falha ao consultar|Nenhuma campanha/i.test(item))
+      data_status: warnings.some((item) =>
+        /falha ao consultar|Nenhuma campanha|truncada por paginação/i.test(item),
+      )
         ? "partial"
         : "live",
       organization_id: input.organizationId,
@@ -2099,6 +2135,14 @@ export async function exportMetaAnalysis(
       revenue: null,
     },
     warnings,
+    extraction: {
+      campaigns_pages: campaignPage.pages,
+      adsets_pages: adsetPage.pages,
+      ads_pages: adPage.pages,
+      campaigns_truncated: campaignPage.truncated,
+      adsets_truncated: adsetPage.truncated,
+      ads_truncated: adPage.truncated,
+    },
   };
 }
 

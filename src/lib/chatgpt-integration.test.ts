@@ -124,7 +124,7 @@ assert.equal(payload.tool, CHATGPT_META_ANALYSIS_TOOL);
 assert.equal(payload.execution_id, detail.id);
 assert.equal(payload.campaigns.length, 1);
 assert.equal(payload.ai_analysis.markdown, "# Análise");
-assert.match(payload.analysis_prompt.system, /leads/i);
+assert.match(payload.analysis_prompt.system, /Meta Marketing API/i);
 assert.ok(payload.analysis_prompt.user?.includes("MMS"));
 assert.equal(payload.availability.input_json, true);
 assert.equal(payload.availability.analysis_markdown, true);

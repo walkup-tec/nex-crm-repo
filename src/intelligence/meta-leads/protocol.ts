@@ -1,66 +1,61 @@
 import { createHash } from "node:crypto";
 
-/** Versão executável do protocolo Meta Ads (espelha ANALYSIS_*.md). */
-export const META_AI_PROTOCOL_VERSION = "1.1.0";
+/** Versão do protocolo analítico Meta-only (docs ANALYSIS_*.md). */
+export const META_AI_PROTOCOL_VERSION = "1.1.1";
 /** Contrato de dados permanece 1.0.0 para compatibilidade com o plugin ChatGPT. */
 export const META_AI_DATA_CONTRACT_VERSION = "1.0.0";
+/** Versão do motor de processamento / validação determinística. */
+export const META_AI_ENGINE_VERSION = "1.1.1";
 export const META_AI_SCOPE = "meta_ads_performance_v1_1";
 
-export const META_AI_ANALYSIS_PROMPT = `Você é o motor NEX Intelligence para análise de desempenho de campanhas Meta Ads.
+export const META_AI_ANALYSIS_PROMPT = `Você é o motor NEX Intelligence para análise de desempenho de campanhas Meta Ads (protocolo 1.1.1 / motor 1.1.1).
 
-Fonte exclusiva de informação analítica:
-- Use apenas os dados provenientes da Meta Marketing API presentes no JSON NEX Meta Analysis V1.
-- Não dependa de dados comerciais externos (vendas, valores negociados, agendamentos, leads qualificados no CRM, atendimento de chatbot ou campos preenchidos manualmente pelo cliente).
-- A ausência desses dados comerciais externos NÃO deve gerar alertas, ressalvas nem impedir a análise.
-- Campos business_outcomes nulos ou ausentes são esperados e devem ser ignorados sem comentário.
+Fonte exclusiva: dados da Meta Marketing API no JSON NEX Meta Analysis V1 (e campos opcionais data_quality / computed_metrics).
+Não use vendas, CRM, chatbot, agendamentos, receita ou dados manuais. business_outcomes nulos são esperados — ignore sem comentário e sem alerta.
 
-Regras obrigatórias de integridade:
-- Não invente números. null significa indisponível, não zero.
-- Não confunda cliques totais com cliques no link.
-- Não some alcance entre entidades (campanha, conjunto ou anúncio).
-- Não reaggregue médias ou percentuais como totais.
-- Considere warnings e data_status=partial apenas quando se referirem a dados da Meta (extração, atribuição ou agregação).
-- Antes de concluir, verifique consistência entre campanhas, conjuntos, anúncios e séries diárias. Distinga divergências de extração, atribuição e agregação.
-- Responda em português do Brasil.
+## Etapa 1 — Validação dos dados
+- Interprete obrigatoriamente o relatório determinístico em data_quality (se presente).
+- Classifique métricas como confiáveis (verified_metrics), comprometidas (compromised_metrics) ou não verificáveis.
+- Nunca declare integridade completa se data_quality.status for WARNING, FAIL ou NOT_VERIFIABLE, ou se houver checks nesses estados.
+- Use computed_metrics.spend_total (quando presente) como investimento total da conta — não some manualmente com aritmética aproximada.
 
-Escopo analítico (três níveis):
-- Avalie Campanha, Conjunto de anúncios e Anúncio.
-- Considere objetivo da campanha, evento de otimização, resultados reportados pela Meta, custo por resultado, investimento, impressões, alcance, frequência, CTR, CPC, CPM, cliques e evolução temporal.
-- Interprete cada resultado conforme o evento efetivamente reportado pela Meta (ex.: conversas iniciadas não são automaticamente "vendas" nem "leads qualificados").
-- Recomendações devem se basear em evidências dos indicadores da Meta, considerando volume, período, maturidade e comparabilidade.
-- Não recomende alterações com base em um único indicador isolado.
+## Etapa 2 — Análise independente (só Meta)
+Analise campanhas, conjuntos e anúncios com:
+objetivo, evento de otimização, tipo de resultado, investimento, resultados, custo por resultado, CTR, CPC, CPM, impressões, alcance, frequência, distribuição de investimento, evolução temporal, amostra e comparabilidade.
+Respeite: null ≠ 0; não some alcance; não reaggregue médias; interprete o evento Meta (conversa ≠ venda).
+Se uma métrica estiver comprometida, ainda pode analisar outras métricas verificadas da mesma entidade.
 
-Estruture a resposta em Markdown com:
-1. Visão geral (conta, período, investimento, resultados Meta, custo por resultado, evento de otimização)
-2. Diagnóstico por campanha
-3. Diagnóstico por conjunto (segmentação/entrega/orçamento quando disponível)
-4. Diagnóstico por anúncio (CTR, CPC, CPM, resultados Meta, criativo)
-5. Consistência e limitações dos dados Meta (sem cobrar CRM/vendas/agendamentos)
-6. Recomendações prioritárias (máximo 5), cada uma com evidência Meta, contexto de volume/período e impacto esperado`;
+## Etapa 3 — Recomendações
+Cada recomendação deve trazer:
+- observação comprovada;
+- entidade e ID;
+- indicadores utilizados (somente métricas não comprometidas);
+- hipótese explicativa (se houver);
+- grau de confiança;
+- ação ou teste proposto;
+- métrica de validação;
+- condição para considerar a recomendação válida.
+Proibido: recomendar escala/pausa/troca de criativo com base em um único indicador ou em métrica comprometida (ex.: não escalar orçamento usando custo por resultado inconsistente).
 
-export const META_AI_CALIBRATION_REVIEW_PROMPT = `Você é o revisor de calibração do NEX Intelligence (Meta Ads / desempenho) — protocolo 1.1.0.
+## Etapa 4 — Resumo executivo
+Inclua: diagnóstico geral; oportunidades; riscos de interpretação; problemas de integridade (data_quality); recomendações prioritárias; limitações só dos dados Meta.
+Não mencionar ausência de dados comerciais como deficiência.
 
-Receberá o pacote completo de uma execução: metadados, input.json (contrato NEX), analysis.md e output.json.
+Responda em português do Brasil, em Markdown, com as seções das etapas 1–4.`;
 
-Tarefa:
-- Avaliar se a análise respeitou o protocolo 1.1.0:
-  - fonte exclusiva Meta Marketing API;
-  - sem alertas por ausência de vendas/CRM/agendamentos/chatbot/dados manuais;
-  - interpretação fiel ao evento de resultado reportado pela Meta;
-  - não inventar métricas; não somar alcance; não reaggregar médias; null ≠ 0;
-  - recomendações com múltiplas evidências (não um indicador isolado);
-  - checagem de consistência entre campanhas, conjuntos, anúncios e séries diárias.
-- Pontuar 0–5: precisão, consistência, fundamento, limitações, aplicabilidade.
-- Indicar falhas, pontos fortes e mudanças sugeridas no prompt/protocolo.
-- Separar mudanças aprováveis das que devem ser rejeitadas.
+export const META_AI_CALIBRATION_REVIEW_PROMPT = `Você é o revisor de calibração do NEX Intelligence (Meta Ads) — protocolo 1.1.1.
 
-Responda em português do Brasil, em Markdown, com seções:
-1. Notas 0–5 (uma linha por critério)
-2. Diagnóstico da análise
-3. Falhas / riscos
-4. Mudanças sugeridas (aprováveis)
-5. Mudanças a rejeitar
-6. Resumo executivo (3–5 linhas)`;
+Receberá metadados, input.json (com data_quality/computed_metrics quando houver), analysis.md e output.json.
+
+Verifique se a análise:
+- respeitou Meta-only e não alertou por CRM/vendas;
+- interpretou data_quality e não declarou consistência falsa;
+- usou computed_metrics para totais financeiros quando disponível;
+- evitou recomendações prescritivas sobre métricas comprometidas;
+- não inventou métricas; não somou alcance; null ≠ 0.
+
+Pontue 0–5: precisão, consistência, fundamento, limitações, aplicabilidade.
+Responda em PT-BR com: notas; diagnóstico; falhas; mudanças aprováveis; mudanças a rejeitar; resumo.`;
 
 export function metaAiPromptHash(prompt = META_AI_ANALYSIS_PROMPT) {
   return createHash("sha256").update(prompt).digest("hex").slice(0, 16);
@@ -85,6 +80,11 @@ export const META_AI_TEST_CASES = [
   {
     id: "meta-null-business-outcomes",
     title: "business_outcomes nulos não devem gerar alerta",
+    focus: "integrity",
+  },
+  {
+    id: "meta-data-quality-gate",
+    title: "IA não declara consistência com data_quality WARNING",
     focus: "integrity",
   },
 ] as const;

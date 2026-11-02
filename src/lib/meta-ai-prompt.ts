@@ -4,12 +4,21 @@ import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 export type { MetaAiAnalysisResult } from "@/lib/meta-ai-calibration";
 
 export function metaAiUserPrompt(payload: NexMetaAnalysisV1) {
+  const quality = (payload as { data_quality?: { status?: string; compromised_metrics?: string[] } })
+    .data_quality;
+  const computed = (payload as { computed_metrics?: { spend_total?: number | null } }).computed_metrics;
   return [
-    "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0).",
+    "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.1.1).",
     `Cliente: ${payload.metadata.client_name}`,
     `Conta: ${payload.account.name} (${payload.account.id})`,
     `Período: ${payload.period.since ?? "?"} a ${payload.period.until ?? "?"} (${payload.period.timezone})`,
     `Moeda: ${payload.metadata.currency}`,
+    quality?.status
+      ? `data_quality.status: ${quality.status}; métricas comprometidas: ${(quality.compromised_metrics ?? []).join(", ") || "nenhuma"}`
+      : "data_quality.status: (ausente — trate totais com cautela)",
+    computed?.spend_total != null
+      ? `computed_metrics.spend_total: ${computed.spend_total}`
+      : "computed_metrics.spend_total: (ausente)",
     "",
     "JSON:",
     JSON.stringify(payload),

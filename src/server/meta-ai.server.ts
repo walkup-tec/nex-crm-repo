@@ -13,9 +13,11 @@ import {
   META_AI_ANALYSIS_PROMPT,
   META_AI_CALIBRATION_REVIEW_PROMPT,
   META_AI_DATA_CONTRACT_VERSION,
+  META_AI_ENGINE_VERSION,
   META_AI_PROTOCOL_VERSION,
   metaAiPromptHash,
 } from "@/intelligence/meta-leads/protocol";
+import { attachDataQuality, validateMetaAnalysisData } from "@/lib/meta-data-quality";
 import { exportMetaAnalysis } from "@/server/meta.server";
 import { requestOpenAiAnalysis } from "@/server/openai.server";
 
@@ -86,11 +88,17 @@ export async function analyzeMetaWithAi(
 ): Promise<MetaAiAnalysisResult> {
   await assertMaster(userId);
   const promptHash = metaAiPromptHash();
-  const payload = await exportMetaAnalysis(userId, input);
+  const rawPayload = await exportMetaAnalysis(userId, input);
+  const quality = validateMetaAnalysisData(rawPayload, {
+    protocolVersion: META_AI_PROTOCOL_VERSION,
+    engineVersion: META_AI_ENGINE_VERSION,
+  });
+  const payload = attachDataQuality(rawPayload, quality);
 
   let analysis = "";
   let model = process.env["OPENAI_MODEL"]?.trim() || "gpt-4o-mini";
-  let status: MetaAiExecutionStatus = payload.metadata.data_status === "partial" ? "partial" : "ok";
+  let status: MetaAiExecutionStatus =
+    payload.metadata.data_status === "partial" || quality.status !== "PASS" ? "partial" : "ok";
   let errorMessage = "";
 
   try {
@@ -109,7 +117,9 @@ export async function analyzeMetaWithAi(
     analysis_markdown: analysis,
     model,
     protocol_version: META_AI_PROTOCOL_VERSION,
+    engine_version: META_AI_ENGINE_VERSION,
     prompt_hash: promptHash,
+    data_quality_status: quality.status,
   };
 
   const { data, error } = await supabaseAdmin

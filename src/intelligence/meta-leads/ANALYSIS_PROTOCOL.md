@@ -1,47 +1,25 @@
-# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.0
+# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.1
+
+Protocolo analítico Meta-only (linha 1.1) com motor de integridade **1.1.1**.
 
 ## Escopo
 
-Motor de análise de **desempenho** de campanhas Meta Ads.
+Fonte exclusiva: **Meta Marketing API** (contrato NEX Meta Analysis V1, `data_contract_version` 1.0.0).
 
-Fonte exclusiva: **Meta Marketing API** (contrato NEX Meta Analysis V1).
-
-Níveis: Campanha, Conjunto de anúncios e Anúncio.
-
-Não altera campanhas na Meta. Não inventa métricas. `null` ≠ `0`.
+Níveis: Campanha, Conjunto e Anúncio. Não altera a Meta. `null` ≠ `0`.
 
 ## Fonte de dados
 
-Usar apenas indicadores da Meta: objetivo, evento de otimização, resultados reportados, custo por resultado, investimento, impressões, alcance, frequência, CTR, CPC, CPM, cliques e evolução temporal.
+Não depender de vendas, CRM, chatbot, agendamentos ou dados manuais. Ausência desses dados **não** gera alertas.
 
-**Não depender** de dados comerciais externos:
+## Integridade (motor 1.1.1)
 
-- Vendas realizadas
-- Valores negociados
-- Agendamentos
-- Leads qualificados no CRM
-- Atendimento pelo chatbot
-- Informações preenchidas manualmente pelo cliente
+Antes da IA, o NEX executa validação determinística (`data_quality`) e calcula totais (`computed_metrics`).
 
-A ausência desses dados **não** gera alertas, ressalvas nem impede a análise.
+Estados: `PASS`, `WARNING`, `FAIL`, `NOT_VERIFIABLE`.
 
-## Interpretação de resultados
+A IA não declara integridade completa diante de inconsistências. Recomendações prescritivas não usam métricas comprometidas.
 
-Interpretar cada resultado conforme o evento efetivamente reportado pela Meta.
+## Interpretação e recomendações
 
-Exemplo: conversas iniciadas **não** devem ser automaticamente denominadas vendas ou leads qualificados.
-
-## Princípios
-
-1. Usar apenas o contrato NEX Meta Analysis V1.
-2. Não confundir cliques totais com cliques no link.
-3. Não somar alcance entre entidades.
-4. Não reaggregar médias/percentuais como totais.
-5. Validar consistência entre campanhas, conjuntos, anúncios e séries diárias antes de concluir.
-6. Distinguir divergências de extração, atribuição e agregação.
-7. Recomendações fundamentadas em evidências Meta (volume, período, maturidade, comparabilidade).
-8. Não recomendar alterações com base em um único indicador isolado.
-
-## Qualidade (calibração)
-
-Critérios 0–5: precisão, consistência, fundamentação, limitações, aplicabilidade.
+Interpretar o evento Meta reportado. Recomendações com múltiplas evidências, IDs e grau de confiança.

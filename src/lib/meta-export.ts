@@ -101,6 +101,17 @@ export type NexMetaAnalysisV1 = {
     revenue: null;
   };
   warnings: string[];
+  /** Opcional / retrocompatível — preenchido pelo motor v1.1.1+. */
+  data_quality?: unknown;
+  computed_metrics?: unknown;
+  extraction?: {
+    campaigns_pages: number;
+    adsets_pages: number;
+    ads_pages: number;
+    campaigns_truncated: boolean;
+    adsets_truncated: boolean;
+    ads_truncated: boolean;
+  };
 };
 
 export function moneyFromMetaBudget(value: unknown): number | null {

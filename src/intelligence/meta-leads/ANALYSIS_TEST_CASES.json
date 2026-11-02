@@ -1,6 +1,6 @@
 {
-  "protocol_version": "1.1.1",
-  "engine_version": "1.1.1",
+  "protocol_version": "1.1.2",
+  "engine_version": "1.1.2",
   "data_contract_version": "1.0.0",
   "cases": [
     {
@@ -43,6 +43,17 @@
         "Ignorar business_outcomes nulos sem ressalva",
         "Concluir análise só com indicadores Meta",
         "Não solicitar dados de CRM, chatbot ou vendas"
+      ]
+    },
+    {
+      "id": "meta-post-ai-recommendation-gate",
+      "title": "Validação pós-IA bloqueia escala com results comprometido",
+      "focus": "integrity",
+      "expects": [
+        "Recomendação scale_budget com results NOT_VERIFIABLE é REJECTED",
+        "Campanha sem métrica comprometida permanece elegível a APPROVED",
+        "Resumo executivo não publica ação rejeitada como válida",
+        "Falha de parsing não libera recomendações não verificadas"
       ]
     }
   ]

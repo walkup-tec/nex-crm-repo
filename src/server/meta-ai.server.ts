@@ -15,9 +15,14 @@ import {
   META_AI_DATA_CONTRACT_VERSION,
   META_AI_ENGINE_VERSION,
   META_AI_PROTOCOL_VERSION,
+  META_AI_REGENERATION_PROMPT,
   metaAiPromptHash,
 } from "@/intelligence/meta-leads/protocol";
 import { attachDataQuality, validateMetaAnalysisData } from "@/lib/meta-data-quality";
+import {
+  processMetaAiRecommendations,
+  regenerationUserPrompt,
+} from "@/lib/meta-recommendation-validation";
 import { exportMetaAnalysis } from "@/server/meta.server";
 import { requestOpenAiAnalysis } from "@/server/openai.server";
 
@@ -100,14 +105,31 @@ export async function analyzeMetaWithAi(
   let status: MetaAiExecutionStatus =
     payload.metadata.data_status === "partial" || quality.status !== "PASS" ? "partial" : "ok";
   let errorMessage = "";
+  let recommendationValidation: Record<string, unknown> = {};
 
   try {
     const ai = await requestOpenAiAnalysis({
       system: META_AI_ANALYSIS_PROMPT,
       user: metaAiUserPrompt(payload),
     });
-    analysis = ai.text;
     model = ai.model;
+    const processed = await processMetaAiRecommendations({
+      rawText: ai.text,
+      payload,
+      quality,
+      regenerate: async (invalid) => {
+        const again = await requestOpenAiAnalysis({
+          system: META_AI_REGENERATION_PROMPT,
+          user: regenerationUserPrompt(invalid, payload),
+        });
+        return again.text;
+      },
+    });
+    analysis = processed.publishedMarkdown;
+    recommendationValidation = processed.audit as unknown as Record<string, unknown>;
+    if (!processed.audit.parse_ok || processed.rejected.length || processed.needsReview.length) {
+      status = status === "error" ? status : "partial";
+    }
   } catch (error) {
     status = "error";
     errorMessage = error instanceof Error ? error.message : "Falha na OpenAI.";
@@ -120,6 +142,7 @@ export async function analyzeMetaWithAi(
     engine_version: META_AI_ENGINE_VERSION,
     prompt_hash: promptHash,
     data_quality_status: quality.status,
+    recommendation_validation: recommendationValidation,
   };
 
   const { data, error } = await supabaseAdmin

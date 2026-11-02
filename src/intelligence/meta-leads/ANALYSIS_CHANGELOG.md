@@ -1,5 +1,14 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.2 — 2026-11-02
+
+- Motor **1.1.2** com validação determinística **pós-IA** de recomendações estruturadas.
+- Schema Zod de recomendações (`entity_id`, nível, indicadores, evidências, hipótese, confiança, ação, critério).
+- Classificação `APPROVED` | `REJECTED` | `NEEDS_REVIEW`; publicação somente de `APPROVED`.
+- Bloqueio por entidade + métrica (inclui `NOT_VERIFIABLE`); regeneração controlada revalidada.
+- Relatório final marca recomendações aprovadas e limitações; resumo não reproduz ações rejeitadas.
+- Protocolo analítico Meta-only permanece a linha 1.1; contrato de dados **1.0.0**.
+
 ## 1.1.1 — 2026-11-02
 
 - Motor de processamento **1.1.1** com validação determinística (`data_quality`) pré-IA.

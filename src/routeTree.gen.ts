@@ -48,6 +48,7 @@ import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
 import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
+import { Route as AuthenticatedMasterCreditosMetaRouteImport } from './routes/_authenticated/master.creditos-meta'
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
 import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
@@ -258,6 +259,12 @@ const AuthenticatedMasterCampanhasRoute =
     path: '/campanhas',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
+const AuthenticatedMasterCreditosMetaRoute =
+  AuthenticatedMasterCreditosMetaRouteImport.update({
+    id: '/creditos-meta',
+    path: '/creditos-meta',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
 const AuthenticatedMasterClientesRoute =
   AuthenticatedMasterClientesRouteImport.update({
     id: '/clientes',
@@ -357,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
@@ -403,6 +411,7 @@ export interface FileRoutesByTo {
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
@@ -454,6 +463,7 @@ export interface FileRoutesById {
   '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
+  '/_authenticated/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
@@ -505,6 +515,7 @@ export interface FileRouteTypes {
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
+    | '/master/creditos-meta'
     | '/master/criativos'
     | '/master/financeiro'
     | '/api/autentique/webhook'
@@ -551,6 +562,7 @@ export interface FileRouteTypes {
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
+    | '/master/creditos-meta'
     | '/master/criativos'
     | '/master/financeiro'
     | '/api/autentique/webhook'
@@ -601,6 +613,7 @@ export interface FileRouteTypes {
     | '/_authenticated/master/campanhas'
     | '/_authenticated/master/clientes'
     | '/_authenticated/master/configuracoes'
+    | '/_authenticated/master/creditos-meta'
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
     | '/api/autentique/webhook'
@@ -892,6 +905,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterCampanhasRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
+    '/_authenticated/master/creditos-meta': {
+      id: '/_authenticated/master/creditos-meta'
+      path: '/creditos-meta'
+      fullPath: '/master/creditos-meta'
+      preLoaderRoute: typeof AuthenticatedMasterCreditosMetaRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
     '/_authenticated/master/clientes': {
       id: '/_authenticated/master/clientes'
       path: '/clientes'
@@ -1027,6 +1047,7 @@ interface AuthenticatedMasterRouteChildren {
   AuthenticatedMasterCampanhasRoute: typeof AuthenticatedMasterCampanhasRoute
   AuthenticatedMasterClientesRoute: typeof AuthenticatedMasterClientesRoute
   AuthenticatedMasterConfiguracoesRoute: typeof AuthenticatedMasterConfiguracoesRoute
+  AuthenticatedMasterCreditosMetaRoute: typeof AuthenticatedMasterCreditosMetaRoute
   AuthenticatedMasterCriativosRoute: typeof AuthenticatedMasterCriativosRoute
   AuthenticatedMasterFinanceiroRoute: typeof AuthenticatedMasterFinanceiroRouteWithChildren
   AuthenticatedMasterIndexRoute: typeof AuthenticatedMasterIndexRoute
@@ -1037,6 +1058,7 @@ const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
   AuthenticatedMasterCampanhasRoute: AuthenticatedMasterCampanhasRoute,
   AuthenticatedMasterClientesRoute: AuthenticatedMasterClientesRoute,
   AuthenticatedMasterConfiguracoesRoute: AuthenticatedMasterConfiguracoesRoute,
+  AuthenticatedMasterCreditosMetaRoute: AuthenticatedMasterCreditosMetaRoute,
   AuthenticatedMasterCriativosRoute: AuthenticatedMasterCriativosRoute,
   AuthenticatedMasterFinanceiroRoute:
     AuthenticatedMasterFinanceiroRouteWithChildren,

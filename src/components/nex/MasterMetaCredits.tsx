@@ -6,18 +6,6 @@ import {
   CreditCard,
   Search,
 } from "lucide-react";
-import {
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { DashboardKpiCard } from "@/components/nex/DashboardKpiCard";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Badge } from "@/components/ui/badge";
@@ -128,7 +116,6 @@ export function MasterMetaCredits() {
   const [accountFilter, setAccountFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
-  const [donutHover, setDonutHover] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -181,38 +168,7 @@ export function MasterMetaCredits() {
   const lowBalance = known.filter((row) => row.creditStatus === "low");
   const emptyBalance = known.filter((row) => row.creditStatus === "empty");
   const totalKnown = known.length || 1;
-
-  const donutData = [
-    {
-      key: "ok",
-      label: "Com saldo",
-      cents: withBalance.reduce((sum, row) => sum + row.balanceCents, 0),
-      color: statusMeta.ok.color,
-    },
-    {
-      key: "low",
-      label: "Saldo baixo",
-      cents: lowBalance.reduce((sum, row) => sum + row.balanceCents, 0),
-      color: statusMeta.low.color,
-    },
-    {
-      key: "empty",
-      label: "Sem saldo",
-      cents: emptyBalance.reduce((sum, row) => sum + row.balanceCents, 0),
-      color: statusMeta.empty.color,
-    },
-  ].filter((item) => item.cents > 0 || item.key === "empty");
-
-  const donutTotal = donutData.reduce((sum, item) => sum + item.cents, 0) || totalCents;
   const maxBalance = Math.max(...filtered.map((row) => row.balanceCents), 1);
-
-  const evolution = useMemo(() => {
-    const points = 8;
-    return Array.from({ length: points }, (_, index) => ({
-      label: `S${index + 1}`,
-      saldo: Math.round(totalCents * (0.72 + (index / (points - 1)) * 0.28)),
-    }));
-  }, [totalCents]);
 
   const dashPanel = dark
     ? "rounded-xl border border-slate-400/[0.14] bg-gradient-to-b from-[#101a2e] to-[#0d1527] text-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)]"
@@ -221,15 +177,6 @@ export function MasterMetaCredits() {
   const dashMuted = dark ? "text-[#8190a6]" : "text-slate-500";
   const dashBody = dark ? "text-slate-200" : "text-slate-700";
   const dashStrong = dark ? "text-white" : "text-slate-900";
-  const chartGrid = dark ? "rgba(148,163,184,0.12)" : "rgba(148,163,184,0.28)";
-  const chartTick = { fill: dark ? "#8190a6" : "#64748b", fontSize: 11 };
-  const tipStyle = {
-    borderRadius: 8,
-    border: dark ? "1px solid rgba(148,163,184,0.25)" : "1px solid #e2e8f0",
-    background: dark ? "#0b1220" : "#ffffff",
-    color: dark ? "#f1f5f9" : "#1e293b",
-    fontSize: 12,
-  };
 
   return (
     <div className="space-y-5">
@@ -296,121 +243,6 @@ export function MasterMetaCredits() {
             loading ? undefined : `${Math.round((emptyBalance.length / totalKnown) * 100)}% do total (${known.length})`
           }
         />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <section className={`${dashPanel} p-5 sm:p-6`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className={`text-lg font-bold ${dashTitle}`}>Evolução do saldo de créditos</h2>
-              <p className={`mt-1 text-[13px] ${dashMuted}`}>
-                Visão relativa do saldo consolidado. Histórico diário entra na próxima etapa.
-              </p>
-            </div>
-            <span
-              className={cn(
-                "inline-flex h-9 items-center rounded-lg border px-3 text-[13px]",
-                dark ? "border-slate-400/20 text-slate-300" : "border-slate-200 text-slate-600",
-              )}
-            >
-              Últimos 30 dias
-            </span>
-          </div>
-          <div className="mt-3 h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={evolution} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={chartGrid} />
-                <XAxis dataKey="label" tick={chartTick} axisLine={false} tickLine={false} />
-                <YAxis
-                  tickFormatter={(value: number) =>
-                    `R$ ${value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-                  }
-                  tick={chartTick}
-                  axisLine={false}
-                  tickLine={false}
-                  width={72}
-                />
-                <Tooltip
-                  formatter={(value: number) => [moneyFromCents(Number(value)), "Saldo"]}
-                  contentStyle={tipStyle}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="saldo"
-                  stroke="#3b82f6"
-                  strokeWidth={2.5}
-                  dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
-                  activeDot={{ r: 5 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        <section className={`${dashPanel} p-5 sm:p-6`}>
-          <div>
-            <h2 className={`text-lg font-bold ${dashTitle}`}>Distribuição do saldo por status</h2>
-            <p className={`mt-1 text-[13px] ${dashMuted}`}>Composição do saldo sincronizado das contas Meta.</p>
-          </div>
-          <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="relative mx-auto h-[200px] w-[200px] shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={donutData.length ? donutData : [{ key: "empty", label: "Sem dados", cents: 1, color: "#64748b" }]}
-                    dataKey="cents"
-                    nameKey="label"
-                    innerRadius={58}
-                    outerRadius={84}
-                    paddingAngle={2.5}
-                    startAngle={90}
-                    endAngle={-270}
-                    stroke={dark ? "#0d1527" : "#ffffff"}
-                    strokeWidth={2}
-                    onMouseEnter={() => setDonutHover(true)}
-                    onMouseLeave={() => setDonutHover(false)}
-                  >
-                    {(donutData.length ? donutData : [{ key: "empty", color: "#64748b" }]).map((item) => (
-                      <Cell key={item.key} fill={item.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number, name) => [moneyFromCents(Number(value)), String(name)]}
-                    contentStyle={tipStyle}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div
-                className={cn(
-                  "pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity",
-                  donutHover && "opacity-0",
-                )}
-              >
-                <p className={cn("text-[17px] font-bold tabular-nums", dashStrong)}>
-                  {moneyFromCents(donutTotal)}
-                </p>
-                <p className={cn("text-xs", dashMuted)}>saldo total</p>
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col gap-4">
-              {(["ok", "low", "empty"] as const).map((key) => {
-                const slice = donutData.find((item) => item.key === key);
-                const cents = slice?.cents ?? 0;
-                const percent = donutTotal > 0 ? Math.round((cents / donutTotal) * 100) : 0;
-                return (
-                  <div key={key} className="grid grid-cols-[10px_1fr_auto] items-center gap-x-2.5">
-                    <span className="size-2.5 rounded-full" style={{ background: statusMeta[key].color }} />
-                    <span className={cn("text-sm", dashBody)}>{statusMeta[key].label}</span>
-                    <span className={cn("text-sm font-bold tabular-nums", dashStrong)}>{percent}%</span>
-                    <span className={`col-span-2 col-start-2 text-[12.5px] tabular-nums ${dashMuted}`}>
-                      {moneyFromCents(cents)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
       </div>
 
       <section className={`${dashPanel} overflow-hidden`}>

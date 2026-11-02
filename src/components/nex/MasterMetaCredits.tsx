@@ -93,9 +93,9 @@ function initialsOf(name: string) {
 }
 
 function accountLabel(client: ListedClient) {
-  const named = client.metaAccounts[0];
+  const named = client.metaAccounts?.[0];
   if (named?.id) return named.id.startsWith("act_") ? named.id : `act_${named.id}`;
-  const raw = client.adAccountIds[0];
+  const raw = client.adAccountIds?.[0];
   if (!raw) return "—";
   return raw.startsWith("act_") ? raw : `act_${raw}`;
 }
@@ -136,12 +136,18 @@ export function MasterMetaCredits() {
       setLoading(true);
       setError("");
       try {
-        const rows = await listClientsFn();
+        const result = await listClientsFn();
         if (!alive) return;
-        setClients(rows);
+        if (!result.ok) {
+          setError(result.message);
+          setClients([]);
+          return;
+        }
+        setClients(result.data);
       } catch (err) {
         if (!alive) return;
         setError(err instanceof Error ? err.message : "Não foi possível carregar os créditos.");
+        setClients([]);
       } finally {
         if (alive) setLoading(false);
       }
@@ -151,7 +157,7 @@ export function MasterMetaCredits() {
     };
   }, []);
 
-  const rows = useMemo(() => toRows(clients), [clients]);
+  const rows = useMemo(() => toRows(Array.isArray(clients) ? clients : []), [clients]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();

@@ -1,32 +1,24 @@
-# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.7
+# NEX Intelligence — Protocolo de Análise Meta Ads v1.1.8
 
-Protocolo analítico Meta-only (linha 1.1) com motor de integridade **1.1.7** e evidências objetivas **E0–E3**.
+Protocolo analítico Meta-only (linha 1.1) com motor **1.1.8**, evidências **E0–E3** e **CMS-E1**.
 
-## Escopo
+## CMS-E1 — condição mínima de suficiência (monitor)
 
-Fonte exclusiva: **Meta Marketing API** (`data_contract_version` 1.0.0).
+Recomendação `action_kind=monitor` pode ser aprovada com **uma** métrica relevante válida (ex.: CTR com `trace_id` PASS na entidade/período corretos).
 
-## Evidências objetivas (1.1.7)
+Se a IA enviar CTR válido + CPC sem rastreabilidade:
 
-| Nível | Permite | Não permite |
-|-------|---------|-------------|
-| E0 | — | Qualquer publicação |
-| E1 | Fatos numéricos; `monitor` | Classificar desempenho; intervenções |
-| E2 | Comparações compatíveis | Causalidade; intervenção |
-| E3 | Testes/alterações justificadas | Prometer melhoria sem prova |
+- preserva CTR;
+- remove CPC e evidências dependentes;
+- atualiza `indicators_used`, `evidence`, `trace_ids`, `used_by`;
+- reescreve ação/critério de forma neutra;
+- **não** regenera a IA se a recuperação for suficiente;
+- **não** aplica a intervenções E2/E3.
 
-- CTR isolado **não** autoriza otimização de criativo nem escala de orçamento.
-- Labels como bom/ruim/elevado/aceitável/eficiente sem comparação válida → rejeitados.
-- Intervenções exigem hipótese, critério de validação e comparação compatível.
+## Evidências objetivas (1.1.7+)
 
-## Recuperação estrutural (1.1.6)
-
-Máximo de duas chamadas à IA; seções validadas independentemente; fallback determinístico; nunca Markdown bruto.
-
-## Vínculo entidade ↔ rastreabilidade (1.1.5)
-
-`entity_id` ↔ nome ↔ `trace_ids`; período do export; recálculo Meta prevalece sobre PASS da IA.
+E1 = fatos/monitor; E2 = comparação; E3 = intervenção. CTR isolado não autoriza criativo/orçamento.
 
 ## Proteções anteriores
 
-Preserva 1.1.1–1.1.6.
+Preserva 1.1.1–1.1.7 (data_quality, schema recovery, binding entidade↔trace, Meta-only).

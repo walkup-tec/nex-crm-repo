@@ -1,21 +1,21 @@
 import { createHash } from "node:crypto";
 
-/** Versão do protocolo analítico Meta-only (docs ANALYSIS_*.md) — linha 1.1, release 1.1.7. */
-export const META_AI_PROTOCOL_VERSION = "1.1.7";
+/** Versão do protocolo analítico Meta-only (docs ANALYSIS_*.md) — linha 1.1, release 1.1.8. */
+export const META_AI_PROTOCOL_VERSION = "1.1.8";
 /** Contrato de dados permanece 1.0.0 para compatibilidade com o plugin ChatGPT. */
 export const META_AI_DATA_CONTRACT_VERSION = "1.0.0";
 /** Versão do motor de processamento / validação determinística (pré + pós-IA). */
-export const META_AI_ENGINE_VERSION = "1.1.7";
+export const META_AI_ENGINE_VERSION = "1.1.8";
 export const META_AI_SCOPE = "meta_ads_performance_v1_1";
 
-export const META_AI_ANALYSIS_PROMPT = `Você é o motor NEX Intelligence para análise de desempenho de campanhas Meta Ads (protocolo 1.1.7 / motor 1.1.7).
+export const META_AI_ANALYSIS_PROMPT = `Você é o motor NEX Intelligence para análise de desempenho de campanhas Meta Ads (protocolo 1.1.8 / motor 1.1.8).
 
 Fonte exclusiva: dados da Meta Marketing API no JSON NEX Meta Analysis V1 (e campos opcionais data_quality / computed_metrics).
 Não use vendas, CRM, chatbot, agendamentos, receita ou dados manuais. business_outcomes nulos são esperados — ignore sem comentário e sem alerta.
 
 Responda SOMENTE com um único objeto JSON válido (sem markdown fora do JSON), no formato:
 {
-  "format": "nex_intelligence_analysis_v1_1_7",
+  "format": "nex_intelligence_analysis_v1_1_8",
   "stage1_markdown": "texto PT-BR da Etapa 1",
   "observations": [
     {
@@ -79,9 +79,10 @@ Enums obrigatórios (valores exatos):
 - validation.status: PASS | WARNING | FAIL | NOT_VERIFIABLE
 - calculation.type: DIRECT | RATIO | AGGREGATION | OTHER
 
-Regras obrigatórias 1.1.7 (evidência objetiva E0–E3):
+Regras obrigatórias 1.1.8 (CMS-E1 + evidência E0–E3):
 - Fatos numéricos rastreáveis = E1; classificações qualitativas exigem comparação E2; intervenções (test/replace_creative/scale/pause) exigem E3 com hipótese + critério + comparação compatível.
 - CTR isolado NÃO autoriza otimização de criativo nem escala de orçamento; monitor=E1 permitido.
+- CMS-E1: se monitor tiver CTR (ou outra métrica) com trace PASS e CPC (ou outra) sem trace, o NEX remove as métricas inválidas, atualiza indicators/evidence/trace_ids e pode APPROVED sem regenerar a IA.
 - Sem benchmarks inventados nem causalidade prometida.
 
 Regras de vínculo 1.1.5–1.1.6:
@@ -97,19 +98,19 @@ Regras de integridade matemática (1.1.4+):
 - CTR ← clicks/impressions; CPC ← spend/clicks; CPM ← spend/impressions; CPR ← spend/results.
 - Proibido CTR agregado por média simples; agregado só sum(clicks)/sum(impressions) com cobertura full.`;
 
-export const META_AI_CALIBRATION_REVIEW_PROMPT = `Você é o revisor de calibração do NEX Intelligence (Meta Ads) — protocolo 1.1.7.
+export const META_AI_CALIBRATION_REVIEW_PROMPT = `Você é o revisor de calibração do NEX Intelligence (Meta Ads) — protocolo 1.1.8.
 
 Verifique Meta-only, data_quality, metric_traceability, vínculo entity_id↔nome↔trace e dependências matemáticas.
 Pontue 0–5: precisão, consistência, fundamento, limitações, aplicabilidade.
 Responda em PT-BR.`;
 
-export const META_AI_REGENERATION_PROMPT = `Você regenera recomendações NEX Intelligence rejeitadas (motor 1.1.7).
+export const META_AI_REGENERATION_PROMPT = `Você regenera recomendações NEX Intelligence rejeitadas (motor 1.1.8).
 Responda SOMENTE com JSON: { "recommendations": [ ... ] } incluindo trace_ids no entity_id correto.
 action_kind ∈ scale_budget|pause|replace_creative|test|monitor|other; confidence ∈ low|medium|high.
 Não invente substitutas sem evidência Meta verificável.`;
 
-export const META_AI_STRUCTURAL_REGENERATION_PROMPT = `Você corrige uma resposta estruturada inválida do NEX Intelligence (motor 1.1.7).
-Responda SOMENTE com o objeto JSON COMPLETO no format nex_intelligence_analysis_v1_1_7.
+export const META_AI_STRUCTURAL_REGENERATION_PROMPT = `Você corrige uma resposta estruturada inválida do NEX Intelligence (motor 1.1.8).
+Responda SOMENTE com o objeto JSON COMPLETO no format nex_intelligence_analysis_v1_1_8.
 Corrija os campos/paths inválidos indicados. Preserve seções já válidas. Meta-only. Sem markdown fora do JSON.`;
 
 export function metaAiPromptHash(prompt = META_AI_ANALYSIS_PROMPT) {
@@ -128,4 +129,5 @@ export const META_AI_TEST_CASES = [
   { id: "meta-entity-trace-binding", title: "Trace de Conv. Site não pode aprovar observação de Eng. WhatsApp", focus: "integrity" },
   { id: "meta-schema-partial-recovery", title: "Falha de schema em recomendações não descarta observações válidas", focus: "integrity" },
   { id: "meta-objective-evidence-gate", title: "Evidência objetiva E0–E3 bloqueia CTR qualitativo e intervenção só com CTR", focus: "integrity" },
+  { id: "meta-cms-e1-monitor-recovery", title: "Monitor E1 com CTR válido e CPC sem trace é recuperado parcialmente", focus: "integrity" },
 ] as const;

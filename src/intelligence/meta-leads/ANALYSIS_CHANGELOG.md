@@ -1,5 +1,13 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.8 — 2026-11-02
+
+- **CMS-E1**: monitoramento neutro aprovável com ≥1 métrica relevante rastreável (PASS).
+- Recuperação parcial: remove métricas sem trace (ex. CPC), preserva CTR válido; atualiza indicators/evidence/trace_ids/used_by.
+- Não aplica CMS a intervenções E2/E3; evita regeneração IA quando a recuperação determinística basta.
+- Auditoria `cms_e1_recovery` com métricas/traces descartados e motivo.
+- Preserva 1.1.4–1.1.7; contrato de dados **1.0.0**.
+
 ## 1.1.7 — 2026-11-02
 
 - Protocolo de evidências objetivas **E0–E3** aplicado a observations, recommendations e executive_points.

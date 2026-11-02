@@ -1,6 +1,6 @@
-# ANALYSIS_PROMPT — Meta Ads desempenho v1.1.7
+# ANALYSIS_PROMPT — Meta Ads desempenho v1.1.8
 
 Espelho: `protocol.ts` → `META_AI_ANALYSIS_PROMPT`.
 
-JSON `nex_intelligence_analysis_v1_1_7` com observations factuais, recommendations com `comparison` quando E2+, e `metric_traceability`.
-Evidência: E1 fatos/monitor; E2 comparação; E3 intervenção com hipótese + critério. Sem rótulos qualitativos sem referência.
+JSON `nex_intelligence_analysis_v1_1_8`. Preferir `monitor` com indicadores que tenham `trace_ids` PASS.
+Se um indicador não tiver rastreabilidade, omita-o (o NEX pode recuperar monitor E1 removendo métricas inválidas).

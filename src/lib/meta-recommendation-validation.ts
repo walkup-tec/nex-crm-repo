@@ -24,6 +24,11 @@ import {
   type EvidenceComparison,
   type EvidenceLevel,
 } from "@/lib/meta-evidence-levels";
+import {
+  syncTraceUsedByForClaim,
+  tryCmsE1PartialRecovery,
+  type CmsE1RecoveryAudit,
+} from "@/lib/meta-cms-e1";
 
 export {
   buildCompromisedMetricIndex,
@@ -33,8 +38,9 @@ export {
 } from "@/lib/meta-metric-traceability";
 
 export type { EvidenceComparison, EvidenceLevel } from "@/lib/meta-evidence-levels";
+export type { CmsE1RecoveryAudit } from "@/lib/meta-cms-e1";
 
-export const META_AI_RECOMMENDATION_ENGINE = "1.1.7";
+export const META_AI_RECOMMENDATION_ENGINE = "1.1.8";
 
 export type RecommendationLevel = "campaign" | "adset" | "ad";
 export type ClaimLevel = "account" | RecommendationLevel;
@@ -185,6 +191,7 @@ export type ValidatedRecommendation = StructuredRecommendation & {
   trace_ids: string[];
   evidence_level: EvidenceLevel;
   required_evidence_level: EvidenceLevel;
+  cms_e1_recovery?: CmsE1RecoveryAudit;
   blocked_by: Array<{
     entity_id: string;
     metric: string;
@@ -419,6 +426,7 @@ export function validateStructuredRecommendation(
   payload: NexMetaAnalysisV1,
   quality: MetaDataQualityReport,
   traces: Map<string, import("@/lib/meta-metric-traceability").MetricTraceRecord> = new Map(),
+  options: { skipCmsE1Recovery?: boolean } = {},
 ): ValidatedRecommendation {
   const parsed = structuredRecommendationSchema.safeParse(normalizeRecommendationDraft(raw));
   if (!parsed.success) {
@@ -525,9 +533,13 @@ export function validateStructuredRecommendation(
     reasons.push("external_commercial_data");
   }
 
-  if (textHasUnfoundedQualitativeLabel(blob) && requiredLevel !== "E1") {
-    // Labels qualitativos em intervenção exigem comparação E2+; bloqueio explícito se sem comparison.
-    if (!rec.comparison) reasons.push("unfounded_qualitative_label_without_comparison");
+  if (textHasUnfoundedQualitativeLabel(blob)) {
+    if (requiredLevel === "E1") {
+      // Monitor: CMS-E1 pode neutralizar; se skip, rejeita.
+      reasons.push("unfounded_qualitative_label_without_comparison");
+    } else if (!rec.comparison) {
+      reasons.push("unfounded_qualitative_label_without_comparison");
+    }
   }
 
   if (textHasInventedBenchmark(blob)) {
@@ -592,6 +604,63 @@ export function validateStructuredRecommendation(
           r.startsWith("ctr_only"),
       );
     verdict = softOnly ? "NEEDS_REVIEW" : "REJECTED";
+  }
+
+  // CMS-E1: recuperação parcial só para monitor (nunca E2/E3 estratégico).
+  if (
+    verdict !== "APPROVED" &&
+    rec.action_kind === "monitor" &&
+    entityOk &&
+    !options.skipCmsE1Recovery
+  ) {
+    const cms = tryCmsE1PartialRecovery({
+      id: rec.id,
+      entity_id: rec.entity_id,
+      level: rec.level,
+      action_kind: rec.action_kind,
+      indicators_used: rec.indicators_used,
+      evidence: rec.evidence,
+      trace_ids: traceIds,
+      recommended_action: rec.recommended_action,
+      validation_criterion: rec.validation_criterion,
+      hypothesis: rec.hypothesis,
+      confidence: rec.confidence,
+      traces,
+      payload,
+      quality,
+    });
+    if (cms.recovered && cms.audit.applied) {
+      const recoveredRaw = {
+        ...rec,
+        ...cms.recovered,
+        comparison: null,
+        arbitrary_targets: [],
+      };
+      const revalidated = validateStructuredRecommendation(
+        recoveredRaw,
+        payload,
+        quality,
+        traces,
+        { skipCmsE1Recovery: true },
+      );
+      if (revalidated.verdict === "APPROVED") {
+        return {
+          ...revalidated,
+          evidence_level: "E1",
+          required_evidence_level: "E1",
+          cms_e1_recovery: cms.audit,
+          rejection_reasons: [],
+        };
+      }
+      return {
+        ...revalidated,
+        cms_e1_recovery: {
+          ...cms.audit,
+          applied: false,
+          reason: `cms_e1_revalidation_failed:${revalidated.rejection_reasons.join(",")}`,
+        },
+      };
+    }
   }
 
   return {
@@ -1327,10 +1396,30 @@ export async function processMetaAiRecommendations(input: {
 
   const working = mergeStructuredPayloads(initial, secondary);
 
-  const traces = indexTracesById(working.metric_traceability);
+  let traces = indexTracesById(working.metric_traceability);
   let validated = validateRecommendationList(working.recommendations, input.payload, input.quality, traces);
 
-  const invalid = validated.filter((row) => row.verdict !== "APPROVED");
+  // Sincroniza used_by após CMS-E1 (remove claim dos traces descartados).
+  {
+    let records = working.metric_traceability.records;
+    for (const row of validated) {
+      const cms = row.cms_e1_recovery;
+      if (!cms?.applied) continue;
+      records = syncTraceUsedByForClaim(
+        records,
+        row.id,
+        row.trace_ids,
+        cms.discarded_trace_ids,
+      );
+    }
+    working.metric_traceability = { ...working.metric_traceability, records };
+    traces = indexTracesById(working.metric_traceability);
+  }
+
+  // Regeneração de conteúdo: só itens ainda inválidos (CMS-E1 suficiente ⇒ sem chamada IA).
+  const invalid = validated.filter(
+    (row) => row.verdict !== "APPROVED" && !(row.cms_e1_recovery?.applied && row.verdict === "APPROVED"),
+  );
   if (invalid.length && input.regenerate && !extraAiCallUsed && working.parse_ok) {
     regenerationAttempted = true;
     regenerationKind = "recommendations";

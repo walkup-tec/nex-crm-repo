@@ -1,6 +1,6 @@
 {
-  "protocol_version": "1.1.7",
-  "engine_version": "1.1.7",
+  "protocol_version": "1.1.8",
+  "engine_version": "1.1.8",
   "data_contract_version": "1.0.0",
   "cases": [
     {
@@ -109,6 +109,18 @@
         "Observação factual de CTR com trace é APPROVED (E1)",
         "monitor com CTR rastreável é APPROVED (E1)",
         "Resumo executivo não eleva fato descritivo a diagnóstico estratégico"
+      ]
+    },
+    {
+      "id": "meta-cms-e1-monitor-recovery",
+      "title": "Monitor E1: CTR válido + CPC sem trace é recuperado; estratégico sem E3 permanece REJECTED",
+      "focus": "integrity",
+      "expects": [
+        "CTR válido + CPC inválido + monitor = APPROVED após CMS-E1",
+        "CTR e CPC inválidos = REJECTED",
+        "CTR válido + scale/creative sem E3 = REJECTED",
+        "cms_e1_recovery registra discarded_metrics",
+        "Sem regeneração IA quando CMS-E1 basta"
       ]
     }
   ]

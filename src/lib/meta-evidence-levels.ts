@@ -35,7 +35,7 @@ export function evidenceLevelAtLeast(actual: EvidenceLevel, required: EvidenceLe
   return LEVEL_RANK[actual] >= LEVEL_RANK[required];
 }
 
-/** Evidência mínima por action_kind (protocolo v1.1.7). */
+/** Evidência mínima por action_kind (protocolo v1.1.8 / CMS-E1). */
 export function requiredEvidenceLevelForAction(actionKind: EvidenceActionKind): EvidenceLevel {
   switch (actionKind) {
     case "monitor":

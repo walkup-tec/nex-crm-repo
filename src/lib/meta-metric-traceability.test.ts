@@ -372,7 +372,7 @@ function ctrRatioTrace(claimId: string) {
   assert.ok(result.audit.observations.some((o) => o.id === "obs-001" && o.verdict === "APPROVED"));
   assert.ok(result.audit.executive_points.some((o) => o.id === "exec-bad" && o.verdict === "REJECTED"));
   assert.equal(result.audit.metric_traceability.records.length, 1);
-  assert.equal(result.audit.engine_version, "1.1.7");
+  assert.equal(result.audit.engine_version, "1.1.8");
 }
 
 // --- Regressão a589e9be: texto WhatsApp + trace Conv. Site → REJECTED ---

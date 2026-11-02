@@ -1,5 +1,13 @@
 # ANALYSIS_CHANGELOG — Meta Ads
 
+## 1.1.3 — 2026-11-02
+
+- Motor **1.1.3**: validação de integridade também nas conclusões (Etapa 2) e no resumo (Etapa 4).
+- Claims estruturados `observations[]` / `executive_points[]` com `claim_kind`.
+- Bloqueio de juízos (desempenho insuficiente, conversão insatisfatória, ineficiência, retorno inadequado) e recomendações indiretas em narrativa quando dependem de métricas comprometidas.
+- Relatório final composto a partir de conteúdo estruturado validado (não publica Markdown bruto da IA).
+- Escopo por entidade+métrica preservado; contrato de dados **1.0.0**; Meta-only linha 1.1.
+
 ## 1.1.2 — 2026-11-02
 
 - Motor **1.1.2** com validação determinística **pós-IA** de recomendações estruturadas.

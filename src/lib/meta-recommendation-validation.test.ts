@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import type { MetaDataQualityReport } from "./meta-data-quality";
 import type { NexMetaAnalysisV1 } from "./meta-export";
 import {
-  composePublishedMarkdown,
+  META_AI_RECOMMENDATION_ENGINE,
   parseStructuredAnalysis,
   processMetaAiRecommendations,
+  sanitizeNarrativeText,
+  validateStructuredClaim,
   validateStructuredRecommendation,
   type StructuredRecommendation,
 } from "./meta-recommendation-validation";
@@ -150,8 +152,8 @@ function basePayload(): NexMetaAnalysisV1 {
 function qualityWithBadResults(): MetaDataQualityReport {
   return {
     status: "NOT_VERIFIABLE",
-    engine_version: "1.1.2",
-    protocol_version: "1.1.2",
+    engine_version: "1.1.3",
+    protocol_version: "1.1.3",
     validated_at: "2026-11-02T15:00:00.000Z",
     checks: [
       {
@@ -354,18 +356,22 @@ const quality = qualityWithBadResults();
     quality,
   );
   assert.equal(rejected.verdict, "REJECTED");
-  const md = composePublishedMarkdown({
-    stage1: "Integridade parcial.",
-    stage2: "Análise descritiva.",
-    stage4: "Priorize: Aumentar orçamento da campanha ruim e também teste de copy.",
-    approved: [approved],
-    rejected: [rejected],
-    needsReview: [],
+  const processed = await processMetaAiRecommendations({
+    rawText: JSON.stringify({
+      format: "nex_intelligence_analysis_v1_1_3",
+      stage1_markdown: "Integridade parcial.",
+      observations: [],
+      recommendations: [approved, rejected],
+      executive_points: [],
+      stage2_markdown: "Análise descritiva com CTR estável na campanha OK.",
+      stage4_markdown: "Priorize: Aumentar orçamento da campanha ruim e também teste de copy.",
+    }),
+    payload,
     quality,
   });
+  const md = processed.publishedMarkdown;
   assert.match(md, /Recomendações aprovadas/i, "Teste G seção");
-  assert.match(md, /ação omitida — rejeitada/i, "Teste G omitida no resumo");
-  assert.ok(!/Priorize: Aumentar orçamento da campanha ruim/.test(md), "Teste G sem ação rejeitada crua");
+  assert.ok(!/Aumentar orçamento da campanha ruim/.test(md), "Teste G sem ação rejeitada");
   assert.match(md, /Rodar teste A\/B de copy/i, "Teste G mantém aprovada");
 }
 
@@ -373,9 +379,11 @@ const quality = qualityWithBadResults();
 {
   let regenerateCalls = 0;
   const structured = {
-    format: "nex_intelligence_analysis_v1_1_2",
+    format: "nex_intelligence_analysis_v1_1_3",
     stage1_markdown: "dq",
     stage2_markdown: "an",
+    observations: [],
+    executive_points: [],
     recommendations: [
       goodRec({
         id: "rec-h",
@@ -423,24 +431,28 @@ const quality = qualityWithBadResults();
   });
   assert.equal(broken.audit.parse_ok, false, "Teste I parse");
   assert.equal(broken.approved.length, 0, "Teste I sem approve");
-  assert.match(broken.publishedMarkdown, /não foram publicadas/i, "Teste I aviso");
+  assert.match(broken.publishedMarkdown, /não foram publicadas|estruturada inválida/i, "Teste I aviso");
+  assert.ok(!/recomendações soltas/i.test(broken.publishedMarkdown), "Teste I sem markdown bruto");
 }
 
 // --- Teste J ---
 {
   const ok = await processMetaAiRecommendations({
     rawText: JSON.stringify({
-      format: "nex_intelligence_analysis_v1_1_2",
+      format: "nex_intelligence_analysis_v1_1_3",
       stage1_markdown: "ok",
-      stage2_markdown: "ok",
+      stage2_markdown: "CTR da campanha OK permanece estável.",
+      observations: [],
+      executive_points: [],
       recommendations: [goodRec({ id: "rec-j" })],
-      stage4_markdown: "resumo j",
+      stage4_markdown: "resumo j com CTR",
     }),
     payload,
     quality,
   });
+  assert.equal(ok.audit.engine_version, META_AI_RECOMMENDATION_ENGINE);
   const detail: MetaAiExecutionDetail = {
-    id: "68f7c45d-73db-4857-b42f-06d2a94b8a40",
+    id: "78632113-95dc-4288-96c5-bda6b2d22c0d",
     createdAt: "2026-11-02T16:00:00.000Z",
     status: "partial",
     organizationId: "org-1",
@@ -450,7 +462,7 @@ const quality = qualityWithBadResults();
     periodSince: "2026-10-01",
     periodUntil: "2026-10-31",
     periodTimezone: "America/Sao_Paulo",
-    protocolVersion: "1.1.2",
+    protocolVersion: "1.1.3",
     dataContractVersion: "1.0.0",
     model: "gpt-4o-mini",
     promptHash: "abc123",
@@ -462,15 +474,15 @@ const quality = qualityWithBadResults();
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,
       recommendation_validation: ok.audit,
-      protocol_version: "1.1.2",
-      engine_version: "1.1.2",
+      protocol_version: "1.1.3",
+      engine_version: "1.1.3",
     },
     calibrationFeedback: {},
   };
   const chatgpt = buildChatgptMetaAnalysisPayload(detail);
   assert.equal(chatgpt.execution_id, detail.id, "Teste J id");
   assert.equal(chatgpt.tool, "get_meta_analysis_execution", "Teste J tool");
-  assert.equal(chatgpt.protocol_version, "1.1.2", "Teste J protocol");
+  assert.equal(chatgpt.protocol_version, "1.1.3", "Teste J protocol");
   assert.equal(chatgpt.data_contract_version, "1.0.0", "Teste J contract");
   assert.ok(chatgpt.ai_analysis.markdown?.includes("Etapa 3"), "Teste J markdown");
   assert.ok(chatgpt.availability.output_json, "Teste J output");
@@ -492,4 +504,154 @@ const quality = qualityWithBadResults();
   assert.equal(parsed.recommendations[0]?.id, "fence");
 }
 
-console.log("meta-recommendation-validation.test.ts: ok (A-J)");
+// --- Teste K: reprodução 78632113 — juízo de conversão com results comprometido ---
+{
+  const judgment = validateStructuredClaim(
+    {
+      id: "obs-k",
+      entity_id: "camp_bad",
+      level: "campaign",
+      metrics_used: ["results", "cost_per_result"],
+      claim_kind: "performance_judgment",
+      text: "A campanha camp_bad apresenta conversão insatisfatória e desempenho insuficiente.",
+    },
+    payload,
+    quality,
+  );
+  assert.equal(judgment.verdict, "REJECTED", "Teste K");
+}
+
+// --- Teste L: recomendação indireta em narrativa ---
+{
+  const indirect = validateStructuredClaim(
+    {
+      id: "obs-l",
+      entity_id: "camp_bad",
+      level: "campaign",
+      metrics_used: ["spend"],
+      claim_kind: "indirect_recommendation",
+      text: "Recomendamos aumentar o orçamento desta campanha.",
+    },
+    payload,
+    quality,
+    [],
+  );
+  assert.equal(indirect.verdict, "REJECTED", "Teste L");
+}
+
+// --- Teste M: observação descritiva verificada preservada; campanha ok não bloqueada ---
+{
+  const okObs = validateStructuredClaim(
+    {
+      id: "obs-m",
+      entity_id: "camp_ok",
+      level: "campaign",
+      metrics_used: ["ctr", "cpc"],
+      claim_kind: "descriptive",
+      text: "A campanha camp_ok manteve CTR de 5% com CPC estável.",
+    },
+    payload,
+    quality,
+  );
+  assert.equal(okObs.verdict, "APPROVED", "Teste M");
+}
+
+// --- Teste N: pipeline completo estilo execução 78632113 ---
+{
+  const result = await processMetaAiRecommendations({
+    rawText: JSON.stringify({
+      format: "nex_intelligence_analysis_v1_1_3",
+      stage1_markdown: "data_quality.status = NOT_VERIFIABLE para results/spend em camp_bad.",
+      observations: [
+        {
+          id: "obs-n1",
+          entity_id: "camp_bad",
+          level: "campaign",
+          metrics_used: ["results", "cost_per_result"],
+          claim_kind: "performance_judgment",
+          text: "camp_bad tem conversão insatisfatória e retorno inadequado.",
+        },
+        {
+          id: "obs-n2",
+          entity_id: "camp_ok",
+          level: "campaign",
+          metrics_used: ["ctr", "cpc"],
+          claim_kind: "descriptive",
+          text: "camp_ok apresenta CTR estável e CPC consistente.",
+        },
+        {
+          id: "obs-n3",
+          entity_id: "camp_bad",
+          level: "campaign",
+          metrics_used: ["spend"],
+          claim_kind: "indirect_recommendation",
+          text: "Sugerimos aumentar o orçamento de camp_bad.",
+        },
+      ],
+      recommendations: [
+        goodRec({
+          id: "rec-n-bad",
+          entity_id: "camp_bad",
+          action_kind: "scale_budget",
+          indicators_used: ["results", "spend"],
+          evidence: ["CPR aparente", "volume aparente"],
+          recommended_action: "Aumentar orçamento de camp_bad",
+        }),
+        goodRec({ id: "rec-n-ok" }),
+      ],
+      executive_points: [
+        {
+          id: "exec-n1",
+          entity_id: "camp_bad",
+          level: "campaign",
+          metrics_used: ["results"],
+          claim_kind: "performance_judgment",
+          text: "Prioridade: corrigir ineficiência de camp_bad.",
+        },
+        {
+          id: "exec-n2",
+          entity_id: "camp_ok",
+          level: "campaign",
+          metrics_used: ["ctr"],
+          claim_kind: "descriptive",
+          text: "camp_ok mantém indicadores de engajamento verificáveis.",
+        },
+      ],
+      stage2_markdown: "",
+      stage4_markdown: "",
+    }),
+    payload,
+    quality,
+  });
+
+  assert.ok(!/conversão insatisfatória/i.test(result.publishedMarkdown), "Teste N sem juízo ruim");
+  assert.ok(!/retorno inadequado/i.test(result.publishedMarkdown), "Teste N sem retorno inadequado");
+  assert.ok(!/aumentar o orçamento de camp_bad/i.test(result.publishedMarkdown), "Teste N sem escala indireta");
+  assert.ok(!/Aumentar orçamento de camp_bad/.test(result.publishedMarkdown), "Teste N sem rec rejeitada");
+  assert.ok(!/ineficiência de camp_bad/i.test(result.publishedMarkdown), "Teste N sem juízo no resumo");
+  assert.match(result.publishedMarkdown, /CTR estável e CPC consistente/i, "Teste N preserva descritivo ok");
+  assert.match(result.publishedMarkdown, /engajamento verificáveis/i, "Teste N preserva exec ok");
+  assert.match(result.publishedMarkdown, /Rodar teste A\/B de copy/i, "Teste N recomenda aprovada");
+  assert.ok(result.audit.observations.some((o) => o.id === "obs-n1" && o.verdict === "REJECTED"));
+  assert.ok(result.audit.observations.some((o) => o.id === "obs-n2" && o.verdict === "APPROVED"));
+}
+
+// --- Teste O: sanitização de markdown fallback (sem observations) ---
+{
+  const sanitized = sanitizeNarrativeText(
+    [
+      "A campanha BAD apresenta desempenho insuficiente e conversão insatisfatória.",
+      "A campanha OK manteve CTR elevado no período.",
+      "Recomendamos aumentar o orçamento imediatamente.",
+    ].join("\n\n"),
+    payload,
+    quality,
+    [],
+  );
+  assert.ok(!/desempenho insuficiente/i.test(sanitized.text), "Teste O drop juízo");
+  assert.ok(!/aumentar o orçamento/i.test(sanitized.text), "Teste O drop indireta");
+  assert.match(sanitized.text, /CTR elevado/i, "Teste O keep descritivo");
+  assert.ok(sanitized.dropped >= 2, "Teste O dropped count");
+}
+
+console.log("meta-recommendation-validation.test.ts: ok (A-O)");

@@ -15,8 +15,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-assert.equal(META_AI_PROTOCOL_VERSION, "1.1.2");
-assert.equal(META_AI_ENGINE_VERSION, "1.1.2");
+assert.equal(META_AI_PROTOCOL_VERSION, "1.1.3");
+assert.equal(META_AI_ENGINE_VERSION, "1.1.3");
 assert.equal(META_AI_DATA_CONTRACT_VERSION, "1.0.0");
 assert.equal(META_AI_SCOPE, "meta_ads_performance_v1_1");
 assert.equal(metaAiPromptHash().length, 16);
@@ -26,18 +26,20 @@ assert.match(META_AI_ANALYSIS_PROMPT, /data_quality/i);
 assert.match(META_AI_ANALYSIS_PROMPT, /computed_metrics/i);
 assert.match(META_AI_ANALYSIS_PROMPT, /métrica comprometida/i);
 assert.match(META_AI_ANALYSIS_PROMPT, /Meta Marketing API/i);
-assert.match(META_AI_ANALYSIS_PROMPT, /nex_intelligence_analysis_v1_1_2/);
-assert.match(META_AI_ANALYSIS_PROMPT, /recommendations/);
-assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.2/);
-assert.match(META_AI_REGENERATION_PROMPT, /1\.1\.2/);
+assert.match(META_AI_ANALYSIS_PROMPT, /nex_intelligence_analysis_v1_1_3/);
+assert.match(META_AI_ANALYSIS_PROMPT, /observations/);
+assert.match(META_AI_ANALYSIS_PROMPT, /executive_points/);
+assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.1\.3/);
+assert.match(META_AI_REGENERATION_PROMPT, /1\.1\.3/);
 
 const casesDoc = JSON.parse(
   readFileSync(join(here, "ANALYSIS_TEST_CASES.json"), "utf8"),
 ) as { protocol_version: string; data_contract_version: string; engine_version?: string };
-assert.equal(casesDoc.protocol_version, "1.1.2");
+assert.equal(casesDoc.protocol_version, "1.1.3");
 assert.equal(casesDoc.data_contract_version, "1.0.0");
 
 const changelog = readFileSync(join(here, "ANALYSIS_CHANGELOG.md"), "utf8");
+assert.match(changelog, /## 1\.1\.3/);
 assert.match(changelog, /## 1\.1\.2/);
 assert.match(changelog, /## 1\.1\.1/);
 assert.match(changelog, /## 1\.1\.0/);

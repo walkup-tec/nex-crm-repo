@@ -1,5 +1,19 @@
 import type { MetaDataQualityReport } from "@/lib/nex-intelligence/quality/validate-export";
+import { buildBackendMetricTraceCatalog } from "@/lib/nex-intelligence/trace/build-catalog";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+
+const METRIC_LABELS: Record<string, string> = {
+  ctr: "CTR",
+  cpc: "CPC",
+  cpm: "CPM",
+  impressions: "impressões",
+  clicks: "cliques",
+  reach: "alcance",
+  frequency: "frequência",
+  spend: "investimento",
+  results: "resultados",
+  cost_per_result: "custo por resultado",
+};
 
 /**
  * Etapa 1 — exclusivamente de integridade estruturada (nunca markdown da IA).
@@ -41,9 +55,18 @@ export function renderStage1FromIntegrity(
     }
   }
 
-  const verified = quality.verified_metrics?.filter(Boolean) ?? [];
+  const verified = [
+    ...new Set(
+      buildBackendMetricTraceCatalog(payload, quality).records
+        .filter((record) => record.validation.status === "PASS")
+        .map((record) => record.metric)
+        .filter((metric) => metric in METRIC_LABELS),
+    ),
+  ];
   if (verified.length) {
-    lines.push(`- Métricas verificáveis (PASS): ${verified.join(", ")}.`);
+    lines.push(
+      `- Indicadores locais disponíveis (traces PASS): ${verified.map((metric) => METRIC_LABELS[metric]).join(", ")}.`,
+    );
   }
 
   return lines.join("\n");

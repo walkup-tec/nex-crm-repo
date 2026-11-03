@@ -51,6 +51,19 @@ const STATUS_RANK: Record<DataQualityStatus, number> = {
   FAIL: 3,
 };
 
+const PERFORMANCE_METRICS = new Set([
+  "ctr",
+  "cpc",
+  "cpm",
+  "impressions",
+  "clicks",
+  "reach",
+  "frequency",
+  "spend",
+  "results",
+  "cost_per_result",
+]);
+
 function worstStatus(states: DataQualityStatus[]): DataQualityStatus {
   return states.reduce((worst, state) => (STATUS_RANK[state] > STATUS_RANK[worst] ? state : worst), "PASS");
 }
@@ -469,7 +482,7 @@ export function validateMetaAnalysisData(
   ];
   const verified = [
     ...new Set(checks.filter((item) => item.state === "PASS").map((item) => item.metric)),
-  ].filter((metric) => !compromised.includes(metric));
+  ].filter((metric) => PERFORMANCE_METRICS.has(metric) && !compromised.includes(metric));
 
   return {
     status,

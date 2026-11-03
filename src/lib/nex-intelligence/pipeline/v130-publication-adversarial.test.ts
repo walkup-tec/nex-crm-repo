@@ -6,6 +6,7 @@ import { buildValidatedReport } from "@/lib/nex-intelligence/publication/build-v
 import { runFinalPublicationGate } from "@/lib/nex-intelligence/publication/final-gate";
 import { markPersistedOutputPublished } from "@/lib/nex-intelligence/persistence/build-analytical-output";
 import { buildChatgptMetaAnalysisPayload } from "@/lib/nex-intelligence/integrations/chatgpt/payload";
+import { renderExecutiveFromApprovedIR } from "@/lib/nex-intelligence/report/renderers";
 import { indexTracesById, type MetricTraceability } from "@/lib/nex-intelligence/trace";
 import type { MetaDataQualityReport } from "@/lib/nex-intelligence/quality/validate-export";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
@@ -32,7 +33,7 @@ const quality = {
   checks: [],
   affected_metrics: [],
   compromised_metrics: [],
-  verified_metrics: ["ctr"],
+  verified_metrics: ["entity_id", "ctr"],
   computed_metrics: {},
 } as unknown as MetaDataQualityReport;
 
@@ -91,6 +92,22 @@ const report = buildValidatedReport({
 // 1–2: Etapa 1 é estruturada e nome completo não é truncado.
 assert.match(report.markdown, /Período analisado/);
 assert.ok(!report.markdown.includes("MARKDOWN IA TRUNCADO [Eng."));
+assert.ok(!report.markdown.includes("Métricas verificáveis (PASS): entity_id"));
+assert.doesNotMatch(report.markdown, /Indicadores locais disponíveis[^\n]*entity_id/);
+
+// Regressão Stage 4: N observações numéricas viram uma síntese agregada.
+const executive = renderExecutiveFromApprovedIR(
+  ["camp_1", "camp_2", "camp_3", "camp_4"].map((entityId, index) => ({
+    ...ir.approved[0]!,
+    claim_id: `metric-${index + 1}`,
+    entity_id: entityId,
+  })),
+  ir.registry,
+  quality,
+);
+assert.match(executive, /4 entidades analisadas com indicadores verificáveis de CTR/);
+assert.equal((executive.match(/\bCTR\b/g) ?? []).length, 1);
+assert.doesNotMatch(executive, /CTR de \d/);
 
 // 3: “abaixo da média” não permanece METRIC_VALUE/E1.
 const normalized = normalizeClaimIRDraft({

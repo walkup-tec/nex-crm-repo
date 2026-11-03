@@ -99,7 +99,7 @@ export function processClaimIRPipeline(input: {
       registry,
       "_Nenhuma recomendação aprovada._",
     ),
-    executive_markdown: renderExecutiveFromApprovedIR(approved, registry),
+    executive_markdown: renderExecutiveFromApprovedIR(approved, registry, input.quality),
     executive_claim_ids: executiveClaimIdsFromApproved(approved),
     analytical_status,
   };

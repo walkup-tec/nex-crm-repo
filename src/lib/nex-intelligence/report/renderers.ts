@@ -1,5 +1,6 @@
 import type { ValidatedClaimIR } from "@/lib/nex-intelligence/claim-ir/validate";
 import type { MetricRegistryEntry } from "@/lib/nex-intelligence/metrics/registry";
+import type { MetaDataQualityReport } from "@/lib/nex-intelligence/quality/validate-export";
 
 function formatValue(entry: MetricRegistryEntry | undefined, metric: string): string {
   if (!entry || !entry.value_present || entry.value == null) return `${metric} (indisponível)`;
@@ -99,18 +100,57 @@ export function renderApprovedClaimsIR(
 export function renderExecutiveFromApprovedIR(
   approved: ValidatedClaimIR[],
   registry: MetricRegistryEntry[] = [],
+  quality?: MetaDataQualityReport,
 ): string {
-  const projected = approved.filter(
-    (c) =>
-      c.operation === "METRIC_VALUE" ||
-      c.operation === "MONITOR" ||
-      c.operation === "PERIOD_COMPARISON" ||
-      c.operation === "ENTITY_COMPARISON" ||
-      (c.operation === "STRATEGIC_TEST" && c.evidence_level === "E3"),
+  const metricClaims = approved.filter(
+    (claim) => claim.verdict === "APPROVED" && claim.operation === "METRIC_VALUE",
   );
-  return renderApprovedClaimsIR(
-    projected,
-    registry,
-    "_Sem conclusões verificáveis disponíveis._",
+  const recommendations = approved.filter(
+    (claim) =>
+      claim.verdict === "APPROVED" &&
+      (claim.operation === "MONITOR" ||
+        (claim.operation === "STRATEGIC_TEST" && claim.evidence_level === "E3")),
   );
+  const comparisons = approved.filter(
+    (claim) =>
+      claim.verdict === "APPROVED" &&
+      (claim.evidence_level === "E2" || claim.evidence_level === "E3") &&
+      (claim.operation === "PERIOD_COMPARISON" ||
+        claim.operation === "ENTITY_COMPARISON" ||
+        claim.operation === "QUALITATIVE_CLASSIFICATION"),
+  );
+  const entityIds = new Set(
+    metricClaims.map((claim) => `${claim.entity_level}:${claim.entity_id ?? "account"}`),
+  );
+  const metrics = [
+    ...new Set(metricClaims.map((claim) => claim.args.metric.toUpperCase())),
+  ];
+  const lines: string[] = [];
+
+  if (metricClaims.length) {
+    const entityLabel = entityIds.size === 1 ? "entidade analisada" : "entidades analisadas";
+    lines.push(
+      `- ${entityIds.size} ${entityLabel} com indicadores verificáveis de ${metrics.join(", ")}.`,
+    );
+  }
+  if (comparisons.length) {
+    lines.push(
+      `- ${comparisons.length} ${comparisons.length === 1 ? "comparação verificável aprovada" : "comparações verificáveis aprovadas"} com evidência E2/E3.`,
+    );
+  }
+  if (quality && quality.status !== "PASS") {
+    lines.push(
+      `- A integridade global está em ${quality.status}; indicadores locais PASS permanecem limitados ao próprio escopo.`,
+    );
+  }
+  for (const recommendation of recommendations) {
+    const rendered = renderClaimIR(recommendation, registry);
+    if (rendered) lines.push(rendered);
+  }
+
+  const tracedClaims = [...metricClaims, ...comparisons, ...recommendations];
+  if (tracedClaims.length) {
+    lines.push(`- Rastreabilidade: ${tracedClaims.map((claim) => `\`${claim.claim_id}\``).join(", ")}.`);
+  }
+  return lines.length ? lines.join("\n") : "_Sem conclusões verificáveis disponíveis._";
 }

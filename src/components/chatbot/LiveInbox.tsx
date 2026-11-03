@@ -1,4 +1,4 @@
-import { MessageSquare, Bot, ExternalLink, Filter, Mic, Pause, Pin, Play, Plus, Search, Send, Square, UserRound } from "lucide-react";
+import { MessageSquare, Bot, ExternalLink, Filter, Mic, Pause, Pin, Play, Plus, Search, Send, Square, UserRound, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1492,6 +1492,20 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                 placeholder="Nome ou WhatsApp"
                 aria-label="Pesquisar contato por nome ou WhatsApp"
               />
+              {contactQuery.trim() ? (
+                <button
+                  type="button"
+                  className="search-clear"
+                  aria-label="Limpar pesquisa"
+                  title="Limpar pesquisa"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setContactQuery("");
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
             </label>
             <div className="list-lanes" role="tablist" aria-label="Situação do atendimento">
               {([

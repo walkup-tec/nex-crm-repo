@@ -4,7 +4,7 @@ export const chatbotDelinquencyCents = 180_000;
 
 export const chatbotSchedulingMessage = [
   "🚨*Atenção: Próximo passo:*",
-  "Agora temos que *agendar o acesso remoto ao seu facebook*, para isso, você deve entrar na plataforma NEX, com os dados de login que recebeu e clicar no menu lateral *AGENDAMENTO*, nele você agendará o dia e horário do acesso remoto que fica melhor para você.",
+  "Agora temos que agendar o *acesso remoto ao seu facebook* via ANYDESK, para isso, você deve entrar na plataforma NEX, com os dados de login que recebeu e clicar na barra superior do sistema você verá um botão com o nome *SOLICITAR REUNIÃO*, nele você agendará o dia e horário do acesso remoto que fica melhor para você.",
 ].join("\n");
 
 export function brazilToday(now = new Date()) {

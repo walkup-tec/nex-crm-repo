@@ -12,6 +12,11 @@ export function contractSignedMessage(name: string) {
   return `Oi ${clean}! identificamos a assinatura do seu contrato. Por favor, me informe se já recebeu as instruções para acesso da plataforma NEX?`;
 }
 
+export function contractSignedMediaName(protocol: string) {
+  const code = protocol.trim().replace(/\D/g, "").slice(0, 12);
+  return code ? `Contrato assinado ${code}.pdf` : "Contrato assinado.pdf";
+}
+
 export function signatureDone(signed: unknown) {
   if (!signed) return false;
   if (typeof signed === "string") return signed.trim().length > 0;

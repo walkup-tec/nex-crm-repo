@@ -51,7 +51,9 @@ const lateMonth = chatbotClientTerms("2026-10-28");
 assert.equal(lateMonth?.dueDay, "3");
 assert.equal(contractDueDates("2026-10-28", "2027-01-28", 3, "2026-10-28")[0], "2026-11-03");
 assert.equal(chatbotDelinquencyCents, 180000);
-assert.match(chatbotSchedulingMessage, /agendar o acesso remoto/);
-assert.match(chatbotSchedulingMessage, /\*AGENDAMENTO\*/);
+assert.match(chatbotSchedulingMessage, /\*acesso remoto ao seu facebook\*/);
+assert.match(chatbotSchedulingMessage, /ANYDESK/);
+assert.match(chatbotSchedulingMessage, /\*SOLICITAR REUNIÃO\*/);
+assert.doesNotMatch(chatbotSchedulingMessage, /\*AGENDAMENTO\*/);
 
 console.log("chatbot client tests ok");

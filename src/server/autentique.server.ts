@@ -1,5 +1,18 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autentiqueEvent, autentiqueSignatureMatches, contractCompanyWitnessEmail, contractContactId, contractDispatch, contractDocumentName, contractFullySigned, contractGone, contractLookupState, contractOwnerEmail } from "@/lib/autentique";
+import {
+  autentiqueEvent,
+  autentiqueSignatureMatches,
+  contractCompanyWitnessEmail,
+  contractContactId,
+  contractDispatch,
+  contractDocumentName,
+  contractFullySigned,
+  contractGone,
+  contractLookupState,
+  contractOwnerEmail,
+  contractSignedMediaName,
+} from "@/lib/autentique";
+import { chatbotMediaBucket, chatbotMediaMimeTypes } from "@/lib/chatbot-media";
 
 const autentiqueEndpoint = "https://api.autentique.com.br/v2/graphql";
 
@@ -72,6 +85,7 @@ export async function createContractSignature(input: {
           organizationId: input.organizationId,
           contactId: input.contactId,
           name: cell(existing.data, "client_name"),
+          documentId: documentIdOnFile,
         });
         throw new Error("O contrato deste contato já foi assinado.");
       }
@@ -164,7 +178,11 @@ async function uploadContract(input: {
 
 type AutentiqueBody = {
   data?: {
-    document?: { id?: string; signatures?: { public_id?: string }[] } | null;
+    document?: {
+      id?: string;
+      signatures?: { public_id?: string }[];
+      files?: { signed?: string | null; pades?: string | null; original?: string | null } | null;
+    } | null;
     createDocument?: { id?: string; signatures?: { email?: string }[] };
     deleteDocument?: boolean;
   };
@@ -255,7 +273,145 @@ async function documentSignatures(documentId: string) {
   });
 }
 
-async function confirmSignedContract(input: { id: string; organizationId: string; contactId: string; name: string }) {
+async function ensureSignedMediaBucket() {
+  const options = { public: false, fileSizeLimit: 40 * 1024 * 1024, allowedMimeTypes: chatbotMediaMimeTypes };
+  const existing = await supabaseAdmin.storage.getBucket(chatbotMediaBucket);
+  if (!existing.error && existing.data) {
+    await supabaseAdmin.storage.updateBucket(chatbotMediaBucket, options).catch(() => undefined);
+    return;
+  }
+  const created = await supabaseAdmin.storage.createBucket(chatbotMediaBucket, options);
+  if (created.error && !/already exists|duplicate/i.test(created.error.message)) {
+    throw new Error("Não foi possível guardar o contrato assinado.");
+  }
+}
+
+async function contractingProtocol(organizationId: string, contactId: string) {
+  const result = await (supabaseAdmin as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => {
+            order: (column: string, options: { ascending: boolean }) => {
+              limit: (count: number) => {
+                maybeSingle: () => Promise<DbResult>;
+              };
+            };
+          };
+        };
+      };
+    };
+  })
+    .from("contracting_intakes")
+    .select("protocol")
+    .eq("organization_id", organizationId)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return cell(result.data, "protocol");
+}
+
+async function signedContractFileUrl(documentId: string) {
+  const result = await autentiqueGraphql(
+    "query ($id: UUID!) { document(id: $id) { files { signed pades } } }",
+    { id: documentId },
+  );
+  const files = result.body.data?.document?.files;
+  const signed = typeof files?.signed === "string" ? files.signed.trim() : "";
+  if (signed) return signed;
+  const pades = typeof files?.pades === "string" ? files.pades.trim() : "";
+  return pades;
+}
+
+async function downloadSignedPdf(url: string) {
+  const attempts: RequestInit[] = [
+    { headers: { Authorization: `Bearer ${autentiqueKey()}`, Accept: "application/pdf" }, redirect: "follow", signal: AbortSignal.timeout(60000) },
+    { headers: { Accept: "application/pdf" }, redirect: "follow", signal: AbortSignal.timeout(60000) },
+  ];
+  let lastStatus = 0;
+  for (const init of attempts) {
+    const response = await fetch(url, init);
+    lastStatus = response.status;
+    if (!response.ok) continue;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length >= 100 && bytes.subarray(0, 4).toString("utf8") === "%PDF") return bytes;
+  }
+  throw new Error(`download_${lastStatus || "fail"}`);
+}
+
+async function saveSignedContractMedia(input: {
+  organizationId: string;
+  contactId: string;
+  documentId: string;
+}) {
+  if (!input.documentId.trim()) return;
+  const protocol = await contractingProtocol(input.organizationId, input.contactId);
+  const name = contractSignedMediaName(protocol);
+  const existing = await (supabaseAdmin as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => {
+            eq: (column: string, value: string) => {
+              maybeSingle: () => Promise<DbResult>;
+            };
+          };
+        };
+      };
+    };
+  })
+    .from("chatbot_contact_files")
+    .select("id")
+    .eq("organization_id", input.organizationId)
+    .eq("contact_id", input.contactId)
+    .eq("name", name)
+    .maybeSingle();
+  if (existing.data) return;
+  const fileUrl = await signedContractFileUrl(input.documentId);
+  if (!fileUrl) throw new Error("sem_url_assinada");
+  const bytes = await downloadSignedPdf(fileUrl);
+  await ensureSignedMediaBucket();
+  const id = crypto.randomUUID();
+  const storagePath = `${input.organizationId}/${input.contactId}/${id}.pdf`;
+  const uploaded = await supabaseAdmin.storage.from(chatbotMediaBucket).upload(storagePath, bytes, {
+    contentType: "application/pdf",
+    upsert: false,
+  });
+  if (uploaded.error) throw new Error(uploaded.error.message);
+  const inserted = await (supabaseAdmin as unknown as {
+    from: (table: string) => {
+      insert: (values: Record<string, unknown>) => {
+        select: (columns: string) => {
+          maybeSingle: () => Promise<DbResult>;
+        };
+      };
+    };
+  })
+    .from("chatbot_contact_files")
+    .insert({
+      id,
+      organization_id: input.organizationId,
+      contact_id: input.contactId,
+      name,
+      mime_type: "application/pdf",
+      storage_path: storagePath,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error || !inserted.data) {
+    await supabaseAdmin.storage.from(chatbotMediaBucket).remove([storagePath]);
+    throw new Error(inserted.error?.message ?? "insert_fail");
+  }
+}
+
+async function confirmSignedContract(input: {
+  id: string;
+  organizationId: string;
+  contactId: string;
+  name: string;
+  documentId: string;
+}) {
   const claimed = await signatures()
     .update({ status: "signed", notified_at: new Date().toISOString() })
     .eq("id", input.id)
@@ -263,6 +419,15 @@ async function confirmSignedContract(input: { id: string; organizationId: string
     .select("id")
     .maybeSingle();
   if (claimed.error || !claimed.data) return;
+  try {
+    await saveSignedContractMedia({
+      organizationId: input.organizationId,
+      contactId: input.contactId,
+      documentId: input.documentId,
+    });
+  } catch (error) {
+    console.error("contract_signed_media", error instanceof Error ? error.message : "fail");
+  }
   try {
     const { sendContractSignedWhatsApp } = await import("@/server/chatbot.server");
     await sendContractSignedWhatsApp({
@@ -292,6 +457,7 @@ export async function syncContractSignature(organizationId: string, contactId: s
     organizationId,
     contactId,
     name: cell(existing.data, "client_name"),
+    documentId: cell(existing.data, "autentique_document_id"),
   });
   return true;
 }
@@ -327,6 +493,7 @@ async function confirmReadyContract(row: Record<string, unknown>) {
     organizationId: cell(row, "organization_id"),
     contactId: cell(row, "contact_id"),
     name: cell(row, "client_name"),
+    documentId: cell(row, "autentique_document_id"),
   });
   return true;
 }
@@ -361,6 +528,7 @@ export async function applyAutentiqueWebhook(rawBody: string, signatureHeader: s
         organizationId: cell(found.data, "organization_id"),
         contactId: cell(found.data, "contact_id"),
         name: cell(found.data, "client_name"),
+        documentId: cell(found.data, "autentique_document_id") || event.documentId,
       });
       return;
     }

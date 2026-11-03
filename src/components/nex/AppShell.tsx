@@ -304,13 +304,8 @@ export function AppShell({
           navOpen ? "hidden lg:flex lg:flex-col" : "hidden",
         )}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <Brand />
-          </div>
-          <Button type="button" variant="ghost" size="icon" className="mt-0.5 size-8 shrink-0 text-sidebar-foreground/70 hover:text-sidebar-foreground" aria-label="Esconder menu" title="Esconder menu" onClick={toggleNav}>
-            <PanelLeftClose className="size-4" />
-          </Button>
+        <div className="min-w-0">
+          <Brand />
         </div>
         {master ? (
           <div className="mt-8 mb-3 flex items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground">

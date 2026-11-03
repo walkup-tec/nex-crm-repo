@@ -49,7 +49,7 @@
 
 .chatbot-app :root{color-scheme:light;--brand-surface:oklch(1 0 0);--flow-dot:var(--border)}
 .chatbot-app .dark,.dark .chatbot-app{color-scheme:dark;--chat-background:oklch(.12 .04 274);--soft-primary:oklch(.23 .065 289);--shadow-panel:0 4px 24px oklch(.04 .015 276 / .3);--flow-dot:var(--border)}
-.chatbot-app .inbox-layout{height:calc((100dvh - 19rem) * 1.2);max-height:calc((100dvh - 19rem) * 1.2);min-height:0;grid-template-rows:minmax(0,1fr);overflow:hidden}
+.chatbot-app .inbox-layout{height:calc(100dvh - 19rem);max-height:calc(100dvh - 19rem);min-height:0;grid-template-rows:minmax(0,1fr);overflow:hidden}
 .chatbot-app .conversation-list,.chatbot-app .chat-area{min-height:0;max-height:100%}
 .chatbot-app .conversation-list{display:flex;flex-direction:column;min-height:0;height:100%;max-height:100%;overflow:hidden}
 .chatbot-app .list-tools{flex:0 0 auto}

@@ -36,7 +36,7 @@ export function renderStage1FromIntegrity(
     for (const check of nonPass) {
       const scope = check.entity_id ? `${check.level} \`${check.entity_id}\`` : check.level;
       lines.push(
-        `  - ${check.code} (${scope}, ${check.metric}): ${check.state}${check.description ? ` — ${check.description}` : ""}`,
+        `  - ${check.code} (${scope}, ${check.metric}): ${check.state}.`,
       );
     }
   }

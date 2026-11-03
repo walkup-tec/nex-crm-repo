@@ -30,21 +30,6 @@ export type MetricTraceValidity = {
 
 const MONITORABLE = new Set(["ctr", "link_ctr", "cpc", "link_cpc", "cpm", "impressions", "clicks", "reach", "frequency"]);
 
-function metricMentionRe(metric: string): RegExp {
-  const m = normalizeCanonicalMetric(metric);
-  if (m === "ctr" || m === "link_ctr") return /\b(ctr|link[_\s-]?ctr)\b/i;
-  if (m === "cpc" || m === "link_cpc") return /\b(cpc|link[_\s-]?cpc)\b/i;
-  if (m === "cpm") return /\bcpm\b/i;
-  if (m === "impressions") return /\bimpress[oõ]es?\b/i;
-  if (m === "clicks") return /\b(cliques?|clicks?)\b/i;
-  if (m === "reach") return /\balcance\b/i;
-  if (m === "frequency") return /\bfrequ[eê]ncia\b/i;
-  if (m === "spend") return /\b(spend|investimento|gasto)\b/i;
-  if (m === "results") return /\b(resultados?|convers[oõ]es?)\b/i;
-  if (m === "cost_per_result") return /\b(cpr|custo\s+por\s+resultado)\b/i;
-  return new RegExp(`\\b${m.replace(/_/g, "[_\\s-]?")}\\b`, "i");
-}
-
 /** Avalia se cada métrica tem ao menos um trace PASS determinístico na entidade correta. */
 export function classifyMetricsTraceValidity(input: {
   metrics: string[];
@@ -121,6 +106,22 @@ function formatMetricLabel(metric: string): string {
   return m.toUpperCase();
 }
 
+function buildBackendEvidence(
+  kept: MetricTraceValidity[],
+  traces: Map<string, MetricTraceRecord>,
+): string[] {
+  return kept.flatMap((metric) => {
+    const traceId = metric.trace_ids[0];
+    const trace = traceId ? traces.get(traceId) : null;
+    if (!trace || typeof trace.calculation.result !== "number") return [];
+    const suffix = trace.calculation.unit === "percent" ? "%" : "";
+    return [
+      `${formatMetricLabel(metric.metric)} = ${trace.calculation.result}${suffix} ` +
+        `(Meta Marketing API; trace ${trace.trace_id})`,
+    ];
+  });
+}
+
 export function rewriteNeutralMonitorAction(metrics: string[]): string {
   const labels = metrics.map(formatMetricLabel);
   if (labels.length === 1) return `Monitorar a evolução do ${labels[0]} da campanha`;
@@ -133,25 +134,6 @@ export function rewriteNeutralMonitorCriterion(metrics: string[]): string {
     return `Comparar o ${labels[0]} em períodos futuros compatíveis`;
   }
   return `Comparar ${labels.join(" e ")} em períodos futuros compatíveis`;
-}
-
-function filterEvidenceForMetrics(evidence: string[], kept: string[], discarded: string[]): string[] {
-  const keptRes = kept.map(metricMentionRe);
-  const discardedRes = discarded.map(metricMentionRe);
-  return evidence.filter((line) => {
-    const mentionsDiscarded = discardedRes.some((re) => re.test(line));
-    const mentionsKept = keptRes.some((re) => re.test(line));
-    if (mentionsDiscarded && !mentionsKept) return false;
-    if (mentionsDiscarded && mentionsKept) {
-      // Mantém só se ainda citar métrica válida; remove menções descartadas na linha.
-      return true;
-    }
-    return mentionsKept || (!mentionsDiscarded && line.trim().length > 0);
-  }).map((line) => {
-    let cleaned = line;
-    for (const re of discardedRes) cleaned = cleaned.replace(re, "").replace(/\s{2,}/g, " ").trim();
-    return cleaned.replace(/^[\s,;:|-]+|[\s,;:|-]+$/g, "").trim();
-  }).filter((line) => line.length > 0);
 }
 
 /**
@@ -240,9 +222,16 @@ export function tryCmsE1PartialRecovery(input: {
 
   if (!needsNeutralRewrite && !discarded.length) {
     return {
-      recovered: null,
+      recovered: {
+        indicators_used: keptMetrics,
+        evidence: buildBackendEvidence(kept, input.traces),
+        trace_ids: keptTraceIds,
+        recommended_action: rewriteNeutralMonitorAction(keptMetrics),
+        validation_criterion: rewriteNeutralMonitorCriterion(keptMetrics),
+        hypothesis: null,
+      },
       audit: {
-        applied: false,
+        applied: true,
         discarded_metrics: [],
         kept_metrics: keptMetrics,
         discarded_trace_ids: [],
@@ -255,14 +244,7 @@ export function tryCmsE1PartialRecovery(input: {
 
   const action = rewriteNeutralMonitorAction(keptMetrics);
   const criterion = rewriteNeutralMonitorCriterion(keptMetrics);
-  const evidence = filterEvidenceForMetrics(
-    input.evidence,
-    keptMetrics,
-    discardedMetrics.length ? discardedMetrics : [],
-  )
-    .filter((line) => !textHasUnfoundedQualitativeLabel(line))
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const evidence = buildBackendEvidence(kept, input.traces);
 
   // Se após limpeza sobrar label qualitativo, a recuperação falha (não inventamos texto novo além do template neutro).
   if (textHasUnfoundedQualitativeLabel(action) || textHasUnfoundedQualitativeLabel(criterion)) {
@@ -298,7 +280,7 @@ export function tryCmsE1PartialRecovery(input: {
   return {
     recovered: {
       indicators_used: keptMetrics,
-      evidence: evidence.length ? evidence : keptMetrics.map((m) => `${formatMetricLabel(m)} rastreável na Meta`),
+      evidence,
       trace_ids: keptTraceIds,
       recommended_action: action,
       validation_criterion: criterion,

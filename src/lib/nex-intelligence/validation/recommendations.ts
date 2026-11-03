@@ -45,9 +45,14 @@ function mentionsArbitraryTargetInText(rec: StructuredRecommendation): boolean {
   );
 }
 
-function evidenceSufficient(rec: StructuredRecommendation): boolean {
+function evidenceSufficient(rec: StructuredRecommendation, backendTracesOk: boolean): boolean {
   const evidences = (rec.evidence ?? []).filter((item) => item.trim().length > 0);
-  if (rec.action_kind === "monitor" || rec.action_kind === "test") return evidences.length >= 1;
+  // MONITOR E1 é provado pelo catálogo backend; evidence[] é narrativa da IA e
+  // não pode ser condição de aprovação.
+  if (rec.action_kind === "monitor") {
+    return backendTracesOk && rec.indicators_used.length >= 1;
+  }
+  if (rec.action_kind === "test") return evidences.length >= 1;
   if (rec.action_kind === "scale_budget" || rec.action_kind === "pause" || rec.action_kind === "replace_creative") {
     return evidences.length >= 2 && rec.indicators_used.length >= 2;
   }
@@ -162,7 +167,7 @@ export function validateStructuredRecommendation(
     reasons.push("pause_on_single_indicator");
   }
 
-  if (!evidenceSufficient(rec)) {
+  if (!evidenceSufficient(rec, tracesOk)) {
     reasons.push("insufficient_evidence");
   }
 

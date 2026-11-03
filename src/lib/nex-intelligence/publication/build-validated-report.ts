@@ -71,7 +71,7 @@ export function buildValidatedReport(input: {
   const approvedClaims = input.claimIr.approved;
   const hasApproved = approvedClaims.length > 0;
   const candidateStatus: AnalyticalStatus = !hasApproved
-    ? input.parseOk && input.claimIr.original.length === 0
+    ? input.parseOk && input.claimIr.original.length === 0 && input.discardedOrRejected === 0
       ? "INSUFFICIENT_EVIDENCE"
       : "FALLBACK_DETERMINISTIC"
     : input.discardedOrRejected > 0

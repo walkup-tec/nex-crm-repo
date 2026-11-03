@@ -195,7 +195,7 @@ export async function processMetaAiRecommendations(input: {
   {
     const byId = new Map(working.recommendations.map((row) => [row.id, row]));
     for (const row of validated) {
-      if (row.verdict === "APPROVED" || row.action_kind !== "monitor") continue;
+      if (row.action_kind !== "monitor") continue;
       const rec = byId.get(row.id);
       if (!rec) continue;
       const cms = tryCmsE1PartialRecovery({
@@ -377,10 +377,16 @@ export async function processMetaAiRecommendations(input: {
 
   // A validação legada acima permanece apenas como auditoria/recuperação de entrada.
   // Toda autoridade de publicação passa pelo Claim IR e por renderizadores determinísticos.
+  // Claim IR explícito e envelopes legados passam juntos pela mesma autoridade.
+  // A versão backend-validada da recomendação prevalece quando a IA reutiliza o ID.
+  const claimDrafts = new Map<string, unknown>();
+  for (const draft of [...working.claim_ir, ...working.observations, ...validated]) {
+    const row = draft && typeof draft === "object" ? (draft as Record<string, unknown>) : null;
+    const id = String(row?.claim_id ?? row?.id ?? `anonymous-${claimDrafts.size}`);
+    claimDrafts.set(id, draft);
+  }
   const claimIr = processClaimIRPipeline({
-    drafts: working.claim_ir.length
-      ? working.claim_ir
-      : [...working.observations, ...validated],
+    drafts: [...claimDrafts.values()],
     payload: input.payload,
     quality: input.quality,
     backendTraceability: backendCatalog,

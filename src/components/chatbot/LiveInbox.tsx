@@ -620,8 +620,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     () => (data ? inboxTabCounts(conversations, data.contacts, contactQuery, listFilters) : { todos: 0, atendimento: 0, aguardando: 0, robo: 0 }),
     [data, conversations, contactQuery, listFilters],
   );
-  const pinnedConversations = useMemo(() => visibleConversations.filter((item) => item.pinned), [visibleConversations]);
-  const listedConversations = useMemo(() => visibleConversations.filter((item) => !item.pinned), [visibleConversations]);
   const filtersOn = inboxFiltersActive(listFilters);
   const laneCount = (key: InboxTab) => laneCounts[key];
 
@@ -1557,10 +1555,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
           </div>
           {conversations.length ? (
             visibleConversations.length ? (
-            <>
-              {pinnedConversations.length ? <div className="conversation-pinned">{pinnedConversations.map((item) => conversationCard(item))}</div> : null}
-              <div className="conversation-scroll">{listedConversations.map((item) => conversationCard(item))}</div>
-            </>
+              <div className="conversation-scroll">{visibleConversations.map((item) => conversationCard(item))}</div>
             ) : (
               <div className="list-empty">
                 <MessageSquare size={27} />

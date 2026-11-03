@@ -1,5 +1,5 @@
 import { clientDisplayName, isInactiveClient, type ClientInvoice, type ClientStatus } from "@/lib/client-access";
-import { daysPast, shiftDate, todayKey } from "@/lib/finance-access";
+import { daysPast, excludedFromMasterDashboard, shiftDate, todayKey } from "@/lib/finance-access";
 import type { MetaPeriod } from "@/lib/meta-access";
 
 export type DashboardClient = {
@@ -268,33 +268,36 @@ export function masterDashboardFrom(
   const bounds = periodBounds(period);
   const previous = bounds ? previousBounds(bounds) : null;
 
-  const activeNow = clients.filter((client) => !isInactiveClient(client.status));
-  const overdueNow = clients.filter(isOverdueClient);
-  const inactiveNow = clients.filter((client) => isInactiveClient(client.status));
-  const activeOnly = clients.filter((client) => client.status === "active").length;
+  // MMS Master é conta operacional/demo — fora de todos os indicadores do dashboard.
+  const countable = clients.filter((client) => !excludedFromMasterDashboard(client));
+
+  const activeNow = countable.filter((client) => !isInactiveClient(client.status));
+  const overdueNow = countable.filter(isOverdueClient);
+  const inactiveNow = countable.filter((client) => isInactiveClient(client.status));
+  const activeOnly = countable.filter((client) => client.status === "active").length;
 
   const newClientsIn = (range: { start: string; end: string } | null) =>
-    clients.filter((client) => inBounds(clientCreatedDay(client), range));
+    countable.filter((client) => inBounds(clientCreatedDay(client), range));
 
   const newIn = (range: { start: string; end: string } | null) => newClientsIn(range).length;
 
   const revenueIn = (range: { start: string; end: string } | null) =>
-    invoicesInPeriod(clients, range).reduce((sum, row) => sum + row.invoice.totalCents, 0);
+    invoicesInPeriod(countable, range).reduce((sum, row) => sum + row.invoice.totalCents, 0);
 
   const overdueClientsIn = (range: { start: string; end: string } | null) => {
     if (!range) return overdueNow;
     const ids = new Set(
-      invoicesInPeriod(clients, range)
+      invoicesInPeriod(countable, range)
         .filter((row) => row.invoice.status === "overdue")
         .map((row) => row.client.id),
     );
-    return clients.filter((client) => ids.has(client.id));
+    return countable.filter((client) => ids.has(client.id));
   };
 
   const overdueCountIn = (range: { start: string; end: string } | null) => overdueClientsIn(range).length;
 
   const activeAt = (end: string) =>
-    clients.filter((client) => {
+    countable.filter((client) => {
       if (isInactiveClient(client.status) && client.status !== "blocked") {
         if (client.status === "disabled" || client.status === "contract_ended") {
           const ended = dayOf(client.endsOn);
@@ -308,7 +311,7 @@ export function masterDashboardFrom(
     }).length;
 
   const dueWindowRows = (start: string, end: string) =>
-    clients.flatMap((client) =>
+    countable.flatMap((client) =>
       client.invoices
         .filter((invoice) => openInvoice(invoice) && inBounds(dayOf(invoice.dueDate), { start, end }))
         .map((invoice) => ({ client, invoice })),
@@ -344,7 +347,7 @@ export function masterDashboardFrom(
     });
   }
 
-  const periodRows = invoicesInPeriod(clients, bounds);
+  const periodRows = invoicesInPeriod(countable, bounds);
   const paidCents = periodRows.filter((row) => row.invoice.status === "paid").reduce((sum, row) => sum + row.invoice.totalCents, 0);
   const pendingCents = periodRows.filter((row) => row.invoice.status === "pending").reduce((sum, row) => sum + row.invoice.totalCents, 0);
   const overdueCents = periodRows.filter((row) => row.invoice.status === "overdue").reduce((sum, row) => sum + row.invoice.totalCents, 0);
@@ -357,7 +360,7 @@ export function masterDashboardFrom(
 
   let unknownGeoClients = 0;
   const ufCounts = new Map<string, number>();
-  for (const client of clients) {
+  for (const client of countable) {
     if (client.status === "disabled") continue;
     const uf = normalizeUf(client.state);
     if (!uf) {
@@ -404,7 +407,7 @@ export function masterDashboardFrom(
   for (let i = 0; i < 4; i += 1) {
     const start = shiftDate(thisWeekStart, i * 7);
     const end = shiftDate(start, 6);
-    const rows = clients.flatMap((client) =>
+    const rows = countable.flatMap((client) =>
       client.invoices.filter((invoice) => openInvoice(invoice) && inBounds(dayOf(invoice.dueDate), { start, end })),
     );
     dueWeeks.push({

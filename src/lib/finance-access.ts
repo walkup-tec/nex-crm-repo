@@ -202,6 +202,34 @@ export function keepsAccessWithoutPayment(legalName: string) {
   return legalName.trim().toLocaleUpperCase("pt-BR") === "MMS MARKETING E SISTEMAS DIGITAIS LTDA";
 }
 
+const internalDashboardNames = [
+  "MMS MARKETING E SISTEMAS DIGITAIS LTDA",
+  "MMS",
+  "WALKUP TECNOLOGIA E SISTEMAS LTDA",
+  "WALKUP SISTEMAS E INTELIGENCIA LTDA",
+  "WALKUP",
+];
+
+function normalizedOrgLabel(value: string) {
+  return value.trim().toLocaleUpperCase("pt-BR").replace(/\s+/g, " ");
+}
+
+function matchesInternalDashboardName(value: string) {
+  const label = normalizedOrgLabel(value);
+  if (!label) return false;
+  if (internalDashboardNames.includes(label)) return true;
+  return (
+    label.startsWith("MMS MARKETING") ||
+    label.startsWith("WALKUP TECNOLOGIA") ||
+    label.startsWith("WALKUP SISTEMAS")
+  );
+}
+
+/** Contas internas (MMS / Walkup) — fora de qualquer indicador do dashboard Master. */
+export function excludedFromMasterDashboard(client: { legalName: string; commercialName?: string | null }) {
+  return matchesInternalDashboardName(client.legalName) || matchesInternalDashboardName(client.commercialName ?? "");
+}
+
 export function preservesLocalPayment(input: {
   legalName: string;
   competence: string;

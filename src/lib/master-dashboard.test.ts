@@ -73,3 +73,59 @@ assert.equal(snap.kpiClients.periodRevenue.length, 2);
 assert.equal(snap.kpiClients.overdueClients.length, 1);
 const october = snap.revenueClientsSeries.find((item) => item.key === "2026-10");
 assert.equal(october?.activeClients, 1);
+
+const withMms = masterDashboardFrom(
+  [
+    ...clients,
+    {
+      id: "mms",
+      legalName: "MMS MARKETING E SISTEMAS DIGITAIS LTDA",
+      commercialName: "MMS",
+      status: "active",
+      createdAt: "2026-10-12T12:00:00.000Z",
+      startsOn: "2026-01-01",
+      endsOn: null,
+      state: "MG",
+      invoices: [],
+    },
+  ],
+  { mode: "custom", since: "2026-10-01", until: "2026-10-31" },
+  "2026-10-15",
+);
+assert.equal(withMms.activeClients.value, 2);
+assert.equal(withMms.newClients.value, 1);
+assert.equal(withMms.kpiClients.activeClients.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.kpiClients.newClients.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.kpiClients.periodRevenue.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.kpiClients.overdueClients.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.kpiClients.dueThisWeek.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.kpiClients.dueNextWeek.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.topClients.some((item) => /MMS/i.test(item.name)), false);
+assert.equal(withMms.regions.find((item) => item.key === "SE")?.clients, 1);
+assert.equal(withMms.statusSlices.reduce((sum, item) => sum + item.value, 0), 3);
+
+const withWalkup = masterDashboardFrom(
+  [
+    ...clients,
+    {
+      id: "walkup",
+      legalName: "WALKUP TECNOLOGIA E SISTEMAS LTDA",
+      commercialName: "Walkup",
+      status: "active",
+      createdAt: "2026-10-08T12:00:00.000Z",
+      startsOn: "2026-01-01",
+      endsOn: null,
+      state: "RS",
+      invoices: [
+        { competence: "2026-10-01", dueDate: "2026-10-20", totalCents: 99800, status: "paid", paidAt: "2026-10-19T12:00:00.000Z" },
+      ],
+    },
+  ],
+  { mode: "custom", since: "2026-10-01", until: "2026-10-31" },
+  "2026-10-15",
+);
+assert.equal(withWalkup.activeClients.value, 2);
+assert.equal(withWalkup.newClients.value, 1);
+assert.equal(withWalkup.periodRevenue.cents, 700000);
+assert.equal(withWalkup.topClients.some((item) => /WALKUP/i.test(item.name)), false);
+assert.equal(withWalkup.kpiClients.periodRevenue.some((item) => /WALKUP/i.test(item.name)), false);

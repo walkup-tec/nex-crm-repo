@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { clientDisplayName, type ClientDraft, type ClientInvoice, type ClientStatus, type InvoiceStatus, type ListedClient } from "@/lib/client-access";
 import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionsOverlap } from "@/lib/billing-plan";
-import { keepsAccessWithoutPayment } from "@/lib/finance-access";
+import { excludedFromMasterDashboard, keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { masterDashboardFrom, type DashboardClient, type MasterDashboard } from "@/lib/master-dashboard";
 import type { MetaPeriod } from "@/lib/meta-access";
 import { createCoraInvoice } from "@/server/cora.server";
@@ -463,17 +463,19 @@ export async function masterDashboard(
       : input.period === "total"
         ? { mode: "total" }
         : null;
-  const rows: DashboardClient[] = clients.map((client) => ({
-    id: client.id,
-    legalName: client.legalName,
-    commercialName: client.commercialName,
-    status: client.status,
-    createdAt: client.createdAt,
-    startsOn: client.startsOn,
-    endsOn: client.endsOn,
-    state: states.get(client.id) ?? null,
-    invoices: client.invoices,
-  }));
+  const rows: DashboardClient[] = clients
+    .filter((client) => !excludedFromMasterDashboard(client))
+    .map((client) => ({
+      id: client.id,
+      legalName: client.legalName,
+      commercialName: client.commercialName,
+      status: client.status,
+      createdAt: client.createdAt,
+      startsOn: client.startsOn,
+      endsOn: client.endsOn,
+      state: states.get(client.id) ?? null,
+      invoices: client.invoices,
+    }));
   return masterDashboardFrom(rows, period);
 }
 

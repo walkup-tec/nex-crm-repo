@@ -6,6 +6,8 @@ import type {
   StructuredClaim,
   StructuredRecommendation,
 } from "@/lib/nex-intelligence/ai-output/schemas";
+import type { ProcessClaimIRResult } from "@/lib/nex-intelligence/claim-ir/process";
+import type { PublicationGateFailure } from "@/lib/nex-intelligence/publication/final-gate";
 
 export type RecommendationLevel = "campaign" | "adset" | "ad";
 export type ClaimLevel = "account" | RecommendationLevel;
@@ -60,6 +62,7 @@ export type RecoveryAudit = {
 
 export type StructuredAnalysisPayload = {
   format?: string;
+  claim_ir: unknown[];
   stage1_markdown: string;
   stage2_markdown: string;
   observations: StructuredClaim[];
@@ -137,4 +140,10 @@ export type ProcessRecommendationsResult = {
   rejected: ValidatedRecommendation[];
   needsReview: ValidatedRecommendation[];
   analyticalStatus: AnalyticalStatus;
+  claimIr: ProcessClaimIRResult | null;
+  publicationStatus: "pending_persist" | "not_ready";
+  publicationGate: {
+    ok: boolean;
+    failures: PublicationGateFailure[];
+  };
 };

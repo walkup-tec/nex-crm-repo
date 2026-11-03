@@ -49,6 +49,14 @@ function tracesOk(
       codes.push(NexIntelligenceErrorCode.TRACE_NOT_FOUND);
       continue;
     }
+    if (row.source !== "META_MARKETING_API") {
+      reasons.push(`trace_source_invalid:${id}`);
+      codes.push(NexIntelligenceErrorCode.TRACE_NOT_FOUND);
+    }
+    if (row.validation.status === "FAIL" || row.validation.status === "NOT_VERIFIABLE") {
+      reasons.push(`trace_not_verifiable:${id}:${row.validation.status}`);
+      codes.push(NexIntelligenceErrorCode.SEMANTIC_EVIDENCE_INSUFFICIENT);
+    }
     if (entityLevel !== "account" && entityId && row.entity_id && row.entity_id !== entityId) {
       reasons.push(`trace_entity_mismatch:${id}`);
       codes.push(NexIntelligenceErrorCode.TRACE_ENTITY_MISMATCH);
@@ -114,8 +122,11 @@ export function validateClaimIR(
   const required = OPERATION_MIN_EVIDENCE[claim.operation as ClaimOperation];
   const entities = buildEntityIndex(payload);
 
-  if (claim.entity_level !== "account" && claim.entity_id) {
-    if (!entityExists(entities, claim.entity_level, claim.entity_id)) {
+  if (claim.entity_level === "account" && claim.entity_id && claim.entity_id !== payload.account.id) {
+    reasons.push(`entity_not_found:account:${claim.entity_id}`);
+    codes.push(NexIntelligenceErrorCode.TRACE_ENTITY_MISMATCH);
+  } else if (claim.entity_level !== "account") {
+    if (!claim.entity_id || !entityExists(entities, claim.entity_level, claim.entity_id)) {
       reasons.push(`entity_not_found:${claim.entity_level}:${claim.entity_id}`);
       codes.push(NexIntelligenceErrorCode.TRACE_ENTITY_MISMATCH);
     }
@@ -127,13 +138,39 @@ export function validateClaimIR(
     codes.push(...traceCheck.codes);
   }
 
+  const expectedMetrics =
+    claim.operation === "MONITOR"
+      ? claim.args.metrics.map(normalizeCanonicalMetric)
+      : "metric" in claim.args
+        ? [normalizeCanonicalMetric(String(claim.args.metric))]
+        : [];
+  for (const metric of expectedMetrics) {
+    if (
+      !claim.metric_refs.some(
+        (id) => normalizeCanonicalMetric(traces.get(id)?.metric ?? "") === metric,
+      )
+    ) {
+      reasons.push(`metric_trace_mismatch:${metric}`);
+      codes.push(NexIntelligenceErrorCode.SEMANTIC_EVIDENCE_INSUFFICIENT);
+    }
+  }
+
+  const comparisonTrace = claim.comparison_ref ? traces.get(claim.comparison_ref) : null;
+  const comparisonValidated = Boolean(
+    comparisonTrace &&
+      comparisonTrace.source === "META_MARKETING_API" &&
+      comparisonTrace.validation.status !== "FAIL" &&
+      comparisonTrace.validation.status !== "NOT_VERIFIABLE" &&
+      comparisonTrace.calculation.comparable === true,
+  );
+
   if (
     (claim.operation === "PERIOD_COMPARISON" ||
       claim.operation === "ENTITY_COMPARISON" ||
       claim.operation === "QUALITATIVE_CLASSIFICATION") &&
-    !claim.comparison_ref
+    !comparisonValidated
   ) {
-    reasons.push("comparison_ref_required");
+    reasons.push(claim.comparison_ref ? "comparison_ref_invalid" : "comparison_ref_required");
     codes.push(NexIntelligenceErrorCode.COMPARISON_NOT_VALIDATED);
   }
 
@@ -143,8 +180,8 @@ export function validateClaimIR(
       codes.push(NexIntelligenceErrorCode.STRATEGIC_EVIDENCE_INSUFFICIENT);
     }
     // E3 exige comparação/fundamento rastreável além de métricas isoladas
-    if (!claim.comparison_ref && !claim.hypothesis_ref) {
-      reasons.push("strategic_or_causal_requires_comparison_or_hypothesis_ref");
+    if (!comparisonValidated) {
+      reasons.push("strategic_or_causal_requires_validated_comparison");
       codes.push(NexIntelligenceErrorCode.STRATEGIC_EVIDENCE_INSUFFICIENT);
     }
   }
@@ -160,8 +197,8 @@ export function validateClaimIR(
   let achieved: EvidenceLevelCode = "E0";
   if (reasons.length === 0) {
     if (required === "E1") achieved = "E1";
-    else if (required === "E2" && claim.comparison_ref) achieved = "E2";
-    else if (required === "E3" && claim.metric_refs.length > 0) achieved = "E3";
+    else if (required === "E2" && comparisonValidated) achieved = "E2";
+    else if (required === "E3" && comparisonValidated && claim.metric_refs.length > 0) achieved = "E3";
     else achieved = "E1";
   }
 

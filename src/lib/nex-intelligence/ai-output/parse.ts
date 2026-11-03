@@ -72,17 +72,20 @@ export function emptyStructuredPayload(
   const observations = partial.observations ?? [];
   const recommendations = partial.recommendations ?? [];
   const executive_points = partial.executive_points ?? [];
+  const claim_ir = partial.claim_ir ?? [];
   const metric_traceability = partial.metric_traceability ?? emptyTrace;
   const has_recoverable_content =
     observations.length > 0 ||
     recommendations.length > 0 ||
     executive_points.length > 0 ||
+    claim_ir.length > 0 ||
     metric_traceability.records.length > 0 ||
     Boolean(partial.stage1_markdown?.trim()) ||
     Boolean(partial.stage2_markdown?.trim()) ||
     Boolean(partial.stage4_markdown?.trim());
   return {
-    format: partial.format,
+    ...(partial.format ? { format: partial.format } : {}),
+    claim_ir,
     stage1_markdown: partial.stage1_markdown ?? "",
     stage2_markdown: partial.stage2_markdown ?? "",
     observations,
@@ -92,7 +95,7 @@ export function emptyStructuredPayload(
     metric_traceability,
     parse_ok: partial.parse_ok,
     has_recoverable_content,
-    parse_error: partial.parse_error,
+    ...(partial.parse_error ? { parse_error: partial.parse_error } : {}),
     schema_errors,
     discarded_recommendations: partial.discarded_recommendations ?? 0,
     discarded_observations: partial.discarded_observations ?? 0,
@@ -178,7 +181,8 @@ export function parseStructuredAnalysis(
   }
 
   return emptyStructuredPayload({
-    format: base.data.format,
+    ...(base.data.format ? { format: base.data.format } : {}),
+    claim_ir: base.data.claim_ir,
     stage1_markdown: base.data.stage1_markdown,
     stage2_markdown: base.data.stage2_markdown,
     observations: obs.claims,
@@ -187,7 +191,7 @@ export function parseStructuredAnalysis(
     stage4_markdown: base.data.stage4_markdown,
     metric_traceability: traceParsed.value,
     parse_ok: true,
-    parse_error: sectionErrors.length ? sectionErrors.join("; ") : undefined,
+    ...(sectionErrors.length ? { parse_error: sectionErrors.join("; ") } : {}),
     schema_errors,
     discarded_recommendations,
     discarded_observations: obs.discarded,
@@ -201,6 +205,7 @@ export function needsStructuralRegeneration(parsed: StructuredAnalysisPayload): 
     parsed.observations.length > 0 ||
     parsed.recommendations.length > 0 ||
     parsed.executive_points.length > 0;
+  if (parsed.claim_ir.length > 0) return false;
   if (!hasAnySection && parsed.schema_errors.some((e) => e.section !== "envelope")) return true;
   return false;
 }
@@ -219,7 +224,10 @@ export function mergeStructuredPayloads(
   const byTrace = new Map(primary.metric_traceability.records.map((row) => [row.trace_id, row]));
   for (const row of secondary.metric_traceability.records) byTrace.set(row.trace_id, row);
   return emptyStructuredPayload({
-    format: secondary.format ?? primary.format,
+    ...(secondary.format ?? primary.format
+      ? { format: secondary.format ?? primary.format }
+      : {}),
+    claim_ir: secondary.claim_ir.length ? secondary.claim_ir : primary.claim_ir,
     stage1_markdown: secondary.stage1_markdown || primary.stage1_markdown,
     stage2_markdown: secondary.stage2_markdown || primary.stage2_markdown,
     stage4_markdown: secondary.stage4_markdown || primary.stage4_markdown,
@@ -231,7 +239,13 @@ export function mergeStructuredPayloads(
       records: [...byTrace.values()],
     },
     parse_ok: primary.parse_ok || secondary.parse_ok,
-    parse_error: [primary.parse_error, secondary.parse_error].filter(Boolean).join("; ") || undefined,
+    ...([primary.parse_error, secondary.parse_error].filter(Boolean).join("; ")
+      ? {
+          parse_error: [primary.parse_error, secondary.parse_error]
+            .filter(Boolean)
+            .join("; "),
+        }
+      : {}),
     schema_errors: [...primary.schema_errors, ...secondary.schema_errors],
     discarded_recommendations: primary.discarded_recommendations + secondary.discarded_recommendations,
     discarded_observations: primary.discarded_observations + secondary.discarded_observations,

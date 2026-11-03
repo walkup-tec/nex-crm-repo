@@ -7,7 +7,7 @@ import {
   recordOpenAiCall,
   type MetaAnalysisPipelineContext,
 } from "@/lib/nex-intelligence/pipeline/context";
-import type { PersistedAnalyticalOutputV120 } from "@/lib/nex-intelligence/pipeline/persistence-contract";
+import type { PersistedAnalyticalOutputV130 } from "@/lib/nex-intelligence/pipeline/persistence-contract";
 import { buildBackendMetricTraceCatalog } from "@/lib/nex-intelligence/trace/build-catalog";
 import type { MetricTraceability } from "@/lib/nex-intelligence/trace";
 import {
@@ -41,7 +41,7 @@ export type RunMetaAnalysisResult = {
   model: string;
   rawAiText: string;
   processed: ProcessRecommendationsResult;
-  outputJson: PersistedAnalyticalOutputV120;
+  outputJson: PersistedAnalyticalOutputV130;
   analyticalStatus: AnalyticalStatus;
   executionStatus: "ok" | "partial" | "error";
   errorMessage: string;
@@ -108,9 +108,10 @@ export async function runMetaAnalysis(input: RunMetaAnalysisInput): Promise<RunM
       processed.analyticalStatus === "FALLBACK_DETERMINISTIC" ||
       !processed.audit.parse_ok ||
       processed.rejected.length ||
-      processed.needsReview.length
+      processed.needsReview.length ||
+      processed.publicationStatus !== "pending_persist"
     ) {
-      executionStatus = executionStatus === "error" ? executionStatus : "partial";
+      executionStatus = "partial";
     }
     if (processed.analyticalStatus === "FAILED") {
       executionStatus = "error";
@@ -159,6 +160,12 @@ export async function runMetaAnalysis(input: RunMetaAnalysisInput): Promise<RunM
       rejected: [],
       needsReview: [],
       analyticalStatus: "FAILED",
+      claimIr: null,
+      publicationStatus: "not_ready",
+      publicationGate: {
+        ok: false,
+        failures: [{ code: "PIPELINE_FAILURE", detail: errorMessage }],
+      },
     };
   }
 
@@ -168,6 +175,9 @@ export async function runMetaAnalysis(input: RunMetaAnalysisInput): Promise<RunM
     promptHash: input.promptHash,
     dataQualityStatus: input.quality.status,
     processed: processed!,
+    claimIr: processed!.claimIr,
+    executionStatus: executionStatus === "error" ? "failed" : "succeeded",
+    publicationStatus: processed!.publicationStatus,
   });
 
   return {

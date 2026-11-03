@@ -10,6 +10,26 @@ import {
 } from "@/lib/nex-intelligence/validation/orchestrate";
 import type { ProcessClaimIRResult } from "@/lib/nex-intelligence/claim-ir/process";
 
+export function markPersistedOutputPublished(
+  output: PersistedAnalyticalOutputV130,
+): PersistedAnalyticalOutputV130 {
+  if (
+    output.publication_status !== "pending_persist" ||
+    output.analytical_status === "FAILED" ||
+    !output.publication_gate.ok
+  ) {
+    throw new Error("analytical_output_not_publishable");
+  }
+  return {
+    ...output,
+    publication_status: "published",
+    statuses: {
+      ...output.statuses,
+      publication_status: "published",
+    },
+  };
+}
+
 export function buildPersistedAnalyticalOutput(input: {
   rawText: string;
   model: string;
@@ -23,7 +43,7 @@ export function buildPersistedAnalyticalOutput(input: {
 }): PersistedAnalyticalOutputV130 {
   const parsed = parseStructuredAnalysis(input.rawText, "initial");
   const audit = input.processed.audit;
-  const publicationStatus = input.publicationStatus ?? "published";
+  const publicationStatus = input.publicationStatus ?? input.processed.publicationStatus;
   const executionStatus = input.executionStatus ?? "succeeded";
   const publicationVersion = input.publicationVersion ?? 1;
   const claimIr = input.claimIr;
@@ -42,8 +62,11 @@ export function buildPersistedAnalyticalOutput(input: {
     publication_version: publicationVersion,
     computed_metrics: claimIr?.registry ?? [],
     claim_ir: {
+      proposed: claimIr?.original ?? [],
       original: claimIr?.original ?? [],
       normalized: claimIr?.normalized ?? [],
+      validated: claimIr?.validated ?? [],
+      recovered: claimIr?.recovered ?? [],
       approved: claimIr?.approved ?? [],
       rejected: claimIr?.rejected ?? [],
       recovery_audits: claimIr?.recovery_audits ?? [],
@@ -53,6 +76,7 @@ export function buildPersistedAnalyticalOutput(input: {
       approved_count: claimIr?.approved.length ?? audit.published_recommendation_ids.length,
       rejected_count: claimIr?.rejected.length ?? audit.rejected_recommendation_ids.length,
     },
+    publication_gate: input.processed.publicationGate,
     statuses: {
       execution_status: executionStatus,
       analytical_status: String(input.processed.analyticalStatus),
@@ -63,7 +87,8 @@ export function buildPersistedAnalyticalOutput(input: {
       raw_text_present: Boolean(input.rawText.trim()),
       structured: parsed.parse_ok
         ? {
-            format: parsed.format,
+            ...(parsed.format ? { format: parsed.format } : {}),
+            claim_ir: parsed.claim_ir,
             observations: parsed.observations,
             recommendations: parsed.recommendations,
             executive_points: parsed.executive_points,
@@ -71,7 +96,7 @@ export function buildPersistedAnalyticalOutput(input: {
           }
         : null,
       parse_ok: parsed.parse_ok,
-      parse_error: parsed.parse_error,
+      ...(parsed.parse_error ? { parse_error: parsed.parse_error } : {}),
     },
     validation: {
       observations: audit.observations,

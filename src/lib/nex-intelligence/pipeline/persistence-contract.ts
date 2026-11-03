@@ -48,8 +48,11 @@ export type PersistedAnalyticalOutputV130 = PersistedAnalyticalOutputV120 & {
   publication_version: number;
   computed_metrics: unknown[];
   claim_ir: {
+    proposed: unknown[];
     original: unknown[];
     normalized: unknown[];
+    validated: unknown[];
+    recovered: unknown[];
     approved: unknown[];
     rejected: unknown[];
     recovery_audits: unknown[];
@@ -58,6 +61,10 @@ export type PersistedAnalyticalOutputV130 = PersistedAnalyticalOutputV120 & {
     engine: string;
     approved_count: number;
     rejected_count: number;
+  };
+  publication_gate: {
+    ok: boolean;
+    failures: Array<{ code: string; detail: string }>;
   };
   statuses: {
     execution_status: string;

@@ -15,6 +15,7 @@ export type MetricRegistryEntry = {
   metric: string;
   entity_level: "account" | "campaign" | "adset" | "ad";
   entity_id: string;
+  entity_name?: string;
   period_since: string | null;
   period_until: string | null;
   timezone: string;
@@ -62,6 +63,7 @@ function pushEntityMetrics(
   input: {
     entity_level: MetricRegistryEntry["entity_level"];
     entity_id: string;
+    entity_name?: string;
     period_since: string | null;
     period_until: string | null;
     timezone: string;
@@ -75,6 +77,7 @@ function pushEntityMetrics(
   const base = {
     entity_level: input.entity_level,
     entity_id: input.entity_id,
+    ...(input.entity_name ? { entity_name: input.entity_name } : {}),
     period_since: input.period_since,
     period_until: input.period_until,
     timezone: input.timezone,
@@ -206,6 +209,7 @@ export function buildMetricRegistry(
     pushEntityMetrics(out, {
       entity_level: "account",
       entity_id: String(account.id),
+      ...(account.name ? { entity_name: account.name } : {}),
       period_since: period.since ?? null,
       period_until: period.until ?? null,
       timezone: period.timezone ?? "America/Sao_Paulo",
@@ -218,10 +222,17 @@ export function buildMetricRegistry(
   }
 
   for (const campaign of payload.campaigns ?? []) {
-    const m = (campaign as { metrics?: Record<string, unknown> }).metrics ?? {};
+    const campaignRow = campaign as {
+      id: string;
+      name?: string;
+      metrics?: Record<string, unknown>;
+      insights?: Record<string, unknown>;
+    };
+    const m = campaignRow.metrics ?? campaignRow.insights ?? {};
     pushEntityMetrics(out, {
       entity_level: "campaign",
-      entity_id: String((campaign as { id: string }).id),
+      entity_id: String(campaignRow.id),
+      ...(campaignRow.name ? { entity_name: campaignRow.name } : {}),
       period_since: period.since ?? null,
       period_until: period.until ?? null,
       timezone: period.timezone ?? "America/Sao_Paulo",

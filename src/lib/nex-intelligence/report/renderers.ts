@@ -3,9 +3,12 @@ import type { MetricRegistryEntry } from "@/lib/nex-intelligence/metrics/registr
 
 function formatValue(entry: MetricRegistryEntry | undefined, metric: string): string {
   if (!entry || !entry.value_present || entry.value == null) return `${metric} (indisponível)`;
-  if (entry.unit === "ratio_pct") return `${metric} de ${entry.value}%`;
-  if (entry.unit === "currency") return `${metric} de ${entry.value}`;
-  return `${metric} = ${entry.value}`;
+  const value = entry.value.toLocaleString("pt-BR", {
+    maximumFractionDigits: entry.unit === "ratio_pct" ? Math.min(2, entry.precision) : entry.precision,
+  });
+  if (entry.unit === "ratio_pct") return `${metric.toUpperCase()} de ${value}%`;
+  if (entry.unit === "currency") return `${metric.toUpperCase()} de ${value}`;
+  return `${metric} = ${value}`;
 }
 
 function lookup(
@@ -29,7 +32,7 @@ export function renderClaimIR(
       const metric = claim.args.metric;
       const entry = lookup(registry, claim.entity_id, metric);
       const where = claim.entity_id
-        ? ` (${claim.entity_level} \`${claim.entity_id}\`)`
+        ? ` (${claim.entity_level} ${entry?.entity_name ? `“${entry.entity_name}” ` : ""}\`${claim.entity_id}\`)`
         : " (conta)";
       return `- ${formatValue(entry, metric)} no período analisado${where}.`;
     }
@@ -45,31 +48,35 @@ export function renderClaimIR(
     }
     case "QUALITATIVE_CLASSIFICATION": {
       if (claim.evidence_level !== "E2" && claim.evidence_level !== "E3") return "";
-      const { metric, label, criterion } = claim.args;
-      return `- Classificação de ${metric} como “${label}” segundo critério: ${criterion} (ref \`${claim.comparison_ref}\`).`;
+      const { metric } = claim.args;
+      return `- Classificação comparativa de ${metric} validada pela referência \`${claim.comparison_ref}\`.`;
     }
     case "CAUSAL_HYPOTHESIS": {
       if (claim.evidence_level !== "E3") return "";
-      return `- Hipótese testável: ${claim.args.premise} — relação: ${claim.args.relation}.`;
+      return `- Hipótese causal rastreável aprovada (ref \`${claim.hypothesis_ref}\`).`;
     }
     case "MONITOR": {
       if (claim.evidence_level !== "E1" && claim.evidence_level !== "E2" && claim.evidence_level !== "E3") {
         return "";
       }
       // MONITOR E1 não pode conter intervenção — só métricas
-      return `- Monitorar ${claim.args.metrics.join(", ")} nos próximos períodos (${claim.args.validation_criterion.type}).`;
+      const metrics = claim.args.metrics.map((metric) => metric.toUpperCase());
+      const metricLabel =
+        metrics.length > 1
+          ? `${metrics.slice(0, -1).join(", ")} e ${metrics.at(-1)}`
+          : metrics[0] ?? "métricas";
+      const entity = lookup(registry, claim.entity_id, claim.args.metrics[0] ?? "");
+      const scope =
+        claim.entity_level === "campaign" && entity?.entity_name
+          ? ` da campanha ${entity.entity_name}`
+          : claim.entity_id
+            ? ` (${claim.entity_level} \`${claim.entity_id}\`)`
+            : "";
+      return `- Monitorar ${metricLabel}${scope} nos próximos períodos (${claim.args.validation_criterion.type}).`;
     }
     case "STRATEGIC_TEST": {
       if (claim.evidence_level !== "E3") return "";
-      const { action, hypothesis, validation_criterion, reversal_condition } = claim.args;
-      return [
-        `- Teste estratégico: ${action}`,
-        `  - Hipótese: ${hypothesis}`,
-        `  - Critério: ${validation_criterion}`,
-        reversal_condition ? `  - Reversão: ${reversal_condition}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
+      return `- Executar teste estratégico controlado (${claim.args.action_kind}) com validação e reversão vinculadas às evidências E3 aprovadas.`;
     }
     default:
       return "";

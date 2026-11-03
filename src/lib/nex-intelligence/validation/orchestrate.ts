@@ -36,13 +36,8 @@ import type {
 } from "@/lib/nex-intelligence/ai-output/types";
 import { validateRecommendationList } from "@/lib/nex-intelligence/validation/recommendations";
 import { validateClaimList } from "@/lib/nex-intelligence/validation/claims";
-import { sanitizeNarrativeText } from "@/lib/nex-intelligence/validation/narrative";
-import {
-  buildDeterministicFallbackReport,
-  composeExecutiveFromApproved,
-  composePublishedMarkdown,
-  renderClaimsMarkdown,
-} from "@/lib/nex-intelligence/report";
+import { processClaimIRPipeline } from "@/lib/nex-intelligence/claim-ir/process";
+import { buildValidatedReport } from "@/lib/nex-intelligence/publication/build-validated-report";
 
 export {
   buildCompromisedMetricIndex,
@@ -82,35 +77,6 @@ export {
   validateClaimList,
 } from "@/lib/nex-intelligence/validation/claims";
 export { sanitizeNarrativeText } from "@/lib/nex-intelligence/validation/narrative";
-export {
-  composePublishedMarkdown,
-  buildDeterministicFallbackReport,
-} from "@/lib/nex-intelligence/report";
-
-function resolveAnalyticalStatus(input: {
-  approvedObs: number;
-  approvedRecs: number;
-  approvedExec: number;
-  discarded: number;
-  schemaErrors: number;
-  rejectedOrReview: number;
-  usedFallback: boolean;
-}): AnalyticalStatus {
-  const approvedTotal = input.approvedObs + input.approvedRecs + input.approvedExec;
-  if (approvedTotal === 0 && !input.usedFallback) return "INSUFFICIENT_EVIDENCE";
-  if (input.usedFallback) return "FALLBACK_DETERMINISTIC";
-  if (approvedTotal === 0) return "INSUFFICIENT_EVIDENCE";
-  if (
-    approvedTotal > 0 &&
-    input.discarded === 0 &&
-    input.schemaErrors === 0 &&
-    input.rejectedOrReview === 0
-  ) {
-    return "COMPLETED";
-  }
-  return "PARTIAL_VALIDATED";
-}
-
 export async function processMetaAiRecommendations(input: {
   rawText: string;
   payload: NexMetaAnalysisV1;
@@ -136,7 +102,8 @@ export async function processMetaAiRecommendations(input: {
 
   const initialGenerationValid =
     initial.parse_ok &&
-    (initial.observations.length > 0 ||
+    (initial.claim_ir.length > 0 ||
+      initial.observations.length > 0 ||
       initial.recommendations.length > 0 ||
       initial.executive_points.length > 0 ||
       initial.schema_errors.length === 0);
@@ -283,7 +250,8 @@ export async function processMetaAiRecommendations(input: {
       secondary = parseStructuredAnalysis(regeneratedText, "regeneration");
       regenerationValid =
         secondary.parse_ok &&
-        (secondary.observations.length > 0 ||
+        (secondary.claim_ir.length > 0 ||
+          secondary.observations.length > 0 ||
           secondary.recommendations.length > 0 ||
           secondary.executive_points.length > 0);
       working = applyBackendTracesAndRebind(mergeStructuredPayloads(initial, secondary));
@@ -404,88 +372,31 @@ export async function processMetaAiRecommendations(input: {
     rejected.length +
     needsReview.length;
 
-  const hasApprovedConclusions =
-    approvedObs.length > 0 || approved.length > 0 || approvedExec.length > 0;
+  const stage2Dropped = observations.filter((c) => c.verdict !== "APPROVED").length;
+  const stage4Dropped = executivePoints.filter((c) => c.verdict !== "APPROVED").length;
 
-  let usedFallback = false;
-  let publishedMarkdown = "";
-  let stage2Source: NarrativeSanitizationAudit["stage2_source"] = "structured";
-  let stage4Source: NarrativeSanitizationAudit["stage4_source"] = "structured";
-  let stage2Dropped = observations.filter((c) => c.verdict !== "APPROVED").length;
-  let stage4Dropped = executivePoints.filter((c) => c.verdict !== "APPROVED").length;
-
-  if (!hasApprovedConclusions) {
-    usedFallback = true;
-    const reason =
-      working.parse_error ||
-      (working.schema_errors[0]
-        ? `${working.schema_errors[0].path}: ${working.schema_errors[0].message}`
-        : "nenhuma conclusão aprovada após validação determinística");
-    publishedMarkdown = buildDeterministicFallbackReport(input.payload, input.quality, reason);
-    stage2Source = "empty";
-    stage4Source = "approved_only";
-  } else {
-    let stage2Text = renderClaimsMarkdown(approvedObs, "");
-    if (!working.observations.length) {
-      stage2Text = "_Sem observações estruturadas verificáveis._";
-      stage2Dropped = 0;
-      stage2Source = "empty";
-    } else if (!stage2Text) {
-      stage2Source = "empty";
-      stage2Text = "_Sem observações verificáveis após validação de integridade._";
-    }
-
-    let stage4Text = "";
-    if (working.executive_points.length) {
-      stage4Text = composeExecutiveFromApproved(approvedExec, approved, "");
-      stage4Source = "structured";
-    } else {
-      stage4Text = composeExecutiveFromApproved([], approved, "");
-      stage4Source = "approved_only";
-    }
-
-    const stage1Sanitized = sanitizeNarrativeText(
-      working.stage1_markdown,
-      input.payload,
-      input.quality,
-      approvedActions,
-    );
-
-    const rejectedClaims = [
-      ...observations.filter((c) => c.verdict !== "APPROVED"),
-      ...executivePoints.filter((c) => c.verdict !== "APPROVED"),
-    ];
-
-    publishedMarkdown = composePublishedMarkdown({
-      stage1: stage1Sanitized.text || `_Status determinístico: ${input.quality.status}._`,
-      stage2: stage2Text || "_Sem observações verificáveis._",
-      stage4: stage4Text,
-      approved,
-      rejected,
-      needsReview,
-      approvedObservations: stage2Source === "structured" ? approvedObs : undefined,
-      rejectedClaims,
-      quality: input.quality,
-      parseError: working.parse_error,
-      narrativeNote:
-        stage2Dropped || stage4Dropped || working.schema_errors.length
-          ? `Itens omitidos por schema/integridade (etapa2=${stage2Dropped}, etapa4=${stage4Dropped}, schema_errors=${working.schema_errors.length}). Markdown bruto da IA não foi publicado.`
-          : "Markdown bruto da IA não foi publicado.",
-    });
-  }
-
-  const analyticalStatus = resolveAnalyticalStatus({
-    approvedObs: approvedObs.length,
-    approvedRecs: approved.length,
-    approvedExec: approvedExec.length,
-    discarded: discardedItems,
-    schemaErrors: working.schema_errors.length,
-    rejectedOrReview: rejected.length + needsReview.length,
-    usedFallback,
+  // A validação legada acima permanece apenas como auditoria/recuperação de entrada.
+  // Toda autoridade de publicação passa pelo Claim IR e por renderizadores determinísticos.
+  const claimIr = processClaimIRPipeline({
+    drafts: working.claim_ir.length
+      ? working.claim_ir
+      : [...working.observations, ...validated],
+    payload: input.payload,
+    quality: input.quality,
+    backendTraceability: backendCatalog,
+    usedAiConclusions: true,
   });
-
+  const report = buildValidatedReport({
+    payload: input.payload,
+    quality: input.quality,
+    claimIr,
+    discardedOrRejected:
+      discardedItems + working.schema_errors.length + claimIr.rejected.length,
+    parseOk: working.parse_ok,
+  });
+  const publishedMarkdown = report.markdown;
   const finalStatus: AnalyticalStatus =
-    usedFallback && !input.payload?.account?.id ? "FAILED" : analyticalStatus;
+    !input.payload?.account?.id ? "FAILED" : report.analyticalStatus;
 
   const recovery: RecoveryAudit = {
     initial_generation_valid: Boolean(initialGenerationValid),
@@ -507,7 +418,7 @@ export async function processMetaAiRecommendations(input: {
     engine_version: META_AI_RECOMMENDATION_ENGINE,
     validated_at: now,
     parse_ok: working.parse_ok,
-    parse_error: working.parse_error,
+    ...(working.parse_error ? { parse_error: working.parse_error } : {}),
     regeneration_attempted: regenerationAttempted,
     analytical_status: finalStatus,
     schema_errors: working.schema_errors,
@@ -515,14 +426,16 @@ export async function processMetaAiRecommendations(input: {
     recommendations: validated,
     observations,
     executive_points: executivePoints,
-    published_recommendation_ids: approved.map((row) => row.id),
+    published_recommendation_ids: claimIr.approved
+      .filter((row) => row.operation === "MONITOR" || row.operation === "STRATEGIC_TEST")
+      .map((row) => row.claim_id),
     rejected_recommendation_ids: rejected.map((row) => row.id),
     needs_review_ids: needsReview.map((row) => row.id),
     narrative_sanitization: {
       stage2_dropped: stage2Dropped,
       stage4_dropped: stage4Dropped,
-      stage2_source: stage2Source,
-      stage4_source: stage4Source,
+      stage2_source: claimIr.approved.length ? "structured" : "empty",
+      stage4_source: "approved_only",
     },
     metric_traceability: working.metric_traceability,
   };
@@ -534,6 +447,9 @@ export async function processMetaAiRecommendations(input: {
     rejected,
     needsReview,
     analyticalStatus: finalStatus,
+    claimIr,
+    publicationStatus: report.publicationStatus,
+    publicationGate: report.gate,
   };
 }
 
@@ -576,7 +492,7 @@ export function structuralRegenerationUserPrompt(
     "Reemita o JSON COMPLETO válido (observations, recommendations, executive_points, metric_traceability).",
     "Corrija exatamente os campos listados. Não invente evidências. Meta-only.",
     "Enums: action_kind=scale_budget|pause|replace_creative|test|monitor|other; confidence=low|medium|high; claim_kind=descriptive|performance_judgment|indirect_recommendation.",
-    'Format: nex_intelligence_analysis_v1_2_0 (legado v1_1_* aceito em parse histórico).',
+    'Format: nex_intelligence_analysis_v1_3_0 (legado v1_1_*/v1_2_0 aceito em parse histórico).',
     "",
     "Erros de schema:",
     JSON.stringify(errors, null, 2),

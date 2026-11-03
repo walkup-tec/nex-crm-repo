@@ -55,6 +55,7 @@ export type StructuredClaim = z.infer<typeof structuredClaimSchema>;
 
 export const structuredAnalysisSchema = z.object({
   format: z.string().optional(),
+  claim_ir: z.array(z.unknown()).optional().default([]),
   stage1_markdown: z.string().default(""),
   stage2_markdown: z.string().default(""),
   observations: z.array(z.unknown()).optional().default([]),

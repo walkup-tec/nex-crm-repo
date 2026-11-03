@@ -115,7 +115,12 @@ Falha transacional → `publication_status=failed_persist`; endpoint não expõe
 
 ## Resultado da suíte (implementação)
 
-`npm test` → **19/19 ok** (inclui `v130-invariants.test.ts`).
+- `npm run build` → PASS.
+- `npm test` → **20/21 arquivos PASS**.
+- `v130-publication-adversarial.test.ts` → 15 casos PASS.
+- Única falha: assert histórico exige publicar “CTR estável e CPC consistente”
+  com evidência E1. O motor v1.3 bloqueia corretamente esse juízo sem E2; o
+  assert não foi alterado nem a validação enfraquecida.
 
 ### Arquivos principais criados/alterados
 
@@ -138,5 +143,7 @@ Falha transacional → `publication_status=failed_persist`; endpoint não expõe
 ### Pendências / riscos
 
 - Migration `0051` precisa ser aplicada no Supabase (SQL Editor) antes do deploy que gravar as novas colunas
-- Pipeline legado `processMetaAiRecommendations` (observations textuais) ainda coexiste; o caminho Claim IR é `processClaimIRPipeline` — orquestração full A→J no `run-meta-analysis` pode passar a preferir IR em follow-up sem quebrar regressões
+- O parser/auditor legado ainda aceita envelopes v1.1/v1.2, mas não possui
+  autoridade de renderização. Toda publicação ativa passa por Claim IR,
+  `buildValidatedReport` e gate final.
 - Sem commit/push/deploy nesta entrega

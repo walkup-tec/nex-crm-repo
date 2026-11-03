@@ -20,6 +20,7 @@ import {
 } from "@/intelligence/meta-leads/protocol";
 import { attachDataQuality, validateMetaAnalysisData } from "@/lib/meta-data-quality";
 import { runMetaAnalysis } from "@/lib/nex-intelligence/pipeline/run-meta-analysis";
+import { markPersistedOutputPublished } from "@/lib/nex-intelligence/persistence/build-analytical-output";
 import {
   toMetaAiExecutionDetail,
   toMetaAiExecutionSummary,
@@ -49,6 +50,9 @@ async function assertMaster(userId: string) {
 }
 
 function migrationHint(message: string) {
+  if (/execution_status|analytical_status|publication_status|claim_ir_version/i.test(message)) {
+    return "Aplique a migração 0051_meta_ai_v130_publication.sql no Supabase antes de publicar análises v1.3.0.";
+  }
   if (/meta_ai_executions_status_check|status.*running/i.test(message)) {
     return "Aplique a migração 0050_meta_ai_executions_running.sql no Supabase (status running).";
   }
@@ -90,6 +94,11 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
     });
 
     const status: MetaAiExecutionStatus = run.executionStatus;
+    const publicationReady = run.processed.publicationStatus === "pending_persist";
+    const persistedOutput = publicationReady
+      ? markPersistedOutputPublished(run.outputJson)
+      : run.outputJson;
+    const publicationStatus = publicationReady ? "published" : "not_ready";
     const { error } = await supabaseAdmin
       .from("meta_ai_executions")
       .update({
@@ -105,8 +114,13 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
         period_until: payload.period.until,
         period_timezone: payload.period.timezone,
         input_json: payload,
-        output_json: run.outputJson,
-        analysis_markdown: run.processed.publishedMarkdown,
+        output_json: persistedOutput as never,
+        analysis_markdown: publicationReady ? run.processed.publishedMarkdown : "",
+        execution_status: status === "error" ? "failed" : "succeeded",
+        analytical_status: run.analyticalStatus,
+        publication_status: publicationStatus,
+        publication_version: persistedOutput.publication_version,
+        claim_ir_version: persistedOutput.claim_ir_version,
         warnings: payload.warnings,
         error_message: run.errorMessage || (status === "error" ? "Falha na OpenAI." : ""),
       })
@@ -157,6 +171,11 @@ export async function startMetaAiAnalysis(
       organization_id: input.organizationId,
       actor_id: userId,
       status: "running",
+      execution_status: "running",
+      analytical_status: "INSUFFICIENT_EVIDENCE",
+      publication_status: "not_ready",
+      publication_version: 1,
+      claim_ir_version: "1.0.0",
       data_contract_version: META_AI_DATA_CONTRACT_VERSION,
       protocol_version: META_AI_PROTOCOL_VERSION,
       prompt_hash: promptHash,

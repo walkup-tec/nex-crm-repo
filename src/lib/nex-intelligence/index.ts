@@ -28,6 +28,7 @@ export * from "@/lib/nex-intelligence/recovery/cms-e1";
 export * from "@/lib/nex-intelligence/recovery/transform";
 export * from "@/lib/nex-intelligence/ai-output";
 export * from "@/lib/nex-intelligence/report";
+export { buildValidatedReport } from "@/lib/nex-intelligence/publication/build-validated-report";
 export * from "@/lib/nex-intelligence/validation/orchestrate";
 export * from "@/lib/nex-intelligence/persistence/map-row";
 export * from "@/lib/nex-intelligence/persistence/build-analytical-output";

@@ -28,7 +28,7 @@ export const UNFOUNDED_QUALITATIVE_LABEL_RE =
  * Exige comparação verificável — não basta fato E1.
  */
 export const IMPROVEMENT_WITHOUT_COMPARISON_RE =
-  /\b(pode(?:m)?\s+ser\s+melhorad[oa]s?|precisa(?:m)?\s+(?:ser\s+)?melhor(?:ar|ad[oa]s?)|a\s+melhorar|espa[cç]o\s+para\s+melhor|oportunidade\s+de\s+melhoria|ainda\s+d[aá]\s+para\s+melhorar|deveria\s+ser\s+(maior|menor|melhor)|abaixo\s+d[oa]\s+(esperado|expectativa)|acima\s+d[oa]\s+(esperado|expectativa|ideal)|perde\s+efici[eê]ncia|perdendo\s+efici[eê]ncia|sub[- ]?ótim[oa]s?|sub[- ]?otim[oa]s?)\b/i;
+  /\b(pode(?:m)?\s+ser\s+melhorad[oa]s?|precisa(?:m)?\s+(?:ser\s+)?melhor(?:ar|ad[oa]s?)|a\s+melhorar|espa[cç]o\s+para\s+melhor|oportunidade\s+de\s+melhoria|ainda\s+d[aá]\s+para\s+melhorar|deveria\s+ser\s+(maior|menor|melhor)|abaixo\s+d[oa]\s+(esperado|expectativa|m[eé]dia)|acima\s+d[oa]\s+(esperado|expectativa|ideal|m[eé]dia)|desempenho\s+abaixo|performance\s+abaixo|perde\s+efici[eê]ncia|perdendo\s+efici[eê]ncia|sub[- ]?ótim[oa]s?|sub[- ]?otim[oa]s?|m[eé]dia\s+das\s+campanhas|abaixo\s+da\s+m[eé]dia)\b/i;
 
 /**
  * Intervenção estratégica embutida em texto de MONITOR (E1).

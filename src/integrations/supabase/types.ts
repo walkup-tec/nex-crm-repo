@@ -499,6 +499,11 @@ export type Database = {
           warnings: Json
           error_message: string
           calibration_feedback: Json
+          execution_status: string
+          analytical_status: string | null
+          publication_status: string
+          publication_version: number
+          claim_ir_version: string | null
         }
         Insert: {
           id?: string
@@ -522,6 +527,11 @@ export type Database = {
           warnings?: Json
           error_message?: string
           calibration_feedback?: Json
+          execution_status?: string
+          analytical_status?: string | null
+          publication_status?: string
+          publication_version?: number
+          claim_ir_version?: string | null
         }
         Update: {
           id?: string
@@ -545,6 +555,11 @@ export type Database = {
           warnings?: Json
           error_message?: string
           calibration_feedback?: Json
+          execution_status?: string
+          analytical_status?: string | null
+          publication_status?: string
+          publication_version?: number
+          claim_ir_version?: string | null
         }
         Relationships: [
           {

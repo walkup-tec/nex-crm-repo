@@ -1446,62 +1446,65 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
   };
 
   assinaturaInFlight.add(contactId);
-  void (async () => {
-    try {
-      const { filledContractPdf } = await import("@/server/contract-minuta.server");
-      const pdfBase64 = filledContractPdf({
-        legalName: payload.legalName,
-        cnpj: payload.cnpj,
-        address: payload.address,
-        representativeName: payload.representativeName,
-        representativeDocument: payload.representativeDocument,
-        witnessName: payload.witnessName,
-        witnessDocument: payload.witnessDocument,
-        monthlyFeeCents: payload.monthlyFeeCents,
-        startsOn: payload.startsOn,
-        adsMeta: payload.adsMeta,
-        adsGoogle: payload.adsGoogle,
-      });
-      const { createContractSignature } = await import("@/server/autentique.server");
-      const signature = await createContractSignature({
-        organizationId: payload.organizationId,
-        contactId: payload.contactId,
-        clientName: payload.clientName,
-        clientEmail: payload.clientEmail,
-        witnessName: payload.witnessName,
-        witnessEmail: payload.witnessEmail,
-        pdfBase64,
-      });
-      const saved = await table("chatbot_messages")
-        .insert({
-          organization_id: payload.organizationId,
-          conversation_id: payload.conversationId,
-          text: signature.resent ? "Os e-mails de assinatura foram reenviados." : "Contrato enviado para assinatura.",
-          direction: "out",
-          status: "sent",
-        })
-        .select("id")
-        .maybeSingle();
-      if (saved.error) throw new Error(schemaMessage(saved.error.message));
-    } catch (error) {
-      const raw = error instanceof Error ? error.message : "Não foi possível enviar o contrato para assinatura.";
-      const text = raw.replace(/\s+/g, " ").trim().slice(0, 460);
-      console.error("chatbot_assinatura_background", /apikey|Bearer/i.test(text) ? "redacted" : text);
-      await table("chatbot_messages")
-        .insert({
-          organization_id: payload.organizationId,
-          conversation_id: payload.conversationId,
-          text: `Assinatura não enviada: ${text || "Falha ao gerar ou enviar o contrato."}`,
-          direction: "out",
-          status: "sent",
-          internal: true,
-        })
-        .select("id")
-        .maybeSingle();
-    } finally {
-      assinaturaInFlight.delete(contactId);
-    }
-  })();
+  // setImmediate: garante que a resposta HTTP saia antes do LibreOffice/Autentique.
+  setImmediate(() => {
+    void (async () => {
+      try {
+        const { filledContractPdf } = await import("@/server/contract-minuta.server");
+        const pdfBase64 = await filledContractPdf({
+          legalName: payload.legalName,
+          cnpj: payload.cnpj,
+          address: payload.address,
+          representativeName: payload.representativeName,
+          representativeDocument: payload.representativeDocument,
+          witnessName: payload.witnessName,
+          witnessDocument: payload.witnessDocument,
+          monthlyFeeCents: payload.monthlyFeeCents,
+          startsOn: payload.startsOn,
+          adsMeta: payload.adsMeta,
+          adsGoogle: payload.adsGoogle,
+        });
+        const { createContractSignature } = await import("@/server/autentique.server");
+        const signature = await createContractSignature({
+          organizationId: payload.organizationId,
+          contactId: payload.contactId,
+          clientName: payload.clientName,
+          clientEmail: payload.clientEmail,
+          witnessName: payload.witnessName,
+          witnessEmail: payload.witnessEmail,
+          pdfBase64,
+        });
+        const saved = await table("chatbot_messages")
+          .insert({
+            organization_id: payload.organizationId,
+            conversation_id: payload.conversationId,
+            text: signature.resent ? "Os e-mails de assinatura foram reenviados." : "Contrato enviado para assinatura.",
+            direction: "out",
+            status: "sent",
+          })
+          .select("id")
+          .maybeSingle();
+        if (saved.error) throw new Error(schemaMessage(saved.error.message));
+      } catch (error) {
+        const raw = error instanceof Error ? error.message : "Não foi possível enviar o contrato para assinatura.";
+        const text = raw.replace(/\s+/g, " ").trim().slice(0, 460);
+        console.error("chatbot_assinatura_background", /apikey|Bearer/i.test(text) ? "redacted" : text);
+        await table("chatbot_messages")
+          .insert({
+            organization_id: payload.organizationId,
+            conversation_id: payload.conversationId,
+            text: `Assinatura não enviada: ${text || "Falha ao gerar ou enviar o contrato."}`,
+            direction: "out",
+            status: "sent",
+            internal: true,
+          })
+          .select("id")
+          .maybeSingle();
+      } finally {
+        assinaturaInFlight.delete(contactId);
+      }
+    })();
+  });
 }
 
 export async function sendContractSignedWhatsApp(input: { organizationId: string; contactId: string; name: string }) {

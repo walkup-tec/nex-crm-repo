@@ -236,9 +236,9 @@ export function MasterMetaAnalytics() {
       const raw = error instanceof Error ? error.message : "";
       setError(
         /page\s+not\s+found|^404\b/i.test(raw)
-          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI122 ) e OPENAI_API_URL."
+          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI123 ) e OPENAI_API_URL."
           : /failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(raw)
-            ? "A conexão com o servidor caiu antes da resposta (Failed to fetch). Confirme /health → NEX-DEPLOY-METAI122, recarregue e tente de novo."
+            ? "A conexão com o servidor caiu antes da resposta (Failed to fetch). Confirme /health → NEX-DEPLOY-METAI123, recarregue e tente de novo."
             : raw || "Não foi possível concluir a análise.",
       );
       setNotice(

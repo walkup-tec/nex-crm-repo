@@ -18,6 +18,7 @@ const META_TEST_FILES = [
   "src/lib/nex-deploy.test.ts",
   "src/lib/nex-intelligence/nex-intelligence-historical-regression.test.ts",
   "src/lib/nex-intelligence/pipeline/run-meta-analysis.pipeline.test.ts",
+  "src/lib/nex-intelligence/pipeline/four-campaign-ctr-acceptance.test.ts",
   "src/server/openai.server.test.ts",
 ];
 

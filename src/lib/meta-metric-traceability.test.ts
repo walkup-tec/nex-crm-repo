@@ -371,8 +371,14 @@ function ctrRatioTrace(claimId: string) {
   assert.ok(!/3,32%/.test(result.publishedMarkdown), "pipeline omite CTR médio sem rastro");
   assert.ok(result.audit.observations.some((o) => o.id === "obs-001" && o.verdict === "APPROVED"));
   assert.ok(result.audit.executive_points.some((o) => o.id === "exec-bad" && o.verdict === "REJECTED"));
-  assert.equal(result.audit.metric_traceability.records.length, 1);
-assert.equal(result.audit.engine_version, "1.2.0");
+  // v1.2.0: metric_traceability publicada é o catálogo backend (não o inventário da IA).
+  assert.ok(result.audit.metric_traceability.records.length >= 1);
+  assert.ok(
+    result.audit.metric_traceability.records.some(
+      (row) => row.entity_id === "120254698455700651" && row.metric === "ctr",
+    ),
+  );
+  assert.equal(result.audit.engine_version, "1.2.0");
 }
 
 // --- Regressão a589e9be: texto WhatsApp + trace Conv. Site → REJECTED ---

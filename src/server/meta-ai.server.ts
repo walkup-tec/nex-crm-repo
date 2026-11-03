@@ -7,7 +7,7 @@ import {
   type MetaAiExecutionStatus,
   type MetaAiExecutionSummary,
 } from "@/lib/meta-ai-calibration";
-import { metaAiCalibrationReviewUserPrompt, metaAiUserPrompt } from "@/lib/meta-ai-prompt";
+import { metaAiCalibrationReviewUserPrompt } from "@/lib/meta-ai-prompt";
 import {
   META_AI_ANALYSIS_PROMPT,
   META_AI_CALIBRATION_REVIEW_PROMPT,
@@ -73,7 +73,7 @@ export async function analyzeMetaWithAi(
     quality,
     promptHash,
     analysisSystemPrompt: META_AI_ANALYSIS_PROMPT,
-    analysisUserPrompt: metaAiUserPrompt(payload),
+    // analysisUserPrompt omitido: runMetaAnalysis injeta available_traces do catálogo backend.
     structuralSystemPrompt: META_AI_STRUCTURAL_REGENERATION_PROMPT,
     regenerationSystemPrompt: META_AI_REGENERATION_PROMPT,
     requestOpenAi: (req) => requestOpenAiAnalysis(req),

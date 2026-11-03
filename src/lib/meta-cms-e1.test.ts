@@ -78,14 +78,23 @@ const payload: NexMetaAnalysisV1 = {
 };
 
 const quality: MetaDataQualityReport = {
-  status: "PASS",
+  status: "WARNING",
   engine_version: "1.2.0",
   protocol_version: "1.2.0",
   validated_at: "2026-11-02T15:00:00.000Z",
-  checks: [],
-  affected_metrics: [],
-  compromised_metrics: [],
-  verified_metrics: ["ctr", "cpc", "clicks", "impressions"],
+  checks: [
+    {
+      code: "cpc_not_verifiable",
+      metric: "cpc",
+      state: "FAIL",
+      level: "campaign",
+      entity_id: "camp_ok",
+      description: "CPC não verificável — fixture CMS-E1 (ctr ok, cpc sem catálogo PASS)",
+    },
+  ],
+  affected_metrics: ["cpc"],
+  compromised_metrics: ["cpc"],
+  verified_metrics: ["ctr", "clicks", "impressions"],
   computed_metrics: {
     currency: "BRL",
     spend_total: 100,

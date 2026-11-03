@@ -976,7 +976,7 @@ const quality = qualityWithBadResults();
       metrics_used: ["ctr"],
       trace_ids: ["trace-obs-u-ctr"],
       claim_kind: "descriptive",
-      text: "A campanha OK apresentou CTR positivo/elevado de 1,94%, considerado aceitável.",
+      text: "A campanha OK apresentou CTR positivo/elevado de 5%, considerado aceitável.",
     },
     payload,
     quality,
@@ -1027,7 +1027,7 @@ const quality = qualityWithBadResults();
       metrics_used: ["ctr"],
       trace_ids: ["trace-obs-v-ctr"],
       claim_kind: "descriptive",
-      text: "A campanha OK registrou CTR de 1,94% no período.",
+      text: "A campanha OK registrou CTR de 5% no período.",
     },
     payload,
     quality,
@@ -1069,7 +1069,7 @@ const quality = qualityWithBadResults();
       id: "rec-v-mon",
       action_kind: "monitor",
       indicators_used: ["ctr"],
-      evidence: ["CTR 1,94% rastreável"],
+      evidence: ["CTR 5% rastreável"],
       recommended_action: "Monitorar CTR sem alterar criativo",
       trace_ids: ["trace-rec-v-mon-ctr"],
     }),
@@ -1096,7 +1096,7 @@ const quality = qualityWithBadResults();
       entity_id: "camp_ok",
       level: "campaign",
       indicators_used: ["ctr"],
-      evidence: ["CTR 1,94%"],
+      evidence: ["CTR 5%"],
       hypothesis: null,
       confidence: "medium",
       recommended_action: "Otimizar criativos da campanha OK",
@@ -1176,7 +1176,7 @@ const quality = qualityWithBadResults();
           metrics_used: ["ctr"],
           trace_ids: ["trace-obs-x-ctr"],
           claim_kind: "descriptive",
-          text: "A campanha OK registrou CTR de 1,94%.",
+          text: "A campanha OK registrou CTR de 5%.",
         },
       ],
       recommendations: [],
@@ -1228,7 +1228,7 @@ const quality = qualityWithBadResults();
   assert.ok(exec.audit.observations.some((o) => o.id === "obs-x" && o.verdict === "APPROVED"), "Teste X obs");
   assert.ok(exec.audit.executive_points.some((e) => e.id === "exec-x" && e.verdict === "REJECTED"), "Teste X exec");
   assert.ok(!/desempenho positivo/i.test(exec.publishedMarkdown), "Teste X sem elevação");
-  assert.match(exec.publishedMarkdown, /CTR de 1,94%/i, "Teste X preserva fato");
+  assert.match(exec.publishedMarkdown, /CTR de 5%/i, "Teste X preserva fato");
 }
 
 console.log("meta-recommendation-validation.test.ts: ok (A-X)");

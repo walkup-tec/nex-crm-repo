@@ -2,8 +2,16 @@ import type { MetaDataQualityReport } from "@/lib/nex-intelligence/quality/valid
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 import {
   indexTracesById,
+  type MetricTraceability,
   type MetricTraceRecord,
 } from "@/lib/nex-intelligence/trace";
+import { buildBackendMetricTraceCatalog } from "@/lib/nex-intelligence/trace/build-catalog";
+import {
+  rebindClaimTraces,
+  rebindRecommendationTraces,
+  replaceAiTraceabilityWithBackend,
+  type TraceRebindAudit,
+} from "@/lib/nex-intelligence/trace/rebind";
 import {
   syncTraceUsedByForClaim,
   tryCmsE1PartialRecovery,
@@ -107,18 +115,23 @@ export async function processMetaAiRecommendations(input: {
   payload: NexMetaAnalysisV1;
   quality: MetaDataQualityReport;
   now?: string;
+  /** Catálogo Camada C gerado ANTES da OpenAI. Se omitido, o motor gera aqui. */
+  backendTraceability?: MetricTraceability;
   /** Regeneração de recomendações rejeitadas (conteúdo). No máx. 1 chamada extra por execução. */
   regenerate?: (invalid: ValidatedRecommendation[]) => Promise<string>;
   /** Regeneração estrutural do JSON completo. Mutuamente exclusiva com `regenerate`. */
   regenerateStructural?: (errors: SchemaFieldError[]) => Promise<string>;
 }): Promise<ProcessRecommendationsResult> {
   const now = input.now ?? new Date().toISOString();
+  const backendCatalog =
+    input.backendTraceability ?? buildBackendMetricTraceCatalog(input.payload, input.quality);
   let initial = parseStructuredAnalysis(input.rawText, "initial");
   let regenerationAttempted = false;
   let regenerationKind: RecoveryAudit["regeneration_kind"] = "none";
   let regenerationValid: boolean | null = null;
   let secondary: StructuredAnalysisPayload | null = null;
   let extraAiCallUsed = false;
+  const traceRebindAudits: TraceRebindAudit[] = [];
 
   const initialGenerationValid =
     initial.parse_ok &&
@@ -127,7 +140,52 @@ export async function processMetaAiRecommendations(input: {
       initial.executive_points.length > 0 ||
       initial.schema_errors.length === 0);
 
-  let working = initial;
+  function applyBackendTracesAndRebind(payload: StructuredAnalysisPayload): StructuredAnalysisPayload {
+    const obs = payload.observations.map((row) => {
+      const rebound = rebindClaimTraces({
+        claim: row,
+        kind: "observation",
+        payload: input.payload,
+        catalog: backendCatalog,
+      });
+      traceRebindAudits.push(rebound.audit);
+      return rebound.claim;
+    });
+    const exec = payload.executive_points.map((row) => {
+      const rebound = rebindClaimTraces({
+        claim: row,
+        kind: "executive_point",
+        payload: input.payload,
+        catalog: backendCatalog,
+      });
+      traceRebindAudits.push(rebound.audit);
+      return rebound.claim;
+    });
+    const recs = payload.recommendations.map((row) => {
+      const rebound = rebindRecommendationTraces({
+        recommendation: row,
+        payload: input.payload,
+        catalog: backendCatalog,
+      });
+      traceRebindAudits.push(rebound.audit);
+      return rebound.recommendation;
+    });
+    const usedBy = [
+      ...obs.map((row) => ({ claimId: row.id, traceIds: row.trace_ids ?? [] })),
+      ...exec.map((row) => ({ claimId: row.id, traceIds: row.trace_ids ?? [] })),
+      ...recs.map((row) => ({ claimId: row.id, traceIds: row.trace_ids ?? [] })),
+    ];
+    return {
+      ...payload,
+      observations: obs,
+      executive_points: exec,
+      recommendations: recs,
+      // IA nunca é fonte de verdade de traces — catálogo backend substitui metric_traceability.
+      metric_traceability: replaceAiTraceabilityWithBackend(backendCatalog, usedBy),
+    };
+  }
+
+  let working = applyBackendTracesAndRebind(initial);
   const cmsRecoveryDecisions: CmsE1RecoveryAudit[] = [];
   const cmsByRecommendationId = new Map<string, CmsE1RecoveryAudit>();
 
@@ -227,7 +285,7 @@ export async function processMetaAiRecommendations(input: {
         (secondary.observations.length > 0 ||
           secondary.recommendations.length > 0 ||
           secondary.executive_points.length > 0);
-      working = mergeStructuredPayloads(initial, secondary);
+      working = applyBackendTracesAndRebind(mergeStructuredPayloads(initial, secondary));
       ({ traces, validatedRows: validated } = runAuditPass(false));
       syncTraceUsedByFromValidated(validated);
       ({ traces, validatedRows: validated } = runAuditPass(false));
@@ -264,7 +322,43 @@ export async function processMetaAiRecommendations(input: {
         const row = regeneratedParsed as { recommendations?: unknown[] };
         if (Array.isArray(row.recommendations)) candidates = row.recommendations;
       }
-      const revalidated = validateRecommendationList(candidates, input.payload, input.quality, traces);
+      const reboundCandidates = candidates.map((raw) => {
+        if (!raw || typeof raw !== "object") return raw;
+        const asRec = raw as Parameters<typeof rebindRecommendationTraces>[0]["recommendation"];
+        // Normalize via existing list path after rebind of known fields when possible.
+        try {
+          const rebound = rebindRecommendationTraces({
+            recommendation: asRec,
+            payload: input.payload,
+            catalog: backendCatalog,
+          });
+          traceRebindAudits.push(rebound.audit);
+          return rebound.recommendation;
+        } catch {
+          return raw;
+        }
+      });
+      working = {
+        ...working,
+        metric_traceability: replaceAiTraceabilityWithBackend(
+          backendCatalog,
+          reboundCandidates
+            .filter((row): row is { id: string; trace_ids?: string[] } => !!row && typeof row === "object")
+            .map((row) => ({
+              claimId: String((row as { id?: string }).id ?? ""),
+              traceIds: Array.isArray((row as { trace_ids?: string[] }).trace_ids)
+                ? ((row as { trace_ids?: string[] }).trace_ids as string[])
+                : [],
+            })),
+        ),
+      };
+      traces = indexTracesById(working.metric_traceability);
+      const revalidated = validateRecommendationList(
+        reboundCandidates,
+        input.payload,
+        input.quality,
+        traces,
+      );
       regenerationValid = revalidated.some((row) => row.verdict === "APPROVED");
       const byId = new Map(validated.map((row) => [row.id, row]));
       for (const row of revalidated) byId.set(row.id, row);
@@ -404,6 +498,8 @@ export async function processMetaAiRecommendations(input: {
     discarded_items: discardedItems,
     errors: working.schema_errors,
     cms_e1_decisions: cmsRecoveryDecisions,
+    trace_rebinds: traceRebindAudits,
+    backend_trace_catalog_size: backendCatalog.records.length,
   };
 
   const audit: RecommendationValidationAudit = {

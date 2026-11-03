@@ -4,14 +4,23 @@ import type { MetaDataQualityReport } from "@/lib/nex-intelligence/quality/valid
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 
 const quality: MetaDataQualityReport = {
-  status: "PASS",
+  status: "WARNING",
   engine_version: "1.2.0",
   protocol_version: "1.2.0",
   validated_at: "2026-11-02T00:00:00.000Z",
-  checks: [],
-  affected_metrics: [],
-  compromised_metrics: [],
-  verified_metrics: ["ctr", "cpc"],
+  checks: [
+    {
+      code: "cpc_not_verifiable",
+      metric: "cpc",
+      state: "FAIL",
+      level: "campaign",
+      entity_id: "camp_ok",
+      description: "CPC propositalmente não verificável para forçar CMS-E1",
+    },
+  ],
+  affected_metrics: ["cpc"],
+  compromised_metrics: ["cpc"],
+  verified_metrics: ["ctr"],
   computed_metrics: {
     spend_cents: 10000,
     impressions: 1000,
@@ -114,7 +123,7 @@ const rawMonitor = JSON.stringify({
       entity_id: "camp_ok",
       level: "campaign",
       indicators_used: ["ctr", "cpc"],
-      evidence: ["CTR 5%", "CPC alto sem trace"],
+      evidence: ["CTR 5%", "CPC sem rastreabilidade verificável"],
       hypothesis: null,
       confidence: "medium",
       recommended_action: "Monitorar CTR e CPC",

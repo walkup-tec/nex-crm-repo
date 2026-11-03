@@ -51,32 +51,15 @@ Responda SOMENTE com um único objeto JSON válido (sem markdown fora do JSON), 
     }
   ],
   "executive_points": [ /* mesmo schema de observations */ ],
-  "metric_traceability": {
-    "version": "1.0",
-    "records": [
-      {
-        "trace_id": "trace-001",
-        "entity_level": "campaign",
-        "entity_id": "MESMO ID da observation",
-        "metric": "ctr",
-        "source": "META_MARKETING_API",
-        "source_level": "campaign",
-        "source_field": "insights.clicks",
-        "period": { "since": "igual ao period do export", "until": "igual ao period do export" },
-        "calculation": {
-          "type": "RATIO",
-          "formula": "(clicks / impressions) * 100",
-          "inputs": { "clicks": 0, "impressions": 0 },
-          "result": 0
-        },
-        "validation": { "status": "PASS", "dependencies": ["clicks","impressions"], "check_codes": [], "reason": null },
-        "used_by": ["obs-1"]
-      }
-    ]
-  },
+  "metric_traceability": { "version": "1.0", "records": [] },
   "stage2_markdown": "",
   "stage4_markdown": ""
 }
+
+IMPORTANTE — rastreabilidade (Camada C, backend):
+- O NEX gera o catálogo completo de traces ANTES desta chamada e envia available_traces no user prompt.
+- Use APENAS trace_ids de available_traces, ligados ao entity_id + metric corretos.
+- NÃO invente nem “valide” records em metric_traceability (pode enviar records vazio). O backend descarta traces da IA e reassocia deterministicamente.
 
 Enums obrigatórios (valores exatos):
 - action_kind: scale_budget | pause | replace_creative | test | monitor | other
@@ -86,10 +69,11 @@ Enums obrigatórios (valores exatos):
 - validation.status: PASS | WARNING | FAIL | NOT_VERIFIABLE
 - calculation.type: DIRECT | RATIO | AGGREGATION | OTHER
 
-Regras obrigatórias 1.2.0 (CMS-E1 + evidência E0–E3):
+Regras obrigatórias 1.2.0 (CMS-E1 + evidência E0–E3 + traces backend):
 - Fatos numéricos rastreáveis = E1; classificações qualitativas exigem comparação E2; intervenções (test/replace_creative/scale/pause) exigem E3 com hipótese + critério + comparação compatível.
 - CTR isolado NÃO autoriza otimização de criativo nem escala de orçamento; monitor=E1 permitido.
 - CMS-E1: se monitor tiver CTR (ou outra métrica) com trace PASS e CPC (ou outra) sem trace, o NEX remove as métricas inválidas, atualiza indicators/evidence/trace_ids e pode APPROVED sem regenerar a IA.
+- Traces: backend é a única fonte de verdade; a IA só referencia available_traces.
 - Sem benchmarks inventados nem causalidade prometida.
 
 Regras de vínculo 1.1.5–1.1.6:

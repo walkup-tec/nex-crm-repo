@@ -28,6 +28,7 @@ import {
   formatZodIssues,
   inferMetricsFromText,
 } from "@/lib/nex-intelligence/validation/entity-helpers";
+import { claimValuesMatchCatalog } from "@/lib/nex-intelligence/validation/numeric-claims";
 
 export function validateStructuredClaim(
   raw: unknown,
@@ -166,6 +167,23 @@ export function validateStructuredClaim(
     claimLevel: claim.level,
   });
   reasons.push(...traceReasons);
+
+  if (traceIds.length && kind === "descriptive") {
+    const catalogResults = traceIds.map((id) => {
+      const row = traces.get(id);
+      return {
+        metric: row?.metric ?? "",
+        result: typeof row?.calculation.result === "number" ? row.calculation.result : null,
+      };
+    });
+    reasons.push(
+      ...claimValuesMatchCatalog({
+        text: claim.text,
+        metricsUsed: metrics,
+        catalogResults,
+      }),
+    );
+  }
   const tracesOk = traceReasons.length === 0;
 
   if (EXTERNAL_COMMERCIAL_MARKERS.test(claim.text)) {
@@ -207,18 +225,6 @@ export function validateStructuredClaim(
     rejection_reasons: [...new Set(reasons)],
     blocked_by: blockedBy,
   };
-}
-
-export function validateRecommendationList(
-  items: unknown[],
-  payload: NexMetaAnalysisV1,
-  quality: MetaDataQualityReport,
-  traces: Map<string, MetricTraceRecord> = new Map(),
-  options?: { skipCmsE1Recovery?: boolean },
-): ValidatedRecommendation[] {
-  return items.map((item) =>
-    validateStructuredRecommendation(item, payload, quality, traces, options),
-  );
 }
 
 export function validateClaimList(

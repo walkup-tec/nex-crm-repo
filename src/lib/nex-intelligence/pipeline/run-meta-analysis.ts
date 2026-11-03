@@ -1,5 +1,6 @@
 import type { MetaDataQualityReport } from "@/lib/nex-intelligence/quality/validate-export";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+import { metaAiUserPrompt } from "@/lib/meta-ai-prompt";
 import { buildPersistedAnalyticalOutput } from "@/lib/nex-intelligence/persistence/build-analytical-output";
 import {
   createPipelineContext,
@@ -7,6 +8,8 @@ import {
   type MetaAnalysisPipelineContext,
 } from "@/lib/nex-intelligence/pipeline/context";
 import type { PersistedAnalyticalOutputV120 } from "@/lib/nex-intelligence/pipeline/persistence-contract";
+import { buildBackendMetricTraceCatalog } from "@/lib/nex-intelligence/trace/build-catalog";
+import type { MetricTraceability } from "@/lib/nex-intelligence/trace";
 import {
   processMetaAiRecommendations,
   regenerationUserPrompt,
@@ -25,10 +28,12 @@ export type RunMetaAnalysisInput = {
   quality: MetaDataQualityReport;
   promptHash: string;
   analysisSystemPrompt: string;
-  analysisUserPrompt: string;
+  /** Se omitido, monta prompt com catálogo backend de traces. */
+  analysisUserPrompt?: string;
   structuralSystemPrompt: string;
   regenerationSystemPrompt: string;
   requestOpenAi: (input: RunMetaAnalysisOpenAiRequest) => Promise<{ text: string; model: string }>;
+  backendTraceability?: MetricTraceability;
 };
 
 export type RunMetaAnalysisResult = {
@@ -52,12 +57,18 @@ export async function runMetaAnalysis(input: RunMetaAnalysisInput): Promise<RunM
       ? "partial"
       : "ok";
 
+  // Camada C ANTES da OpenAI: catálogo completo de traces verificáveis.
+  const backendTraceability =
+    input.backendTraceability ?? buildBackendMetricTraceCatalog(input.payload, input.quality);
+  const analysisUserPrompt =
+    input.analysisUserPrompt ?? metaAiUserPrompt(input.payload, backendTraceability);
+
   let processed: ProcessRecommendationsResult | null = null;
 
   try {
     const ai = await input.requestOpenAi({
       system: input.analysisSystemPrompt,
-      user: input.analysisUserPrompt,
+      user: analysisUserPrompt,
     });
     pipelineContext = recordOpenAiCall(pipelineContext);
     model = ai.model;
@@ -67,6 +78,7 @@ export async function runMetaAnalysis(input: RunMetaAnalysisInput): Promise<RunM
       rawText: ai.text,
       payload: input.payload,
       quality: input.quality,
+      backendTraceability,
       regenerateStructural: async (errors) => {
         if (pipelineContext.aiCallsUsed >= pipelineContext.aiCallBudget) {
           throw new Error("ai_call_budget_exhausted");

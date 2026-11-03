@@ -303,10 +303,19 @@ export function computeDeterministicTraceStatus(
     }
   }
 
-  if (record.calculation.type === "RATIO" || record.calculation.type === "DIRECT") {
+  // Backend recalcula sempre que a métrica for derivável — inclusive OTHER forjado pela IA.
+  if (
+    record.calculation.type === "RATIO" ||
+    record.calculation.type === "DIRECT" ||
+    record.calculation.type === "OTHER"
+  ) {
     const recomputed = recomputeMetricFromMeta(payload, record.entity_level, record.entity_id, metric);
     if (!recomputed) {
-      reasons.push("meta_insights_unavailable_for_recompute");
+      if (record.calculation.type !== "OTHER") {
+        reasons.push("meta_insights_unavailable_for_recompute");
+      } else {
+        reasons.push("forged_other_trace_not_recomputable");
+      }
     } else {
       for (const [key, value] of Object.entries(recomputed.inputs)) {
         const claimed = record.calculation.inputs[key];
@@ -630,7 +639,12 @@ export function validateTraceIdsForClaim(input: {
         reasons.push(`trace_metric_mismatch:${traceId}:${recordMetric}`);
       }
     }
-    if (record.used_by.length && !record.used_by.includes(input.claimId)) {
+    // used_by é preenchido pelo backend após rebind; ausência não rejeita (IA não é fonte).
+    if (
+      record.used_by.length &&
+      !record.used_by.includes(input.claimId) &&
+      !record.trace_id.startsWith("nx-tr-")
+    ) {
       reasons.push(`trace_not_linked_to_claim:${traceId}`);
     }
   }

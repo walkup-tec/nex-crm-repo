@@ -31,6 +31,15 @@ export type SchemaFieldError = {
   attempt: "initial" | "regeneration";
 };
 
+export type TraceRebindAuditEntry = {
+  claim_id: string;
+  kind: "observation" | "recommendation" | "executive_point";
+  applied: boolean;
+  previous_trace_ids: string[];
+  next_trace_ids: string[];
+  reason: string;
+};
+
 export type RecoveryAudit = {
   initial_generation_valid: boolean;
   regeneration_attempted: boolean;
@@ -43,6 +52,9 @@ export type RecoveryAudit = {
   discarded_items: number;
   errors: SchemaFieldError[];
   cms_e1_decisions?: CmsE1RecoveryAudit[];
+  /** Reassociação determinística de trace_ids (Camada C) antes da publicação. */
+  trace_rebinds?: TraceRebindAuditEntry[];
+  backend_trace_catalog_size?: number;
 };
 
 export type StructuredAnalysisPayload = {

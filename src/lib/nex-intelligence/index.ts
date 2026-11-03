@@ -9,6 +9,16 @@ export * from "@/lib/nex-intelligence/quality";
 export * from "@/lib/nex-intelligence/metrics/formulas";
 export * from "@/lib/nex-intelligence/metrics/catalog";
 export * from "@/lib/nex-intelligence/trace";
+export {
+  buildBackendMetricTraceCatalog,
+  availableTraceRefs,
+  BACKEND_CATALOG_METRICS,
+} from "@/lib/nex-intelligence/trace/build-catalog";
+export {
+  rebindClaimTraces,
+  rebindRecommendationTraces,
+  replaceAiTraceabilityWithBackend,
+} from "@/lib/nex-intelligence/trace/rebind";
 export * from "@/lib/nex-intelligence/evidence/levels";
 export * from "@/lib/nex-intelligence/recovery/cms-e1";
 export * from "@/lib/nex-intelligence/ai-output";

@@ -46,6 +46,7 @@ assert.match(META_AI_ANALYSIS_PROMPT, /data_quality/i);
 assert.equal(metaAiPromptHash().length, 16);
 assert.match(metaAiUserPrompt(sample), /Walkup/);
 assert.match(metaAiUserPrompt(sample), /motor 1\.2\.0/);
+assert.match(metaAiUserPrompt(sample), /NÃO invente metric_traceability|available_traces/i);
 assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /calibração/i);
 assert.match(META_AI_CALIBRATION_REVIEW_PROMPT, /1\.2\.0/);
 

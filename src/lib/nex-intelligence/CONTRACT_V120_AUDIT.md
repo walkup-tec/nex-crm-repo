@@ -50,6 +50,6 @@ Execução de referência (falha estrutural pré-correção): `75ad6b61-040c-463
 | `protocol-v1.1.test.ts` | versões/prompt 1.2.0 |
 | `chatgpt-integration.test.ts` | payload RO |
 
-**Suite local:** `npm test` → **17/17 ok** (incl. aceite 4×CTR + A–X + T4 valor forjado).
+**Suite local:** `npm test` → **18/18 ok** (17 anteriores + `v120-qualitative-spend-regression` para exec `6bc653f8`: juízo "pode ser melhorado" sem E2 + spend account-wide vs CPC local).
 
 **Política:** suite unitária verde; execução real Meta/OpenAI só com autorização explícita. Sem commit/push/deploy sem autorização.

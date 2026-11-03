@@ -143,6 +143,12 @@ export function buildCompromisedMetricIndex(report: MetaDataQualityReport) {
   return { byEntity, accountWide };
 }
 
+/**
+ * Integridade no escopo da entidade.
+ * Inconsistência account-wide (ex.: ACCOUNT_SPEND_TOTAL) NÃO bloqueia automaticamente
+ * entidades sem check local — CPC/CPM de campanha válida podem permanecer verificáveis.
+ * Dependência local comprometida (spend/results da própria entidade) continua bloqueando.
+ */
 export function metricIntegrityForEntity(
   index: ReturnType<typeof buildCompromisedMetricIndex>,
   entityId: string,
@@ -151,8 +157,6 @@ export function metricIntegrityForEntity(
   for (const candidate of integrityChecksForMetric(metricRaw)) {
     const local = index.byEntity.get(entityId)?.get(candidate);
     if (local) return { blocked: true, metric: candidate, code: local.code, state: local.state };
-    const account = index.accountWide.get(candidate);
-    if (account) return { blocked: true, metric: candidate, code: account.code, state: account.state };
   }
   return { blocked: false, metric: normalizeCanonicalMetric(metricRaw), code: null, state: null };
 }
@@ -296,14 +300,21 @@ export function computeDeterministicTraceStatus(
   for (const dep of integrityChecksForMetric(metric)) {
     if (record.entity_level === "account") {
       const hit = metricIntegrityForAccountClaim(integrity, dep);
-      if (hit.blocked && hit.state) reasons.push(`dependency_compromised:${hit.metric}:${hit.state}`);
+      if (hit.blocked && hit.state) {
+        reasons.push(`dependency_compromised:${hit.metric}:${hit.state}`);
+      }
     } else {
+      // Escopo da entidade: só dependência local. Account-wide não justifica NOT_VERIFIABLE aqui.
       const hit = metricIntegrityForEntity(integrity, record.entity_id, dep);
-      if (hit.blocked && hit.state) reasons.push(`dependency_compromised:${hit.metric}:${hit.state}`);
+      if (hit.blocked && hit.state) {
+        reasons.push(`dependency_compromised:${hit.metric}:${hit.state}:entity=${record.entity_id}`);
+      }
     }
   }
 
   // Backend recalcula sempre que a métrica for derivável — inclusive OTHER forjado pela IA.
+  // PASS de CPC/CPM/CPR exige recompute Meta bem-sucedido (justificativa determinística)
+  // e ausência de dependência local comprometida (acima).
   if (
     record.calculation.type === "RATIO" ||
     record.calculation.type === "DIRECT" ||

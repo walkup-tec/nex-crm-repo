@@ -177,10 +177,11 @@ export function validateStructuredRecommendation(
   }
 
   if (textHasUnfoundedQualitativeLabel(blob)) {
+    const comparisonOk = Boolean(rec.comparison && rec.comparison.compatible);
     if (requiredLevel === "E1") {
-      // Monitor: CMS-E1 pode neutralizar; se skip, rejeita.
+      // Monitor: CMS-E1 pode neutralizar labels; juízo qualitativo sem E2 permanece rejeitado.
       reasons.push("unfounded_qualitative_label_without_comparison");
-    } else if (!rec.comparison) {
+    } else if (!comparisonOk) {
       reasons.push("unfounded_qualitative_label_without_comparison");
     }
   }

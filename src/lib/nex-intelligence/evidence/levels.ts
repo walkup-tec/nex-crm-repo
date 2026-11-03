@@ -23,6 +23,13 @@ export type EvidenceComparison = {
 export const UNFOUNDED_QUALITATIVE_LABEL_RE =
   /\b(positiv[oa]s?|negativ[oa]s?|aceit[aá]ve(?:l|is)|elevad[oa]s?|baix[oa]s?|alt[oa]s?|bom|boa|bons|boas|ruim|ruins|excelente(?:s)?|frac[oa]s?|forte(?:s)?|fraco(?:s)?|eficiente(?:s)?|ineficiente(?:s)?|satisfat[oó]ri[oa]s?|insatisfat[oó]ri[oa]s?|adequado(?:s)?|inadequado(?:s)?|superior(?:es)?|inferior(?:es)?|destaque|ótimo(?:s)?|otimo(?:s)?|p[eé]ssim[oa]s?)\b/i;
 
+/**
+ * Juízos de melhoria/oportunidade sem baseline E2 (ex.: "CTR que pode ser melhorado").
+ * Exige comparação verificável — não basta fato E1.
+ */
+export const IMPROVEMENT_WITHOUT_COMPARISON_RE =
+  /\b(pode(?:m)?\s+ser\s+melhorad[oa]s?|precisa(?:m)?\s+(?:ser\s+)?melhor(?:ar|ad[oa]s?)|a\s+melhorar|espa[cç]o\s+para\s+melhor|oportunidade\s+de\s+melhoria|ainda\s+d[aá]\s+para\s+melhorar|deveria\s+ser\s+(maior|menor|melhor)|abaixo\s+do\s+esperado|acima\s+do\s+esperado|sub[- ]?ótim[oa]s?|sub[- ]?otim[oa]s?)\b/i;
+
 export const CAUSAL_PROMISE_RE =
   /\b(garant(e|ia)|com certeza|causalidade|vai\s+(melhorar|aumentar|reduzir)|ir[aá]\s+(melhorar|aumentar)|provar[aá]|causa\s+direta)\b/i;
 
@@ -52,7 +59,7 @@ export function requiredEvidenceLevelForAction(actionKind: EvidenceActionKind): 
 }
 
 export function textHasUnfoundedQualitativeLabel(text: string): boolean {
-  return UNFOUNDED_QUALITATIVE_LABEL_RE.test(text);
+  return UNFOUNDED_QUALITATIVE_LABEL_RE.test(text) || IMPROVEMENT_WITHOUT_COMPARISON_RE.test(text);
 }
 
 export function textHasCausalPromise(text: string): boolean {
@@ -208,5 +215,6 @@ export function classifyAchievedEvidenceLevel(input: ClassifyEvidenceInput): {
 export function claimRequiresComparativeEvidence(text: string, claimKind: string): boolean {
   if (claimKind === "performance_judgment") return true;
   if (textHasUnfoundedQualitativeLabel(text)) return true;
+  if (IMPROVEMENT_WITHOUT_COMPARISON_RE.test(text)) return true;
   return false;
 }

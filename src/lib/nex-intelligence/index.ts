@@ -21,6 +21,7 @@ export {
 } from "@/lib/nex-intelligence/trace/rebind";
 export * from "@/lib/nex-intelligence/evidence/levels";
 export * from "@/lib/nex-intelligence/recovery/cms-e1";
+export * from "@/lib/nex-intelligence/recovery/e1-claim";
 export * from "@/lib/nex-intelligence/ai-output";
 export * from "@/lib/nex-intelligence/report";
 export * from "@/lib/nex-intelligence/validation/orchestrate";

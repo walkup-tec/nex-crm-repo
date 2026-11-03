@@ -95,6 +95,8 @@ export type ValidatedClaim = StructuredClaim & {
   rejection_reasons: string[];
   trace_ids: string[];
   evidence_level: EvidenceLevel;
+  /** Recuperação E1: juízo qualitativo substituído por fato numérico neutro. */
+  e1_claim_recovery?: CmsE1RecoveryAudit;
   blocked_by: Array<{
     entity_id: string;
     metric: string;

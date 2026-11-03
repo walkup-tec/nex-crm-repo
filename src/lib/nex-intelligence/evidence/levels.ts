@@ -21,7 +21,7 @@ export type EvidenceComparison = {
 
 /** Classificações qualitativas sem referência comparativa validada. */
 export const UNFOUNDED_QUALITATIVE_LABEL_RE =
-  /\b(positiv[oa]s?|negativ[oa]s?|aceit[aá]ve(?:l|is)|elevad[oa]s?|baix[oa]s?|alt[oa]s?|bom|boa|bons|boas|ruim|ruins|excelente(?:s)?|frac[oa]s?|forte(?:s)?|fraco(?:s)?|eficiente(?:s)?|ineficiente(?:s)?|satisfat[oó]ri[oa]s?|insatisfat[oó]ri[oa]s?|adequado(?:s)?|inadequado(?:s)?|superior(?:es)?|inferior(?:es)?|destaque|ótimo(?:s)?|otimo(?:s)?|p[eé]ssim[oa]s?)\b/i;
+  /\b(positiv[oa]s?|negativ[oa]s?|aceit[aá]ve(?:l|is)|elevad[oa]s?|baix[oa]s?|alt[oa]s?|bom|boa|bons|boas|ruim|ruins|excelente(?:s)?|frac[oa]s?|forte(?:s)?|fraco(?:s)?|eficiente(?:s)?|ineficiente(?:s)?|satisfat[oó]ri[oa]s?|insatisfat[oó]ri[oa]s?|razo[aá]ve(?:l|is)|median[oa]s?|regular(?:es)?|promissor(?:a|es|as)?|s[oó]lid[oa]s?|adequado(?:s)?|inadequado(?:s)?|superior(?:es)?|inferior(?:es)?|destaque|ótimo(?:s)?|otimo(?:s)?|p[eé]ssim[oa]s?|(?:bom|boa|excelente|razo[aá]vel|satisfat[oó]rio|positiv[oa]|negativ[oa]|ruim|frac[oa]|forte|s[oó]lid[oa])\s+desempenho|desempenho\s+(?:bom|boa|excelente|razo[aá]vel|satisfat[oó]rio|positiv[oa]|negativ[oa]|ruim|frac[oa]|forte|aceit[aá]vel|insuficiente|s[oó]lid[oa]|median[oa]|regular|promissor(?:a)?))\b/i;
 
 /**
  * Juízos de melhoria/oportunidade sem baseline E2 (ex.: "CTR que pode ser melhorado").

@@ -30,10 +30,10 @@ function publicMessage(error: unknown) {
   if (message.includes("migração da conexão Meta")) return message;
   if (/Aplique a migração/i.test(message)) return message;
   if (/page\s+not\s+found|^404\b/i.test(message)) {
-    return "Rota do servidor não encontrada (404). Confirme o deploy (marker NEX-DEPLOY-METAI121 em /health) e OPENAI_API_URL.";
+    return "Rota do servidor não encontrada (404). Confirme o deploy (marker NEX-DEPLOY-METAI122 em /health) e OPENAI_API_URL.";
   }
   if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
-    return "A conexão com o servidor caiu antes da resposta. Confirme /health (NEX-DEPLOY-METAI121), recarregue e tente de novo.";
+    return "A conexão com o servidor caiu antes da resposta. Confirme /health (NEX-DEPLOY-METAI122), recarregue e tente de novo.";
   }
   if (/OpenAI|OPENAI_/i.test(message)) return message;
   if (!message || /postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(message)) {

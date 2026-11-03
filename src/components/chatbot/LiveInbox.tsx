@@ -919,18 +919,27 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     }
     setQuickOpen(false);
     setBotsOpen(false);
+    const conversationId = selected;
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
-      conversationId: selected,
-      text: "Enviando o contrato para assinatura…",
+      conversationId,
+      text: "Gerando o contrato e enviando para assinatura…",
       createdAt: new Date().toISOString(),
     };
     sending.current = true;
     setOutgoing((current) => [...current, preview]);
     setPending(true);
     setSignatureError("");
+    const startedAt = Date.now();
     try {
-      const result = await sendChatbotAssinaturaFn({ data: { conversationId: selected } });
+      const result = await Promise.race([
+        sendChatbotAssinaturaFn({ data: { conversationId } }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => {
+            reject(new Error("O início do envio demorou demais. Atualize a conversa e tente de novo."));
+          }, 45000);
+        }),
+      ]);
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
         setSignatureError(result.message || "Não foi possível enviar o contrato para assinatura.");
@@ -939,10 +948,44 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       }
       setSignatureError("");
       setMessage("");
-      void load();
-    } catch {
+      // Trabalho pesado (PDF + Autentique) segue no servidor; acompanha a conversa.
+      const deadline = Date.now() + 4 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await load();
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const snap = await chatbotSnapshotFn();
+        if (!snap.ok) continue;
+        const msgs = snap.data.messages.filter((row) => row.conversationId === conversationId);
+        const recent = msgs.filter((row) => new Date(row.createdAt).getTime() >= startedAt - 2000);
+        const failure = recent.find((row) => /^Assinatura não enviada:/i.test(row.text));
+        const success = recent.find(
+          (row) =>
+            /^Contrato enviado para assinatura/i.test(row.text) ||
+            /^Os e-mails de assinatura foram reenviados/i.test(row.text),
+        );
+        if (failure || success) {
+          if (failure) {
+            setSignatureError(failure.text.replace(/^Assinatura não enviada:\s*/i, ""));
+          }
+          setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+          void load();
+          return;
+        }
+      }
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-      setSignatureError("Não foi possível enviar o contrato para assinatura.");
+      setSignatureError(
+        "O envio ainda está em andamento no servidor. Atualize a conversa em alguns minutos — o resultado aparece como nota ou mensagem.",
+      );
+      void load();
+    } catch (error) {
+      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+      const raw = error instanceof Error ? error.message : "";
+      setSignatureError(
+        /failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(raw)
+          ? "A conexão caiu ao iniciar o envio. Atualize a conversa — se aparecer a nota de geração, aguarde o resultado."
+          : raw || "Não foi possível enviar o contrato para assinatura.",
+      );
+      void load();
     } finally {
       sending.current = false;
       setPending(false);

@@ -1347,6 +1347,13 @@ export async function recordChatbotAssinaturaFailure(userId: string, conversatio
   });
 }
 
+/** Evita dois LibreOffice/Autentique em paralelo no mesmo contato (mesmo processo Node). */
+const assinaturaInFlight = new Set<string>();
+
+/**
+ * Valida e inicia o envio em segundo plano.
+ * A geração do PDF (LibreOffice) + Autentique pode passar de 1 min — não pode segurar o proxy HTTP.
+ */
 export async function sendChatbotAssinatura(userId: string, conversationId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
@@ -1363,6 +1370,9 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
   if (!admin) {
     const allowed = await teamConnectionIds(userId, organizationId);
     if (!allowed.has(cell(conversation.data, "connection_id"))) fail("Essa conversa não pertence a uma equipe sua.");
+  }
+  if (assinaturaInFlight.has(contactId)) {
+    fail("Já existe um envio de assinatura em andamento para este contato. Aguarde a conclusão.");
   }
   const intake = await latestContracting(organizationId, contactId);
   if (!intake) fail("Este contato ainda não enviou o formulário de contratação.");
@@ -1394,47 +1404,104 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
   const { adsFromProductNames } = await import("@/lib/chatbot-client");
   const ads = adsFromProductNames(productNames);
   if (!ads.adsMeta && !ads.adsGoogle) fail("Marque Meta Ads ou Google Ads em Produtos e serviços.");
-  const { filledContractPdf } = await import("@/server/contract-minuta.server");
-  const pdfBase64 = filledContractPdf({
-    legalName: intake.legalName,
-    cnpj: intake.cnpj,
-    address: intake.address,
-    representativeName: intake.representativeName,
-    representativeDocument: intake.representativeDocument,
-    witnessName: intake.witnessName,
-    witnessDocument: intake.witnessDocument,
-    monthlyFeeCents: terms.monthlyFeeCents,
-    startsOn: terms.startsOn,
-    adsMeta: ads.adsMeta,
-    adsGoogle: ads.adsGoogle,
-  });
-  const { createContractSignature } = await import("@/server/autentique.server");
-  const signature = await createContractSignature({
-    organizationId,
-    contactId,
-    clientName: cell(contact, "name") || intake.representativeName,
-    clientEmail,
-    witnessName: intake.witnessName,
-    witnessEmail,
-    pdfBase64,
-  });
-  const saved = await table("chatbot_messages")
+
+  const progress = await table("chatbot_messages")
     .insert({
       organization_id: organizationId,
       conversation_id: conversationId,
-      text: signature.resent ? "Os e-mails de assinatura foram reenviados." : "Contrato enviado para assinatura.",
+      text: "Gerando o contrato e enviando para assinatura…",
       direction: "out",
       status: "sent",
+      internal: true,
     })
     .select("id")
     .maybeSingle();
-  if (saved.error) fail(schemaMessage(saved.error.message));
+  if (progress.error) fail(schemaMessage(progress.error.message));
+
   const assigned = await assignConversation(conversationId, organizationId, userId, {
     status: "active",
     bot_paused: true,
     updated_at: new Date().toISOString(),
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
+
+  const payload = {
+    organizationId,
+    contactId,
+    conversationId,
+    clientName: cell(contact, "name") || intake.representativeName,
+    clientEmail,
+    witnessName: intake.witnessName,
+    witnessEmail,
+    legalName: intake.legalName,
+    cnpj: intake.cnpj,
+    address: intake.address,
+    representativeName: intake.representativeName,
+    representativeDocument: intake.representativeDocument,
+    witnessDocument: intake.witnessDocument,
+    monthlyFeeCents: terms.monthlyFeeCents,
+    startsOn: terms.startsOn,
+    adsMeta: ads.adsMeta,
+    adsGoogle: ads.adsGoogle,
+  };
+
+  assinaturaInFlight.add(contactId);
+  void (async () => {
+    try {
+      const { filledContractPdf } = await import("@/server/contract-minuta.server");
+      const pdfBase64 = filledContractPdf({
+        legalName: payload.legalName,
+        cnpj: payload.cnpj,
+        address: payload.address,
+        representativeName: payload.representativeName,
+        representativeDocument: payload.representativeDocument,
+        witnessName: payload.witnessName,
+        witnessDocument: payload.witnessDocument,
+        monthlyFeeCents: payload.monthlyFeeCents,
+        startsOn: payload.startsOn,
+        adsMeta: payload.adsMeta,
+        adsGoogle: payload.adsGoogle,
+      });
+      const { createContractSignature } = await import("@/server/autentique.server");
+      const signature = await createContractSignature({
+        organizationId: payload.organizationId,
+        contactId: payload.contactId,
+        clientName: payload.clientName,
+        clientEmail: payload.clientEmail,
+        witnessName: payload.witnessName,
+        witnessEmail: payload.witnessEmail,
+        pdfBase64,
+      });
+      const saved = await table("chatbot_messages")
+        .insert({
+          organization_id: payload.organizationId,
+          conversation_id: payload.conversationId,
+          text: signature.resent ? "Os e-mails de assinatura foram reenviados." : "Contrato enviado para assinatura.",
+          direction: "out",
+          status: "sent",
+        })
+        .select("id")
+        .maybeSingle();
+      if (saved.error) throw new Error(schemaMessage(saved.error.message));
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "Não foi possível enviar o contrato para assinatura.";
+      const text = raw.replace(/\s+/g, " ").trim().slice(0, 460);
+      console.error("chatbot_assinatura_background", /apikey|Bearer/i.test(text) ? "redacted" : text);
+      await table("chatbot_messages")
+        .insert({
+          organization_id: payload.organizationId,
+          conversation_id: payload.conversationId,
+          text: `Assinatura não enviada: ${text || "Falha ao gerar ou enviar o contrato."}`,
+          direction: "out",
+          status: "sent",
+          internal: true,
+        })
+        .select("id")
+        .maybeSingle();
+    } finally {
+      assinaturaInFlight.delete(contactId);
+    }
+  })();
 }
 
 export async function sendContractSignedWhatsApp(input: { organizationId: string; contactId: string; name: string }) {

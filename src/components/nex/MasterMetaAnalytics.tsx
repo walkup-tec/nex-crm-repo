@@ -25,6 +25,10 @@ import { listClientsFn } from "@/lib/clients.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
 import {
   findRecentMetaAiDuplicate,
+  isMetaAiExecutionTerminal,
+  META_AI_POLL_INTERVAL_MS,
+  META_AI_POLL_MAX_MS,
+  metaAiDetailToAnalysisResult,
   type MetaAiAnalysisResult,
   type MetaAiCalibrationFeedback,
   type MetaAiExecutionDetail,
@@ -174,55 +178,77 @@ export function MasterMetaAnalytics() {
     analyzingLock.current = true;
     setAnalyzing(true);
     setError("");
-    setNotice("Exportando Meta e consultando a OpenAI — isso pode levar até alguns minutos…");
+    setNotice("Iniciando análise — export Meta e OpenAI rodam em segundo plano…");
     setResult(null);
     const orgId = organizationId;
     let executionId = "";
     try {
-      const response = await Promise.race([
-        analyzeMetaWithAiFn({
-          data: { organizationId: orgId, ...periodRequest(period) },
-        }),
-        new Promise<never>((_, reject) => {
-          window.setTimeout(() => {
-            reject(new Error("A análise excedeu o tempo limite. Tente novamente em instantes."));
-          }, 240000);
-        }),
-      ]);
-      if (!response.ok) {
-        setError(response.message);
+      const started = await analyzeMetaWithAiFn({
+        data: { organizationId: orgId, ...periodRequest(period) },
+      });
+      if (!started.ok) {
+        setError(started.message);
         setNotice("");
         return;
       }
-      executionId = response.data.executionId;
-      setResult(response.data);
+      executionId = started.data.executionId;
+      setSelectedId(executionId);
+      setNotice(`Execução ${executionId} em andamento — aguardando conclusão…`);
+      await loadExecutions(orgId);
+
+      const deadline = Date.now() + META_AI_POLL_MAX_MS;
+      let detail: MetaAiExecutionDetail | null = null;
+      while (Date.now() < deadline) {
+        const polled = await getMetaAiExecutionFn({ data: { executionId } });
+        if (!polled.ok) {
+          setError(polled.message);
+          setNotice("");
+          return;
+        }
+        detail = polled.data;
+        setDetail(detail);
+        if (isMetaAiExecutionTerminal(detail.status)) break;
+        setNotice(
+          `Execução ${executionId} em andamento (${detail.status}) — export/OpenAI podem levar alguns minutos…`,
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, META_AI_POLL_INTERVAL_MS));
+      }
+
+      if (!detail || !isMetaAiExecutionTerminal(detail.status)) {
+        setError(
+          `A análise ainda está em andamento (${executionId}). Use Atualizar histórico em instantes.`,
+        );
+        setNotice("");
+        return;
+      }
+      if (detail.status === "error") {
+        setError(detail.errorMessage || "A análise falhou.");
+        setNotice("");
+        await loadExecutions(orgId);
+        return;
+      }
+
+      setResult(metaAiDetailToAnalysisResult(detail));
       setNotice("Análise concluída e registrada para calibração.");
+      await loadExecutions(orgId);
+      await openExecution(executionId);
     } catch (error) {
       const raw = error instanceof Error ? error.message : "";
       setError(
         /page\s+not\s+found|^404\b/i.test(raw)
-          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI120 ) e OPENAI_API_URL."
+          ? "Rota do servidor não encontrada (404). Confirme o deploy ( /health → NEX-DEPLOY-METAI121 ) e OPENAI_API_URL."
           : /failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(raw)
-            ? "A conexão com o servidor caiu antes da resposta (Failed to fetch). Confirme /health → NEX-DEPLOY-METAI120, recarregue a página e tente de novo. Se falhar após ~1 min, pode ser timeout do proxy na análise longa."
+            ? "A conexão com o servidor caiu antes da resposta (Failed to fetch). Confirme /health → NEX-DEPLOY-METAI121, recarregue e tente de novo."
             : raw || "Não foi possível concluir a análise.",
       );
-      setNotice("");
-      return;
+      setNotice(
+        executionId
+          ? `Se a execução ${executionId} ficou em running, atualize o histórico em alguns minutos.`
+          : "",
+      );
     } finally {
       analyzingLock.current = false;
       setAnalyzing(false);
-    }
-
-    // Histórico/detalhe fora do lock de "Analisando…" — falha aqui não prende o botão.
-    try {
-      await loadExecutions(orgId);
-      if (executionId) await openExecution(executionId);
-    } catch {
-      setNotice(
-        executionId
-          ? `Análise concluída (${executionId}), mas o histórico não atualizou. Use Atualizar histórico.`
-          : "Análise concluída, mas o histórico não atualizou. Use Atualizar histórico.",
-      );
     }
   };
 

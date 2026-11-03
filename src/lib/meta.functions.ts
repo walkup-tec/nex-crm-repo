@@ -8,7 +8,7 @@ import type {
   MetaPerformanceView,
 } from "@/lib/meta-access";
 import type {
-  MetaAiAnalysisResult,
+  MetaAiAnalysisStartResult,
   MetaAiCalibrationFeedback,
   MetaAiExecutionDetail,
   MetaAiExecutionSummary,
@@ -28,11 +28,12 @@ function publicMessage(error: unknown) {
   if (message.includes("SUPABASE_SERVICE_ROLE_KEY"))
     return "O servidor ainda não tem a chave de administração do Supabase.";
   if (message.includes("migração da conexão Meta")) return message;
+  if (/Aplique a migração/i.test(message)) return message;
   if (/page\s+not\s+found|^404\b/i.test(message)) {
-    return "Rota do servidor não encontrada (404). Confirme o deploy (marker NEX-DEPLOY-METAI120 em /health) e OPENAI_API_URL.";
+    return "Rota do servidor não encontrada (404). Confirme o deploy (marker NEX-DEPLOY-METAI121 em /health) e OPENAI_API_URL.";
   }
   if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
-    return "A conexão com o servidor caiu antes da resposta. Confirme /health (NEX-DEPLOY-METAI120), recarregue e tente de novo.";
+    return "A conexão com o servidor caiu antes da resposta. Confirme /health (NEX-DEPLOY-METAI121), recarregue e tente de novo.";
   }
   if (/OpenAI|OPENAI_/i.test(message)) return message;
   if (!message || /postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(message)) {
@@ -171,15 +172,15 @@ export const analyzeMetaWithAiFn = createServerFn({ method: "POST" })
   .validator(
     (data: { organizationId: string; period?: string; since?: string; until?: string }) => data,
   )
-  .handler(async ({ context, data }): Promise<Result<MetaAiAnalysisResult>> => {
-    const { analyzeMetaWithAi } = await import("@/server/meta-ai.server");
+  .handler(async ({ context, data }): Promise<Result<MetaAiAnalysisStartResult>> => {
+    const { startMetaAiAnalysis } = await import("@/server/meta-ai.server");
     const input: { organizationId: string; period?: string; since?: string; until?: string } = {
       organizationId: data.organizationId,
     };
     if (data.period) input.period = data.period;
     if (data.since) input.since = data.since;
     if (data.until) input.until = data.until;
-    return guard(() => analyzeMetaWithAi(context.userId, input));
+    return guard(() => startMetaAiAnalysis(context.userId, input));
   });
 
 export const listMetaAiExecutionsFn = createServerFn({ method: "POST" })

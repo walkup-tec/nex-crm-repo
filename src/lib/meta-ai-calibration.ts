@@ -1,7 +1,12 @@
 import type { MetaPeriod } from "@/lib/meta-access";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 
-export type MetaAiExecutionStatus = "ok" | "error" | "partial";
+export type MetaAiExecutionStatus = "ok" | "error" | "partial" | "running";
+
+/** Intervalo de polling do laboratório enquanto status=running. */
+export const META_AI_POLL_INTERVAL_MS = 2500;
+/** Tempo máximo de espera no cliente após o start assíncrono. */
+export const META_AI_POLL_MAX_MS = 8 * 60 * 1000;
 
 /** Janela para avisar execução idêntica recente (mesmo cliente/período). */
 export const META_AI_RECENT_DUPLICATE_MS = 10 * 60 * 1000;
@@ -71,6 +76,48 @@ export type MetaAiAnalysisResult = {
   dataContractVersion: string;
   promptHash: string;
 };
+
+/** Resposta imediata do start assíncrono (antes do export/OpenAI). */
+export type MetaAiAnalysisStartResult = {
+  executionId: string;
+  status: "running";
+};
+
+export function isMetaAiExecutionTerminal(status: MetaAiExecutionStatus): boolean {
+  return status === "ok" || status === "error" || status === "partial";
+}
+
+export function metaAiDetailToAnalysisResult(detail: MetaAiExecutionDetail): MetaAiAnalysisResult {
+  const input = detail.inputJson as Partial<NexMetaAnalysisV1>;
+  const campaigns = Array.isArray(input.campaigns) ? input.campaigns : [];
+  const adsets = Array.isArray(input.adsets) ? input.adsets : [];
+  const ads = Array.isArray(input.ads) ? input.ads : [];
+  const dataStatus =
+    input.metadata && typeof input.metadata === "object" && "data_status" in input.metadata
+      ? ((input.metadata as { data_status?: "live" | "partial" }).data_status ?? "partial")
+      : "partial";
+  return {
+    executionId: detail.id,
+    analysis: detail.analysisMarkdown,
+    model: detail.model,
+    clientName: detail.clientName,
+    accountId: detail.accountId,
+    accountName: detail.accountName,
+    period: {
+      since: detail.periodSince,
+      until: detail.periodUntil,
+      timezone: detail.periodTimezone,
+    },
+    campaignCount: campaigns.length,
+    adsetCount: adsets.length,
+    adCount: ads.length,
+    warnings: detail.warnings,
+    dataStatus,
+    protocolVersion: detail.protocolVersion,
+    dataContractVersion: detail.dataContractVersion,
+    promptHash: detail.promptHash,
+  };
+}
 
 export function clampScore(value: unknown): number | null {
   if (value == null || value === "") return null;

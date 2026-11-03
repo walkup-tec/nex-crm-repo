@@ -257,6 +257,7 @@ persist = f"""http:
   services:
     nex-persist-app:
       loadBalancer:
+        serversTransport: nex-persist-long
         servers:
           - url: "http://{gateway}:{app_port}/"
     nex-persist-site:
@@ -267,6 +268,12 @@ persist = f"""http:
       loadBalancer:
         servers:
           - url: "http://{gateway}:{corban_port}/"
+  serversTransports:
+    nex-persist-long:
+      forwardingTimeouts:
+        dialTimeout: 30s
+        responseHeaderTimeout: 300s
+        idleConnTimeout: 300s
 """
 extra = Path(corban_extra)
 if extra.exists():

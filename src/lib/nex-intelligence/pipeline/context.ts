@@ -1,5 +1,6 @@
 import {
   NEX_INTELLIGENCE_ANALYSIS_FORMAT,
+  NEX_INTELLIGENCE_CLAIM_IR_VERSION,
   NEX_INTELLIGENCE_DATA_CONTRACT_VERSION,
   NEX_INTELLIGENCE_ENGINE_VERSION,
   NEX_INTELLIGENCE_MAX_AI_CALLS,
@@ -7,31 +8,27 @@ import {
 } from "@/lib/nex-intelligence/versions";
 
 /**
- * Ordem vinculante A→F (v1.2.0):
+ * Ordem vinculante A→J (v1.3.0):
  *
- * A Coleta → B Integridade → C Métricas/Traces (fonte de verdade)
- * → OpenAI#1 → D Auditoria (claims IA, só traces C)
- * → Recuperação_CMS determinística (SEM OpenAI)
- * → D re-auditoria (itens recuperados + restantes, só traces C)
- * → [opcional] OpenAI#2 somente se ainda houver falha estrutural/conteúdo
- *    e aiCallsUsed < MAX_AI_CALLS → D → E Publicação → Persistência
- * → ChatGPT leitura somente (evidências persistidas)
+ * A Coleta → B Integridade → C Métricas/Registry/Traces
+ * → D IA propõe Claim IR → E Validação IR → F Recuperação estrutural
+ * → G Revalidação → H Relatório (renderizadores) → I Persistência atômica
+ * → J ChatGPT RO (somente publication_status=published)
  *
- * Regra: CMS/recovery determinística SEMPRE antes de qualquer 2ª chamada OpenAI.
+ * CMS/recovery determinística SEMPRE antes de qualquer 2ª chamada OpenAI.
  * Orçamento: no máximo 2 chamadas OpenAI por execução.
  */
 export const PIPELINE_STAGE_ORDER = [
   "A_COLLECTION",
   "B_INTEGRITY",
   "C_METRICS_TRACES",
-  "AI_CALL_1",
-  "D_AUDIT_AI",
-  "CMS_RECOVERY",
-  "D_AUDIT_RECOVERED",
-  "AI_CALL_2_OPTIONAL",
-  "D_AUDIT_POST_REGEN",
-  "E_PUBLICATION",
-  "F_PERSISTENCE",
+  "D_AI_PROPOSALS",
+  "E_VALIDATE_IR",
+  "F_STRUCTURAL_RECOVERY",
+  "G_REVALIDATE_IR",
+  "H_RENDER_REPORT",
+  "I_PERSIST_ATOMIC",
+  "J_CHATGPT_READONLY",
 ] as const;
 
 export type PipelineStage = (typeof PIPELINE_STAGE_ORDER)[number];
@@ -41,6 +38,7 @@ export type MetaAnalysisPipelineContext = {
   engineVersion: string;
   dataContractVersion: string;
   analysisFormat: string;
+  claimIrVersion: string;
   promptHash: string;
   aiCallBudget: number;
   aiCallsUsed: number;
@@ -55,6 +53,7 @@ export function createPipelineContext(input: {
     engineVersion: NEX_INTELLIGENCE_ENGINE_VERSION,
     dataContractVersion: NEX_INTELLIGENCE_DATA_CONTRACT_VERSION,
     analysisFormat: NEX_INTELLIGENCE_ANALYSIS_FORMAT,
+    claimIrVersion: NEX_INTELLIGENCE_CLAIM_IR_VERSION,
     promptHash: input.promptHash,
     aiCallBudget: NEX_INTELLIGENCE_MAX_AI_CALLS,
     aiCallsUsed: input.aiCallsUsed ?? 0,

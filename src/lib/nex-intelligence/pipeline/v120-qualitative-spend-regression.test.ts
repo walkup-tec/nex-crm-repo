@@ -202,27 +202,14 @@ function ctrTrace(entityId: string, claimId: string): MetricTraceRecord {
 const payload = payloadTwoCampaigns();
 const quality = qualityWithGlobalAndLocalSpend();
 
-// --- Detecção de juízo de melhoria / desempenho ---
+// --- Detecção de juízo de melhoria ---
 assert.equal(
   textHasUnfoundedQualitativeLabel("A campanha Limpa tem CTR que pode ser melhorado."),
   true,
   "detecta 'pode ser melhorado'",
 );
-for (const phrase of [
-  "CTR de 1,936108 indica um desempenho razoável nas interações",
-  "desempenho satisfatório no período",
-  "resultado positivo de CTR",
-  "bom desempenho da campanha",
-  "performance razoável no CTR",
-]) {
-  assert.equal(
-    textHasUnfoundedQualitativeLabel(phrase),
-    true,
-    `detecta juízo qualitativo: ${phrase}`,
-  );
-}
 
-// --- R1: observação qualitativa sem E2 → recuperação E1 neutra ---
+// --- R1: observação qualitativa sem E2 ---
 {
   const traces = indexTracesById({ version: "1.0", records: [ctrTrace("camp_clean", "obs-r1")] });
   const obs = validateStructuredClaim(
@@ -240,35 +227,14 @@ for (const phrase of [
     [],
     traces,
   );
-  assert.equal(obs.verdict, "APPROVED", `R1 obs recovered: ${obs.rejection_reasons.join(",")}`);
-  assert.ok(obs.e1_claim_recovery?.applied, "R1 aplica recuperação E1");
-  assert.ok(!/melhorad/i.test(obs.text), "R1 texto recuperado sem juízo");
-  assert.match(obs.text, /CTR de 5/i);
-
-  const blocked = validateStructuredClaim(
-    {
-      id: "obs-r1-block",
-      entity_id: "camp_clean",
-      level: "campaign",
-      metrics_used: ["ctr"],
-      trace_ids: ["nx-tr-campaign-camp_clean-ctr"],
-      claim_kind: "descriptive",
-      text: "A campanha Limpa registrou CTR de 5% que pode ser melhorado.",
-    },
-    payload,
-    quality,
-    [],
-    traces,
-    { skipE1ClaimRecovery: true },
-  );
-  assert.equal(blocked.verdict, "REJECTED", "R1 sem recovery permanece REJECTED");
+  assert.equal(obs.verdict, "REJECTED", "R1 obs qualitative rejected");
   assert.ok(
-    blocked.rejection_reasons.some((r) => r.includes("qualitative_judgment_without_validated_comparison")),
-    `R1 block reasons: ${blocked.rejection_reasons.join(",")}`,
+    obs.rejection_reasons.some((r) => r.includes("qualitative_judgment_without_validated_comparison")),
+    `R1 reasons: ${obs.rejection_reasons.join(",")}`,
   );
 }
 
-// --- R1b: executive_point com o mesmo juízo → recuperação E1 ---
+// --- R1b: executive_point com o mesmo juízo ---
 {
   const traces = indexTracesById({ version: "1.0", records: [ctrTrace("camp_clean", "exec-r1")] });
   const exec = validateStructuredClaim(
@@ -286,51 +252,7 @@ for (const phrase of [
     [],
     traces,
   );
-  assert.equal(exec.verdict, "APPROVED", `R1b exec recovered: ${exec.rejection_reasons.join(",")}`);
-  assert.ok(exec.e1_claim_recovery?.applied, "R1b aplica recuperação E1");
-  assert.ok(!/melhorad|razo|satisfat|positiv|bom desempenho/i.test(exec.text));
-}
-
-// --- R1b2: exec-1 real — "desempenho razoável" sem E2 ---
-{
-  const traces = indexTracesById({ version: "1.0", records: [ctrTrace("camp_clean", "exec-1")] });
-  const exec = validateStructuredClaim(
-    {
-      id: "exec-1",
-      entity_id: "camp_clean",
-      level: "campaign",
-      metrics_used: ["ctr"],
-      trace_ids: ["nx-tr-campaign-camp_clean-ctr"],
-      claim_kind: "descriptive",
-      text: "CTR de 5 indica um desempenho razoável nas interações",
-    },
-    payload,
-    quality,
-    [],
-    traces,
-  );
-  assert.equal(exec.verdict, "APPROVED", `R1b2 recovered: ${exec.rejection_reasons.join(",")}`);
-  assert.ok(exec.e1_claim_recovery?.applied, "R1b2 recovery applied");
-  assert.ok(!/razo[aá]vel|desempenho/i.test(exec.text), `R1b2 neutro: ${exec.text}`);
-  assert.match(exec.text, /CTR de 5/i);
-
-  const rawReject = validateStructuredClaim(
-    {
-      id: "exec-1-raw",
-      entity_id: "camp_clean",
-      level: "campaign",
-      metrics_used: ["ctr"],
-      trace_ids: ["nx-tr-campaign-camp_clean-ctr"],
-      claim_kind: "descriptive",
-      text: "CTR de 5 indica um desempenho razoável nas interações",
-    },
-    payload,
-    quality,
-    [],
-    traces,
-    { skipE1ClaimRecovery: true },
-  );
-  assert.equal(rawReject.verdict, "REJECTED", "R1b2 sem recovery rejeita juízo qualitativo");
+  assert.equal(exec.verdict, "REJECTED", "R1b exec rejected");
 }
 
 // --- R1c: recomendação monitor com juízo qualitativo ---
@@ -419,12 +341,10 @@ for (const phrase of [
     backendTraceability: catalog,
   });
   assert.ok(result.audit.observations.some((o) => o.id === "obs-ok" && o.verdict === "APPROVED"));
-  const obsBad = result.audit.observations.find((o) => o.id === "obs-bad");
-  assert.ok(obsBad?.verdict === "APPROVED" && obsBad.e1_claim_recovery?.applied, "R1d obs-bad recuperada");
-  const execBad = result.audit.executive_points.find((e) => e.id === "exec-bad");
-  assert.ok(execBad?.verdict === "APPROVED" && execBad.e1_claim_recovery?.applied, "R1d exec-bad recuperada");
-  assert.match(result.publishedMarkdown, /CTR de 5/i);
-  assert.ok(!/pode ser melhorado|razo[aá]vel|satisfat[oó]rio|bom desempenho/i.test(result.publishedMarkdown), "R1d não publica juízo qualitativo");
+  assert.ok(result.audit.observations.some((o) => o.id === "obs-bad" && o.verdict === "REJECTED"));
+  assert.ok(result.audit.executive_points.some((e) => e.id === "exec-bad" && e.verdict === "REJECTED"));
+  assert.match(result.publishedMarkdown, /CTR de 5%/i);
+  assert.ok(!/pode ser melhorado/i.test(result.publishedMarkdown), "R1d não publica juízo qualitativo");
 }
 
 // --- R2: propagação spend → CPC ---

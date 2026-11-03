@@ -19,7 +19,7 @@ export function metaAiUserPrompt(
     ? summarizeAvailableTracesForPrompt(availableTraceRefs(backendTraceability, payload))
     : "available_traces: (catálogo será aplicado deterministicamente no backend)";
   return [
-    "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.2.0). Responda em JSON estruturado nex_intelligence_analysis_v1_2_0 com observations[] factuais (sem rótulos qualitativos sem comparação), recommendations[] com evidence_level/comparison quando E2+ e executive_points[].",
+    "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.3.0). Responda em JSON estruturado nex_intelligence_analysis_v1_3_0 com observations[] factuais (sem rótulos qualitativos sem comparação), recommendations[] com evidence_level/comparison quando E2+ e executive_points[] (preferir claim_ir tipado).",
     "NÃO invente metric_traceability. Use APENAS trace_ids listados em available_traces (entity_id+metric). O NEX descarta traces criados pela IA e reassocia deterministicamente.",
     "CTR isolado não autoriza otimização de criativo nem escala.",
     `Cliente: ${payload.metadata.client_name}`,

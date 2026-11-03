@@ -378,7 +378,7 @@ function ctrRatioTrace(claimId: string) {
       (row) => row.entity_id === "120254698455700651" && row.metric === "ctr",
     ),
   );
-  assert.equal(result.audit.engine_version, "1.2.0");
+  assert.equal(result.audit.engine_version, "1.3.0");
 }
 
 // --- Regressão a589e9be: texto WhatsApp + trace Conv. Site → REJECTED ---

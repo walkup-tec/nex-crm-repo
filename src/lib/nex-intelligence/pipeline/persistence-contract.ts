@@ -1,15 +1,8 @@
 /**
- * Contrato de persistência analítica v1.2.0 (output_json + colunas espelho).
+ * Contrato de persistência analítica v1.3.0 (output_json + colunas espelho).
+ * Compat: campos v1.2.0 preservados; novos campos aditivos.
  *
- * Obrigatório gravar para consulta ChatGPT read-only:
- * - dados originais da IA (structured / raw snapshot)
- * - resultados de validação por seção (observations / recommendations / executive_points)
- * - itens rejeitados e needs_review
- * - decisões de recuperação (CMS-E1 + regen audit)
- * - metric_traceability (Camada C / recompute)
- * - relatório publicado (markdown = analysis_markdown)
- *
- * ChatGPT NÃO revalida: apenas lê o artefato persistido.
+ * ChatGPT NÃO revalida: apenas lê artefato com publication_status=published.
  */
 
 export type PersistedAnalyticalOutputV120 = {
@@ -20,7 +13,6 @@ export type PersistedAnalyticalOutputV120 = {
   prompt_hash: string;
   data_quality_status: string;
   analytical_status: string | null;
-  /** Snapshot estruturado original (pós-parse) e/ou raw quando parse falha. */
   ai_original: {
     raw_text_present: boolean;
     structured: Record<string, unknown> | null;
@@ -45,6 +37,32 @@ export type PersistedAnalyticalOutputV120 = {
     markdown: string;
     published_recommendation_ids: string[];
   };
-  /** Compat legado com consumidores 1.1.x */
   recommendation_validation: Record<string, unknown>;
+};
+
+/** Extensão atômica v1.3.0 — mesma unidade transacional. */
+export type PersistedAnalyticalOutputV130 = PersistedAnalyticalOutputV120 & {
+  claim_ir_version: string;
+  execution_status: string;
+  publication_status: string;
+  publication_version: number;
+  computed_metrics: unknown[];
+  claim_ir: {
+    original: unknown[];
+    normalized: unknown[];
+    approved: unknown[];
+    rejected: unknown[];
+    recovery_audits: unknown[];
+  };
+  semantic_validation: {
+    engine: string;
+    approved_count: number;
+    rejected_count: number;
+  };
+  statuses: {
+    execution_status: string;
+    analytical_status: string;
+    data_quality_status: string;
+    publication_status: string;
+  };
 };

@@ -75,8 +75,8 @@ const payloadBase: NexMetaAnalysisV1 = {
 };
 
 const quality = validateMetaAnalysisData(payloadBase, {
-  protocolVersion: "1.2.0",
-  engineVersion: "1.2.0",
+  protocolVersion: "1.3.0",
+  engineVersion: "1.3.0",
 });
 const payload = attachDataQuality(payloadBase, quality);
 const catalog = buildBackendMetricTraceCatalog(payload, quality);

@@ -96,9 +96,10 @@ function resolveAnalyticalStatus(input: {
   rejectedOrReview: number;
   usedFallback: boolean;
 }): AnalyticalStatus {
-  if (input.usedFallback) return "FALLBACK_DETERMINISTIC";
   const approvedTotal = input.approvedObs + input.approvedRecs + input.approvedExec;
-  if (approvedTotal === 0) return "FALLBACK_DETERMINISTIC";
+  if (approvedTotal === 0 && !input.usedFallback) return "INSUFFICIENT_EVIDENCE";
+  if (input.usedFallback) return "FALLBACK_DETERMINISTIC";
+  if (approvedTotal === 0) return "INSUFFICIENT_EVIDENCE";
   if (
     approvedTotal > 0 &&
     input.discarded === 0 &&
@@ -571,7 +572,7 @@ export function structuralRegenerationUserPrompt(
   payload: NexMetaAnalysisV1,
 ) {
   return [
-    "A resposta anterior violou o schema estruturado NEX Intelligence v1.2.0.",
+    "A resposta anterior violou o schema estruturado NEX Intelligence v1.3.0.",
     "Reemita o JSON COMPLETO válido (observations, recommendations, executive_points, metric_traceability).",
     "Corrija exatamente os campos listados. Não invente evidências. Meta-only.",
     "Enums: action_kind=scale_budget|pause|replace_creative|test|monitor|other; confidence=low|medium|high; claim_kind=descriptive|performance_judgment|indirect_recommendation.",

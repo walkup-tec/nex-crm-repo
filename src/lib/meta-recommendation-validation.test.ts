@@ -549,7 +549,7 @@ const quality = qualityWithBadResults();
     periodSince: "2026-10-01",
     periodUntil: "2026-10-31",
     periodTimezone: "America/Sao_Paulo",
-    protocolVersion: "1.2.0",
+    protocolVersion: "1.3.0",
     dataContractVersion: "1.0.0",
     model: "gpt-4o-mini",
     promptHash: "abc123",
@@ -561,8 +561,8 @@ const quality = qualityWithBadResults();
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,
       recommendation_validation: ok.audit,
-      protocol_version: "1.2.0",
-      engine_version: "1.2.0",
+      protocol_version: "1.3.0",
+      engine_version: "1.3.0",
       analytical_status: ok.analyticalStatus,
     },
     calibrationFeedback: {},
@@ -570,7 +570,7 @@ const quality = qualityWithBadResults();
   const chatgpt = buildChatgptMetaAnalysisPayload(detail);
   assert.equal(chatgpt.execution_id, detail.id, "Teste J id");
   assert.equal(chatgpt.tool, "get_meta_analysis_execution", "Teste J tool");
-  assert.equal(chatgpt.protocol_version, "1.2.0", "Teste J protocol");
+  assert.equal(chatgpt.protocol_version, "1.3.0", "Teste J protocol");
   assert.equal(chatgpt.data_contract_version, "1.0.0", "Teste J contract");
   assert.ok(chatgpt.ai_analysis.markdown?.includes("Etapa 3"), "Teste J markdown");
   assert.ok(chatgpt.availability.output_json, "Teste J output");
@@ -966,36 +966,8 @@ const quality = qualityWithBadResults();
   assert.ok(totalFail.audit.schema_errors.length >= 1, "Teste T schema errors");
 }
 
-// --- Teste U: regressão 6d0d964b — CTR qualitativo sem comparação → REJECTED (sem recovery) / E1 neutro (com recovery) ---
+// --- Teste U: regressão 6d0d964b — CTR qualitativo sem comparação → REJECTED ---
 {
-  const tracesU = indexTracesById({
-    version: "1.0",
-    records: [
-      {
-        trace_id: "trace-obs-u-ctr",
-        entity_level: "campaign",
-        entity_id: "camp_ok",
-        metric: "ctr",
-        source: "META_MARKETING_API",
-        source_level: "campaign",
-        source_field: "insights.clicks",
-        period: { since: "2026-10-01", until: "2026-10-31" },
-        calculation: {
-          type: "RATIO",
-          formula: "(clicks / impressions) * 100",
-          inputs: { clicks: 50, impressions: 1000 },
-          result: 5,
-        },
-        validation: {
-          status: "PASS",
-          dependencies: ["clicks", "impressions"],
-          check_codes: [],
-          reason: null,
-        },
-        used_by: ["obs-u"],
-      },
-    ],
-  });
   const qualitative = validateStructuredClaim(
     {
       id: "obs-u",
@@ -1009,33 +981,40 @@ const quality = qualityWithBadResults();
     payload,
     quality,
     [],
-    tracesU,
-    { skipE1ClaimRecovery: true },
+    indexTracesById({
+      version: "1.0",
+      records: [
+        {
+          trace_id: "trace-obs-u-ctr",
+          entity_level: "campaign",
+          entity_id: "camp_ok",
+          metric: "ctr",
+          source: "META_MARKETING_API",
+          source_level: "campaign",
+          source_field: "insights.clicks",
+          period: { since: "2026-10-01", until: "2026-10-31" },
+          calculation: {
+            type: "RATIO",
+            formula: "(clicks / impressions) * 100",
+            inputs: { clicks: 50, impressions: 1000 },
+            result: 5,
+          },
+          validation: {
+            status: "PASS",
+            dependencies: ["clicks", "impressions"],
+            check_codes: [],
+            reason: null,
+          },
+          used_by: ["obs-u"],
+        },
+      ],
+    }),
   );
   assert.equal(qualitative.verdict, "REJECTED", "Teste U qualitative rejected");
   assert.ok(
     qualitative.rejection_reasons.some((r) => r.includes("qualitative_judgment_without_validated_comparison")),
     `Teste U reasons: ${qualitative.rejection_reasons.join(",")}`,
   );
-
-  const recovered = validateStructuredClaim(
-    {
-      id: "obs-u",
-      entity_id: "camp_ok",
-      level: "campaign",
-      metrics_used: ["ctr"],
-      trace_ids: ["trace-obs-u-ctr"],
-      claim_kind: "descriptive",
-      text: "A campanha OK apresentou CTR positivo/elevado de 5%, considerado aceitável.",
-    },
-    payload,
-    quality,
-    [],
-    tracesU,
-  );
-  assert.equal(recovered.verdict, "APPROVED", `Teste U recovered: ${recovered.rejection_reasons.join(",")}`);
-  assert.ok(recovered.e1_claim_recovery?.applied, "Teste U recovery applied");
-  assert.ok(!/positiv|elevad|aceit/i.test(recovered.text), `Teste U neutro: ${recovered.text}`);
 }
 
 // --- Teste V: fato numérico E1 preservado; monitor E1 aprovado ---
@@ -1247,13 +1226,9 @@ const quality = qualityWithBadResults();
     quality,
   });
   assert.ok(exec.audit.observations.some((o) => o.id === "obs-x" && o.verdict === "APPROVED"), "Teste X obs");
-  const execX = exec.audit.executive_points.find((e) => e.id === "exec-x");
-  assert.ok(
-    execX?.verdict === "APPROVED" && execX.e1_claim_recovery?.applied,
-    `Teste X exec recuperado E1: ${execX?.verdict} ${execX?.rejection_reasons?.join(",") ?? ""}`,
-  );
-  assert.ok(!/desempenho positivo|elevado|otimizar criativos/i.test(exec.publishedMarkdown), "Teste X sem elevação");
-  assert.match(exec.publishedMarkdown, /CTR de 5/i, "Teste X preserva fato");
+  assert.ok(exec.audit.executive_points.some((e) => e.id === "exec-x" && e.verdict === "REJECTED"), "Teste X exec");
+  assert.ok(!/desempenho positivo/i.test(exec.publishedMarkdown), "Teste X sem elevação");
+  assert.match(exec.publishedMarkdown, /CTR de 5%/i, "Teste X preserva fato");
 }
 
 console.log("meta-recommendation-validation.test.ts: ok (A-X)");

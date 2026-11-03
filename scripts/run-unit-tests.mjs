@@ -20,6 +20,7 @@ const META_TEST_FILES = [
   "src/lib/nex-intelligence/pipeline/run-meta-analysis.pipeline.test.ts",
   "src/lib/nex-intelligence/pipeline/four-campaign-ctr-acceptance.test.ts",
   "src/lib/nex-intelligence/pipeline/v120-qualitative-spend-regression.test.ts",
+  "src/lib/nex-intelligence/pipeline/v130-invariants.test.ts",
   "src/server/openai.server.test.ts",
 ];
 

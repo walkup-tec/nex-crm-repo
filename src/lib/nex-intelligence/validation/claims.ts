@@ -29,7 +29,6 @@ import {
   inferMetricsFromText,
 } from "@/lib/nex-intelligence/validation/entity-helpers";
 import { claimValuesMatchCatalog } from "@/lib/nex-intelligence/validation/numeric-claims";
-import { tryE1ClaimNeutralRecovery } from "@/lib/nex-intelligence/recovery/e1-claim";
 
 export function validateStructuredClaim(
   raw: unknown,
@@ -37,7 +36,6 @@ export function validateStructuredClaim(
   quality: MetaDataQualityReport,
   approvedActions: string[] = [],
   traces: Map<string, MetricTraceRecord> = new Map(),
-  options?: { skipE1ClaimRecovery?: boolean },
 ): ValidatedClaim {
   const parsed = structuredClaimSchema.safeParse(normalizeClaimDraft(raw));
   if (!parsed.success) {
@@ -217,72 +215,14 @@ export function validateStructuredClaim(
     // ok
   }
 
-  const uniqueReasons = [...new Set(reasons)];
-  const verdict = uniqueReasons.length ? "REJECTED" : "APPROVED";
-  const evidenceLevel = uniqueReasons.length && !tracesOk ? "E0" : achieved.level;
-
-  // Recuperação E1: juízo qualitativo sem E2 → fato numérico neutro + revalidação.
-  if (
-    verdict !== "APPROVED" &&
-    !options?.skipE1ClaimRecovery &&
-    entityOk &&
-    uniqueReasons.includes("qualitative_judgment_without_validated_comparison") &&
-    uniqueReasons.every(
-      (r) =>
-        r === "qualitative_judgment_without_validated_comparison" ||
-        r.startsWith("claim_value_mismatch"),
-    )
-  ) {
-    const recovery = tryE1ClaimNeutralRecovery({
-      id: claim.id,
-      entity_id: claim.entity_id,
-      level: claim.level,
-      metrics_used: metrics,
-      trace_ids: traceIds,
-      text: claim.text,
-      traces,
-      payload,
-      quality,
-    });
-    if (recovery.recovered && recovery.audit.applied) {
-      const revalidated = validateStructuredClaim(
-        {
-          ...claim,
-          ...recovery.recovered,
-        },
-        payload,
-        quality,
-        approvedActions,
-        traces,
-        { skipE1ClaimRecovery: true },
-      );
-      if (revalidated.verdict === "APPROVED") {
-        return {
-          ...revalidated,
-          evidence_level: "E1",
-          e1_claim_recovery: recovery.audit,
-          rejection_reasons: [],
-        };
-      }
-      return {
-        ...revalidated,
-        e1_claim_recovery: {
-          ...recovery.audit,
-          applied: false,
-          reason: `e1_claim_revalidation_failed:${revalidated.rejection_reasons.join(",")}`,
-        },
-      };
-    }
-  }
-
   return {
     ...claim,
     claim_kind: kind,
     metrics_used: metrics,
     trace_ids: traceIds,
-    evidence_level: evidenceLevel,
-    verdict,
-    rejection_reasons: uniqueReasons,
+    evidence_level: reasons.length && !tracesOk ? "E0" : achieved.level,
+    verdict: reasons.length ? "REJECTED" : "APPROVED",
+    rejection_reasons: [...new Set(reasons)],
     blocked_by: blockedBy,
   };
 }
@@ -293,9 +233,6 @@ export function validateClaimList(
   quality: MetaDataQualityReport,
   approvedActions: string[] = [],
   traces: Map<string, MetricTraceRecord> = new Map(),
-  options?: { skipE1ClaimRecovery?: boolean },
 ): ValidatedClaim[] {
-  return items.map((item) =>
-    validateStructuredClaim(item, payload, quality, approvedActions, traces, options),
-  );
+  return items.map((item) => validateStructuredClaim(item, payload, quality, approvedActions, traces));
 }

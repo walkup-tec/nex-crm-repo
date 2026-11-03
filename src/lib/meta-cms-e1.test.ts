@@ -79,8 +79,8 @@ const payload: NexMetaAnalysisV1 = {
 
 const quality: MetaDataQualityReport = {
   status: "WARNING",
-  engine_version: "1.2.0",
-  protocol_version: "1.2.0",
+  engine_version: "1.3.0",
+  protocol_version: "1.3.0",
   validated_at: "2026-11-02T15:00:00.000Z",
   checks: [
     {

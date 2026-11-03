@@ -1,12 +1,14 @@
 import {
+  NEX_INTELLIGENCE_CLAIM_IR_VERSION,
   NEX_INTELLIGENCE_ENGINE_VERSION,
   NEX_INTELLIGENCE_PROTOCOL_VERSION,
 } from "@/lib/nex-intelligence/versions";
-import type { PersistedAnalyticalOutputV120 } from "@/lib/nex-intelligence/pipeline/persistence-contract";
+import type { PersistedAnalyticalOutputV130 } from "@/lib/nex-intelligence/pipeline/persistence-contract";
 import {
   parseStructuredAnalysis,
   type ProcessRecommendationsResult,
 } from "@/lib/nex-intelligence/validation/orchestrate";
+import type { ProcessClaimIRResult } from "@/lib/nex-intelligence/claim-ir/process";
 
 export function buildPersistedAnalyticalOutput(input: {
   rawText: string;
@@ -14,9 +16,17 @@ export function buildPersistedAnalyticalOutput(input: {
   promptHash: string;
   dataQualityStatus: string;
   processed: ProcessRecommendationsResult;
-}): PersistedAnalyticalOutputV120 {
+  claimIr?: ProcessClaimIRResult | null;
+  executionStatus?: string;
+  publicationStatus?: string;
+  publicationVersion?: number;
+}): PersistedAnalyticalOutputV130 {
   const parsed = parseStructuredAnalysis(input.rawText, "initial");
   const audit = input.processed.audit;
+  const publicationStatus = input.publicationStatus ?? "published";
+  const executionStatus = input.executionStatus ?? "succeeded";
+  const publicationVersion = input.publicationVersion ?? 1;
+  const claimIr = input.claimIr;
 
   return {
     analysis_markdown: input.processed.publishedMarkdown,
@@ -26,6 +36,29 @@ export function buildPersistedAnalyticalOutput(input: {
     prompt_hash: input.promptHash,
     data_quality_status: input.dataQualityStatus,
     analytical_status: input.processed.analyticalStatus,
+    claim_ir_version: NEX_INTELLIGENCE_CLAIM_IR_VERSION,
+    execution_status: executionStatus,
+    publication_status: publicationStatus,
+    publication_version: publicationVersion,
+    computed_metrics: claimIr?.registry ?? [],
+    claim_ir: {
+      original: claimIr?.original ?? [],
+      normalized: claimIr?.normalized ?? [],
+      approved: claimIr?.approved ?? [],
+      rejected: claimIr?.rejected ?? [],
+      recovery_audits: claimIr?.recovery_audits ?? [],
+    },
+    semantic_validation: {
+      engine: NEX_INTELLIGENCE_ENGINE_VERSION,
+      approved_count: claimIr?.approved.length ?? audit.published_recommendation_ids.length,
+      rejected_count: claimIr?.rejected.length ?? audit.rejected_recommendation_ids.length,
+    },
+    statuses: {
+      execution_status: executionStatus,
+      analytical_status: String(input.processed.analyticalStatus),
+      data_quality_status: input.dataQualityStatus,
+      publication_status: publicationStatus,
+    },
     ai_original: {
       raw_text_present: Boolean(input.rawText.trim()),
       structured: parsed.parse_ok

@@ -554,7 +554,16 @@ async function rememberPromotion(organizationId: string, parsed: ReturnType<type
   if (saved.error) fail(migrationMessage(saved.error.message));
 }
 
-async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>, today = new Date().toISOString().slice(0, 10)) {
+function brazilTodayKey(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>, today = brazilTodayKey()) {
   if (parsed.billingProvider !== "cora" || !parsed.endsOn || !parsed.delinquencyMode) return;
   const existing = await supabaseAdmin.from("invoices").select("id").eq("organization_id", organizationId).limit(1);
   if (existing.error) fail(migrationMessage(existing.error.message));
@@ -632,6 +641,82 @@ export async function provisionClientCharges(
   today?: string,
 ) {
   await issueCoraCharges(organizationId, parsed, today);
+}
+
+/** Reemite cobranças Cora quando o contrato está completo e não há invoices locais. */
+export async function ensureMissingCoraCharges(organizationId?: string) {
+  let contractsQuery = supabaseAdmin
+    .from("contracts")
+    .select(
+      "organization_id, monthly_fee_cents, due_day, starts_on, ends_on, fine_percent, interest_percent_monthly, billing_provider, promo_enabled, promo_starts_on, promo_ends_on, after_promo_cents, delinquency_mode, delinquency_amount_cents",
+    )
+    .eq("billing_provider", "cora");
+  if (organizationId) contractsQuery = contractsQuery.eq("organization_id", organizationId);
+  const { data: contracts, error } = await contractsQuery;
+  if (error) {
+    console.error("ensure_cora_charges", error.message);
+    return;
+  }
+  for (const contract of contracts ?? []) {
+    if (!contract.ends_on || (contract.delinquency_mode !== "amount" && contract.delinquency_mode !== "rate")) continue;
+    const existing = await supabaseAdmin.from("invoices").select("id").eq("organization_id", contract.organization_id).limit(1);
+    if (existing.error) {
+      console.error("ensure_cora_charges", existing.error.message);
+      continue;
+    }
+    if ((existing.data ?? []).length) continue;
+    const org = await supabaseAdmin
+      .from("organizations")
+      .select("legal_name, document, responsible_email, responsible_phone, finance_phone, ads_meta, ads_google")
+      .eq("id", contract.organization_id)
+      .maybeSingle();
+    if (org.error || !org.data) {
+      console.error("ensure_cora_charges", org.error?.message || "organização ausente");
+      continue;
+    }
+    const document = digits(org.data.document ?? "");
+    if (document.length !== 11 && document.length !== 14) continue;
+    const email = (org.data.responsible_email ?? "").trim().toLowerCase();
+    if (!email.includes("@")) continue;
+    try {
+      await issueCoraCharges(
+        contract.organization_id,
+        {
+          legalName: org.data.legal_name,
+          commercialName: "",
+          document,
+          responsibleName: org.data.legal_name,
+          responsibleEmail: email,
+          whatsapp: org.data.responsible_phone || "00",
+          financePhone: org.data.finance_phone || org.data.responsible_phone || "não informado",
+          billingProvider: "cora",
+          adsMeta: org.data.ads_meta !== false,
+          adsGoogle: org.data.ads_google === true,
+          monthlyFeeCents: Number(contract.monthly_fee_cents),
+          dueDay: Number(contract.due_day),
+          startsOn: String(contract.starts_on).slice(0, 10),
+          endsOn: String(contract.ends_on).slice(0, 10),
+          finePercent: Number(contract.fine_percent ?? 0),
+          interestPercent: Number(contract.interest_percent_monthly ?? 0),
+          asaasSubscriptionId: "",
+          promoEnabled: contract.promo_enabled === true,
+          promoStartsOn: contract.promo_starts_on ? String(contract.promo_starts_on).slice(0, 10) : null,
+          promoEndsOn: contract.promo_ends_on ? String(contract.promo_ends_on).slice(0, 10) : null,
+          afterPromoCents: contract.after_promo_cents == null ? null : Number(contract.after_promo_cents),
+          delinquencyMode: contract.delinquency_mode === "amount" || contract.delinquency_mode === "rate" ? contract.delinquency_mode : null,
+          delinquencyAmountCents:
+            contract.delinquency_amount_cents == null ? null : Number(contract.delinquency_amount_cents),
+        },
+        brazilTodayKey(),
+      );
+    } catch (ensureError) {
+      console.error(
+        "ensure_cora_charges",
+        contract.organization_id,
+        ensureError instanceof Error ? ensureError.message : "falha",
+      );
+    }
+  }
 }
 
 export async function removeProvisionedClient(organizationId: string) {

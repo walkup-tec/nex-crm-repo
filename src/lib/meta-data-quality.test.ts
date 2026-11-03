@@ -108,6 +108,8 @@ const emptyInsights = {
   );
   assert.equal(report.computed_metrics.spend_total, 186.86);
   assert.equal(report.checks.find((item) => item.code === "ACCOUNT_SPEND_TOTAL")?.state, "PASS");
+  assert.ok(report.verified_metrics.includes("spend"));
+  assert.ok(!report.verified_metrics.includes("entity_id"));
 }
 
 // Teste B — resultados divergentes (messaging → NOT_VERIFIABLE)

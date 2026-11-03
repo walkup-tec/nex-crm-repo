@@ -165,11 +165,10 @@ export function competenceOf(dueDate: string) {
   return `${dueDate.slice(0, 7)}-01`;
 }
 
-/** CNPJs com cobrança real no Master Financeiro (demais foram testes). */
-const liveMasterFinanceDocuments = new Set(["67141813000172"]);
-
+/** Inclui no Master Financeiro qualquer CPF/CNPJ real. Não usar allowlist de teste. */
 export function countsInMasterFinance(document: string) {
-  return liveMasterFinanceDocuments.has(document.replace(/\D/g, ""));
+  const digits = document.replace(/\D/g, "");
+  return digits.length === 11 || digits.length === 14;
 }
 
 const localPaidCharge = {

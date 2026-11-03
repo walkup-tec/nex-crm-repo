@@ -7,6 +7,7 @@ import {
   type MetricTraceRecord,
 } from "@/lib/nex-intelligence/trace";
 import {
+  textHasStrategicInterventionInMonitor,
   textHasUnfoundedQualitativeLabel,
   type EvidenceLevel,
 } from "@/lib/nex-intelligence/evidence/levels";
@@ -231,9 +232,11 @@ export function tryCmsE1PartialRecovery(input: {
   const discardedMetrics = discarded.map((d) => d.metric);
   const discardedTraceIds = input.trace_ids.filter((id) => !keptTraceIds.includes(id));
 
-  const originalBlob = `${input.recommended_action} ${input.validation_criterion} ${input.hypothesis ?? ""}`;
+  const originalBlob = `${input.recommended_action} ${input.validation_criterion} ${input.hypothesis ?? ""} ${(input.evidence ?? []).join(" ")}`;
   const needsNeutralRewrite =
-    textHasUnfoundedQualitativeLabel(originalBlob) || discardedMetrics.length > 0;
+    textHasUnfoundedQualitativeLabel(originalBlob) ||
+    textHasStrategicInterventionInMonitor(originalBlob) ||
+    discardedMetrics.length > 0;
 
   if (!needsNeutralRewrite && !discarded.length) {
     return {

@@ -13,6 +13,7 @@ import {
   requiredEvidenceLevelForAction,
   textHasCausalPromise,
   textHasInventedBenchmark,
+  textHasStrategicInterventionInMonitor,
   textHasUnfoundedQualitativeLabel,
   type EvidenceComparison,
 } from "@/lib/nex-intelligence/evidence/levels";
@@ -184,6 +185,14 @@ export function validateStructuredRecommendation(
     } else if (!comparisonOk) {
       reasons.push("unfounded_qualitative_label_without_comparison");
     }
+  }
+
+  // MONITOR E1 não pode carregar intervenção estratégica (ex.: reavaliar investimento).
+  if (
+    rec.action_kind === "monitor" &&
+    textHasStrategicInterventionInMonitor(blob)
+  ) {
+    reasons.push("monitor_contains_strategic_intervention");
   }
 
   if (textHasInventedBenchmark(blob)) {

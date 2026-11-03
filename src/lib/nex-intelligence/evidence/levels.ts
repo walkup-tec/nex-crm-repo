@@ -21,14 +21,22 @@ export type EvidenceComparison = {
 
 /** Classificações qualitativas sem referência comparativa validada. */
 export const UNFOUNDED_QUALITATIVE_LABEL_RE =
-  /\b(positiv[oa]s?|negativ[oa]s?|aceit[aá]ve(?:l|is)|elevad[oa]s?|baix[oa]s?|alt[oa]s?|bom|boa|bons|boas|ruim|ruins|excelente(?:s)?|frac[oa]s?|forte(?:s)?|fraco(?:s)?|eficiente(?:s)?|ineficiente(?:s)?|satisfat[oó]ri[oa]s?|insatisfat[oó]ri[oa]s?|adequado(?:s)?|inadequado(?:s)?|superior(?:es)?|inferior(?:es)?|destaque|ótimo(?:s)?|otimo(?:s)?|p[eé]ssim[oa]s?)\b/i;
+  /\b(positiv[oa]s?|negativ[oa]s?|aceit[aá]ve(?:l|is)|elevad[oa]s?|baix[oa]s?|alt[oa]s?|bom|boa|bons|boas|ruim|ruins|excelente(?:s)?|frac[oa]s?|forte(?:s)?|fraco(?:s)?|eficiente(?:s)?|ineficiente(?:s)?|efici[eê]ncia|inefici[eê]ncia|satisfat[oó]ri[oa]s?|insatisfat[oó]ri[oa]s?|adequado(?:s)?|inadequado(?:s)?|superior(?:es)?|inferior(?:es)?|destaque|ótimo(?:s)?|otimo(?:s)?|p[eé]ssim[oa]s?|ideal(?:es)?)\b/i;
 
 /**
  * Juízos de melhoria/oportunidade sem baseline E2 (ex.: "CTR que pode ser melhorado").
  * Exige comparação verificável — não basta fato E1.
  */
 export const IMPROVEMENT_WITHOUT_COMPARISON_RE =
-  /\b(pode(?:m)?\s+ser\s+melhorad[oa]s?|precisa(?:m)?\s+(?:ser\s+)?melhor(?:ar|ad[oa]s?)|a\s+melhorar|espa[cç]o\s+para\s+melhor|oportunidade\s+de\s+melhoria|ainda\s+d[aá]\s+para\s+melhorar|deveria\s+ser\s+(maior|menor|melhor)|abaixo\s+do\s+esperado|acima\s+do\s+esperado|sub[- ]?ótim[oa]s?|sub[- ]?otim[oa]s?)\b/i;
+  /\b(pode(?:m)?\s+ser\s+melhorad[oa]s?|precisa(?:m)?\s+(?:ser\s+)?melhor(?:ar|ad[oa]s?)|a\s+melhorar|espa[cç]o\s+para\s+melhor|oportunidade\s+de\s+melhoria|ainda\s+d[aá]\s+para\s+melhorar|deveria\s+ser\s+(maior|menor|melhor)|abaixo\s+d[oa]\s+(esperado|expectativa)|acima\s+d[oa]\s+(esperado|expectativa|ideal)|perde\s+efici[eê]ncia|perdendo\s+efici[eê]ncia|sub[- ]?ótim[oa]s?|sub[- ]?otim[oa]s?)\b/i;
+
+/**
+ * Intervenção estratégica embutida em texto de MONITOR (E1).
+ * Ex.: "reavaliar o investimento", "alterar a segmentação".
+ */
+/** Intervenção afirmativa — ignora negações do tipo "sem alterar orçamento". */
+export const STRATEGIC_INTERVENTION_IN_MONITOR_RE =
+  /\b(reavaliar\s+(?:o\s+)?investimento|(?<!sem\s)alterar\s+(?:a\s+)?(?:segmenta(?:[cç][aã]o)?|p[uú]blico|criativo|or[cç]amento)|(?<!sem\s)aumentar\s+(?:o\s+)?or[cç]amento|(?<!sem\s)reduzir\s+(?:o\s+)?or[cç]amento|(?<!sem\s)pausar\s+a?\s*campanha|(?<!sem\s)otimizar\s+(?:a\s+)?campanha|(?<!sem\s)escalar\s+(?:o\s+)?(?:investimento|or[cç]amento)|(?<!sem\s)trocar\s+(?:o\s+)?criativo|(?<!sem\s)mudar\s+(?:a\s+)?segmenta(?:[cç][aã]o)?)\b/i;
 
 export const CAUSAL_PROMISE_RE =
   /\b(garant(e|ia)|com certeza|causalidade|vai\s+(melhorar|aumentar|reduzir)|ir[aá]\s+(melhorar|aumentar)|provar[aá]|causa\s+direta)\b/i;
@@ -60,6 +68,10 @@ export function requiredEvidenceLevelForAction(actionKind: EvidenceActionKind): 
 
 export function textHasUnfoundedQualitativeLabel(text: string): boolean {
   return UNFOUNDED_QUALITATIVE_LABEL_RE.test(text) || IMPROVEMENT_WITHOUT_COMPARISON_RE.test(text);
+}
+
+export function textHasStrategicInterventionInMonitor(text: string): boolean {
+  return STRATEGIC_INTERVENTION_IN_MONITOR_RE.test(text);
 }
 
 export function textHasCausalPromise(text: string): boolean {

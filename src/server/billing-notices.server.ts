@@ -53,6 +53,54 @@ export async function stopOpenBillingNotices(organizationId: string, dueDate: st
   if (error && !schemaGap(error.message)) throw new Error(error.message);
 }
 
+/** Reenvio manual Master: mesma mensagem `due` (vence hoje), independente do status da régua. */
+export async function resendDueBillingWhatsappByInvoice(invoiceId: string) {
+  const { data: invoice, error } = await supabaseAdmin
+    .from("invoices")
+    .select("id, organization_id, due_date, status, pix_code, base_amount_cents, total_amount_cents")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (error) fail(error.message);
+  if (!invoice) fail("Cobrança não encontrada.");
+  if (invoice.status === "paid" || invoice.status === "cancelled") {
+    fail("Esta cobrança não está em aberto.");
+  }
+  const context = await noticeContext(invoice.organization_id, invoice.due_date);
+  if (!context.financePhone.trim() || context.financePhone.trim().toLocaleLowerCase("pt-BR") === "não informado") {
+    fail("Cliente sem telefone financeiro.");
+  }
+  const pixCode = pixQrPayload(invoice.pix_code || context.pixCode || "");
+  if (!pixCode) fail("Cobrança sem código Pix válido.");
+  const faceCents = Number(invoice.base_amount_cents ?? invoice.total_amount_cents ?? 0);
+  if (!Number.isInteger(faceCents) || faceCents <= 0) fail("Cobrança sem valor.");
+  const due = String(invoice.due_date).slice(0, 10);
+  const text = billingNoticeText("due", {
+    name: context.legalName,
+    due,
+    faceCents,
+    updatedCents: faceCents,
+    pixCode,
+  });
+  const { renderChargeCardPng } = await import("@/server/charge-card.server");
+  const image = await renderChargeCardPng({
+    clientName: context.legalName,
+    totalCents: faceCents,
+    dueDate: due,
+    pixPayload: pixCode,
+    adsMeta: context.adsMeta,
+    adsGoogle: context.adsGoogle,
+    delinquencyAmountCents: context.delinquencyCents,
+    promotions: context.promotions,
+    promoMonthlyCents: context.promoMonthlyCents,
+    nominalMonthlyCents: context.nominalMonthlyCents,
+  });
+  const sent = await sendFinanceWhatsapp({ phone: context.financePhone, text, imagePng: image });
+  if (!sent.ok) {
+    fail(sent.error || "O WhatsApp não confirmou a mensagem.");
+  }
+  return { ok: true as const, messageId: sent.messageId || "" };
+}
+
 export async function runBillingNotices(now = new Date()) {
   if (running || !noticeWindowOpen(now)) return;
   running = true;

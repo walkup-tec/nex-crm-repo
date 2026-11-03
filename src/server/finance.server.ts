@@ -1,4 +1,4 @@
-import { stopOpenBillingNotices } from "@/server/billing-notices.server";
+import { resendDueBillingWhatsappByInvoice, stopOpenBillingNotices } from "@/server/billing-notices.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   centsFromReais,
@@ -1252,6 +1252,12 @@ export async function changeInvoiceDueDate(
     from: invoice.due_date.slice(0, 10),
     to: due,
   });
+}
+
+export async function resendChargeDueWhatsapp(userId: string, invoiceId: string) {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") fail("Só o Master reenvia a cobrança pelo WhatsApp.");
+  return resendDueBillingWhatsappByInvoice(invoiceId);
 }
 
 export async function cancelMasterCharge(userId: string, invoiceId: string) {

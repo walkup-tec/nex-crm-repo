@@ -5,6 +5,7 @@ import {
   CircleDollarSign,
   Copy,
   Eye,
+  MessageCircle,
   MoreHorizontal,
   Search,
   Wallet,
@@ -46,6 +47,7 @@ import {
   chargePixFn,
   listMasterFinanceFn,
   negotiateChargeFn,
+  resendChargeDueWhatsappFn,
 } from "@/lib/finance.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
 import { cn } from "@/lib/utils";
@@ -61,6 +63,23 @@ export function FinanceAdmin() {
   const [pixCharge, setPixCharge] = useState<FinanceCharge | null>(null);
   const [dueCharge, setDueCharge] = useState<FinanceCharge | null>(null);
   const [cancelCharge, setCancelCharge] = useState<FinanceCharge | null>(null);
+  const [resendingId, setResendingId] = useState("");
+  const [resendNotice, setResendNotice] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const resendWhatsapp = useCallback(async (item: FinanceCharge) => {
+    setResendingId(item.id);
+    setResendNotice(null);
+    const result = await resendChargeDueWhatsappFn({ data: { invoiceId: item.id } });
+    setResendingId("");
+    if (!result.ok) {
+      setResendNotice({ ok: false, text: result.message });
+      return;
+    }
+    setResendNotice({
+      ok: true,
+      text: `Mensagem de vencimento reenviada para ${item.clientName}.`,
+    });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,6 +127,11 @@ export function FinanceAdmin() {
     <div className="space-y-5">
       {loading && <p className="text-sm text-muted-foreground">Consultando cobranças...</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {resendNotice ? (
+        <p className={cn("text-sm", resendNotice.ok ? "text-emerald-600" : "text-destructive")}>
+          {resendNotice.text}
+        </p>
+      ) : null}
       {snapshot && (
         <>
           <FinanceIntegrationMonitor items={snapshot.monitor ?? []} />
@@ -233,15 +257,28 @@ export function FinanceAdmin() {
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-2">
                                 {status !== "paid" && status !== "cancelled" ? (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    aria-label={`Ver Pix de ${item.clientName}`}
-                                    onClick={() => setPixCharge(item)}
-                                  >
-                                    <Eye className="size-4" />
-                                  </Button>
+                                  <>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label={`Ver Pix de ${item.clientName}`}
+                                      onClick={() => setPixCharge(item)}
+                                    >
+                                      <Eye className="size-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      disabled={resendingId === item.id}
+                                      aria-label={`Reenviar cobrança por WhatsApp para ${item.clientName}`}
+                                      title="Reenviar notificação de vencimento no WhatsApp"
+                                      onClick={() => void resendWhatsapp(item)}
+                                    >
+                                      <MessageCircle className="size-4" />
+                                    </Button>
+                                  </>
                                 ) : null}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>

@@ -57,6 +57,8 @@ assert.match(before3 ?? "", /daqui a três dias/);
 
 const due = onDay("due", "2026-10-18");
 assert.match(due ?? "", /vence hoje/);
+// Reenvio manual Master reutiliza o template `due`.
+assert.match(due ?? "", /Pedimos que realize o pagamento dentro/);
 
 const after1 = onDay("after_1", "2026-10-18");
 assert.match(after1 ?? "", /ainda consta em aberto/);

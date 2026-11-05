@@ -146,12 +146,23 @@ async function rememberBalance(
       .update(fallbackUpdate)
       .eq("id", accountRowId);
     if (!fallback.error) return;
-    console.error("meta_prepaid_ledger", fallback.error.code ?? "error");
-    if (required) fail("Não foi possível gravar o saldo da recarga.");
+    console.error("meta_prepaid_ledger", fallback.error.code ?? "error", fallback.error.message);
+    if (required) fail(publicTopupWriteError(fallback.error.message));
     return;
   }
-  console.error("meta_prepaid_ledger", error.code ?? "error");
-  if (required) fail("Não foi possível gravar o saldo da recarga.");
+  console.error("meta_prepaid_ledger", error.code ?? "error", error.message);
+  if (required) fail(publicTopupWriteError(error.message));
+}
+
+function publicTopupWriteError(detail: string) {
+  const text = detail.trim();
+  if (!text || /access_token|service_role|EAA[A-Za-z0-9]/i.test(text)) {
+    return "Não foi possível gravar o saldo da recarga.";
+  }
+  if (/postgres|PGRST|violates|duplicate key|JWT|fetch failed/i.test(text)) {
+    return "Não foi possível gravar o saldo da recarga. Verifique a migração prepaid_ledger.";
+  }
+  return `Não foi possível gravar o saldo da recarga. (${text.slice(0, 160)})`;
 }
 
 async function readFields(organizationId: string, accountId: string, fields: string) {

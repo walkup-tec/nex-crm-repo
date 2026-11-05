@@ -219,8 +219,13 @@ export function MetaCredits() {
         clearPaymentWait();
         await load(true);
         setTopupNote("Pagamento registrado.");
-      } catch {
-        setTopupNote("Não foi possível registrar o pagamento. Tente de novo.");
+      } catch (error) {
+        const detail = error instanceof Error ? error.message.trim() : "";
+        setTopupNote(
+          detail && detail.length < 220 && !/html|<!doctype/i.test(detail)
+            ? detail
+            : "Não foi possível registrar o pagamento. Tente de novo.",
+        );
       } finally {
         setSavingTopup(false);
       }

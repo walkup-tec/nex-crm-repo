@@ -43,12 +43,16 @@ export const getClientBalanceAlertFn = createServerFn({ method: "GET" })
 
 export const registerMetaCreditTopupFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { cents: number }) => {
-    const cents = Math.round(Number(data?.cents));
-    if (!Number.isInteger(cents) || cents <= 0) throw new Error("Informe o valor da recarga.");
-    return { cents };
-  })
+  .validator((data: { cents?: number } | null | undefined) => ({
+    cents: Math.round(Number(data?.cents)),
+  }))
   .handler(async ({ context, data }) => {
-    const { registerMetaCreditTopup } = await import("@/server/meta-credit.server");
-    return guard(() => registerMetaCreditTopup(context.userId, data.cents));
+    return guard(async () => {
+      const cents = Math.round(Number(data?.cents));
+      if (!Number.isInteger(cents) || cents <= 0) {
+        throw new Error("Informe o valor da recarga.");
+      }
+      const { registerMetaCreditTopup } = await import("@/server/meta-credit.server");
+      return registerMetaCreditTopup(context.userId, cents);
+    });
   });

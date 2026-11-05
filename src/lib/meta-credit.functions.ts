@@ -41,13 +41,6 @@ export const getClientBalanceAlertFn = createServerFn({ method: "GET" })
     return guard(() => getClientBalanceAlert(context.userId));
   });
 
-export const startFacebookLoginFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { startFacebookLogin } = await import("@/server/meta-credit.server");
-    return guard(() => startFacebookLogin(context.userId));
-  });
-
 export const registerMetaCreditTopupFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { cents: number }) => {

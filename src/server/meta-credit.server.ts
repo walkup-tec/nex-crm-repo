@@ -25,7 +25,6 @@ import {
   debugMetaRead,
   hasBillingPaymentError,
   readAdAccountNode,
-  startSimpleFacebookLogin,
 } from "@/server/meta.server";
 
 type Role = "master" | "client_admin" | "client_user";
@@ -515,10 +514,4 @@ async function alertPhone(
   return (
     (people.data ?? []).find((row) => row.whatsapp && whatsappNumber(row.whatsapp))?.whatsapp ?? ""
   );
-}
-
-export async function startFacebookLogin(userId: string) {
-  const actor = await actorOf(userId);
-  if (!actor.canAdd) fail("Você não tem permissão para adicionar saldo.");
-  return startSimpleFacebookLogin(userId, actor.organizationId);
 }

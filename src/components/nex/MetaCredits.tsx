@@ -10,7 +10,6 @@ import { applyMask } from "@/lib/masks";
 import {
   getMetaCreditFn,
   registerMetaCreditTopupFn,
-  startFacebookLoginFn,
 } from "@/lib/meta-credit.functions";
 import { centsFromMoneyInput, type MetaCreditView } from "@/lib/meta-credit";
 import { metaCreditChangedEvent } from "@/components/nex/use-low-balance";
@@ -47,7 +46,7 @@ function money(cents: number | null, currency: string) {
   }
 }
 
-const readSteps = ["NEX Ads", "Facebook", "Conta Meta"] as const;
+const readSteps = ["NEX Ads", "Conta Meta"] as const;
 
 function MetaAccountReading({ connected = false }: { connected?: boolean }) {
   return (
@@ -89,7 +88,7 @@ function MetaAccountReading({ connected = false }: { connected?: boolean }) {
         ))}
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        {connected ? "Conta conectada na Meta." : "Lendo a conta integrada na Meta..."}
+        {connected ? "Conta de anúncio pronta para recarga." : "Carregando a conta de anúncio..."}
       </p>
     </div>
   );
@@ -110,16 +109,12 @@ export function MetaCredits() {
   const [view, setView] = useState<MetaCreditView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [loginError, setLoginError] = useState("");
-  const [entering, setEntering] = useState(false);
   const [showReads, setShowReads] = useState(false);
   const [amountText, setAmountText] = useState("");
   const [waitingPayment, setWaitingPayment] = useState(false);
   const [showPaymentDone, setShowPaymentDone] = useState(false);
   const [savingTopup, setSavingTopup] = useState(false);
   const [topupNote, setTopupNote] = useState("");
-  const watchRef = useRef<number | null>(null);
   const paymentTimerRef = useRef<number | null>(null);
 
   const amountCents = centsFromMoneyInput(amountText);
@@ -146,24 +141,7 @@ export function MetaCredits() {
   }, [load]);
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const data = event.data as { source?: string; ok?: boolean; message?: string } | null;
-      if (!data || data.source !== "nex-facebook-login") return;
-      if (watchRef.current) window.clearInterval(watchRef.current);
-      watchRef.current = null;
-      setEntering(false);
-      if (data.ok) {
-        setLoggedIn(true);
-        setLoginError("");
-        return;
-      }
-      setLoginError(data.message || "O login no Facebook não foi concluído.");
-    };
-    window.addEventListener("message", onMessage);
     return () => {
-      window.removeEventListener("message", onMessage);
-      if (watchRef.current) window.clearInterval(watchRef.current);
       if (paymentTimerRef.current) window.clearTimeout(paymentTimerRef.current);
     };
   }, []);
@@ -186,67 +164,17 @@ export function MetaCredits() {
     }, 15000);
   };
 
-  const enter = () => {
-    setEntering(true);
-    setLoginError("");
-    setTopupNote("");
-    clearPaymentWait();
-    setShowPaymentDone(false);
-    const width = 520;
-    const height = 720;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-    const popup = window.open(
-      "about:blank",
-      "nex-facebook-login",
-      `popup=yes,width=${width},height=${height},left=${left},top=${top}`,
-    );
-    if (!popup) {
-      setEntering(false);
-      setLoginError(
-        "O navegador bloqueou a janela do Facebook. Permita pop-ups neste site e tente de novo.",
-      );
-      return;
-    }
-    if (watchRef.current) window.clearInterval(watchRef.current);
-    watchRef.current = window.setInterval(() => {
-      if (!popup.closed) return;
-      if (watchRef.current) window.clearInterval(watchRef.current);
-      watchRef.current = null;
-      setEntering(false);
-    }, 500);
-    void (async () => {
-      try {
-        const result = await startFacebookLoginFn();
-        if (!result.ok) {
-          popup.close();
-          setEntering(false);
-          setLoginError(result.message);
-          return;
-        }
-        popup.location.href = result.data.url;
-      } catch {
-        popup.close();
-        setEntering(false);
-        setLoginError("Não foi possível abrir o login do Facebook.");
-      }
-    })();
-  };
-
   const href = normalizeBalanceLink(view?.balanceUrl ?? "");
   const lowBalance =
     isLowMetaBalance(view?.balanceCents) ||
     view?.paymentError === true ||
     (view != null && view.creditTopupCents == null);
-  const canEnterFacebook = Boolean(
-    view?.canAdd && view.accountId && !loggedIn && (amountCents != null || lowBalance),
-  );
   const canOpen = Boolean(
-    view?.canAdd && view.accountId && href && loggedIn && (amountCents != null || lowBalance),
+    view?.canAdd && view.accountId && href && amountCents != null && !waitingPayment && !showPaymentDone,
   );
 
   const openAddBalance = () => {
-    if (!href) return;
+    if (!href || amountCents == null) return;
     window.open(href, "_blank", "noopener,noreferrer");
     startPaymentWait();
   };
@@ -304,8 +232,8 @@ export function MetaCredits() {
       <section className="order-1 rounded-lg border bg-card p-5 lg:col-start-1 lg:row-start-1">
         <h2 className="font-display text-lg font-semibold">Adicionar saldo</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Informe o valor, entre com o Facebook, abra Adicionar saldo na Meta e, depois do
-          pagamento, confirme em Pagamento Finalizado.
+          Informe o valor, abra o link de pagamento da Meta e, depois do pagamento, confirme em
+          Pagamento Finalizado.
         </p>
         <div className="mt-5 max-w-xs">
           <label className="text-sm font-medium" htmlFor="meta-credit-amount">
@@ -317,29 +245,18 @@ export function MetaCredits() {
             inputMode="numeric"
             placeholder="R$ 0,00"
             value={amountText}
-            disabled={!view?.canAdd || loading || savingTopup}
+            disabled={!view?.canAdd || loading || savingTopup || waitingPayment}
             onChange={(event) => setAmountText(applyMask("money", event.target.value))}
           />
         </div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          {canEnterFacebook && (
-            <Button
-              type="button"
-              variant={lowBalance ? "destructive" : "default"}
-              onClick={enter}
-              disabled={!view?.canAdd || !view.accountId || entering || loading}
-              className={lowBalance ? "animate-balance-wave" : ""}
-            >
-              {entering ? "Abrindo o Facebook..." : "Entrar com o Facebook"}
-            </Button>
-          )}
           {canOpen && (
             <Button
               type="button"
-              variant={lowBalance && !showPaymentDone ? "destructive" : "default"}
+              variant={lowBalance ? "destructive" : "default"}
               onClick={openAddBalance}
               disabled={savingTopup}
-              className={lowBalance && !showPaymentDone ? "animate-balance-wave" : ""}
+              className={lowBalance ? "animate-balance-wave" : ""}
             >
               <ExternalLink />
               Adicionar saldo
@@ -360,7 +277,6 @@ export function MetaCredits() {
             </Button>
           )}
         </div>
-        {loggedIn && <p className="mt-4 text-sm text-muted-foreground">Facebook conectado.</p>}
         {topupNote && (
           <p
             className={
@@ -387,7 +303,6 @@ export function MetaCredits() {
             Nenhuma conta de anúncio está integrada a este acesso.
           </p>
         )}
-        {loginError && <p className="mt-4 text-sm text-destructive">{loginError}</p>}
         {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
         {loading && <MetaAccountReading />}
         {!loading && !error && view?.accountId && <MetaAccountReading connected />}
@@ -464,10 +379,10 @@ export function MetaCredits() {
         <p className="text-xs font-semibold uppercase tracking-[.16em] text-primary">
           Na página da Meta
         </p>
-        <h2 className="mt-2 font-display text-lg font-semibold">O que fazer depois de entrar</h2>
+        <h2 className="mt-2 font-display text-lg font-semibold">O que fazer no link de pagamento</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Depois de entrar, clique em Adicionar saldo. Na conta de anúncios da Meta, siga estes dois
-          passos. Ao concluir o pagamento, volte e clique em Pagamento Finalizado.
+          Depois de abrir Adicionar saldo, na conta de anúncios da Meta siga estes dois passos. Ao
+          concluir o pagamento, volte e clique em Pagamento Finalizado.
         </p>
         <ol className="mt-5 grid grid-cols-1 items-start gap-4 md:grid-cols-12">
           {guide.map((item) => (

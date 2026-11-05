@@ -62,7 +62,15 @@ function migrationHint(message: string) {
   return message;
 }
 
-type AnalyzeInput = { organizationId: string; period?: string; since?: string; until?: string };
+type AnalyzeInput = {
+  organizationId: string;
+  period?: string;
+  since?: string;
+  until?: string;
+  /** Origem da execução (manual lab vs job diário). */
+  trigger?: "manual" | "daily_job";
+  referenceDate?: string;
+};
 
 async function resolveClientName(organizationId: string): Promise<string> {
   const { data } = await supabaseAdmin
@@ -158,12 +166,21 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
 export async function startMetaAiAnalysis(
   userId: string,
   input: AnalyzeInput,
+  options?: { skipMasterAssert?: boolean },
 ): Promise<MetaAiAnalysisStartResult> {
-  await assertMaster(userId);
+  if (!options?.skipMasterAssert) await assertMaster(userId);
   const promptHash = metaAiPromptHash();
   const clientName = await resolveClientName(input.organizationId);
   const periodSince = input.period === "custom" && input.since ? input.since : null;
   const periodUntil = input.period === "custom" && input.until ? input.until : null;
+  const trigger = input.trigger ?? "manual";
+  const calibrationFeedback =
+    trigger === "daily_job"
+      ? {
+          trigger: "daily_job",
+          reference_date: input.referenceDate ?? periodUntil ?? periodSince ?? null,
+        }
+      : {};
 
   const { data, error } = await supabaseAdmin
     .from("meta_ai_executions")
@@ -191,7 +208,7 @@ export async function startMetaAiAnalysis(
       analysis_markdown: "",
       warnings: [],
       error_message: "",
-      calibration_feedback: {},
+      calibration_feedback: calibrationFeedback,
     })
     .select("id")
     .maybeSingle();

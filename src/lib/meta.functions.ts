@@ -215,6 +215,55 @@ export const reviewMetaAiCalibrationWithAiFn = createServerFn({ method: "POST" }
     return guard(() => reviewMetaAiCalibrationWithAi(context.userId, data.executionId));
   });
 
+export const syncIntelligenceTasksFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (data: {
+      executionId: string;
+      organizationId: string;
+      adAccountId: string;
+      tasks: import("@/lib/nex-intelligence/dashboard/types").SuggestedTask[];
+    }) => data,
+  )
+  .handler(async ({ context, data }) => {
+    const { syncOptimizationTasksFromSuggestions } = await import(
+      "@/server/intelligence-ops.server"
+    );
+    return guard(() => syncOptimizationTasksFromSuggestions(context.userId, data));
+  });
+
+export const decideIntelligenceTaskFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    (data: {
+      taskId: string;
+      decision: "APPLIED" | "REJECTED";
+      note?: string;
+      effectiveAt?: string;
+      description?: string;
+    }) => data,
+  )
+  .handler(async ({ context, data }) => {
+    const { decideOptimizationTask } = await import("@/server/intelligence-ops.server");
+    return guard(() => decideOptimizationTask(context.userId, data));
+  });
+
+export const listIntelligenceEventsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId: string; campaignId?: string; limit?: number }) => data)
+  .handler(async ({ context, data }) => {
+    const { listOptimizationEvents } = await import("@/server/intelligence-ops.server");
+    return guard(() => listOptimizationEvents(context.userId, data));
+  });
+
+export const reprocessIntelligenceDailyFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId?: string; referenceDate?: string } = {}) => data)
+  .handler(async ({ context, data }) => {
+    const { reprocessIntelligenceDaily } = await import("@/server/intelligence-daily.server");
+    return guard(() => reprocessIntelligenceDaily(context.userId, data));
+  });
+
 export const disconnectMetaFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { organizationId: string }) => data)

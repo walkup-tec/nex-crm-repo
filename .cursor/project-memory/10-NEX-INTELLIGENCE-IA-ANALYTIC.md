@@ -241,3 +241,27 @@ Não declarar sucesso só por compile. Suite local verde antes de pedir execuç�
 
 > O objetivo não é fazer a última execução real “passar”.  
 > O objetivo é impedir que qualquer execução futura publique conclusão não comprovada pelo backend.
+
+---
+
+## 14. UI operacional (Lab. Calibração IA) — 2026-11-05
+
+Rota: `master.analytic-meta-ia` → `MasterMetaAnalytics` → `NexIntelligenceWorkspace`.
+
+Três abas no mesmo shell (mockups navy/ciano):
+
+| Aba | Status | Fonte de dados |
+|---|---|---|
+| Análise diária | UI + consulta execução existente | `list/getMetaAiExecution` + `mapExecutionToDashboard` — **não** dispara análise ao abrir |
+| Análise manual | UI + geração real | `analyzeMetaWithAiFn` (pipeline v1.3.0 intacto) |
+| Evolução | UI + série/comparativo dia | Marcos vazios até persistir `nex_optimization_events` |
+
+Mapper: `src/lib/nex-intelligence/dashboard/map-execution-to-dashboard.ts`  
+Migration pendente de aplicar: `drizzle/migrations/0052_nex_intelligence_optimizations.sql`
+
+**Ops:** Aplicar/Rejeitar + marcos via `0052` + `intelligence-ops.server`.  
+**Job diário:** `startIntelligenceDailyRunner` em `server.ts` (hora `NEX_INTELLIGENCE_DAILY_HOUR`, default 7 America/Sao_Paulo; ator `NEX_INTELLIGENCE_ACTOR_ID` ou 1º master). Reprocesso manual no accordion.  
+**Ainda não ligado:** WhatsApp/notificação com aprovação humana.
+
+Calibração OpenAI permanece no accordion “Laboratório de calibração”.  
+Plugin ChatGPT RO inalterado. Sem commit/push/deploy sem autorização.

@@ -121,6 +121,25 @@ export function inboxLane(input: { assigneeName: string; botPaused: boolean; clo
   return "robo";
 }
 
+/** Lane to show in the list after opening a conversation (unread cleared / optionally claimed). */
+export function inboxLaneAfterOpen(input: {
+  assigneeName: string;
+  botPaused: boolean;
+  closed: boolean;
+  claiming?: boolean;
+}): InboxTab {
+  if (input.closed) return "todos";
+  if (input.claiming) return "atendimento";
+  return (
+    inboxLane({
+      assigneeName: input.assigneeName,
+      botPaused: input.botPaused,
+      closed: false,
+      unreadCount: 0,
+    }) || "atendimento"
+  );
+}
+
 const inboxLaneRank: Record<InboxLane, number> = { atendimento: 3, aguardando: 2, robo: 1 };
 
 export function inboxContactLanes<T extends { contactId: string; assigneeName: string; botPaused: boolean; status: string; unreadCount?: number }>(

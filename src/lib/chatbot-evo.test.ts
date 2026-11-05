@@ -53,6 +53,7 @@ import {
   inboxContactLane,
   inboxFiltersMatch,
   inboxLane,
+  inboxLaneAfterOpen,
   inboxList,
   inboxTabCounts,
   inboxQueryMatch,
@@ -659,6 +660,20 @@ assert.equal(inboxLane({ assigneeName: "", botPaused: false, closed: false }), "
 assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: true }), "");
 assert.equal(inboxLane({ assigneeName: "Ana", botPaused: true, closed: false, unreadCount: 4 }), "aguardando");
 assert.equal(inboxLane({ assigneeName: "", botPaused: false, closed: false, unreadCount: 1 }), "aguardando");
+assert.equal(
+  inboxLaneAfterOpen({ assigneeName: "Ana", botPaused: true, closed: false }),
+  "atendimento",
+);
+assert.equal(
+  inboxLaneAfterOpen({ assigneeName: "Ana", botPaused: true, closed: false, claiming: false }),
+  "atendimento",
+);
+assert.equal(
+  inboxLaneAfterOpen({ assigneeName: "", botPaused: true, closed: false, claiming: true }),
+  "atendimento",
+);
+assert.equal(inboxLaneAfterOpen({ assigneeName: "", botPaused: false, closed: false }), "robo");
+assert.equal(inboxLaneAfterOpen({ assigneeName: "Ana", botPaused: true, closed: true }), "todos");
 const lanes = [
   { id: "human", contactId: "mozart", assigneeName: "Ana", botPaused: true, status: "active", pinned: false, updatedAt: "2026-10-22T12:00:00.000Z", unreadCount: 0 },
   { id: "bot", contactId: "mozart", assigneeName: "", botPaused: false, status: "queue", pinned: false, updatedAt: "2026-10-22T12:05:00.000Z", unreadCount: 0 },

@@ -7,6 +7,7 @@ import {
   chatbotSnapshotFn,
   chatbotTransferTargetsFn,
   finishChatbotConversationFn,
+  assumeChatbotConversationFn,
   markChatbotConversationReadFn,
   saveChatbotContactMediaFn,
   sendChatbotArtesFn,
@@ -29,7 +30,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import { acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxList, inboxOrder, inboxPollNotice, inboxTabCounts, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
+import {   acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxLaneAfterOpen, inboxList, inboxOrder, inboxPollNotice, inboxTabCounts, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 const INBOX_POLL_MS = 5000;
 
@@ -684,17 +685,52 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   }
 
   function openConversation(id: string) {
+    const current = data?.conversations.find((item) => item.id === id);
+    const claiming = Boolean(
+      current && current.status !== "closed" && !current.assigneeName.trim() && (current.open || !current.mine),
+    );
+    const attendantName =
+      current?.assigneeName.trim() ||
+      data?.conversations.find((item) => item.mine && item.assigneeName.trim())?.assigneeName.trim() ||
+      "Atendente";
     selectedRef.current = id;
     setSelected(id);
-    setData((current) =>
-      current
+    setLane(
+      inboxLaneAfterOpen({
+        assigneeName: claiming ? attendantName : (current?.assigneeName ?? ""),
+        botPaused: claiming ? true : (current?.botPaused ?? true),
+        closed: current?.status === "closed",
+        claiming,
+      }),
+    );
+    setData((snapshot) =>
+      snapshot
         ? {
-            ...current,
-            conversations: current.conversations.map((item) => (item.id === id ? { ...item, unreadCount: 0 } : item)),
+            ...snapshot,
+            conversations: snapshot.conversations.map((item) => {
+              if (item.id !== id) return item;
+              if (!claiming) return { ...item, unreadCount: 0 };
+              return {
+                ...item,
+                unreadCount: 0,
+                status: "active",
+                assigneeName: attendantName,
+                mine: true,
+                open: false,
+                botPaused: true,
+              };
+            }),
           }
-        : current,
+        : snapshot,
     );
     void markChatbotConversationReadFn({ data: { conversationId: id } });
+    if (claiming) {
+      void assumeChatbotConversationFn({ data: { conversationId: id } }).then((result) => {
+        if (result.ok) return;
+        setMessage(result.message);
+        void load();
+      });
+    }
   }
 
   async function togglePin(id: string, pinned: boolean) {

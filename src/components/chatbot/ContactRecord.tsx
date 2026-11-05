@@ -24,6 +24,14 @@ import { applyMask, documentDigits, rgDigits } from "@/lib/masks";
 import { LeadMeetings } from "@/components/chatbot/CalendarMeetings";
 import { clientPhoneLabel, contactExtraDataCount, leadOriginChoices, leadOriginValue, messageClock, negotiatedCents, negotiatedLabel, savedMediaTitle, tagInk, type ChatbotContactProfile, type LeadOriginChoice } from "@/lib/chatbot-evo";
 
+const contactProfileCache = new Map<string, ChatbotContactProfile>();
+let leadOriginsCache: LeadOriginChoice[] | null = null;
+
+function rememberContactProfile(data: ChatbotContactProfile) {
+  contactProfileCache.set(data.id, data);
+  return data;
+}
+
 function RegisteredMark({ label }: { label: string }) {
   return (
     <p className="contact-registered">
@@ -214,6 +222,7 @@ export function ContactRecord({
   }, [contactId]);
 
   function applyProfile(data: ChatbotContactProfile) {
+    rememberContactProfile(data);
     selectedTagIdsRef.current = data.tags.filter((item) => item.selected).map((item) => item.id);
     selectedProductIdsRef.current = data.products.filter((item) => item.selected).map((item) => item.id);
     setProfile(data);
@@ -226,12 +235,13 @@ export function ContactRecord({
     setIdCopied(false);
   }
 
+  function commitProfile(data: ChatbotContactProfile) {
+    rememberContactProfile(data);
+    setProfile(data);
+  }
+
   useEffect(() => {
     setEditing(false);
-    setProfile((current) => (current?.id === contactId ? current : null));
-    setDocumentDraft("");
-    setRgDraft("");
-    setNoteDraft("");
     setExtraOpen(false);
     setLinkCopied(false);
     setIdCopied(false);
@@ -239,20 +249,38 @@ export function ContactRecord({
     setRefreshing(false);
     setRefreshed(false);
     setError("");
-    setOrigins([]);
-    if (!contactId) return;
+    if (!contactId) {
+      setProfile(null);
+      setOrigins([]);
+      return;
+    }
+    const cached = contactProfileCache.get(contactId);
+    if (cached) {
+      applyProfile(cached);
+    } else {
+      setProfile(null);
+      setDocumentDraft("");
+      setRgDraft("");
+      setNoteDraft("");
+      setDeal("");
+      setDraft(preview?.name ?? "");
+    }
+    if (leadOriginsCache) setOrigins(leadOriginsCache);
+    else setOrigins([]);
     let active = true;
     void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
       if (!active) return;
       if (!result.ok) {
-        setError(result.message);
+        if (!contactProfileCache.has(contactId)) setError(result.message);
         return;
       }
       applyProfile(result.data);
     });
     void listLeadOriginCampaignsFn().then((result) => {
       if (!active || !result.ok) return;
-      setOrigins(leadOriginChoices(result.data));
+      const choices = leadOriginChoices(result.data);
+      leadOriginsCache = choices;
+      setOrigins(choices);
     });
     return () => {
       active = false;
@@ -264,6 +292,7 @@ export function ContactRecord({
     let active = true;
     void chatbotContactProfileFn({ data: { contactId } }).then((result) => {
       if (!active || !result.ok) return;
+      rememberContactProfile(result.data);
       selectedTagIdsRef.current = result.data.tags.filter((item) => item.selected).map((item) => item.id);
       selectedProductIdsRef.current = result.data.products.filter((item) => item.selected).map((item) => item.id);
       setProfile(result.data);
@@ -300,24 +329,25 @@ export function ContactRecord({
       return;
     }
     const data = result.data;
-    setProfile((current) =>
-      current
-        ? {
-            ...current,
-            files: data.files,
-            contracting: data.contracting,
-            contractingLink: data.contractingLink,
-            contractSigned: data.contractSigned,
-            stage: data.stage,
-            nexClientId: data.nexClientId,
-            document: data.document,
-            rg: data.rg,
-            showDocument: data.showDocument,
-            showRg: data.showRg,
-            agendaEmails: data.agendaEmails,
-          }
-        : current,
-    );
+    setProfile((current) => {
+      if (!current) return current;
+      const updated = {
+        ...current,
+        files: data.files,
+        contracting: data.contracting,
+        contractingLink: data.contractingLink,
+        contractSigned: data.contractSigned,
+        stage: data.stage,
+        nexClientId: data.nexClientId,
+        document: data.document,
+        rg: data.rg,
+        showDocument: data.showDocument,
+        showRg: data.showRg,
+        agendaEmails: data.agendaEmails,
+      };
+      rememberContactProfile(updated);
+      return updated;
+    });
     setDocumentDraft(applyMask("doc", data.document));
     setRgDraft(applyMask("rg", data.rg));
     setRefreshed(true);
@@ -339,7 +369,7 @@ export function ContactRecord({
     }
     setError("");
     setEditing(false);
-    setProfile({ ...profile, name: result.data.name });
+    commitProfile({ ...profile, name: result.data.name });
     setDraft(result.data.name);
     onRenamed(profile.id, result.data.name);
   }
@@ -356,7 +386,7 @@ export function ContactRecord({
     }
     setError("");
     setNoteDraft(result.data.note);
-    setProfile({ ...profile, note: result.data.note });
+    commitProfile({ ...profile, note: result.data.note });
   }
 
   async function saveIdentity(field: "document" | "rg") {
@@ -379,11 +409,11 @@ export function ContactRecord({
     }
     setError("");
     if (field === "document") {
-      setProfile({ ...profile, document: result.data.value });
+      commitProfile({ ...profile, document: result.data.value });
       setDocumentDraft(applyMask("doc", result.data.value));
       return;
     }
-    setProfile({ ...profile, rg: result.data.value });
+    commitProfile({ ...profile, rg: result.data.value });
     setRgDraft(applyMask("rg", result.data.value));
   }
 
@@ -399,7 +429,7 @@ export function ContactRecord({
       return;
     }
     setError("");
-    setProfile({ ...profile, negotiatedCents: result.data.cents });
+    commitProfile({ ...profile, negotiatedCents: result.data.cents });
     setDeal(negotiatedLabel(result.data.cents));
   }
 
@@ -413,7 +443,7 @@ export function ContactRecord({
       return;
     }
     setError("");
-    setProfile({ ...profile, clientOwnerId: result.data.ownerId });
+    commitProfile({ ...profile, clientOwnerId: result.data.ownerId });
   }
 
   async function createNexClient() {
@@ -431,13 +461,13 @@ export function ContactRecord({
       result.data.noticeSent ? "" : "O aviso de agendamento não foi enviado no WhatsApp.",
     ].filter(Boolean);
     setError(notes.join(" "));
-    setProfile({ ...profile, nexClientId: result.data.organizationId });
+    commitProfile({ ...profile, nexClientId: result.data.organizationId });
   }
 
   async function saveStage(stage: string) {
     if (!profile || savingLinks) return;
     const previous = profile;
-    setProfile({ ...profile, stage });
+    commitProfile({ ...profile, stage });
     setSavingLinks(true);
     const result = await setChatbotContactStageFn({ data: { contactId: profile.id, stage } });
     setSavingLinks(false);
@@ -468,17 +498,21 @@ export function ContactRecord({
   async function saveOrigin(value: string) {
     if (!profile || savingLinks) return;
     const previous = profile;
-    setProfile({ ...profile, origin: value });
+    const selected = origins.find((item) => leadOriginValue(item) === value);
+    commitProfile({
+      ...profile,
+      origin: selected ? { id: selected.id, platform: selected.platform, name: selected.name } : null,
+    });
     setSavingLinks(true);
     const result = await setChatbotContactOriginFn({ data: { contactId: profile.id, origin: value } });
     setSavingLinks(false);
     if (!result.ok) {
-      setProfile(previous);
+      commitProfile(previous);
       setError(result.message);
       return;
     }
     setError("");
-    setProfile({ ...previous, origin: result.data.origin });
+    commitProfile({ ...previous, origin: result.data.origin });
   }
 
   function toggleTag(tagId: string) {
@@ -489,11 +523,15 @@ export function ContactRecord({
       : [...selectedTagIdsRef.current, tagId];
     selectedTagIdsRef.current = next;
     setError("");
-    setProfile((current) =>
-      current
-        ? { ...current, tags: current.tags.map((item) => ({ ...item, selected: next.includes(item.id) })) }
-        : current,
-    );
+    setProfile((current) => {
+      if (!current) return current;
+      const updated = {
+        ...current,
+        tags: current.tags.map((item) => ({ ...item, selected: next.includes(item.id) })),
+      };
+      rememberContactProfile(updated);
+      return updated;
+    });
     tagSaveChain.current = tagSaveChain.current
       .catch(() => undefined)
       .then(async () => {
@@ -509,6 +547,7 @@ export function ContactRecord({
         const refreshed = await chatbotContactProfileFn({ data: { contactId } });
         if (contactRef.current !== contactId || !refreshed.ok) return;
         selectedTagIdsRef.current = refreshed.data.tags.filter((item) => item.selected).map((item) => item.id);
+        rememberContactProfile(refreshed.data);
         setProfile((current) => (current ? { ...current, tags: refreshed.data.tags } : current));
       });
   }
@@ -521,11 +560,15 @@ export function ContactRecord({
       : [...selectedProductIdsRef.current, productId];
     selectedProductIdsRef.current = next;
     setError("");
-    setProfile((current) =>
-      current
-        ? { ...current, products: current.products.map((item) => ({ ...item, selected: next.includes(item.id) })) }
-        : current,
-    );
+    setProfile((current) => {
+      if (!current) return current;
+      const updated = {
+        ...current,
+        products: current.products.map((item) => ({ ...item, selected: next.includes(item.id) })),
+      };
+      rememberContactProfile(updated);
+      return updated;
+    });
     productSaveChain.current = productSaveChain.current
       .catch(() => undefined)
       .then(async () => {
@@ -541,6 +584,7 @@ export function ContactRecord({
         const refreshed = await chatbotContactProfileFn({ data: { contactId } });
         if (contactRef.current !== contactId || !refreshed.ok) return;
         selectedProductIdsRef.current = refreshed.data.products.filter((item) => item.selected).map((item) => item.id);
+        rememberContactProfile(refreshed.data);
         setProfile((current) => (current ? { ...current, products: refreshed.data.products } : current));
       });
   }

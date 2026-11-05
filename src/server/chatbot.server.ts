@@ -339,15 +339,32 @@ function webhookBody() {
       enabled: true,
       url: webhookUrl(),
       byEvents: false,
-      base64: false,
+      // Include media bytes in MESSAGES_UPSERT so the inbox can show them without a late getBase64 round-trip.
+      base64: true,
       headers: { apikey: key, authorization: `Bearer ${key}` },
       events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "CONTACTS_UPDATE"],
     },
   };
 }
 
-async function ensureWebhook(instanceName: string) {
-  await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody()).catch(() => null);
+const webhookSynced = new Set<string>();
+
+async function ensureWebhook(instanceName: string, force = false) {
+  if (!instanceName) return;
+  if (!force && webhookSynced.has(instanceName)) return;
+  webhookSynced.add(instanceName);
+  await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody()).catch(() => {
+    webhookSynced.delete(instanceName);
+  });
+}
+
+function scheduleWebhookSync(connections: Record<string, unknown>[]) {
+  for (const row of connections) {
+    if (cell(row, "status") !== "connected") continue;
+    const instanceName = cell(row, "instance_name");
+    if (!instanceName || webhookSynced.has(instanceName)) continue;
+    void ensureWebhook(instanceName);
+  }
 }
 
 async function findEvolutionInstance(instanceName: string) {
@@ -406,6 +423,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   const connectionRows = await rows(
     table("chatbot_connections").select("*").eq("organization_id", organizationId).order("created_at", { ascending: true }),
   );
+  scheduleWebhookSync(connectionRows);
   scheduleEvolutionImport(organizationId, connectionRows);
   const [contactRows, conversationRows, messageRows] = await Promise.all([
     rows(table("chatbot_contacts").select("*").eq("organization_id", organizationId).order("name", { ascending: true })),
@@ -900,6 +918,52 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
   if (startingAttendance) await assignAttendanceKanbanStage(organizationId, admin, cell(conversation.data, "contact_id"));
 }
 
+const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" }>();
+const mediaFileInflight = new Map<
+  string,
+  Promise<{ at: number; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" } | null>
+>();
+
+function mediaCacheKey(instanceName: string, externalId: string, kind: "image" | "video" | "audio" | "document") {
+  return `${instanceName}:${externalId}:${kind}`;
+}
+
+function rememberMediaFile(
+  instanceName: string,
+  externalId: string,
+  file: { mime: string; base64: string; kind: "image" | "video" | "audio" | "document" },
+) {
+  if (!instanceName || !externalId || !file.kind || !file.base64) return;
+  mediaFileCache.set(mediaCacheKey(instanceName, externalId, file.kind), {
+    at: Date.now(),
+    mime: file.mime,
+    base64: file.base64,
+    kind: file.kind,
+  });
+}
+
+function warmIncomingMedia(
+  instanceName: string,
+  externalId: string,
+  kind: "image" | "video" | "audio" | "document",
+  record: unknown,
+) {
+  if (!instanceName || !externalId) return;
+  const root = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
+  const fromRoot = evolutionMediaFile(root, kind);
+  const fromMessage = evolutionMediaFile(root["message"], kind);
+  const immediate = fromRoot.kind ? fromRoot : fromMessage.kind ? fromMessage : null;
+  if (immediate?.kind) {
+    rememberMediaFile(instanceName, externalId, {
+      mime: immediate.mime,
+      base64: immediate.base64,
+      kind: immediate.kind,
+    });
+    return;
+  }
+  void fetchEvolutionMedia(instanceName, externalId, kind, record).catch(() => null);
+}
+
 export async function sendChatbotMedia(userId: string, conversationId: string, input: { kind: string; name: string; mime: string; base64: string }) {
   const raw = input.base64.replace(/^data:[^;]+;base64,/, "").replace(/\s/g, "");
   const bytes = Buffer.from(raw, "base64");
@@ -930,7 +994,8 @@ export async function sendChatbotMedia(userId: string, conversationId: string, i
     if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
   }
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
-  const instance = encodeURIComponent(cell(connection, "instance_name"));
+  const instanceName = cell(connection, "instance_name");
+  const instance = encodeURIComponent(instanceName);
   const sent = file.kind === "audio"
     ? await evo(`/message/sendWhatsAppAudio/${instance}`, "POST", whatsappFlowAudioPayload(phone, raw), 60000)
     : await evo(
@@ -957,10 +1022,18 @@ export async function sendChatbotMedia(userId: string, conversationId: string, i
     .insert({ ...row, media_kind: file.kind, media_mime: file.mime })
     .select("id")
     .maybeSingle();
+  let messageId = "";
   if (saved.error && /media_kind|media_mime/i.test(saved.error.message)) {
     const plain = await table("chatbot_messages").insert(row).select("id").maybeSingle();
     if (plain.error) fail(schemaMessage(plain.error.message));
+    messageId = plain.data?.id ?? "";
   } else if (saved.error) fail(schemaMessage(saved.error.message));
+  else messageId = saved.data?.id ?? "";
+  if (!messageId) fail("Não foi possível registrar a mensagem enviada.");
+  // Keep the bytes we just sent so inbox preview does not wait on Evolution getBase64.
+  if (externalId) {
+    rememberMediaFile(instanceName, externalId, { mime: file.mime, base64: raw, kind: file.kind });
+  }
   const startingAttendance = !assignee || assignee !== userId || cell(conversation.data, "status") !== "active";
   const assigned = await assignConversation(conversationId, organizationId, userId, {
     status: "active",
@@ -969,6 +1042,7 @@ export async function sendChatbotMedia(userId: string, conversationId: string, i
   });
   if (assigned.error) fail(schemaMessage(assigned.error.message));
   if (startingAttendance) await assignAttendanceKanbanStage(organizationId, admin, cell(conversation.data, "contact_id"));
+  return { messageId };
 }
 
 export async function sendChatbotCadastro(userId: string, conversationId: string) {
@@ -2149,6 +2223,9 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   } else if (saved.error) {
     return;
   }
+  if (content.mediaKind && externalId) {
+    warmIncomingMedia(cell(connection, "instance_name"), externalId, content.mediaKind, record);
+  }
   const action = inboundBotAction({ inserted, source });
   console.log(JSON.stringify({ source: "nex.chatbot", ingest: source, instance: cell(connection, "instance_name"), externalId, conversationId, direction: "in", action }));
   if (action === "store") return;
@@ -2357,8 +2434,6 @@ async function savedMessageIds(organizationId: string) {
   return new Set((result.data ?? []).map((row) => cell(row, "message_id")).filter(Boolean));
 }
 
-const mediaFileCache = new Map<string, { at: number; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" }>();
-
 async function ownedChatMessage(userId: string, messageId: string) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const message = await table("chatbot_messages").select("*").eq("id", messageId).eq("organization_id", organizationId).maybeSingle();
@@ -2381,32 +2456,53 @@ async function ownedChatMessage(userId: string, messageId: string) {
   return { organizationId, message: message.data, conversation: conversation.data, connection };
 }
 
-async function fetchEvolutionMedia(instanceName: string, externalId: string, kind: "image" | "video" | "audio" | "document") {
+async function fetchEvolutionMedia(
+  instanceName: string,
+  externalId: string,
+  kind: "image" | "video" | "audio" | "document",
+  message?: unknown,
+) {
   if (!instanceName || !externalId) return null;
-  const cacheKey = `${instanceName}:${externalId}:${kind}`;
+  const cacheKey = mediaCacheKey(instanceName, externalId, kind);
   const cached = mediaFileCache.get(cacheKey);
   if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached;
-  const payload = await evo(
-    `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
-    "POST",
-    { message: { key: { id: externalId } }, convertToMp4: kind === "video" },
-    60000,
-  );
-  let file = evolutionMediaFile(payload, kind === "image" ? "" : kind);
-  if (kind === "video" && file.kind === "video" && file.mime !== "video/mp4" && file.mime !== "video/webm") {
-    const converted = await evo(
+  const pending = mediaFileInflight.get(cacheKey);
+  if (pending) return pending;
+
+  const work = (async () => {
+    const messagePayload =
+      message && typeof message === "object"
+        ? message
+        : { key: { id: externalId } };
+    const payload = await evo(
       `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
       "POST",
-      { message: { key: { id: externalId } }, convertToMp4: true },
+      { message: messagePayload, convertToMp4: kind === "video" },
       60000,
     );
-    const next = evolutionMediaFile(converted, "video");
-    if (next.kind) file = next;
+    let file = evolutionMediaFile(payload, kind === "image" ? "" : kind);
+    if (kind === "video" && file.kind === "video" && file.mime !== "video/mp4" && file.mime !== "video/webm") {
+      const converted = await evo(
+        `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+        "POST",
+        { message: messagePayload, convertToMp4: true },
+        60000,
+      );
+      const next = evolutionMediaFile(converted, "video");
+      if (next.kind) file = next;
+    }
+    if (!file.kind) return null;
+    const stored = { at: Date.now(), mime: file.mime, base64: file.base64, kind: file.kind };
+    mediaFileCache.set(cacheKey, stored);
+    return stored;
+  })();
+
+  mediaFileInflight.set(cacheKey, work);
+  try {
+    return await work;
+  } finally {
+    mediaFileInflight.delete(cacheKey);
   }
-  if (!file.kind) return null;
-  const stored = { at: Date.now(), mime: file.mime, base64: file.base64, kind: file.kind };
-  mediaFileCache.set(cacheKey, stored);
-  return stored;
 }
 
 function mediaPlaceholder(text: string) {

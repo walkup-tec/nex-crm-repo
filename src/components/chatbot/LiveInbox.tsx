@@ -39,9 +39,29 @@ function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
 }
 
 type InboxMessage = ChatbotSnapshot["messages"][number];
-type OutgoingPreview = { id: string; conversationId: string; text: string; createdAt: string };
+type OutgoingPreview = {
+  id: string;
+  conversationId: string;
+  text: string;
+  createdAt: string;
+  mediaKind?: "" | "image" | "video" | "audio" | "document";
+};
 type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" };
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
+
+function cacheLoadedMedia(
+  messageId: string,
+  file: { mime: string; base64: string; kind: LoadedMedia["kind"] },
+) {
+  const next: LoadedMedia = {
+    url: `data:${file.mime};base64,${file.base64}`,
+    mime: file.mime,
+    base64: file.base64,
+    kind: file.kind,
+  };
+  loadedMedia.set(messageId, next);
+  return next;
+}
 
 function mediaCaption(text: string) {
   if (
@@ -181,28 +201,42 @@ function ChatMedia({
       return;
     }
     let active = true;
-    void chatbotMessageMediaFn({ data: { messageId: item.id } }).then((result) => {
-      if (!active) return;
-      if (!result.ok) {
-        setError(result.message);
-        return;
-      }
-      if (!result.data.kind) {
-        loadedMedia.set(item.id, { none: true });
-        setMissing(true);
-        return;
-      }
-      const next = {
-        url: `data:${result.data.mime};base64,${result.data.base64}`,
-        mime: result.data.mime,
-        base64: result.data.base64,
-        kind: result.data.kind,
-      };
-      loadedMedia.set(item.id, next);
-      setFile(next);
-    });
+    let retryTimer = 0;
+    const loadMedia = (attempt: number) => {
+      void chatbotMessageMediaFn({ data: { messageId: item.id } }).then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          if (attempt < 1) {
+            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 1200);
+            return;
+          }
+          setError(result.message);
+          return;
+        }
+        if (!result.data.kind) {
+          if (attempt < 1) {
+            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 1200);
+            return;
+          }
+          loadedMedia.set(item.id, { none: true });
+          setMissing(true);
+          return;
+        }
+        const next = {
+          url: `data:${result.data.mime};base64,${result.data.base64}`,
+          mime: result.data.mime,
+          base64: result.data.base64,
+          kind: result.data.kind,
+        };
+        loadedMedia.set(item.id, next);
+        setFile(next);
+        setError("");
+      });
+    };
+    loadMedia(0);
     return () => {
       active = false;
+      if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [item.id]);
 
@@ -215,7 +249,11 @@ function ChatMedia({
     );
   }
   if (!file) {
-    return <div className="message-bubble media loading">{error || "Carregando mídia"}</div>;
+    return (
+      <div className={`message-bubble media loading ${item.direction === "in" ? "in" : "out"}`}>
+        {error || "Carregando mídia"}
+      </div>
+    );
   }
   if (file.kind === "audio") {
     return (
@@ -561,7 +599,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         direction: "out" as const,
         status: "pending" as const,
         createdAt: item.createdAt,
-        mediaKind: "" as const,
+        mediaKind: item.mediaKind ?? ("" as const),
         mediaMime: "",
         saved: false,
         internal: false,
@@ -1181,21 +1219,46 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       return;
     }
     if (!selected || sending.current) return;
+    const conversationId = selected;
+    const localId = `local-media-${Date.now()}`;
+    const text =
+      checked.kind === "audio"
+        ? "[áudio]"
+        : checked.kind === "video"
+          ? "[vídeo]"
+          : checked.kind === "image"
+            ? "[imagem]"
+            : checked.name;
+    const preview: OutgoingPreview = {
+      id: localId,
+      conversationId,
+      text,
+      createdAt: new Date().toISOString(),
+      mediaKind: checked.kind,
+    };
+    cacheLoadedMedia(localId, { mime: checked.mime, base64, kind: checked.kind });
     sending.current = true;
+    setOutgoing((current) => [...current, preview]);
     setPending(true);
     setMediaOpen(false);
-    setMessage(checked.kind === "audio" ? "Enviando áudio..." : "Enviando arquivo...");
+    setMessage("");
     try {
       const result = await sendChatbotMediaFn({
-        data: { conversationId: selected, kind: checked.kind, name: checked.name, mime: checked.mime, base64 },
+        data: { conversationId, kind: checked.kind, name: checked.name, mime: checked.mime, base64 },
       });
       if (!result.ok) {
+        setOutgoing((current) => current.filter((item) => item.id !== localId));
+        loadedMedia.delete(localId);
         setMessage(result.message);
         return;
       }
-      setMessage("");
+      const messageId = result.data?.messageId?.trim();
+      if (messageId) cacheLoadedMedia(messageId, { mime: checked.mime, base64, kind: checked.kind });
+      // Keep local preview until snapshot absorbs it (pendingOutgoing), so the bubble never blanks.
       void load();
     } catch {
+      setOutgoing((current) => current.filter((item) => item.id !== localId));
+      loadedMedia.delete(localId);
       setMessage("Não foi possível enviar o arquivo.");
     } finally {
       sending.current = false;

@@ -429,7 +429,7 @@ export function MasterHome() {
                     <p className={cn("text-[17px] font-bold tabular-nums", dashStrong)}>{moneyFromCents(paymentTotal)}</p>
                     <p className={cn("text-xs", dashMuted)}>no período</p>
                   </div>
-                </div>
+                      </div>
 
                 <div className="flex w-full flex-1 flex-col gap-5">
                   {snapshot.paymentSlices.map((item) => (
@@ -447,14 +447,14 @@ export function MasterHome() {
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_1fr]">
             <section className={`${dashPanel} p-5 sm:p-6`}>
-              <div>
+                      <div>
                 <h2 className={`text-lg font-bold ${dashTitle}`}>Distribuição de clientes por região</h2>
                 <p className={`mt-1 text-[13px] ${dashMuted}`}>
                   {snapshot.unknownGeoClients
                     ? `${snapshot.unknownGeoClients} cliente(s) sem UF no cadastro de contratação.`
                     : "UF da contratação agrupada nas 5 regiões com maior concentração."}
-                </p>
-              </div>
+                        </p>
+                      </div>
 
               <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-center">
                 <BrazilUfMap
@@ -799,7 +799,7 @@ export function MasterHome() {
                     </button>
                   ))
                 )}
-              </div>
+          </div>
             </DialogContent>
           </Dialog>
         </>

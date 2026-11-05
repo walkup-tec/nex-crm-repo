@@ -45,22 +45,22 @@ import { Route as AuthenticatedChatbotRelatoriosRouteImport } from './routes/_au
 import { Route as AuthenticatedChatbotVisaoGeralRouteImport } from './routes/_authenticated/chatbot.visao-geral'
 import { Route as AuthenticatedChatbotWhatsappsRouteImport } from './routes/_authenticated/chatbot.whatsapps'
 import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenticated/master.index'
+import { Route as AuthenticatedMasterAnalyticMetaIaRouteImport } from './routes/_authenticated/master.analytic-meta-ia'
 import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
 import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
-import { Route as AuthenticatedMasterAnalyticMetaIaRouteImport } from './routes/_authenticated/master.analytic-meta-ia'
 import { Route as AuthenticatedMasterCreditosMetaRouteImport } from './routes/_authenticated/master.creditos-meta'
 import { Route as AuthenticatedMasterCriativosRouteImport } from './routes/_authenticated/master.criativos'
 import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_authenticated/master.financeiro'
 import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
 import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
 import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
-import { Route as ApiIntegrationsChatgptOpenapiRouteImport } from './routes/api/integrations/chatgpt/openapi'
-import { Route as ApiIntegrationsChatgptAnalysesExecutionIdRouteImport } from './routes/api/integrations/chatgpt/analyses/$executionId'
 import { Route as AuthGoogleCallbackRouteImport } from './routes/auth.google.callback'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
+import { Route as ApiIntegrationsChatgptOpenapiRouteImport } from './routes/api/integrations/chatgpt/openapi'
+import { Route as ApiIntegrationsChatgptAnalysesExecutionIdRouteImport } from './routes/api/integrations/chatgpt/analyses/$executionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -256,22 +256,16 @@ const AuthenticatedMasterIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
-const AuthenticatedMasterCampanhasRoute =
-  AuthenticatedMasterCampanhasRouteImport.update({
-    id: '/campanhas',
-    path: '/campanhas',
-    getParentRoute: () => AuthenticatedMasterRoute,
-  } as any)
 const AuthenticatedMasterAnalyticMetaIaRoute =
   AuthenticatedMasterAnalyticMetaIaRouteImport.update({
     id: '/analytic-meta-ia',
     path: '/analytic-meta-ia',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
-const AuthenticatedMasterCreditosMetaRoute =
-  AuthenticatedMasterCreditosMetaRouteImport.update({
-    id: '/creditos-meta',
-    path: '/creditos-meta',
+const AuthenticatedMasterCampanhasRoute =
+  AuthenticatedMasterCampanhasRouteImport.update({
+    id: '/campanhas',
+    path: '/campanhas',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
 const AuthenticatedMasterClientesRoute =
@@ -284,6 +278,12 @@ const AuthenticatedMasterConfiguracoesRoute =
   AuthenticatedMasterConfiguracoesRouteImport.update({
     id: '/configuracoes',
     path: '/configuracoes',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const AuthenticatedMasterCreditosMetaRoute =
+  AuthenticatedMasterCreditosMetaRouteImport.update({
+    id: '/creditos-meta',
+    path: '/creditos-meta',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
 const AuthenticatedMasterCriativosRoute =
@@ -313,18 +313,6 @@ const ApiCoraWebhookRoute = ApiCoraWebhookRouteImport.update({
   path: '/api/cora/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiIntegrationsChatgptOpenapiRoute =
-  ApiIntegrationsChatgptOpenapiRouteImport.update({
-    id: '/api/integrations/chatgpt/openapi',
-    path: '/api/integrations/chatgpt/openapi',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiIntegrationsChatgptAnalysesExecutionIdRoute =
-  ApiIntegrationsChatgptAnalysesExecutionIdRouteImport.update({
-    id: '/api/integrations/chatgpt/analyses/$executionId',
-    path: '/api/integrations/chatgpt/analyses/$executionId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AuthGoogleCallbackRoute = AuthGoogleCallbackRouteImport.update({
   id: '/google/callback',
   path: '/google/callback',
@@ -346,6 +334,18 @@ const AuthenticatedMasterSuporteOrgIdRoute =
     id: '/suporte/$orgId',
     path: '/suporte/$orgId',
     getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
+const ApiIntegrationsChatgptOpenapiRoute =
+  ApiIntegrationsChatgptOpenapiRouteImport.update({
+    id: '/api/integrations/chatgpt/openapi',
+    path: '/api/integrations/chatgpt/openapi',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptAnalysesExecutionIdRoute =
+  ApiIntegrationsChatgptAnalysesExecutionIdRouteImport.update({
+    id: '/api/integrations/chatgpt/analyses/$executionId',
+    path: '/api/integrations/chatgpt/analyses/$executionId',
+    getParentRoute: () => rootRouteImport,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -382,24 +382,24 @@ export interface FileRoutesByFullPath {
   '/chatbot/relatorios': typeof AuthenticatedChatbotRelatoriosRoute
   '/chatbot/visao-geral': typeof AuthenticatedChatbotVisaoGeralRoute
   '/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
+  '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
-  '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
-  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
-  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/master/': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
   '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
+  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
+  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -432,24 +432,24 @@ export interface FileRoutesByTo {
   '/chatbot/relatorios': typeof AuthenticatedChatbotRelatoriosRoute
   '/chatbot/visao-geral': typeof AuthenticatedChatbotVisaoGeralRoute
   '/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
+  '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
-  '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
-  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
-  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
   '/master': typeof AuthenticatedMasterIndexRoute
   '/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
   '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
+  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
+  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -487,24 +487,24 @@ export interface FileRoutesById {
   '/_authenticated/chatbot/relatorios': typeof AuthenticatedChatbotRelatoriosRoute
   '/_authenticated/chatbot/visao-geral': typeof AuthenticatedChatbotVisaoGeralRoute
   '/_authenticated/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
+  '/_authenticated/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
-  '/_authenticated/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/_authenticated/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
   '/_authenticated/master/criativos': typeof AuthenticatedMasterCriativosRoute
   '/_authenticated/master/financeiro': typeof AuthenticatedMasterFinanceiroRouteWithChildren
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
-  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
-  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
   '/_authenticated/master/': typeof AuthenticatedMasterIndexRoute
   '/_authenticated/master/financeiro/$orgId': typeof AuthenticatedMasterFinanceiroOrgIdRoute
   '/_authenticated/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
+  '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
+  '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -542,24 +542,24 @@ export interface FileRouteTypes {
     | '/chatbot/relatorios'
     | '/chatbot/visao-geral'
     | '/chatbot/whatsapps'
+    | '/master/analytic-meta-ia'
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
-    | '/master/analytic-meta-ia'
     | '/master/creditos-meta'
     | '/master/criativos'
     | '/master/financeiro'
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
-    | '/api/integrations/chatgpt/openapi'
-    | '/api/integrations/chatgpt/analyses/$executionId'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/chatbot/'
     | '/master/'
     | '/master/financeiro/$orgId'
     | '/master/suporte/$orgId'
+    | '/api/integrations/chatgpt/openapi'
+    | '/api/integrations/chatgpt/analyses/$executionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -592,24 +592,24 @@ export interface FileRouteTypes {
     | '/chatbot/relatorios'
     | '/chatbot/visao-geral'
     | '/chatbot/whatsapps'
+    | '/master/analytic-meta-ia'
     | '/master/campanhas'
     | '/master/clientes'
     | '/master/configuracoes'
-    | '/master/analytic-meta-ia'
     | '/master/creditos-meta'
     | '/master/criativos'
     | '/master/financeiro'
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
-    | '/api/integrations/chatgpt/openapi'
-    | '/api/integrations/chatgpt/analyses/$executionId'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/chatbot'
     | '/master'
     | '/master/financeiro/$orgId'
     | '/master/suporte/$orgId'
+    | '/api/integrations/chatgpt/openapi'
+    | '/api/integrations/chatgpt/analyses/$executionId'
   id:
     | '__root__'
     | '/'
@@ -646,24 +646,24 @@ export interface FileRouteTypes {
     | '/_authenticated/chatbot/relatorios'
     | '/_authenticated/chatbot/visao-geral'
     | '/_authenticated/chatbot/whatsapps'
+    | '/_authenticated/master/analytic-meta-ia'
     | '/_authenticated/master/campanhas'
     | '/_authenticated/master/clientes'
     | '/_authenticated/master/configuracoes'
-    | '/_authenticated/master/analytic-meta-ia'
     | '/_authenticated/master/creditos-meta'
     | '/_authenticated/master/criativos'
     | '/_authenticated/master/financeiro'
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
-    | '/api/integrations/chatgpt/openapi'
-    | '/api/integrations/chatgpt/analyses/$executionId'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/_authenticated/chatbot/'
     | '/_authenticated/master/'
     | '/_authenticated/master/financeiro/$orgId'
     | '/_authenticated/master/suporte/$orgId'
+    | '/api/integrations/chatgpt/openapi'
+    | '/api/integrations/chatgpt/analyses/$executionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -939,13 +939,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterIndexRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
-    '/_authenticated/master/campanhas': {
-      id: '/_authenticated/master/campanhas'
-      path: '/campanhas'
-      fullPath: '/master/campanhas'
-      preLoaderRoute: typeof AuthenticatedMasterCampanhasRouteImport
-      parentRoute: typeof AuthenticatedMasterRoute
-    }
     '/_authenticated/master/analytic-meta-ia': {
       id: '/_authenticated/master/analytic-meta-ia'
       path: '/analytic-meta-ia'
@@ -953,11 +946,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterAnalyticMetaIaRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
-    '/_authenticated/master/creditos-meta': {
-      id: '/_authenticated/master/creditos-meta'
-      path: '/creditos-meta'
-      fullPath: '/master/creditos-meta'
-      preLoaderRoute: typeof AuthenticatedMasterCreditosMetaRouteImport
+    '/_authenticated/master/campanhas': {
+      id: '/_authenticated/master/campanhas'
+      path: '/campanhas'
+      fullPath: '/master/campanhas'
+      preLoaderRoute: typeof AuthenticatedMasterCampanhasRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
     '/_authenticated/master/clientes': {
@@ -972,6 +965,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/master/configuracoes'
       preLoaderRoute: typeof AuthenticatedMasterConfiguracoesRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/_authenticated/master/creditos-meta': {
+      id: '/_authenticated/master/creditos-meta'
+      path: '/creditos-meta'
+      fullPath: '/master/creditos-meta'
+      preLoaderRoute: typeof AuthenticatedMasterCreditosMetaRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
     '/_authenticated/master/criativos': {
@@ -1009,20 +1009,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCoraWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/integrations/chatgpt/openapi': {
-      id: '/api/integrations/chatgpt/openapi'
-      path: '/api/integrations/chatgpt/openapi'
-      fullPath: '/api/integrations/chatgpt/openapi'
-      preLoaderRoute: typeof ApiIntegrationsChatgptOpenapiRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/integrations/chatgpt/analyses/$executionId': {
-      id: '/api/integrations/chatgpt/analyses/$executionId'
-      path: '/api/integrations/chatgpt/analyses/$executionId'
-      fullPath: '/api/integrations/chatgpt/analyses/$executionId'
-      preLoaderRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/auth/google/callback': {
       id: '/auth/google/callback'
       path: '/google/callback'
@@ -1050,6 +1036,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/master/suporte/$orgId'
       preLoaderRoute: typeof AuthenticatedMasterSuporteOrgIdRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
+    }
+    '/api/integrations/chatgpt/openapi': {
+      id: '/api/integrations/chatgpt/openapi'
+      path: '/api/integrations/chatgpt/openapi'
+      fullPath: '/api/integrations/chatgpt/openapi'
+      preLoaderRoute: typeof ApiIntegrationsChatgptOpenapiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/analyses/$executionId': {
+      id: '/api/integrations/chatgpt/analyses/$executionId'
+      path: '/api/integrations/chatgpt/analyses/$executionId'
+      fullPath: '/api/integrations/chatgpt/analyses/$executionId'
+      preLoaderRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -1118,7 +1118,8 @@ interface AuthenticatedMasterRouteChildren {
 }
 
 const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
-  AuthenticatedMasterAnalyticMetaIaRoute: AuthenticatedMasterAnalyticMetaIaRoute,
+  AuthenticatedMasterAnalyticMetaIaRoute:
+    AuthenticatedMasterAnalyticMetaIaRoute,
   AuthenticatedMasterCampanhasRoute: AuthenticatedMasterCampanhasRoute,
   AuthenticatedMasterClientesRoute: AuthenticatedMasterClientesRoute,
   AuthenticatedMasterConfiguracoesRoute: AuthenticatedMasterConfiguracoesRoute,

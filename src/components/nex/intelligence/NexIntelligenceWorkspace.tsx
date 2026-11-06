@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { listClientsFn } from "@/lib/clients.functions";
 import { clientDisplayName, type ListedClient } from "@/lib/client-access";
 import {
@@ -103,6 +103,27 @@ function daysAgoIso(days: number) {
   return `${y}-${m}-${d}`;
 }
 
+function isTransientNetworkError(message: string) {
+  return /failed to fetch|networkerror|network error|load failed|fetch failed|timeout|temporar|econnreset|enotfound|aborted/i.test(
+    message,
+  );
+}
+
+function friendlyAnalysisError(raw: string, executionId?: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return executionId
+      ? "Não foi possível concluir a análise. Tente atualizar o histórico em alguns minutos."
+      : "Não foi possível concluir a análise.";
+  }
+  if (isTransientNetworkError(trimmed)) {
+    return executionId
+      ? "A conexão caiu ao acompanhar a análise. Ela pode continuar no servidor — atualize o histórico em alguns minutos."
+      : "A conexão caiu ao iniciar a análise. Tente novamente em instantes.";
+  }
+  return trimmed;
+}
+
 export function NexIntelligenceWorkspace() {
   const [tab, setTab] = useState<IntelligenceTabId>("daily");
   const [clients, setClients] = useState<ListedClient[]>([]);
@@ -123,6 +144,12 @@ export function NexIntelligenceWorkspace() {
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  /** Execução nova em poll — a UI de dados continua na última consulta estável. */
+  const [pendingRun, setPendingRun] = useState<{
+    id: string;
+    status: string;
+    protocolVersion: string | null;
+  } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [duplicateConfirm, setDuplicateConfirm] = useState<MetaAiExecutionSummary | null>(null);
@@ -147,6 +174,10 @@ export function NexIntelligenceWorkspace() {
   const [reprocessingDaily, setReprocessingDaily] = useState(false);
   const analyzingLock = useRef(false);
   const reviewingLock = useRef(false);
+  const frozenDisplayRef = useRef<{
+    comparisons: MetricComparison[];
+    liveSeries: DailySeriesPoint[];
+  } | null>(null);
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === organizationId) ?? null,
@@ -155,20 +186,33 @@ export function NexIntelligenceWorkspace() {
 
   const dashboard = useMemo(() => {
     const mapped = mapExecutionToDashboard(detail, { campaignIds });
+    // Durante a nova análise, mantém a série da última consulta (não troca por zeros do poll).
+    const frozenSeries = frozenDisplayRef.current?.liveSeries;
     const series =
-      liveSeries.length > 0
-        ? liveSeries
-        : fillDailySeriesGaps(mapped.series, mapped.periodStart, mapped.periodEnd);
+      analyzing && mapped.series.length > 0
+        ? fillDailySeriesGaps(mapped.series, mapped.periodStart, mapped.periodEnd)
+        : analyzing && frozenSeries && frozenSeries.length > 0
+          ? frozenSeries
+          : liveSeries.length > 0
+            ? liveSeries
+            : fillDailySeriesGaps(mapped.series, mapped.periodStart, mapped.periodEnd);
     return {
       ...mapped,
       series,
       markers: markers.length ? markers : mapped.markers,
     };
-  }, [detail, campaignIds, markers, liveSeries]);
+  }, [detail, campaignIds, markers, liveSeries, analyzing]);
 
   const tasks = persistedTasks ?? dashboard.tasks;
-  const activeComparisons =
-    periodComparisons.length > 0 ? periodComparisons : dashboard.comparisons;
+  const activeComparisons = analyzing
+    ? frozenDisplayRef.current?.comparisons?.length
+      ? frozenDisplayRef.current.comparisons
+      : periodComparisons.length > 0
+        ? periodComparisons
+        : dashboard.comparisons
+    : periodComparisons.length > 0
+      ? periodComparisons
+      : dashboard.comparisons;
 
   const mapEventRows = useCallback((rows: Array<Record<string, unknown>>): OptimizationMarker[] => {
     return rows.map((row) => ({
@@ -416,10 +460,11 @@ export function NexIntelligenceWorkspace() {
     setSelectedId(executionId);
     setLoadingDetail(true);
     setError("");
+    setPendingRun(null);
     const response = await getMetaAiExecutionFn({ data: { executionId } });
     setLoadingDetail(false);
     if (!response.ok) {
-      setError(response.message);
+      setError(friendlyAnalysisError(response.message, executionId));
       return;
     }
     setDetail(response.data);
@@ -491,6 +536,11 @@ export function NexIntelligenceWorkspace() {
       return;
     }
     analyzingLock.current = true;
+    frozenDisplayRef.current = {
+      comparisons: periodComparisons,
+      liveSeries,
+    };
+    setPendingRun(null);
     setAnalyzing(true);
     setError("");
     setNotice("Iniciando análise — export Meta e pipeline NEX Intelligence…");
@@ -501,56 +551,116 @@ export function NexIntelligenceWorkspace() {
         data: { organizationId: orgId, ...periodRequest(period) },
       });
       if (!started.ok) {
-        setError(started.message);
+        setError(friendlyAnalysisError(started.message));
         setNotice("");
         return;
       }
       executionId = started.data.executionId;
       setSelectedId(executionId);
-      setNotice(`Execução ${executionId} em andamento…`);
+      setPendingRun({ id: executionId, status: "running", protocolVersion: null });
+      // Mantém `detail` da última consulta até a nova execução ficar terminal.
+      setNotice("");
       await loadExecutions(orgId);
 
       const deadline = Date.now() + META_AI_POLL_MAX_MS;
       let nextDetail: MetaAiExecutionDetail | null = null;
+      let transientFailures = 0;
       while (Date.now() < deadline) {
-        const polled = await getMetaAiExecutionFn({ data: { executionId } });
-        if (!polled.ok) {
-          setError(polled.message);
+        try {
+          const polled = await getMetaAiExecutionFn({ data: { executionId } });
+          if (!polled.ok) {
+            if (isTransientNetworkError(polled.message)) {
+              transientFailures += 1;
+              setNotice(
+                transientFailures === 1
+                  ? "Conexão instável — tentando acompanhar a análise de novo…"
+                  : `Conexão instável (${transientFailures}) — ainda acompanhando…`,
+              );
+              await new Promise((resolve) =>
+                window.setTimeout(resolve, META_AI_POLL_INTERVAL_MS),
+              );
+              continue;
+            }
+            setError(friendlyAnalysisError(polled.message, executionId));
+            setNotice("");
+            setPendingRun({
+              id: executionId,
+              status: "interrupted",
+              protocolVersion: null,
+            });
+            return;
+          }
+          transientFailures = 0;
           setNotice("");
+          nextDetail = polled.data;
+          setPendingRun({
+            id: executionId,
+            status: nextDetail.status,
+            protocolVersion: nextDetail.protocolVersion ?? null,
+          });
+          if (isMetaAiExecutionTerminal(nextDetail.status)) break;
+        } catch (pollError) {
+          const raw = pollError instanceof Error ? pollError.message : String(pollError);
+          if (isTransientNetworkError(raw) && Date.now() < deadline) {
+            transientFailures += 1;
+            setNotice(
+              transientFailures === 1
+                ? "Conexão instável — tentando acompanhar a análise de novo…"
+                : `Conexão instável (${transientFailures}) — ainda acompanhando…`,
+            );
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, META_AI_POLL_INTERVAL_MS),
+            );
+            continue;
+          }
+          setError(friendlyAnalysisError(raw, executionId));
+          setNotice("");
+          setPendingRun({
+            id: executionId,
+            status: "interrupted",
+            protocolVersion: null,
+          });
           return;
         }
-        nextDetail = polled.data;
-        setDetail(nextDetail);
-        if (isMetaAiExecutionTerminal(nextDetail.status)) break;
-        setNotice(`Execução ${executionId} (${nextDetail.status})…`);
         await new Promise((resolve) => window.setTimeout(resolve, META_AI_POLL_INTERVAL_MS));
       }
 
       if (!nextDetail || !isMetaAiExecutionTerminal(nextDetail.status)) {
-        setError(`A análise ainda está em andamento (${executionId}).`);
+        setError(
+          "A análise ainda está em andamento no servidor. Atualize o histórico em alguns minutos.",
+        );
         setNotice("");
+        setPendingRun({
+          id: executionId,
+          status: "interrupted",
+          protocolVersion: nextDetail?.protocolVersion ?? null,
+        });
         return;
       }
       if (nextDetail.status === "error") {
         setError(nextDetail.errorMessage || "A análise falhou.");
         setNotice("");
+        setPendingRun(null);
         await loadExecutions(orgId);
         return;
       }
+      setPendingRun(null);
       setNotice("Análise concluída e publicada para calibração.");
       await loadExecutions(orgId);
       await openExecution(executionId);
     } catch (caught) {
       const raw = caught instanceof Error ? caught.message : "";
-      setError(raw || "Não foi possível concluir a análise.");
-      setNotice(
-        executionId
-          ? `Se a execução ${executionId} ficou em running, atualize o histórico em alguns minutos.`
-          : "",
-      );
+      setError(friendlyAnalysisError(raw, executionId || undefined));
+      setNotice("");
+      if (executionId) {
+        setPendingRun({ id: executionId, status: "interrupted", protocolVersion: null });
+      } else {
+        setPendingRun(null);
+      }
     } finally {
       analyzingLock.current = false;
       setAnalyzing(false);
+      frozenDisplayRef.current = null;
     }
   };
 
@@ -922,16 +1032,82 @@ export function NexIntelligenceWorkspace() {
 
         {error ? <p className="text-sm text-rose-400">{error}</p> : null}
         {notice ? <p className={ni.muted}>{notice}</p> : null}
-        {loadingDetail ? <p className={ni.muted}>Carregando execução…</p> : null}
 
-        {dashboard.executionId ? (
-          <p className={`text-xs ${ni.muted}`}>
-            Execução <code className="text-[#7eb6ff]">{dashboard.executionId}</code>
-            {dashboard.protocolVersion ? ` · protocolo ${dashboard.protocolVersion}` : ""}
-            {dashboard.analyticalStatus ? ` · ${dashboard.analyticalStatus}` : ""}
-            {dashboard.publicationStatus ? ` · pub ${dashboard.publicationStatus}` : ""}
-          </p>
-        ) : null}
+        {(() => {
+          const statusId = pendingRun?.id ?? dashboard.executionId;
+          const statusProtocol =
+            pendingRun?.status === "interrupted"
+              ? null
+              : (pendingRun?.protocolVersion ?? dashboard.protocolVersion);
+          const inProgress =
+            analyzing || loadingDetail || pendingRun?.status === "running";
+          const interrupted = pendingRun?.status === "interrupted";
+          if (!statusId && !analyzing && !loadingDetail) return null;
+          return (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#8fa3bf]">
+              {inProgress ? (
+                <Loader2
+                  className="size-3.5 shrink-0 animate-spin text-[#3ecbff]"
+                  aria-hidden
+                />
+              ) : null}
+              {statusId ? (
+                <>
+                  <span>Execução</span>
+                  <code className="rounded bg-[#07111f] px-1.5 py-0.5 font-mono text-[11px] text-[#7eb6ff]">
+                    {statusId}
+                  </code>
+                  {statusProtocol ? <span>· protocolo {statusProtocol}</span> : null}
+                  {inProgress ? (
+                    <span className="inline-flex items-center rounded-full border border-[#1d6feb]/35 bg-[#1d6feb]/10 px-2 py-0.5 text-[11px] font-medium text-[#9ec5ff]">
+                      em andamento
+                    </span>
+                  ) : interrupted ? (
+                    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200">
+                      acompanhamento interrompido
+                    </span>
+                  ) : dashboard.analyticalStatus &&
+                    dashboard.analyticalStatus !== "running" ? (
+                    <span>· {dashboard.analyticalStatus}</span>
+                  ) : dashboard.analyticalStatus === "running" ? (
+                    <span className="inline-flex items-center rounded-full border border-[#1d6feb]/35 bg-[#1d6feb]/10 px-2 py-0.5 text-[11px] font-medium text-[#9ec5ff]">
+                      em andamento no servidor
+                    </span>
+                  ) : null}
+                  {!inProgress && !interrupted && dashboard.publicationStatus ? (
+                    <span>· pub {dashboard.publicationStatus}</span>
+                  ) : null}
+                  {analyzing &&
+                  dashboard.executionId &&
+                  pendingRun?.id &&
+                  pendingRun.id !== dashboard.executionId ? (
+                    <span className="text-[#6b7f9a]">· exibindo última consulta</span>
+                  ) : null}
+                  {interrupted && pendingRun?.id ? (
+                    <button
+                      type="button"
+                      className="text-[#7eb6ff] underline-offset-2 hover:underline"
+                      onClick={() => void openExecution(pendingRun.id)}
+                    >
+                      Atualizar execução
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <span>{loadingDetail ? "Carregando execução…" : "Preparando análise…"}</span>
+              )}
+              <span className="sr-only">
+                {inProgress
+                  ? "Análise em andamento"
+                  : interrupted
+                    ? "Acompanhamento interrompido"
+                    : loadingDetail
+                      ? "Carregando execução"
+                      : "Execução carregada"}
+              </span>
+            </div>
+          );
+        })()}
 
         {metricCards}
 

@@ -8,7 +8,8 @@ export const ni = {
   title: "text-base font-semibold text-white",
   value: "text-2xl font-semibold tracking-tight text-white",
   input:
-    "h-10 rounded-lg border border-[#1e3a5f] bg-[#07111f] text-sm text-white placeholder:text-[#6b7f9a] focus-visible:ring-[#2f7cf6]",
+    "h-10 w-full min-w-0 rounded-lg border border-[#1e3a5f] bg-[#07111f] text-sm text-white placeholder:text-[#6b7f9a] focus-visible:ring-[#2f7cf6]",
+  field: "grid min-w-0 gap-1.5 text-sm",
   tabActive: "bg-[#1d6feb] text-white shadow-sm",
   tabIdle: "bg-transparent text-[#9db0c9] hover:bg-[#122038] hover:text-white",
   btnPrimary:

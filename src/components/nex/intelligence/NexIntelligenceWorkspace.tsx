@@ -15,6 +15,7 @@ import {
   analyzeMetaWithAiFn,
   decideIntelligenceTaskFn,
   getMetaAiExecutionFn,
+  getMetaPerformanceFn,
   listIntelligenceEventsFn,
   listMetaAiExecutionsFn,
   reprocessIntelligenceDailyFn,
@@ -30,6 +31,7 @@ import {
   formatShortDate,
 } from "@/lib/nex-intelligence/dashboard/format";
 import type {
+  CampaignOption,
   OptimizationMarker,
   SuggestedTask,
 } from "@/lib/nex-intelligence/dashboard/types";
@@ -99,6 +101,8 @@ export function NexIntelligenceWorkspace() {
   const [loadingClients, setLoadingClients] = useState(true);
   const [organizationId, setOrganizationId] = useState("");
   const [campaignId, setCampaignId] = useState<string>("");
+  const [availableCampaigns, setAvailableCampaigns] = useState<CampaignOption[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [analysisDate, setAnalysisDate] = useState(todayIsoDate());
   const [period, setPeriod] = useState<MetaPeriod>({
     mode: "custom",
@@ -215,6 +219,36 @@ export function NexIntelligenceWorkspace() {
     setExecutions(listed.data);
   }, []);
 
+  const loadCampaignsForClient = useCallback(
+    async (orgId: string, selectedPeriod: MetaPeriod) => {
+      if (!orgId) {
+        setAvailableCampaigns([]);
+        return;
+      }
+      setLoadingCampaigns(true);
+      const response = await getMetaPerformanceFn({
+        data: { organizationId: orgId, ...periodRequest(selectedPeriod) },
+      });
+      setLoadingCampaigns(false);
+      if (!response.ok) {
+        setAvailableCampaigns([]);
+        setNotice(response.message);
+        return;
+      }
+      const rows: CampaignOption[] = (response.data.campaigns ?? []).map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        objective: null,
+        resultMetric: campaign.resultLabel || null,
+      }));
+      setAvailableCampaigns(rows);
+      if (!rows.length) {
+        setNotice("Nenhuma campanha retornada pela Meta para este cliente/período.");
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -232,13 +266,15 @@ export function NexIntelligenceWorkspace() {
           clientDisplayName(left).localeCompare(clientDisplayName(right), "pt-BR"),
         );
       setClients(rows);
+      const initialOrg = organizationId || rows[0]?.id || "";
       if (!organizationId && rows[0]) setOrganizationId(rows[0].id);
-      await loadExecutions();
+      await loadExecutions(initialOrg || undefined);
+      if (initialOrg) await loadCampaignsForClient(initialOrg, period);
     })();
     return () => {
       alive = false;
     };
-  }, [loadExecutions]);
+  }, [loadExecutions, loadCampaignsForClient]);
 
   const openExecution = async (executionId: string) => {
     setSelectedId(executionId);
@@ -543,9 +579,32 @@ export function NexIntelligenceWorkspace() {
     </div>
   );
 
+  const campaignChoices = useMemo(() => {
+    const byId = new Map<string, CampaignOption>();
+    for (const campaign of availableCampaigns) byId.set(campaign.id, campaign);
+    for (const campaign of dashboard.campaigns) {
+      const previous = byId.get(campaign.id);
+      byId.set(campaign.id, {
+        id: campaign.id,
+        name: campaign.name || previous?.name || campaign.id,
+        objective: campaign.objective ?? previous?.objective ?? null,
+        resultMetric: campaign.resultMetric ?? previous?.resultMetric ?? null,
+      });
+    }
+    return [...byId.values()].sort((left, right) =>
+      left.name.localeCompare(right.name, "pt-BR"),
+    );
+  }, [availableCampaigns, dashboard.campaigns]);
+
   const filtersShared = (
-    <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-      <label className="grid min-w-[200px] flex-1 gap-1.5 text-sm">
+    <div
+      className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+        tab === "manual"
+          ? "xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+          : "xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+      } xl:items-end`}
+    >
+      <label className={ni.field}>
         <span className={ni.label}>Cliente</span>
         <Select
           value={organizationId}
@@ -553,7 +612,10 @@ export function NexIntelligenceWorkspace() {
             setOrganizationId(value);
             setCampaignId("");
             setDetail(null);
+            setAvailableCampaigns([]);
+            setNotice("");
             void loadExecutions(value);
+            void loadCampaignsForClient(value, period);
           }}
           disabled={loadingClients || analyzing}
         >
@@ -571,29 +633,33 @@ export function NexIntelligenceWorkspace() {
       </label>
 
       {tab === "manual" ? (
-        <label className="grid min-w-[180px] flex-1 gap-1.5 text-sm">
+        <label className={ni.field}>
           <span className={ni.label}>Conta de anúncio</span>
           <Input className={ni.input} value={accountLabel} readOnly />
         </label>
       ) : null}
 
-      <label className="grid min-w-[220px] flex-1 gap-1.5 text-sm">
+      <label className={ni.field}>
         <span className={ni.label}>Campanha</span>
         <Select
           value={campaignId || "__all__"}
           onValueChange={(value) => setCampaignId(value === "__all__" ? "" : value)}
-          disabled={!dashboard.campaigns.length}
+          disabled={loadingCampaigns || !organizationId}
         >
           <SelectTrigger className={ni.input} aria-label="Selecionar campanha">
             <SelectValue
               placeholder={
-                dashboard.campaigns.length ? "Selecione" : "Carregue uma análise primeiro"
+                loadingCampaigns
+                  ? "Carregando campanhas…"
+                  : campaignChoices.length
+                    ? "Selecione"
+                    : "Sem campanhas no período"
               }
             />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">Todas (agregado verificável)</SelectItem>
-            {dashboard.campaigns.map((campaign) => (
+            {campaignChoices.map((campaign) => (
               <SelectItem key={campaign.id} value={campaign.id}>
                 {campaign.name}
               </SelectItem>
@@ -603,7 +669,7 @@ export function NexIntelligenceWorkspace() {
       </label>
 
       {tab === "daily" ? (
-        <label className="grid min-w-[160px] gap-1.5 text-sm">
+        <label className={ni.field}>
           <span className={ni.label}>Data</span>
           <Input
             type="date"
@@ -615,16 +681,23 @@ export function NexIntelligenceWorkspace() {
       ) : null}
 
       {tab === "manual" || tab === "evolution" ? (
-        <div className="min-w-[240px]">
-          <p className={`mb-1.5 ${ni.label}`}>Período</p>
-          <PeriodPicker value={period} disabled={analyzing} onApply={setPeriod} />
+        <div className={ni.field}>
+          <p className={ni.label}>Período</p>
+          <PeriodPicker
+            value={period}
+            disabled={analyzing}
+            onApply={(next) => {
+              setPeriod(next);
+              if (organizationId) void loadCampaignsForClient(organizationId, next);
+            }}
+          />
         </div>
       ) : null}
 
       {tab === "daily" ? (
         <button
           type="button"
-          className={ni.btnPrimary}
+          className={`${ni.btnPrimary} w-full xl:w-auto`}
           disabled={!organizationId || loadingDetail}
           onClick={() => void pickExecutionForDaily()}
         >
@@ -636,7 +709,7 @@ export function NexIntelligenceWorkspace() {
       {tab === "manual" ? (
         <button
           type="button"
-          className={ni.btnPrimary}
+          className={`${ni.btnPrimary} w-full xl:w-auto`}
           disabled={analyzing || !organizationId || loadingClients}
           onClick={runAnalysis}
         >
@@ -648,7 +721,7 @@ export function NexIntelligenceWorkspace() {
       {tab === "evolution" ? (
         <button
           type="button"
-          className={ni.btnPrimary}
+          className={`${ni.btnPrimary} w-full xl:w-auto`}
           disabled={!organizationId || loadingDetail}
           onClick={() => void pickExecutionForDaily()}
         >

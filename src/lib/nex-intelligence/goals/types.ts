@@ -50,10 +50,18 @@ export const ANALYSIS_GOAL_LABELS: Record<AnalysisGoal, string> = {
   DECREASE_CPC: "Reduzir CPC",
 };
 
-/** Legenda amigável sob o título do card (sem códigos técnicos). */
+/** Legenda amigável (tooltip / barra) sem códigos técnicos. */
 export const ANALYSIS_GOAL_HINTS: Record<AnalysisGoal, string> = {
   INCREASE_RESULTS: "Mais conversões, leads ou mensagens no período",
   DECREASE_COST_PER_RESULT: "Pagar menos por cada resultado obtido",
   INCREASE_CTR: "CTR = taxa de cliques (cliques ÷ impressões)",
   DECREASE_CPC: "CPC = custo por clique",
+};
+
+/** Rótulos curtos para a barra inline de objetivos. */
+export const ANALYSIS_GOAL_SHORT_LABELS: Record<AnalysisGoal, string> = {
+  INCREASE_RESULTS: "Resultados",
+  DECREASE_COST_PER_RESULT: "Custo/resultado",
+  INCREASE_CTR: "CTR",
+  DECREASE_CPC: "CPC",
 };

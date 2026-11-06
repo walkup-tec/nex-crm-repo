@@ -40,7 +40,7 @@ export function AnalysisObjectivesPicker({
       aria-label="Objetivos da análise"
       data-testid="analysis-objectives-picker"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
         <span className={`${ni.label} shrink-0`}>Objetivos:</span>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

@@ -197,15 +197,13 @@ function assessComparison(
   return improved ? "IMPROVED" : "WORSENED";
 }
 
-function buildDayComparison(
-  series: DailySeriesPoint[],
+function buildPointComparison(
+  beforePoint: DailySeriesPoint,
+  afterPoint: DailySeriesPoint,
   periodStart: string | null,
   periodEnd: string | null,
   dataStatus: string | null,
 ): MetricComparison[] {
-  if (series.length < 2) return [];
-  const afterPoint = series[series.length - 1]!;
-  const beforePoint = series[series.length - 2]!;
   return PRIORITY_METRICS.map((key) => {
     const beforeValue = beforePoint[key] ?? null;
     const afterValue = afterPoint[key] ?? null;
@@ -266,6 +264,103 @@ function buildDayComparison(
       periodEnd: row.after?.periodEnd ?? periodEnd,
     },
   }));
+}
+
+/** Compara o penúltimo dia com o último (visão diária). */
+function buildDayComparison(
+  series: DailySeriesPoint[],
+  periodStart: string | null,
+  periodEnd: string | null,
+  dataStatus: string | null,
+): MetricComparison[] {
+  if (series.length < 2) return [];
+  return buildPointComparison(
+    series[series.length - 2]!,
+    series[series.length - 1]!,
+    periodStart,
+    periodEnd,
+    dataStatus,
+  );
+}
+
+/** Compara o primeiro dia da série com o último (visão do período na análise manual). */
+export function buildEndpointComparison(
+  series: DailySeriesPoint[],
+  periodStart: string | null,
+  periodEnd: string | null,
+  dataStatus: string | null,
+): MetricComparison[] {
+  if (series.length < 2) return [];
+  return buildPointComparison(series[0]!, series[series.length - 1]!, periodStart, periodEnd, dataStatus);
+}
+
+export type PeriodTotals = {
+  results: number | null;
+  spend: number | null;
+  clicks: number | null;
+  impressions: number | null;
+  reach: number | null;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  cost_per_result: number | null;
+};
+
+/** Totais do período atual vs. período equivalente anterior (ex.: semana vs. semana anterior). */
+export function buildPeriodOverPeriodComparison(
+  current: PeriodTotals,
+  previous: PeriodTotals,
+  periodStart: string | null,
+  periodEnd: string | null,
+  dataStatus: string | null = null,
+): MetricComparison[] {
+  const beforePoint: DailySeriesPoint = {
+    date: periodStart ?? "previous",
+    results: previous.results,
+    spend: previous.spend,
+    clicks: previous.clicks,
+    impressions: previous.impressions,
+    ctr: previous.ctr,
+    cpc: previous.cpc,
+    cpm: previous.cpm,
+    cost_per_result: previous.cost_per_result,
+  };
+  const afterPoint: DailySeriesPoint = {
+    date: periodEnd ?? "current",
+    results: current.results,
+    spend: current.spend,
+    clicks: current.clicks,
+    impressions: current.impressions,
+    ctr: current.ctr,
+    cpc: current.cpc,
+    cpm: current.cpm,
+    cost_per_result: current.cost_per_result,
+  };
+  return buildPointComparison(beforePoint, afterPoint, periodStart, periodEnd, dataStatus);
+}
+
+export function totalsFromCounts(input: {
+  results: number;
+  spend: number;
+  clicks: number;
+  impressions: number;
+  reach?: number;
+}): PeriodTotals {
+  const results = input.results;
+  const spend = input.spend;
+  const clicks = input.clicks;
+  const impressions = input.impressions;
+  return {
+    results,
+    spend,
+    clicks,
+    impressions,
+    reach: input.reach ?? null,
+    ctr: computeCtr(clicks, impressions),
+    cpc: computeCpc(spend, clicks),
+    cpm: computeCpm(spend, impressions),
+    cost_per_result: computeCostPerResult(spend, results),
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -447,9 +542,21 @@ function emptyView(partial?: Partial<IntelligenceDashboardView>): IntelligenceDa
   };
 }
 
+function statusGroupFromExport(
+  campaign: MetaExportCampaign,
+): CampaignOption["statusGroup"] {
+  const effective = (campaign.effective_status || campaign.status || "").toUpperCase();
+  if (effective === "ACTIVE" || effective === "IN_PROCESS") return "Ativa";
+  if (effective === "PAUSED" || effective === "CAMPAIGN_PAUSED" || effective === "ADSET_PAUSED") {
+    return "Inativa";
+  }
+  if (effective === "DELETED" || effective === "ARCHIVED") return "Encerrada";
+  return "Outro";
+}
+
 export function mapExecutionToDashboard(
   detail: MetaAiExecutionDetail | null,
-  options?: { campaignId?: string | null },
+  options?: { campaignId?: string | null; campaignIds?: string[] | null },
 ): IntelligenceDashboardView {
   if (!detail) return emptyView();
 
@@ -461,32 +568,49 @@ export function mapExecutionToDashboard(
     name: campaign.name,
     objective: campaign.objective,
     resultMetric: campaign.result_metric,
+    status: campaign.effective_status || campaign.status,
+    statusGroup: statusGroupFromExport(campaign),
   }));
 
-  const selectedId = options?.campaignId ?? null;
-  const selectedCampaign: MetaExportCampaign | null =
-    selectedId != null
-      ? (campaigns.find((campaign) => campaign.id === selectedId) ?? null)
+  const selectedIds = (options?.campaignIds?.length
+    ? options.campaignIds
+    : options?.campaignId
+      ? [options.campaignId]
+      : []
+  ).filter(Boolean);
+
+  const selectedCampaigns =
+    selectedIds.length > 0
+      ? campaigns.filter((campaign) => selectedIds.includes(campaign.id))
       : campaigns.length === 1
-        ? (campaigns[0] ?? null)
-        : null;
+        ? campaigns
+        : selectedIds.length === 0
+          ? campaigns
+          : [];
+
+  const scopedCampaigns =
+    selectedIds.length > 0
+      ? selectedCampaigns
+      : campaigns;
+
+  const selectedCampaign =
+    scopedCampaigns.length === 1 ? (scopedCampaigns[0] ?? null) : null;
 
   const dataStatus =
     input?.metadata?.data_status === "live" || input?.metadata?.data_status === "partial"
       ? input.metadata.data_status
       : null;
 
-  const insightsBundle: MetaExportInsights | null = selectedCampaign
-    ? selectedCampaign.insights
-    : aggregateInsights(
-        campaigns
-          .map((campaign) => campaign.insights)
-          .filter((row): row is MetaExportInsights => Boolean(row)),
-      );
+  const insightsBundle: MetaExportInsights | null =
+    scopedCampaigns.length === 1 && scopedCampaigns[0]?.insights
+      ? scopedCampaigns[0].insights
+      : aggregateInsights(
+          scopedCampaigns
+            .map((campaign) => campaign.insights)
+            .filter((row): row is MetaExportInsights => Boolean(row)),
+        );
 
-  const dailyRows = selectedCampaign
-    ? selectedCampaign.daily_insights
-    : campaigns.flatMap((campaign) => campaign.daily_insights ?? []);
+  const dailyRows = scopedCampaigns.flatMap((campaign) => campaign.daily_insights ?? []);
 
   const series = aggregateDaily(dailyRows);
   const periodStart = detail.periodSince ?? input?.period?.since ?? null;
@@ -503,8 +627,16 @@ export function mapExecutionToDashboard(
 
   const resultEventLabel =
     selectedCampaign?.result_metric?.trim() ||
+    scopedCampaigns.find((campaign) => campaign.result_metric)?.result_metric?.trim() ||
     campaigns.find((campaign) => campaign.result_metric)?.result_metric?.trim() ||
     "Conversões";
+
+  const campaignName =
+    selectedIds.length === 0
+      ? null
+      : selectedIds.length === 1
+        ? (selectedCampaign?.name ?? null)
+        : `${selectedIds.length} campanhas`;
 
   return {
     executionId: detail.id,
@@ -512,8 +644,8 @@ export function mapExecutionToDashboard(
     clientName: detail.clientName || input?.metadata?.client_name || "",
     accountId: detail.accountId || input?.account?.id || "",
     accountName: detail.accountName || input?.account?.name || "",
-    campaignId: selectedCampaign?.id ?? selectedId,
-    campaignName: selectedCampaign?.name ?? null,
+    campaignId: selectedIds.length === 1 ? selectedIds[0]! : selectedIds.length ? selectedIds.join(",") : null,
+    campaignName,
     resultEventLabel,
     periodStart,
     periodEnd,

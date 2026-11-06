@@ -7,7 +7,8 @@ type Props = {
   clientName: string;
   campaignName: string | null;
   tasks: SuggestedTask[];
-  onSend?: (text: string) => void;
+  sending?: boolean;
+  onSend?: (text: string) => void | Promise<void>;
 };
 
 function buildDraft(input: {
@@ -18,11 +19,17 @@ function buildDraft(input: {
   if (!input.applied.length) {
     return "Nenhuma otimização concluída para comunicar. Aplique tarefas antes de gerar o texto.";
   }
-  const items = input.applied.map((task) => `• ${task.title}`).join("\n");
-  const campaign = input.campaignName ? ` na campanha ${input.campaignName}` : "";
+  const campaign = input.campaignName?.trim() || "campanha selecionada";
+  const items = input.applied
+    .map((task) => {
+      const reason = task.justification?.trim() || "sem motivo registrado";
+      return `• Tarefa: ${task.title}\n  Motivo: ${reason}`;
+    })
+    .join("\n");
   return `Olá${input.clientName ? `, ${input.clientName}` : ""}!
 
-Nossa equipe realizou ajustes${campaign}, incluindo:
+Realizamos otimizações na campanha *${campaign}*:
+
 ${items}
 
 Continuaremos acompanhando os indicadores para avaliar o desempenho dessas alterações.`;
@@ -32,6 +39,7 @@ export function ClientCommunicationComposer({
   clientName,
   campaignName,
   tasks,
+  sending = false,
   onSend,
 }: Props) {
   const applied = tasks.filter((task) => task.status === "APPLIED");
@@ -41,7 +49,7 @@ export function ClientCommunicationComposer({
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const appliedKey = applied.map((task) => `${task.id}:${task.status}`).join("|");
+  const appliedKey = applied.map((task) => `${task.id}:${task.status}:${task.justification}`).join("|");
 
   useEffect(() => {
     if (!editing) {
@@ -94,18 +102,19 @@ export function ClientCommunicationComposer({
           <button
             type="button"
             className={ni.btnPrimary}
-            disabled={!applied.length}
-            onClick={() => onSend?.(text)}
+            disabled={!applied.length || sending}
+            onClick={() => void onSend?.(text)}
           >
             <MessageCircle className="size-3.5" />
-            Enviar ao cliente
+            {sending ? "Enviando…" : "Enviar ao cliente"}
           </button>
         </div>
         {!applied.length ? (
           <p className={ni.muted}>Envio bloqueado até haver ao menos uma tarefa aplicada.</p>
         ) : (
           <p className={ni.muted}>
-            Aprovação humana obrigatória. WhatsApp/notificação serão ligados na fase de integração.
+            Ao enviar, a mensagem vai para o WhatsApp cadastrado do cliente (campanha, tarefa e
+            motivo).
           </p>
         )}
       </div>

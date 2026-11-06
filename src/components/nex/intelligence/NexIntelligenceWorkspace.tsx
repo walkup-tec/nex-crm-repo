@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Sparkles } from "lucide-react";
 import { listClientsFn } from "@/lib/clients.functions";
 import { clientDisplayName, type ListedClient } from "@/lib/client-access";
 import {
@@ -21,17 +21,19 @@ import {
   reprocessIntelligenceDailyFn,
   reviewMetaAiCalibrationWithAiFn,
   saveMetaAiCalibrationFeedbackFn,
+  sendIntelligenceClientWhatsappFn,
   syncIntelligenceTasksFn,
 } from "@/lib/meta.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
-import { mapExecutionToDashboard } from "@/lib/nex-intelligence/dashboard/map-execution-to-dashboard";
 import {
-  formatComparisonBadge,
-  formatMetricValue,
-  formatShortDate,
-} from "@/lib/nex-intelligence/dashboard/format";
+  buildPeriodOverPeriodComparison,
+  mapExecutionToDashboard,
+  totalsFromCounts,
+} from "@/lib/nex-intelligence/dashboard/map-execution-to-dashboard";
+import { formatShortDate } from "@/lib/nex-intelligence/dashboard/format";
 import type {
   CampaignOption,
+  MetricComparison,
   OptimizationMarker,
   SuggestedTask,
 } from "@/lib/nex-intelligence/dashboard/types";
@@ -42,6 +44,9 @@ import { OptimizationTaskList } from "@/components/nex/intelligence/Optimization
 import { ClientCommunicationComposer } from "@/components/nex/intelligence/ClientCommunicationComposer";
 import { InsightsPanel } from "@/components/nex/intelligence/InsightsPanel";
 import { ComparisonBars } from "@/components/nex/intelligence/ComparisonBars";
+import { CampaignMultiSelect } from "@/components/nex/intelligence/CampaignMultiSelect";
+import { ManualAnalysisOverview } from "@/components/nex/intelligence/ManualAnalysisOverview";
+import { AppliedOptimizationsHistory } from "@/components/nex/intelligence/AppliedOptimizationsHistory";
 import { IntelligenceHeader } from "@/components/nex/intelligence/IntelligenceHeader";
 import {
   IntelligenceTabs,
@@ -100,7 +105,7 @@ export function NexIntelligenceWorkspace() {
   const [clients, setClients] = useState<ListedClient[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [organizationId, setOrganizationId] = useState("");
-  const [campaignId, setCampaignId] = useState<string>("");
+  const [campaignIds, setCampaignIds] = useState<string[]>([]);
   const [availableCampaigns, setAvailableCampaigns] = useState<CampaignOption[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [analysisDate, setAnalysisDate] = useState(todayIsoDate());
@@ -120,6 +125,10 @@ export function NexIntelligenceWorkspace() {
   const [duplicateConfirm, setDuplicateConfirm] = useState<MetaAiExecutionSummary | null>(null);
   const [persistedTasks, setPersistedTasks] = useState<SuggestedTask[] | null>(null);
   const [markers, setMarkers] = useState<OptimizationMarker[]>([]);
+  const [appliedHistory, setAppliedHistory] = useState<OptimizationMarker[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [periodComparisons, setPeriodComparisons] = useState<MetricComparison[]>([]);
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState({
@@ -141,11 +150,123 @@ export function NexIntelligenceWorkspace() {
   );
 
   const dashboard = useMemo(() => {
-    const mapped = mapExecutionToDashboard(detail, { campaignId: campaignId || null });
+    const mapped = mapExecutionToDashboard(detail, { campaignIds });
     return { ...mapped, markers: markers.length ? markers : mapped.markers };
-  }, [detail, campaignId, markers]);
+  }, [detail, campaignIds, markers]);
 
   const tasks = persistedTasks ?? dashboard.tasks;
+  const activeComparisons =
+    periodComparisons.length > 0 ? periodComparisons : dashboard.comparisons;
+
+  const mapEventRows = useCallback((rows: Array<Record<string, unknown>>): OptimizationMarker[] => {
+    return rows.map((row) => ({
+      id: String(row.id),
+      entityId: String(row.campaign_id || row.adset_id || row.ad_id || ""),
+      entityLevel: row.ad_id
+        ? "ad"
+        : row.adset_id
+          ? "adset"
+          : row.campaign_id
+            ? "campaign"
+            : "account",
+      effectiveAt: String(row.effective_at),
+      type: String(row.event_type || "otimização"),
+      description: String(row.description || ""),
+      responsibleUserId: row.responsible_user_id ? String(row.responsible_user_id) : null,
+      responsibleName: null,
+      communicationStatus: "none",
+    }));
+  }, []);
+
+  const loadAppliedHistory = useCallback(
+    async (orgId: string) => {
+      if (!orgId) {
+        setAppliedHistory([]);
+        return;
+      }
+      setLoadingHistory(true);
+      const events = await listIntelligenceEventsFn({
+        data: { organizationId: orgId, limit: 100 },
+      });
+      setLoadingHistory(false);
+      if (events.ok) {
+        setAppliedHistory(mapEventRows(events.data as Array<Record<string, unknown>>));
+      } else {
+        setAppliedHistory([]);
+      }
+    },
+    [mapEventRows],
+  );
+
+  const loadPeriodComparisons = useCallback(
+    async (orgId: string, selectedPeriod: MetaPeriod, selectedCampaignIds: string[]) => {
+      if (!orgId || selectedPeriod.mode === "total") {
+        setPeriodComparisons([]);
+        return;
+      }
+      const response = await getMetaPerformanceFn({
+        data: { organizationId: orgId, ...periodRequest(selectedPeriod) },
+      });
+      if (!response.ok || !response.data.previousReady || !response.data.kpis || !response.data.previous) {
+        setPeriodComparisons([]);
+        return;
+      }
+
+      const selected = new Set(selectedCampaignIds);
+      const currentRows =
+        selected.size > 0
+          ? response.data.campaigns.filter((row) => selected.has(row.id))
+          : response.data.campaigns;
+      const previousRows =
+        selected.size > 0
+          ? response.data.previousCampaigns.filter((row) => selected.has(row.id))
+          : response.data.previousCampaigns;
+
+      const sum = (rows: Array<{ results: number; spend: number; clicks: number; impressions: number; reach?: number }>) =>
+        rows.reduce(
+          (acc, row) => ({
+            results: acc.results + row.results,
+            spend: acc.spend + row.spend,
+            clicks: acc.clicks + row.clicks,
+            impressions: acc.impressions + row.impressions,
+            reach: acc.reach + (row.reach ?? 0),
+          }),
+          { results: 0, spend: 0, clicks: 0, impressions: 0, reach: 0 },
+        );
+
+      const currentTotals =
+        currentRows.length > 0
+          ? totalsFromCounts(sum(currentRows))
+          : totalsFromCounts({
+              results: response.data.kpis.results,
+              spend: response.data.kpis.spend,
+              clicks: response.data.kpis.clicks,
+              impressions: response.data.kpis.impressions,
+              reach: response.data.kpis.reach,
+            });
+      const previousTotals =
+        previousRows.length > 0
+          ? totalsFromCounts(sum(previousRows))
+          : totalsFromCounts({
+              results: response.data.previous.results,
+              spend: response.data.previous.spend,
+              clicks: response.data.previous.clicks,
+              impressions: response.data.previous.impressions,
+              reach: response.data.previous.reach,
+            });
+
+      setPeriodComparisons(
+        buildPeriodOverPeriodComparison(
+          currentTotals,
+          previousTotals,
+          selectedPeriod.since,
+          selectedPeriod.until,
+          null,
+        ),
+      );
+    },
+    [],
+  );
 
   const hydrateOps = useCallback(
     async (
@@ -180,30 +301,13 @@ export function NexIntelligenceWorkspace() {
         },
       });
       if (events.ok) {
-        setMarkers(
-          (events.data as Array<Record<string, unknown>>).map((row) => ({
-            id: String(row.id),
-            entityId: String(row.campaign_id || row.adset_id || row.ad_id || ""),
-            entityLevel: row.ad_id
-              ? "ad"
-              : row.adset_id
-                ? "adset"
-                : row.campaign_id
-                  ? "campaign"
-                  : "account",
-            effectiveAt: String(row.effective_at),
-            type: String(row.event_type || "otimização"),
-            description: String(row.description || ""),
-            responsibleUserId: row.responsible_user_id ? String(row.responsible_user_id) : null,
-            responsibleName: null,
-            communicationStatus: "none",
-          })),
-        );
+        setMarkers(mapEventRows(events.data as Array<Record<string, unknown>>));
       } else {
         setMarkers([]);
       }
+      await loadAppliedHistory(nextDetail.organizationId);
     },
-    [],
+    [loadAppliedHistory, mapEventRows],
   );
 
   const loadExecutions = useCallback(async (orgId?: string) => {
@@ -240,6 +344,8 @@ export function NexIntelligenceWorkspace() {
         name: campaign.name,
         objective: null,
         resultMetric: campaign.resultLabel || null,
+        status: campaign.status,
+        statusGroup: campaign.statusGroup,
       }));
       setAvailableCampaigns(rows);
       if (!rows.length) {
@@ -269,12 +375,16 @@ export function NexIntelligenceWorkspace() {
       const initialOrg = organizationId || rows[0]?.id || "";
       if (!organizationId && rows[0]) setOrganizationId(rows[0].id);
       await loadExecutions(initialOrg || undefined);
-      if (initialOrg) await loadCampaignsForClient(initialOrg, period);
+      if (initialOrg) {
+        await loadCampaignsForClient(initialOrg, period);
+        await loadAppliedHistory(initialOrg);
+        await loadPeriodComparisons(initialOrg, period, []);
+      }
     })();
     return () => {
       alive = false;
     };
-  }, [loadExecutions, loadCampaignsForClient]);
+  }, [loadExecutions, loadCampaignsForClient, loadAppliedHistory, loadPeriodComparisons]);
 
   const openExecution = async (executionId: string) => {
     setSelectedId(executionId);
@@ -296,10 +406,12 @@ export function NexIntelligenceWorkspace() {
       limitations: response.data.calibrationFeedback.scores?.limitations?.toString() ?? "",
       applicability: response.data.calibrationFeedback.scores?.applicability?.toString() ?? "",
     });
-    const mapped = mapExecutionToDashboard(response.data);
-    const nextCampaignId = campaignId || mapped.campaigns[0]?.id || "";
-    if (!campaignId && mapped.campaigns[0]) setCampaignId(mapped.campaigns[0].id);
-    await hydrateOps(response.data, mapped.tasks, nextCampaignId);
+    const mapped = mapExecutionToDashboard(response.data, { campaignIds });
+    await hydrateOps(
+      response.data,
+      mapped.tasks,
+      campaignIds.length === 1 ? campaignIds[0] : undefined,
+    );
   };
 
   const pickExecutionForDaily = useCallback(async () => {
@@ -453,8 +565,13 @@ export function NexIntelligenceWorkspace() {
       );
       return;
     }
+    const appliedTask = {
+      ...response.data.task,
+      status: "APPLIED" as const,
+      appliedAt: response.data.task.appliedAt ?? new Date().toISOString(),
+    };
     setPersistedTasks((current) =>
-      (current ?? tasks).map((row) => (row.id === task.id ? response.data.task : row)),
+      (current ?? tasks).map((row) => (row.id === task.id ? appliedTask : row)),
     );
     setNotice(
       response.data.eventId
@@ -462,7 +579,9 @@ export function NexIntelligenceWorkspace() {
         : "Tarefa aplicada.",
     );
     if (detail) {
-      await hydrateOps(detail, [], campaignId || undefined);
+      await hydrateOps(detail, [], campaignIds.length === 1 ? campaignIds[0] : undefined);
+    } else if (organizationId) {
+      await loadAppliedHistory(organizationId);
     }
   };
 
@@ -571,9 +690,15 @@ export function NexIntelligenceWorkspace() {
         <MetricCard
           key={metric.key}
           metric={metric}
-          comparison={dashboard.comparisons.find((row) => row.metricKey === metric.key)}
+          comparison={activeComparisons.find((row) => row.metricKey === metric.key)}
           currency={dashboard.currency}
-          referenceLabel={tab === "evolution" ? "vs. antes" : "vs. dia anterior"}
+          referenceLabel={
+            tab === "evolution"
+              ? "vs. antes"
+              : periodComparisons.length > 0 || tab === "manual"
+                ? "vs. período anterior"
+                : "vs. dia anterior"
+          }
         />
       ))}
     </div>
@@ -589,33 +714,37 @@ export function NexIntelligenceWorkspace() {
         name: campaign.name || previous?.name || campaign.id,
         objective: campaign.objective ?? previous?.objective ?? null,
         resultMetric: campaign.resultMetric ?? previous?.resultMetric ?? null,
+        status: campaign.status ?? previous?.status ?? null,
+        statusGroup: campaign.statusGroup ?? previous?.statusGroup ?? null,
       });
     }
-    return [...byId.values()].sort((left, right) =>
-      left.name.localeCompare(right.name, "pt-BR"),
-    );
+    return [...byId.values()].sort((left, right) => {
+      const leftActive = left.statusGroup === "Ativa" ? 0 : 1;
+      const rightActive = right.statusGroup === "Ativa" ? 0 : 1;
+      if (leftActive !== rightActive) return leftActive - rightActive;
+      return left.name.localeCompare(right.name, "pt-BR");
+    });
   }, [availableCampaigns, dashboard.campaigns]);
 
   const filtersShared = (
-    <div
-      className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
-        tab === "manual"
-          ? "xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto]"
-          : "xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto]"
-      } xl:items-end`}
-    >
-      <label className={ni.field}>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end">
+      <label className={`${ni.field} xl:col-span-3`}>
         <span className={ni.label}>Cliente</span>
         <Select
           value={organizationId}
           onValueChange={(value) => {
             setOrganizationId(value);
-            setCampaignId("");
+            setCampaignIds([]);
             setDetail(null);
             setAvailableCampaigns([]);
+            setPersistedTasks(null);
+            setMarkers([]);
+            setPeriodComparisons([]);
             setNotice("");
             void loadExecutions(value);
             void loadCampaignsForClient(value, period);
+            void loadAppliedHistory(value);
+            void loadPeriodComparisons(value, period, []);
           }}
           disabled={loadingClients || analyzing}
         >
@@ -633,43 +762,28 @@ export function NexIntelligenceWorkspace() {
       </label>
 
       {tab === "manual" ? (
-        <label className={ni.field}>
+        <label className={`${ni.field} xl:col-span-2`}>
           <span className={ni.label}>Conta de anúncio</span>
           <Input className={ni.input} value={accountLabel} readOnly />
         </label>
       ) : null}
 
-      <label className={ni.field}>
+      <label className={`${ni.field} ${tab === "manual" ? "xl:col-span-3" : "xl:col-span-4"}`}>
         <span className={ni.label}>Campanha</span>
-        <Select
-          value={campaignId || "__all__"}
-          onValueChange={(value) => setCampaignId(value === "__all__" ? "" : value)}
-          disabled={loadingCampaigns || !organizationId}
-        >
-          <SelectTrigger className={ni.input} aria-label="Selecionar campanha">
-            <SelectValue
-              placeholder={
-                loadingCampaigns
-                  ? "Carregando campanhas…"
-                  : campaignChoices.length
-                    ? "Selecione"
-                    : "Sem campanhas no período"
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">Todas (agregado verificável)</SelectItem>
-            {campaignChoices.map((campaign) => (
-              <SelectItem key={campaign.id} value={campaign.id}>
-                {campaign.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CampaignMultiSelect
+          campaigns={campaignChoices}
+          selectedIds={campaignIds}
+          onChange={(next) => {
+            setCampaignIds(next);
+            if (organizationId) void loadPeriodComparisons(organizationId, period, next);
+          }}
+          loading={loadingCampaigns}
+          disabled={!organizationId}
+        />
       </label>
 
       {tab === "daily" ? (
-        <label className={ni.field}>
+        <label className={`${ni.field} xl:col-span-3`}>
           <span className={ni.label}>Data</span>
           <Input
             type="date"
@@ -681,53 +795,63 @@ export function NexIntelligenceWorkspace() {
       ) : null}
 
       {tab === "manual" || tab === "evolution" ? (
-        <div className={ni.field}>
+        <div className={`${ni.field} min-w-0 ${tab === "manual" ? "xl:col-span-2" : "xl:col-span-3"}`}>
           <p className={ni.label}>Período</p>
           <PeriodPicker
             value={period}
             disabled={analyzing}
+            triggerClassName="sm:w-full max-w-full"
             onApply={(next) => {
               setPeriod(next);
-              if (organizationId) void loadCampaignsForClient(organizationId, next);
+              if (organizationId) {
+                void loadCampaignsForClient(organizationId, next);
+                void loadPeriodComparisons(organizationId, next, campaignIds);
+              }
             }}
           />
         </div>
       ) : null}
 
       {tab === "daily" ? (
-        <button
-          type="button"
-          className={`${ni.btnPrimary} w-full xl:w-auto`}
-          disabled={!organizationId || loadingDetail}
-          onClick={() => void pickExecutionForDaily()}
-        >
-          <RefreshCw className="size-4" />
-          Atualizar análise
-        </button>
+        <div className="xl:col-span-2">
+          <button
+            type="button"
+            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
+            disabled={!organizationId || loadingDetail}
+            onClick={() => void pickExecutionForDaily()}
+          >
+            <RefreshCw className="size-4" />
+            Atualizar análise
+          </button>
+        </div>
       ) : null}
 
       {tab === "manual" ? (
-        <button
-          type="button"
-          className={`${ni.btnPrimary} w-full xl:w-auto`}
-          disabled={analyzing || !organizationId || loadingClients}
-          onClick={runAnalysis}
-        >
-          <Search className="size-4" />
-          {analyzing ? "Gerando…" : "Gerar análise"}
-        </button>
+        <div className="xl:col-span-2">
+          <button
+            type="button"
+            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
+            disabled={analyzing || !organizationId || loadingClients}
+            onClick={runAnalysis}
+          >
+            <Sparkles className="size-4" />
+            {analyzing ? "Gerando…" : "Gerar análise"}
+          </button>
+        </div>
       ) : null}
 
       {tab === "evolution" ? (
-        <button
-          type="button"
-          className={`${ni.btnPrimary} w-full xl:w-auto`}
-          disabled={!organizationId || loadingDetail}
-          onClick={() => void pickExecutionForDaily()}
-        >
-          <RefreshCw className="size-4" />
-          Atualizar análise
-        </button>
+        <div className="xl:col-span-2">
+          <button
+            type="button"
+            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
+            disabled={!organizationId || loadingDetail}
+            onClick={() => void pickExecutionForDaily()}
+          >
+            <RefreshCw className="size-4" />
+            Atualizar análise
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -780,84 +904,10 @@ export function NexIntelligenceWorkspace() {
         ) : null}
 
         {tab === "manual" ? (
-          <div className="grid gap-4 xl:grid-cols-3">
-            <div className={`${ni.card} p-4`}>
-              <h3 className={ni.title}>Desempenho do período</h3>
-              <ul className="mt-4 space-y-3">
-                {dashboard.metrics
-                  .filter((metric) =>
-                    ["results", "ctr", "cpc", "cost_per_result"].includes(metric.key),
-                  )
-                  .map((metric) => {
-                    const comparison = dashboard.comparisons.find(
-                      (row) => row.metricKey === metric.key,
-                    );
-                    const badge = formatComparisonBadge(comparison);
-                    return (
-                      <li
-                        key={metric.key}
-                        className="flex items-center justify-between gap-3 rounded-lg bg-[#07111f] px-3 py-2"
-                      >
-                        <div>
-                          <p className={ni.label}>{metric.label}</p>
-                          <p className="text-lg font-semibold text-white">
-                            {formatMetricValue(metric, dashboard.currency)}
-                          </p>
-                        </div>
-                        {badge ? (
-                          <span
-                            className={
-                              badge.tone === "positive"
-                                ? ni.badgePos
-                                : badge.tone === "negative"
-                                  ? ni.badgeNeg
-                                  : ni.badgeNeu
-                            }
-                          >
-                            {badge.text}
-                          </span>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-              </ul>
-            </div>
-            <PerformanceChart
-              title="Evolução dos resultados (Conversões)"
-              subtitle="Antes da análise / Durante o período (não é marco de otimização)."
-              series={dashboard.series}
-              beforeLabel="Antes da análise"
-              afterLabel="Durante o período"
-            />
-            <div className={`${ni.card} p-4`}>
-              <h3 className={ni.title}>Resumo da análise</h3>
-              <dl className="mt-4 space-y-3 text-sm">
-                <div>
-                  <dt className={ni.label}>Período analisado</dt>
-                  <dd className="mt-1 text-white">
-                    {formatShortDate(dashboard.periodStart)} – {formatShortDate(dashboard.periodEnd)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className={ni.label}>Objetivo da campanha</dt>
-                  <dd className="mt-1 text-white">
-                    {dashboard.campaigns.find((c) => c.id === dashboard.campaignId)?.objective ||
-                      "—"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className={ni.label}>Status</dt>
-                  <dd className="mt-1">
-                    <span className={ni.badgePos}>
-                      {dashboard.publicationStatus === "published" || dashboard.analyticalStatus
-                        ? "Análise concluída"
-                        : "Aguardando"}
-                    </span>
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </div>
+          <ManualAnalysisOverview
+            dashboard={dashboard}
+            comparisons={activeComparisons}
+          />
         ) : null}
 
         {tab === "evolution" ? (
@@ -935,7 +985,7 @@ export function NexIntelligenceWorkspace() {
         {tab === "evolution" ? (
           <div className="space-y-3">
             <h3 className={ni.title}>Evolução dos principais indicadores</h3>
-            <ComparisonBars comparisons={dashboard.comparisons} currency={dashboard.currency} />
+            <ComparisonBars comparisons={activeComparisons} currency={dashboard.currency} />
           </div>
         ) : null}
 
@@ -954,36 +1004,33 @@ export function NexIntelligenceWorkspace() {
               clientName={dashboard.clientName || (selectedClient ? clientDisplayName(selectedClient) : "")}
               campaignName={dashboard.campaignName}
               tasks={tasks}
+              sending={sendingWhatsapp}
+              onSend={async (text) => {
+                if (!organizationId) {
+                  setError("Selecione um cliente.");
+                  return;
+                }
+                setSendingWhatsapp(true);
+                setError("");
+                const response = await sendIntelligenceClientWhatsappFn({
+                  data: { organizationId, text },
+                });
+                setSendingWhatsapp(false);
+                if (!response.ok) {
+                  setError(response.message);
+                  return;
+                }
+                setNotice("Mensagem enviada ao WhatsApp do cliente.");
+              }}
             />
           </div>
         ) : null}
 
         {tab === "manual" ? (
-          <div className={`${ni.cardMuted} p-4`}>
-            <h3 className={ni.title}>Registro das otimizações realizadas</h3>
-            <p className={`mt-2 ${ni.muted}`}>
-              Marque o que foi feito manualmente no Gerenciador Meta. Persistência de eventos entra
-              na próxima entrega (migration OptimizationEvent).
-            </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {["Público", "Criativo", "Posicionamento", "Orçamento"].map((label) => {
-                const applied = tasks.some(
-                  (task) =>
-                    task.status === "APPLIED" &&
-                    task.title.toLowerCase().includes(label.toLowerCase().slice(0, 5)),
-                );
-                return (
-                  <label
-                    key={label}
-                    className="flex items-center gap-2 rounded-lg border border-[#1e3a5f] bg-[#07111f] px-3 py-2 text-sm"
-                  >
-                    <input type="checkbox" checked={applied} readOnly className="accent-[#1d6feb]" />
-                    {label}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
+          <AppliedOptimizationsHistory
+            items={appliedHistory}
+            loading={loadingHistory}
+          />
         ) : null}
 
         <Accordion type="single" collapsible className={`${ni.cardMuted} px-4`}>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { MetaPeriod } from "@/lib/meta-access";
+import { cn } from "@/lib/utils";
 
 type ShortcutId =
   | "today"
@@ -124,6 +125,7 @@ export function PeriodPicker({
   totalHint = "Exibe os indicadores de todo o período disponível, desde o início das campanhas.",
   totalLabel = "Total",
   allowFuture = false,
+  triggerClassName,
 }: {
   value: MetaPeriod;
   disabled?: boolean;
@@ -132,6 +134,8 @@ export function PeriodPicker({
   totalLabel?: string;
   /** Permite escolher datas após hoje (ex.: vencimentos futuros no Financeiro). */
   allowFuture?: boolean;
+  /** Classes extras no botão-gatilho (ex.: `w-full sm:w-full` em grids apertados). */
+  triggerClassName?: string;
 }) {
   const today = todayInSaoPaulo();
   const [open, setOpen] = useState(false);
@@ -188,9 +192,14 @@ export function PeriodPicker({
   return (
     <Popover open={open} onOpenChange={openPanel}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="w-full justify-start bg-background sm:w-72" disabled={disabled}>
-          <CalendarRange />
-          {triggerLabel(value, totalLabel)}
+        <Button
+          type="button"
+          variant="outline"
+          className={cn("w-full justify-start bg-background sm:w-72", triggerClassName)}
+          disabled={disabled}
+        >
+          <CalendarRange className="size-4 shrink-0" />
+          <span className="truncate">{triggerLabel(value, totalLabel)}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto max-w-[calc(100vw-1rem)] p-0">

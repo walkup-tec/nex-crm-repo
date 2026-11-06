@@ -142,6 +142,27 @@ describe("mapExecutionToDashboard", () => {
     expect(view.tasks[0]?.title).toBe("Atualizar criativo");
   });
 
+  it("agrega múltiplas campanhas selecionadas sem inventar valor", () => {
+    const detail = baseDetail();
+    const input = detail.inputJson as {
+      campaigns: Array<Record<string, unknown>>;
+    };
+    input.campaigns.push({
+      ...input.campaigns[0],
+      id: "camp_2",
+      name: "Campanha B",
+      insights: {
+        ...(input.campaigns[0]!.insights as object),
+        spend: 50,
+        results: 5,
+      },
+      daily_insights: [],
+    });
+    const view = mapExecutionToDashboard(detail, { campaignIds: ["camp_1", "camp_2"] });
+    expect(view.campaignName).toBe("2 campanhas");
+    expect(view.metrics.find((row) => row.key === "spend")?.value).toBe(150);
+  });
+
   it("não transforma METRIC_VALUE E1 em tarefa de otimização", () => {
     const view = mapExecutionToDashboard(baseDetail());
     expect(view.tasks.every((task) => task.claimId !== "c2")).toBe(true);

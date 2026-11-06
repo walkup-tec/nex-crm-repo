@@ -256,6 +256,14 @@ export const listIntelligenceEventsFn = createServerFn({ method: "POST" })
     return guard(() => listOptimizationEvents(context.userId, data));
   });
 
+export const sendIntelligenceClientWhatsappFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { organizationId: string; text: string }) => data)
+  .handler(async ({ context, data }) => {
+    const { sendIntelligenceClientWhatsapp } = await import("@/server/intelligence-ops.server");
+    return guard(() => sendIntelligenceClientWhatsapp(context.userId, data));
+  });
+
 export const reprocessIntelligenceDailyFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { organizationId?: string; referenceDate?: string } = {}) => data)

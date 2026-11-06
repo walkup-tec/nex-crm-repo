@@ -88,6 +88,8 @@ export type CampaignOption = {
   name: string;
   objective: string | null;
   resultMetric: string | null;
+  status?: string | null;
+  statusGroup?: "Ativa" | "Inativa" | "Encerrada" | "Outro" | null;
 };
 
 export type IntelligenceDashboardView = {

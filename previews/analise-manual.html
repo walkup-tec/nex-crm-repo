@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NEX Intelligence — Análise manual (preview)</title>
+  <style>
+    :root {
+      --bg: #050c1a;
+      --card: #0b1729;
+      --card2: #0a1424;
+      --border: #1e3a5f;
+      --text: #f4f7fb;
+      --muted: #8fa3bf;
+      --muted2: #9db0c9;
+      --cyan: #3ecbff;
+      --blue: #1d6feb;
+      --blue-line: #3b82f6;
+      --input: #07111f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #0a0f18;
+      color: var(--text);
+      font-family: Inter, Segoe UI, system-ui, sans-serif;
+      padding: 20px;
+    }
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+      border-radius: 16px;
+      background: var(--bg);
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: #122038; color: var(--cyan);
+      display: grid; place-items: center; font-weight: 700;
+    }
+    .brand h1 { margin: 0; font-size: 18px; font-weight: 650; }
+    .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    .period-chip {
+      border: 1px solid var(--border);
+      background: var(--input);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #d5e0ef;
+    }
+    .tabs {
+      display: flex; justify-content: center; gap: 8px;
+      padding: 12px 20px;
+    }
+    .tab {
+      height: 40px; border-radius: 999px; padding: 0 16px;
+      border: 0; background: transparent; color: #9db0c9;
+      font-size: 14px; font-weight: 550; cursor: default;
+    }
+    .tab.active { background: var(--blue); color: #fff; }
+    .body { padding: 8px 20px 24px; display: grid; gap: 14px; }
+    .filters {
+      display: grid;
+      grid-template-columns: 1.2fr .9fr 1.2fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .control, .btn {
+      height: 40px;
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--input);
+      color: #fff;
+      padding: 0 12px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .btn {
+      background: var(--blue);
+      border-color: var(--blue);
+      justify-content: center;
+      font-weight: 600;
+      white-space: nowrap;
+      min-width: 140px;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto;
+    }
+    .dot.on { background: #22c55e; }
+    .dot.off { background: #a1a1aa; }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .kpi {
+      background: var(--card);
+      border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      border-left: 2px solid var(--blue);
+      border-radius: 14px;
+      padding: 14px;
+      min-width: 0;
+    }
+    .kpi .k-label {
+      margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .kpi .k-row {
+      margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      min-height: 28px;
+    }
+    .kpi .k-value {
+      margin: 0; min-width: 0; flex: 1 1 auto;
+      font-size: clamp(13px, 1.35vw, 22px);
+      font-weight: 650; letter-spacing: -.02em;
+      white-space: nowrap; line-height: 1;
+    }
+    .kpi .k-ref { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+    .cards {
+      display: grid;
+      grid-template-columns: 1.05fr 1.55fr .95fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+    @media (max-width: 1100px) {
+      .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      border-radius: 14px;
+      padding: 12px 16px;
+    }
+    .card-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 650; margin: 0 0 8px;
+    }
+    .card-title .icon {
+      width: 18px; height: 18px; flex: 0 0 auto; color: var(--cyan);
+      stroke: currentColor; fill: none; stroke-width: 1.75;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .btn .icon {
+      width: 16px; height: 16px; flex: 0 0 auto;
+      stroke: currentColor; fill: none; stroke-width: 1.75;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .metric {
+      display: grid;
+      grid-template-columns: minmax(0,1.2fr) auto auto;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .metric:last-child { border-bottom: 0; }
+    .metric .label { margin: 0; font-size: 14px; font-weight: 400; }
+    .metric .value { margin: 0; font-size: 17px; font-weight: 700; text-align: right; }
+    .badge {
+      min-width: 5.25rem; text-align: center;
+      border-radius: 999px; padding: 2px 8px;
+      font-size: 11px; font-weight: 600;
+    }
+    /* Lista desempenho: direção da variação. */
+    .badge.up { background: rgba(16,185,129,.2); color: #6ee7b7; }
+    .badge.down { background: rgba(244,63,94,.2); color: #fda4af; }
+    /* Cards KPI: bom/ruim do indicador (critério Dashboard de Anúncios). */
+    .badge.good { background: rgba(16,185,129,.2); color: #6ee7b7; }
+    .badge.bad { background: rgba(244,63,94,.2); color: #fda4af; }
+    .badge.neu { background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); }
+    .chart { position: relative; height: 168px; margin-top: 6px; overflow: visible; }
+    .pills {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 10px;
+      z-index: 2;
+      display: flex;
+      justify-content: space-around;
+      padding: 0 32px;
+      font-size: 11px;
+      pointer-events: none;
+    }
+    .pill { border-radius: 999px; padding: 2px 10px; font-weight: 600; backdrop-filter: blur(2px); }
+    .pill.before { background: rgba(91,77,255,.35); color: #c4b5ff; box-shadow: 0 0 0 1px rgba(91,77,255,.28); }
+    .pill.during { background: rgba(29,111,235,.35); color: #9ec5ff; box-shadow: 0 0 0 1px rgba(29,111,235,.28); }
+    .opt-marker {
+      position: absolute; left: 39%; top: 14px; transform: translateX(-50%);
+      width: 24px; height: 28px; z-index: 6; cursor: pointer;
+    }
+    .opt-marker svg { display: block; margin: 0 auto; overflow: visible; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+    .opt-tip {
+      position: absolute; left: 50%; top: 30px; width: 210px; z-index: 20;
+      transform: translateX(-50%);
+      padding: 8px 10px; border-radius: 8px;
+      border: 1px solid #2a4060; background: #0b1729;
+      box-shadow: 0 10px 28px rgba(0,0,0,.45);
+      opacity: 0; pointer-events: none; transition: opacity .12s ease;
+    }
+    .opt-marker:hover .opt-tip,
+    .opt-marker:focus-within .opt-tip { opacity: 1; }
+    .opt-tip strong { display: block; color: #3ecbff; font-size: 11px; margin-bottom: 4px; }
+    .opt-tip p { margin: 0; color: #f4f7fb; font-size: 11px; line-height: 1.35; }
+    .opt-tip span { display: block; margin-top: 4px; color: #8fa3bf; font-size: 10px; }
+    .summary dt { color: var(--muted); font-size: 12px; }
+    .summary dd { margin: 2px 0 12px; font-size: 14px; font-weight: 600; }
+    .status {
+      display: inline-flex; border-radius: 999px; padding: 2px 10px;
+      background: rgba(16,185,129,.2); color: #34d399; font-size: 12px; font-weight: 600;
+    }
+    .applied-wrap {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; white-space: nowrap; min-height: 28px;
+    }
+    .applied {
+      display: inline-flex; align-items: center; gap: 6px; height: 28px;
+      border-radius: 6px; padding: 0 10px;
+      background: rgba(16,185,129,.2); color: #6ee7b7; font-size: 12px; font-weight: 650;
+    }
+    .applied-at { color: #c5d3e6; font-size: 12px; white-space: nowrap; }
+    .action-btns {
+      display: inline-flex; align-items: stretch; justify-content: center;
+      height: 28px; overflow: hidden; border-radius: 6px;
+      border: 1px solid #2a4060; background: #07111f;
+    }
+    .action-btns .ghost {
+      height: 100%; border: 0; border-radius: 0; background: transparent;
+      color: #9db0c9; padding: 0 10px; font-size: 12px; font-weight: 550;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .action-btns .ghost.apply {
+      color: #6ee7b7; border-right: 1px solid #2a4060;
+    }
+    .task-cell {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .task-icon {
+      width: 18px; height: 18px; flex: 0 0 auto;
+      color: #3ecbff; stroke: currentColor; fill: none;
+      stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .ghost {
+      height: 32px; border-radius: 8px; border: 1px solid #2a4060;
+      background: transparent; color: #d5e0ef; padding: 0 12px; font-size: 12px;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .bottom {
+      display: grid;
+      grid-template-columns: 1.2fr .9fr;
+      gap: 12px;
+    }
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th {
+      text-align: left; color: var(--muted); font-weight: 550;
+      padding: 8px 10px; background: var(--input);
+    }
+    .table td {
+      padding: 10px; border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+      vertical-align: middle;
+    }
+    .table td.status-col { text-align: center; }
+    .pri {
+      display: inline-flex; border-radius: 8px; padding: 2px 8px;
+      font-size: 11px; font-weight: 600;
+      background: rgba(29,111,235,.2); color: #7eb6ff;
+    }
+    .comms textarea {
+      width: 100%; min-height: 140px; resize: vertical;
+      border-radius: 10px; border: 1px solid var(--border);
+      background: var(--input); color: #fff; padding: 12px; font: inherit;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .banner {
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #122038;
+      color: #9ec5ff;
+      font-size: 12px;
+    }
+    @media (max-width: 1100px) {
+      .filters, .cards, .bottom { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <p class="banner">Preview estático no Cursor Browser — use para ajustar layout da Análise manual sem depender do deploy.</p>
+  <div class="shell">
+    <div class="header">
+      <div class="brand">
+        <div class="logo">N</div>
+        <div>
+          <h1>NEX Intelligence</h1>
+          <p>Análise e otimização de campanhas</p>
+        </div>
+      </div>
+      <div class="period-chip">31/10 – 06/11</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab" type="button">Análise diária</button>
+      <button class="tab active" type="button">Análise manual</button>
+      <button class="tab" type="button">Evolução</button>
+    </div>
+
+    <div class="body">
+      <div class="filters">
+        <div class="field">
+          <label>Cliente</label>
+          <div class="control"><span>MMS MARKETING E SISTEMAS DIGITAIS LTDA</span><span>▾</span></div>
+        </div>
+        <div class="field">
+          <label>Conta de anúncio</label>
+          <div class="control"><span>886574174420761</span></div>
+        </div>
+        <div class="field">
+          <label>Campanha</label>
+          <div class="control">
+            <span style="display:flex;align-items:center;gap:8px;min-width:0">
+              <span class="dot on"></span>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">2 campanhas selecionadas</span>
+            </span>
+            <span>▾</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Período</label>
+          <div class="control"><span>Personalizado · 31 de out – 6 de nov</span><span>▾</span></div>
+        </div>
+        <button class="btn" type="button">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+          Gerar análise
+        </button>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi">
+          <p class="k-label">Resultados</p>
+          <div class="k-row"><p class="k-value">78</p><span class="badge good">↑ +25,8%</span></div>
+          <p class="k-ref">vs. período anterior</p>
+        </div>
+        <div class="kpi">
+          <p class="k-label">Custo por resultado</p>
+          <div class="k-row"><p class="k-value">R$ 7,69</p><span class="badge good">↓ -18,4%</span></div>
+          <p class="k-ref">vs. período anterior</p>
+        </div>
+        <div class="kpi">
+          <p class="k-label">Investimento</p>
+          <div class="k-row"><p class="k-value">R$ 599,71</p><span class="badge neu">↓ -6,2%</span></div>
+          <p class="k-ref">vs. período anterior</p>
+        </div>
+        <div class="kpi">
+          <p class="k-label">CTR</p>
+          <div class="k-row"><p class="k-value">2,51%</p><span class="badge good">↑ +0,96 p.p.</span></div>
+          <p class="k-ref">vs. período anterior</p>
+        </div>
+        <div class="kpi">
+          <p class="k-label">CPC</p>
+          <div class="k-row"><p class="k-value">R$ 2,50</p><span class="badge good">↓ -12,3%</span></div>
+          <p class="k-ref">vs. período anterior</p>
+        </div>
+        <div class="kpi">
+          <p class="k-label">CPM</p>
+          <div class="k-row"><p class="k-value">R$ 62,72</p><span class="badge good">↓ -8,1%</span></div>
+          <p class="k-ref">vs. período anterior</p>
+        </div>
+      </div>
+
+      <div class="cards">
+        <section class="card">
+          <div class="card-title">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+            Desempenho do período
+          </div>
+          <div class="metric"><p class="label">Resultados</p><p class="value">78</p><span class="badge up" title="Cresceu vs. período anterior">↑ +25,8%</span></div>
+          <div class="metric"><p class="label">CTR</p><p class="value">2,51%</p><span class="badge up" title="Cresceu vs. período anterior">↑ +0,96 p.p.</span></div>
+          <div class="metric"><p class="label">CPC</p><p class="value">R$ 2,50</p><span class="badge down" title="Diminuiu vs. período anterior">↓ -12,3%</span></div>
+          <div class="metric"><p class="label">Custo por resultado</p><p class="value">R$ 7,69</p><span class="badge down" title="Diminuiu vs. período anterior">↓ -18,4%</span></div>
+        </section>
+
+        <section class="card">
+          <div class="card-title">Evolução dos resultados (Conversões)</div>
+          <div class="chart">
+            <svg width="100%" height="100%" viewBox="0 0 640 168" preserveAspectRatio="xMidYMid meet">
+              <g stroke="#1a2d4a" stroke-dasharray="3 3">
+                <line x1="36" y1="28" x2="610" y2="28"/>
+                <line x1="36" y1="58" x2="610" y2="58"/>
+                <line x1="36" y1="88" x2="610" y2="88"/>
+                <line x1="36" y1="118" x2="610" y2="118"/>
+              </g>
+              <line x1="250" y1="20" x2="250" y2="128" stroke="#c9d7ef" stroke-dasharray="5 5"/>
+              <polyline fill="none" stroke="#3b82f6" stroke-width="2.5" points="60,96 140,88 230,112 320,84 410,62 500,48 580,42"/>
+              <g fill="#fff" stroke="#3b82f6" stroke-width="2">
+                <circle cx="60" cy="96" r="4"/><circle cx="140" cy="88" r="4"/><circle cx="230" cy="112" r="4"/>
+                <circle cx="320" cy="84" r="4"/><circle cx="410" cy="62" r="4"/><circle cx="500" cy="48" r="4"/><circle cx="580" cy="42" r="4"/>
+              </g>
+              <g fill="#dbe7f8" font-size="10" font-weight="600" text-anchor="middle">
+                <text x="60" y="84">62</text><text x="140" y="76">64</text><text x="230" y="100">58</text>
+                <text x="320" y="72">66</text><text x="410" y="50">72</text><text x="500" y="36">76</text><text x="580" y="30">78</text>
+              </g>
+              <g fill="#8fa3bf" font-size="10" text-anchor="middle">
+                <text x="60" y="146">01/11</text><text x="140" y="146">02/11</text><text x="230" y="146">03/11</text>
+                <text x="320" y="146">04/11</text><text x="410" y="146">05/11</text><text x="500" y="146">06/11</text><text x="580" y="146">07/11</text>
+              </g>
+            </svg>
+            <div class="opt-marker" title="">
+              <svg width="20" height="28" viewBox="0 0 20 28" aria-hidden="true">
+                <line x1="4" y1="2" x2="4" y2="18" stroke="#f4f7fb" stroke-width="1.5"/>
+                <path d="M4 2 L16 6 L4 10 Z" fill="#3ecbff"/>
+                <circle cx="4" cy="18" r="3.5" fill="#3ecbff" stroke="#fff" stroke-width="1.5"/>
+              </svg>
+              <div class="opt-tip">
+                <strong>Atualizar criativo</strong>
+                <p>CTR pode subir com novo criativo — arte e copy atualizados na campanha.</p>
+                <span>em 03/11/2026 11:24</span>
+              </div>
+            </div>
+            <div class="pills">
+              <span class="pill before">Antes da otimização</span>
+              <span class="pill during">Depois da otimização</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card summary">
+          <div class="card-title">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>
+            Resumo da análise
+          </div>
+          <dt>Período analisado</dt>
+          <dd>01/11 – 07/11</dd>
+          <dt>Objetivo da campanha</dt>
+          <dd>Engajamento (WhatsApp)</dd>
+          <dt>Status</dt>
+          <dd><span class="status">Análise concluída</span></dd>
+        </section>
+      </div>
+
+      <div class="bottom">
+        <section class="card" style="padding:0; overflow:hidden">
+          <div style="padding:12px 16px; border-bottom:1px solid color-mix(in srgb, var(--border) 70%, transparent)">
+            <div class="card-title" style="margin:0">Otimizações recomendadas</div>
+          </div>
+          <table class="table">
+            <thead>
+              <tr><th>Tarefa</th><th>Motivo</th><th>Prioridade</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="task-cell">
+                    <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <div>
+                      Ajustar público (segmentação)<br>
+                      <span class="note">test · E3</span>
+                    </div>
+                  </div>
+                </td>
+                <td>Lookalike com foco em decisores</td>
+                <td><span class="pri">Alta</span></td>
+                <td class="status-col">
+                  <div class="action-btns">
+                    <button class="ghost apply" type="button">✓ Aplicar</button>
+                    <button class="ghost" type="button">✕ Rejeitar</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="task-cell">
+                    <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><circle cx="9" cy="12" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                    <div>
+                      Atualizar criativo (arte e copy)<br>
+                      <span class="note">test · E3</span>
+                    </div>
+                  </div>
+                </td>
+                <td>CTR pode subir com novo criativo</td>
+                <td><span class="pri">Alta</span></td>
+                <td class="status-col">
+                  <div class="applied-wrap">
+                    <span class="applied">✓ Aplicado</span>
+                    <span class="applied-at">em 03/11/2026 11:24</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="task-cell">
+                    <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                    <div>
+                      Revisar posicionamentos<br>
+                      <span class="note">action · E3</span>
+                    </div>
+                  </div>
+                </td>
+                <td>Concentrar verba nos canais com melhor CPA</td>
+                <td><span class="pri">Média</span></td>
+                <td class="status-col">
+                  <div class="action-btns">
+                    <button class="ghost apply" type="button">✓ Aplicar</button>
+                    <button class="ghost" type="button">✕ Rejeitar</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="task-cell">
+                    <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+                    <div>
+                      Ajustar orçamento<br>
+                      <span class="note">action · E3</span>
+                    </div>
+                  </div>
+                </td>
+                <td>Rebalancear investimento conforme ROAS do período</td>
+                <td><span class="pri">Alta</span></td>
+                <td class="status-col">
+                  <div class="action-btns">
+                    <button class="ghost apply" type="button">✓ Aplicar</button>
+                    <button class="ghost" type="button">✕ Rejeitar</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card comms">
+          <div class="card-title">Comunicação ao cliente</div>
+          <p class="note" style="margin-bottom:8px">Sugestão a partir apenas de otimizações concluídas</p>
+          <textarea readonly>Olá, MMS!
+
+Realizamos otimizações na campanha *Campanha WhatsApp*:
+
+• Tarefa: Atualizar criativo (arte e copy)
+  Motivo: CTR pode subir com novo criativo
+
+Continuaremos acompanhando os indicadores para avaliar o desempenho dessas alterações.</textarea>
+          <div class="actions">
+            <button class="ghost" type="button">Gerar novo texto</button>
+            <button class="ghost" type="button">Copiar</button>
+            <button class="ghost" type="button">Editar</button>
+            <button class="btn" type="button" style="min-width:auto;height:32px;padding:0 12px">Enviar ao cliente</button>
+          </div>
+        </section>
+      </div>
+
+      <section class="card" style="padding:0; overflow:hidden">
+        <div style="padding:12px 16px; border-bottom:1px solid color-mix(in srgb, var(--border) 70%, transparent)">
+          <div class="card-title" style="margin:0">Otimizações realizadas</div>
+          <p class="note" style="margin-top:4px">Histórico das tarefas aplicadas neste cliente, da mais recente para a mais antiga.</p>
+        </div>
+        <table class="table">
+          <thead>
+            <tr><th>Data</th><th>Tarefa</th><th>Motivo</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="white-space:nowrap">03/11/2026 11:24</td>
+              <td>
+                <div class="task-cell">
+                  <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/><circle cx="9" cy="12" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                  <span>Atualizar criativo (arte e copy)</span>
+                </div>
+              </td>
+              <td>CTR pode subir com novo criativo</td>
+            </tr>
+            <tr>
+              <td style="white-space:nowrap">28/10/2026 16:05</td>
+              <td>
+                <div class="task-cell">
+                  <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <span>Ajustar público (segmentação)</span>
+                </div>
+              </td>
+              <td>Lookalike com foco em decisores</td>
+            </tr>
+            <tr>
+              <td style="white-space:nowrap">15/10/2026 09:40</td>
+              <td>
+                <div class="task-cell">
+                  <svg class="task-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+                  <span>Ajustar orçamento</span>
+                </div>
+              </td>
+              <td>Rebalancear investimento conforme ROAS do período</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

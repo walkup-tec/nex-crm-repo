@@ -206,3 +206,45 @@ export async function listOptimizationEvents(
   if (error) fail(migrationHint(error.message));
   return data ?? [];
 }
+
+export async function sendIntelligenceClientWhatsapp(
+  userId: string,
+  input: { organizationId: string; text: string },
+) {
+  await assertMaster(userId);
+  const clean = input.text.trim();
+  if (!clean) fail("Mensagem vazia.");
+
+  const { data: org, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, finance_phone, responsible_phone")
+    .eq("id", input.organizationId)
+    .maybeSingle();
+  if (error) fail(error.message);
+  if (!org) fail("Cliente não encontrado.");
+
+  const phone =
+    String(org.finance_phone || "").trim() || String(org.responsible_phone || "").trim();
+  if (!phone) fail("Cliente sem telefone WhatsApp cadastrado (financeiro/responsável).");
+
+  const { sendPlainWhatsapp } = await import("@/server/evo.server");
+  const sent = await sendPlainWhatsapp({ phone, text: clean });
+  if (!sent.ok) fail(sent.error || "Falha ao enviar WhatsApp.");
+
+  const { error: logError } = await supabaseAdmin.from("nex_client_communications").insert({
+    organization_id: input.organizationId,
+    event_ids: [],
+    channel: "whatsapp",
+    body: clean,
+    status: "sent",
+    idempotency_key: `intel-wa-${input.organizationId}-${Date.now()}`,
+    created_by: userId,
+    provider_ref: sent.messageId || null,
+  });
+  if (logError) {
+    // Envio já ocorreu; não falha a UX por log.
+    console.error("nex_client_communications", logError.message);
+  }
+
+  return { messageId: sent.messageId, phone };
+}

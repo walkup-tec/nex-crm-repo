@@ -101,6 +101,36 @@ export async function sendInviteWhatsapp(phone: string, name: string, email: str
   return text.ok;
 }
 
+/** Texto simples via Evolution (NEX Intelligence → cliente). */
+export async function sendPlainWhatsapp(input: { phone: string; text: string }) {
+  const number = whatsappNumber(input.phone);
+  if (!number) return { ok: false as const, messageId: "", error: "Telefone WhatsApp do cliente inválido." };
+  const clean = input.text.trim();
+  if (!clean) return { ok: false as const, messageId: "", error: "Mensagem vazia." };
+  const target = await openEvolutionTarget("evo_intelligence");
+  if (!target) {
+    console.error("evo_intelligence", "no_open_instance");
+    return {
+      ok: false as const,
+      messageId: "",
+      error: "Nenhuma instância do WhatsApp está conectada.",
+    };
+  }
+  const { base, headers, instance } = target;
+  const text = await evoPost(
+    `${base}/message/sendText/${encodeURIComponent(instance)}`,
+    headers,
+    { number, text: clean },
+    20000,
+    "evo_intelligence",
+  );
+  const messageId = readProviderMessageId(text.body);
+  if (!text.ok) {
+    return { ok: false as const, messageId, error: "O WhatsApp não confirmou a mensagem." };
+  }
+  return { ok: true as const, messageId, error: "" };
+}
+
 export async function sendFinanceWhatsapp(input: { phone: string; text: string; imagePng: Uint8Array }) {
   const number = whatsappNumber(input.phone);
   if (!number) return { ok: false, messageId: "", error: "Telefone financeiro inválido." };

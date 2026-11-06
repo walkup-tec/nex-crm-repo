@@ -57,14 +57,18 @@ export function AnalysisObjectivesPicker({
   resultEventKey,
   disabled = false,
 }: Props) {
-  const selected = value.selectedGoals;
+  const selected = Array.isArray(value?.selectedGoals) ? value.selectedGoals : [];
 
   return (
-    <section className={`${ni.card} p-4`}>
+    <section
+      className={`${ni.card} border-[#1d6feb]/40 p-4`}
+      aria-label="Objetivos da análise"
+      data-testid="analysis-objectives-picker"
+    >
       <h3 className={ni.title}>O que você deseja melhorar?</h3>
       <p className={`mt-1 ${ni.muted}`}>
-        Selecione um ou mais objetivos para orientar a análise e identificar oportunidades de
-        otimização.
+        Obrigatório — selecione um ou mais objetivos para orientar a análise e identificar
+        oportunidades de otimização.
       </p>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">

@@ -173,7 +173,7 @@ export function NexIntelligenceWorkspace() {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [addingTask, setAddingTask] = useState(false);
   const [analysisObjectives, setAnalysisObjectives] = useState<AnalysisObjectives>(
-    defaultAnalysisObjectives,
+    () => defaultAnalysisObjectives(),
   );
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState({
@@ -545,16 +545,25 @@ export function NexIntelligenceWorkspace() {
       setError("Selecione um cliente.");
       return;
     }
+    const objectivesPayload =
+      analysisObjectives &&
+      Array.isArray(analysisObjectives.selectedGoals) &&
+      analysisObjectives.selectedGoals.length > 0
+        ? analysisObjectives
+        : defaultAnalysisObjectives();
     const objectivesCheck = validateAnalysisObjectives({
-      ...analysisObjectives,
+      ...objectivesPayload,
       resultEventKey:
-        analysisObjectives.resultEventKey ||
+        objectivesPayload.resultEventKey ||
         dashboard.resultEventLabel ||
         undefined,
     });
     if (!objectivesCheck.ok) {
       setError(objectivesCheck.message);
       return;
+    }
+    if (objectivesPayload !== analysisObjectives) {
+      setAnalysisObjectives(objectivesCheck.value);
     }
     if (analyzingLock.current) {
       setNotice("Já existe uma análise em andamento. Aguarde a conclusão.");
@@ -1069,8 +1078,10 @@ export function NexIntelligenceWorkspace() {
 
       {tab === "manual" || tab === "evolution" ? (
         <div
-          className={`grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end ${
-            tab === "manual" ? "xl:col-span-4" : "xl:col-span-5"
+          className={`grid min-w-0 grid-cols-1 gap-3 sm:items-end ${
+            tab === "manual"
+              ? "xl:col-span-4"
+              : "sm:grid-cols-[minmax(0,1fr)_auto] xl:col-span-5"
           }`}
         >
           <div className={`${ni.field} min-w-0 overflow-hidden`}>
@@ -1088,31 +1099,17 @@ export function NexIntelligenceWorkspace() {
               }}
             />
           </div>
-          <button
-            type="button"
-            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap sm:w-auto sm:min-w-[9.5rem]`}
-            disabled={
-              tab === "manual"
-                ? analyzing || !organizationId || loadingClients
-                : !organizationId || loadingDetail
-            }
-            onClick={() => {
-              if (tab === "manual") runAnalysis();
-              else void pickExecutionForDaily();
-            }}
-          >
-            {tab === "manual" ? (
-              <>
-                <Sparkles className="size-4" />
-                {analyzing ? "Gerando…" : "Gerar análise"}
-              </>
-            ) : (
-              <>
-                <RefreshCw className="size-4" />
-                Atualizar análise
-              </>
-            )}
-          </button>
+          {tab === "evolution" ? (
+            <button
+              type="button"
+              className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap sm:w-auto sm:min-w-[9.5rem]`}
+              disabled={!organizationId || loadingDetail}
+              onClick={() => void pickExecutionForDaily()}
+            >
+              <RefreshCw className="size-4" />
+              Atualizar análise
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1139,18 +1136,31 @@ export function NexIntelligenceWorkspace() {
         {filtersShared}
 
         {tab === "manual" ? (
-          <AnalysisObjectivesPicker
-            value={analysisObjectives}
-            onChange={setAnalysisObjectives}
-            resultEventLabel={dashboard.resultEventLabel}
-            resultEventKey={
-              analysisObjectives.resultEventKey ??
-              (dashboard.resultEventLabel?.includes(".")
-                ? dashboard.resultEventLabel
-                : null)
-            }
-            disabled={analyzing}
-          />
+          <div className="space-y-4">
+            <AnalysisObjectivesPicker
+              value={analysisObjectives}
+              onChange={setAnalysisObjectives}
+              resultEventLabel={dashboard.resultEventLabel}
+              resultEventKey={
+                analysisObjectives.resultEventKey ??
+                (dashboard.resultEventLabel?.includes(".")
+                  ? dashboard.resultEventLabel
+                  : null)
+              }
+              disabled={analyzing}
+            />
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                className={`${ni.btnPrimary} min-w-[11rem]`}
+                disabled={analyzing || !organizationId || loadingClients}
+                onClick={() => runAnalysis()}
+              >
+                <Sparkles className="size-4" />
+                {analyzing ? "Gerando…" : "Gerar análise"}
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {error ? <p className="text-sm text-rose-400">{error}</p> : null}

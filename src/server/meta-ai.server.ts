@@ -34,6 +34,9 @@ import {
   toMetaAiExecutionDetail,
   toMetaAiExecutionSummary,
 } from "@/lib/nex-intelligence/persistence/map-row";
+import type { AnalysisObjectives } from "@/lib/nex-intelligence/goals/types";
+import { filterMetaExportByCampaignIds } from "@/lib/nex-intelligence/goals/scope-export";
+import { validateAnalysisObjectives } from "@/lib/nex-intelligence/goals/validate";
 import { exportMetaAnalysis } from "@/server/meta.server";
 import { requestOpenAiAnalysis } from "@/server/openai.server";
 
@@ -79,6 +82,10 @@ type AnalyzeInput = {
   /** Origem da execução (manual lab vs job diário). */
   trigger?: "manual" | "daily_job";
   referenceDate?: string;
+  /** Objetivos tipados — validados em startMetaAiAnalysis. */
+  objectives?: AnalysisObjectives;
+  /** Escopo opcional de campanhas (filtro pós-export quando informado). */
+  campaignIds?: string[];
 };
 
 async function resolveClientName(organizationId: string): Promise<string> {
@@ -140,11 +147,26 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
     currentStep = "data_quality";
     await persistPipelineProgress(executionId, progress);
 
-    const quality = validateMetaAnalysisData(rawPayload, {
+    const scopedPayload = input.campaignIds?.length
+      ? filterMetaExportByCampaignIds(rawPayload, input.campaignIds)
+      : rawPayload;
+
+    const withObjectives =
+      input.objectives
+        ? {
+            ...scopedPayload,
+            metadata: {
+              ...scopedPayload.metadata,
+              analysis_objectives: input.objectives,
+            },
+          }
+        : scopedPayload;
+
+    const quality = validateMetaAnalysisData(withObjectives, {
       protocolVersion: META_AI_PROTOCOL_VERSION,
       engineVersion: META_AI_ENGINE_VERSION,
     });
-    const payload = attachDataQuality(rawPayload, quality);
+    const payload = attachDataQuality(withObjectives, quality);
     progress = markPipelineStep(progress, "data_quality", "completed");
 
     progress = advancePipelineTo(progress, "ai_analysis");
@@ -242,18 +264,35 @@ export async function startMetaAiAnalysis(
   options?: { skipMasterAssert?: boolean },
 ): Promise<MetaAiAnalysisStartResult> {
   if (!options?.skipMasterAssert) await assertMaster(userId);
+
+  let objectives: AnalysisObjectives | undefined;
+  if (input.objectives != null) {
+    const checked = validateAnalysisObjectives(input.objectives);
+    if (!checked.ok) fail(checked.message);
+    objectives = checked.value;
+  } else if ((input.trigger ?? "manual") === "manual") {
+    // Análise manual exige objetivos explícitos (motor orientado a objetivos).
+    fail("Informe os objetivos da análise (o que deseja melhorar).");
+  }
+
   const promptHash = metaAiPromptHash();
   const clientName = await resolveClientName(input.organizationId);
   const periodSince = input.period === "custom" && input.since ? input.since : null;
   const periodUntil = input.period === "custom" && input.until ? input.until : null;
   const trigger = input.trigger ?? "manual";
-  const calibrationFeedback =
-    trigger === "daily_job"
+  const calibrationFeedback = {
+    ...(trigger === "daily_job"
       ? {
           trigger: "daily_job",
           reference_date: input.referenceDate ?? periodUntil ?? periodSince ?? null,
         }
-      : {};
+      : {}),
+    ...(objectives ? { analysis_objectives: objectives } : {}),
+  };
+  const resolvedInput: AnalyzeInput = {
+    ...input,
+    ...(objectives ? { objectives } : {}),
+  };
 
   const initialProgress = createInitialPipelineProgress();
   const { data, error } = await supabaseAdmin
@@ -290,7 +329,7 @@ export async function startMetaAiAnalysis(
   if (error) fail(migrationHint(error.message));
   if (!data?.id) fail("Não foi possível iniciar a execução de análise.");
 
-  void runAndPersistAnalysis(data.id, userId, input);
+  void runAndPersistAnalysis(data.id, userId, resolvedInput);
 
   return { executionId: data.id, status: "running" };
 }

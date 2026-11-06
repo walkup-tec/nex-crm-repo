@@ -170,16 +170,32 @@ export const exportMetaAnalysisFn = createServerFn({ method: "POST" })
 export const analyzeMetaWithAiFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(
-    (data: { organizationId: string; period?: string; since?: string; until?: string }) => data,
+    (data: {
+      organizationId: string;
+      period?: string;
+      since?: string;
+      until?: string;
+      campaignIds?: string[];
+      objectives?: import("@/lib/nex-intelligence/goals/types").AnalysisObjectives;
+    }) => data,
   )
   .handler(async ({ context, data }): Promise<Result<MetaAiAnalysisStartResult>> => {
     const { startMetaAiAnalysis } = await import("@/server/meta-ai.server");
-    const input: { organizationId: string; period?: string; since?: string; until?: string } = {
+    const input: {
+      organizationId: string;
+      period?: string;
+      since?: string;
+      until?: string;
+      campaignIds?: string[];
+      objectives?: import("@/lib/nex-intelligence/goals/types").AnalysisObjectives;
+    } = {
       organizationId: data.organizationId,
     };
     if (data.period) input.period = data.period;
     if (data.since) input.since = data.since;
     if (data.until) input.until = data.until;
+    if (data.campaignIds?.length) input.campaignIds = data.campaignIds;
+    if (data.objectives) input.objectives = data.objectives;
     return guard(() => startMetaAiAnalysis(context.userId, input));
   });
 

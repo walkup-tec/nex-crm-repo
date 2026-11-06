@@ -129,6 +129,10 @@ async function processOrganization(input: {
   }
 
   try {
+    const { defaultDailyAnalysisObjectives } = await import(
+      "@/lib/nex-intelligence/goals/defaults"
+    );
+    // Padrão documentado quando não há objetivos configurados por cliente.
     const startedRun = await startMetaAiAnalysis(
       input.actorId,
       {
@@ -138,6 +142,7 @@ async function processOrganization(input: {
         until: input.referenceDate,
         trigger: "daily_job",
         referenceDate: input.referenceDate,
+        objectives: defaultDailyAnalysisObjectives(),
       },
       { skipMasterAssert: true },
     );

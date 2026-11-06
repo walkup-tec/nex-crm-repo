@@ -25,6 +25,8 @@ const META_TEST_FILES = [
   "src/lib/nex-intelligence/pipeline/v130-b05a266d-regression.test.ts",
   "src/lib/nex-intelligence/pipeline/v130-publication-adversarial.test.ts",
   "src/lib/nex-intelligence/pipeline/v130-monitor-e1-recovery.test.ts",
+  "src/lib/nex-intelligence/goals/validate.test.ts",
+  "src/lib/nex-intelligence/goals/goals-e2e.homologation.test.ts",
   "src/server/openai.server.test.ts",
 ];
 

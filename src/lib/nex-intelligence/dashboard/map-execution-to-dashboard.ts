@@ -473,11 +473,8 @@ function claimToTask(raw: unknown, index: number): SuggestedTask | null {
     kind = "test";
     priority = "high";
   } else if (operation === "MONITOR") {
-    title = "Monitorar indicadores";
-    const metrics = Array.isArray(args.metrics) ? args.metrics.filter((m) => typeof m === "string") : [];
-    justification = metrics.length ? `Acompanhar: ${metrics.join(", ")}` : "Monitoramento periódico";
-    kind = "monitor";
-    priority = "low";
+    // Monitoramento não é otimização operacional (sem Aplicar/Rejeitar).
+    return null;
   } else if (operation === "CAUSAL_HYPOTHESIS") {
     title = "Hipótese a investigar";
     justification = typeof args.premise === "string" ? args.premise : "";

@@ -74,6 +74,7 @@ Regras obrigatórias 1.3.0 (Claim IR + CMS-E1 + evidência E0–E3 + traces back
 - Compat: observations com claim_kind legado ainda são aceitas e normalizadas para IR pelo backend.
 - Fatos numéricos rastreáveis = E1; classificações qualitativas exigem comparação E2; intervenções (test/replace_creative/scale/pause) exigem E3 com hipótese + critério + comparação compatível.
 - CTR isolado NÃO autoriza otimização de criativo nem escala de orçamento; monitor=E1 permitido.
+- Se metadata.analysis_objectives existir: orientar investigação e STRATEGIC_TEST aos objetivos selecionados e ao primaryGoal; separar otimização / investigação / MONITOR; declarar trade-offs entre objetivos; nunca inventar evidência para “cumprir” o objetivo.
 - CMS-E1 / recovery estrutural: remove refs inválidas; comparação sem E2 vira METRIC_VALUE; estratégico sem E3 vira MONITOR; nunca sobe evidência sem prova.
 - Traces: backend é a única fonte de verdade; a IA só referencia available_traces.
 - Sem benchmarks inventados nem causalidade prometida. O relatório é renderizado só a partir de IR aprovado.

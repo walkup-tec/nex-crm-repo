@@ -131,6 +131,8 @@ export function buildChatgptMetaAnalysisPayload(
       schema_version: input?.schema_version ?? null,
       analytical_status: persisted.analytical_status ?? null,
       publication_status: persisted.publication_status ?? null,
+      // Retrocompatível: ausente em execuções históricas.
+      analysis_objectives: input?.metadata.analysis_objectives ?? null,
     }),
     attribution: input?.attribution
       ? scrubSensitive(input.attribution)

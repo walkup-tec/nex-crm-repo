@@ -86,6 +86,8 @@ export type NexMetaAnalysisV1 = {
     data_status: "live" | "partial";
     organization_id: string;
     client_name: string;
+    /** Snapshot imutável dos objetivos da solicitação (quando informados). */
+    analysis_objectives?: import("@/lib/nex-intelligence/goals/types").AnalysisObjectives;
   };
   account: { id: string; name: string };
   period: { since: string | null; until: string | null; timezone: string };

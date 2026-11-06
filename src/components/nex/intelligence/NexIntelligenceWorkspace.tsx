@@ -55,6 +55,12 @@ import { ManualAnalysisOverview } from "@/components/nex/intelligence/ManualAnal
 import { AppliedOptimizationsHistory } from "@/components/nex/intelligence/AppliedOptimizationsHistory";
 import { IntelligenceHeader } from "@/components/nex/intelligence/IntelligenceHeader";
 import {
+  AnalysisObjectivesPicker,
+  defaultAnalysisObjectives,
+} from "@/components/nex/intelligence/AnalysisObjectivesPicker";
+import type { AnalysisObjectives } from "@/lib/nex-intelligence/goals/types";
+import { validateAnalysisObjectives } from "@/lib/nex-intelligence/goals/validate";
+import {
   IntelligenceTabs,
   type IntelligenceTabId,
 } from "@/components/nex/intelligence/IntelligenceTabs";
@@ -166,6 +172,9 @@ export function NexIntelligenceWorkspace() {
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [addingTask, setAddingTask] = useState(false);
+  const [analysisObjectives, setAnalysisObjectives] = useState<AnalysisObjectives>(
+    defaultAnalysisObjectives,
+  );
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState({
     precision: "",
@@ -536,6 +545,17 @@ export function NexIntelligenceWorkspace() {
       setError("Selecione um cliente.");
       return;
     }
+    const objectivesCheck = validateAnalysisObjectives({
+      ...analysisObjectives,
+      resultEventKey:
+        analysisObjectives.resultEventKey ||
+        dashboard.resultEventLabel ||
+        undefined,
+    });
+    if (!objectivesCheck.ok) {
+      setError(objectivesCheck.message);
+      return;
+    }
     if (analyzingLock.current) {
       setNotice("Já existe uma análise em andamento. Aguarde a conclusão.");
       return;
@@ -553,7 +573,12 @@ export function NexIntelligenceWorkspace() {
     let executionId = "";
     try {
       const started = await analyzeMetaWithAiFn({
-        data: { organizationId: orgId, ...periodRequest(period) },
+        data: {
+          organizationId: orgId,
+          ...periodRequest(period),
+          ...(campaignIds.length ? { campaignIds } : {}),
+          objectives: objectivesCheck.value,
+        },
       });
       if (!started.ok) {
         setError(friendlyAnalysisError(started.message));
@@ -1112,6 +1137,21 @@ export function NexIntelligenceWorkspace() {
 
       <div className="space-y-5 px-5 pb-6 pt-2">
         {filtersShared}
+
+        {tab === "manual" ? (
+          <AnalysisObjectivesPicker
+            value={analysisObjectives}
+            onChange={setAnalysisObjectives}
+            resultEventLabel={dashboard.resultEventLabel}
+            resultEventKey={
+              analysisObjectives.resultEventKey ??
+              (dashboard.resultEventLabel?.includes(".")
+                ? dashboard.resultEventLabel
+                : null)
+            }
+            disabled={analyzing}
+          />
+        ) : null}
 
         {error ? <p className="text-sm text-rose-400">{error}</p> : null}
         {notice ? <p className={ni.muted}>{notice}</p> : null}

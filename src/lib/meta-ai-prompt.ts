@@ -1,5 +1,6 @@
 import type { MetaAiExecutionDetail } from "@/lib/meta-ai-calibration";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+import { formatObjectivesForPrompt } from "@/lib/nex-intelligence/goals/prompt";
 import type { MetricTraceability } from "@/lib/nex-intelligence/trace";
 import {
   availableTraceRefs,
@@ -18,6 +19,8 @@ export function metaAiUserPrompt(
   const traceBlock = backendTraceability
     ? summarizeAvailableTracesForPrompt(availableTraceRefs(backendTraceability, payload))
     : "available_traces: (catálogo será aplicado deterministicamente no backend)";
+  const objectives = payload.metadata.analysis_objectives;
+  const objectivesBlock = objectives ? formatObjectivesForPrompt(objectives) : "";
   return [
     "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.3.0). Responda em JSON estruturado nex_intelligence_analysis_v1_3_0 com observations[] factuais (sem rótulos qualitativos sem comparação), recommendations[] com evidence_level/comparison quando E2+ e executive_points[] (preferir claim_ir tipado).",
     "NÃO invente metric_traceability. Use APENAS trace_ids listados em available_traces (entity_id+metric). O NEX descarta traces criados pela IA e reassocia deterministicamente.",
@@ -33,11 +36,15 @@ export function metaAiUserPrompt(
       ? `computed_metrics.spend_total: ${computed.spend_total}`
       : "computed_metrics.spend_total: (ausente)",
     "",
+    objectivesBlock,
+    objectivesBlock ? "" : "",
     traceBlock,
     "",
     "JSON:",
     JSON.stringify(payload),
-  ].join("\n");
+  ]
+    .filter((line, index, arr) => !(line === "" && arr[index - 1] === ""))
+    .join("\n");
 }
 
 /** Monta o mesmo conteúdo do antigo pacote ZIP, já formatado para a OpenAI. */

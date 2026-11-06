@@ -1,3 +1,4 @@
+export * from "@/lib/nex-intelligence/goals";
 export * from "@/lib/nex-intelligence/versions";
 export * from "@/lib/nex-intelligence/errors";
 export * from "@/lib/nex-intelligence/pipeline/context";

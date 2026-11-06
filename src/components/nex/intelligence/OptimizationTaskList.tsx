@@ -59,14 +59,18 @@ export function OptimizationTaskList({
   const [draftOpen, setDraftOpen] = useState(false);
   const [presetId, setPresetId] = useState("");
   const [motivo, setMotivo] = useState("");
+  const [editingMotivo, setEditingMotivo] = useState(true);
 
   const preset = presetId ? findManualTaskPreset(presetId) : null;
-  const canDecide = Boolean(preset && motivo.trim() && !adding && onAdd);
+  const motivoTrimmed = motivo.trim();
+  const canDecide = Boolean(preset && motivoTrimmed && !adding && onAdd);
+  const showMotivoFormatted = Boolean(preset && motivoTrimmed && !editingMotivo);
 
   const resetDraft = () => {
     setDraftOpen(false);
     setPresetId("");
     setMotivo("");
+    setEditingMotivo(true);
   };
 
   const commitDraft = async (decision: ManualAddInput["decision"]) => {
@@ -182,19 +186,27 @@ export function OptimizationTaskList({
               ))}
 
               {draftOpen ? (
-                <tr className="border-t border-[#1e3a5f]/50 bg-[#07111f]/40">
+                <tr className="border-t border-[#1e3a5f]/50 bg-[#07111f]/35">
                   <td className="px-4 py-3 align-middle">
-                    <div className="flex min-w-[220px] items-center gap-2.5">
+                    <div className="flex h-8 min-w-[240px] items-center gap-2.5">
                       {preset ? (
                         <TaskTypeIcon
                           title={preset.title}
                           kind={preset.kind}
                           className="size-[18px] shrink-0 stroke-[1.75] text-[#3ecbff]"
                         />
-                      ) : null}
-                      <Select value={presetId || undefined} onValueChange={setPresetId}>
+                      ) : (
+                        <span className="size-[18px] shrink-0" aria-hidden />
+                      )}
+                      <Select
+                        value={presetId || undefined}
+                        onValueChange={(value) => {
+                          setPresetId(value);
+                          setEditingMotivo(true);
+                        }}
+                      >
                         <SelectTrigger
-                          className="h-9 w-full min-w-[200px] border-[#1e3a5f] bg-[#050c1a] text-sm text-white"
+                          className="h-8 w-full min-w-[220px] border-[#1e3a5f] bg-[#050c1a] text-sm font-medium text-white"
                           aria-label="Selecionar tarefa"
                         >
                           <SelectValue placeholder="Selecionar tarefa…" />
@@ -208,37 +220,44 @@ export function OptimizationTaskList({
                         </SelectContent>
                       </Select>
                     </div>
-                    {preset ? (
-                      <p className="mt-1 text-xs text-[#8fa3bf]">
-                        {preset.kind} · manual · prioridade alta
-                      </p>
-                    ) : null}
                   </td>
                   <td className="px-4 py-3 align-middle">
-                    {preset ? (
+                    {!preset ? (
+                      <span className="text-sm text-[#6b7f9a]">Selecione a tarefa primeiro</span>
+                    ) : showMotivoFormatted ? (
+                      <button
+                        type="button"
+                        className="w-full text-left text-sm text-[#c5d3e6] hover:text-white"
+                        title="Clique para editar o motivo"
+                        onClick={() => setEditingMotivo(true)}
+                      >
+                        {motivoTrimmed}
+                      </button>
+                    ) : (
                       <input
-                        className={`${ni.input} h-9`}
+                        className="h-8 w-full min-w-[180px] rounded-md border border-[#1e3a5f] bg-transparent px-2.5 text-sm text-[#c5d3e6] outline-none placeholder:text-[#6b7f9a] focus:border-[#2f7cf6]"
                         value={motivo}
                         placeholder="Escreva o motivo…"
                         autoFocus
                         onChange={(event) => setMotivo(event.target.value)}
+                        onBlur={() => {
+                          if (motivo.trim()) setEditingMotivo(false);
+                        }}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" && canDecide) {
+                          if (event.key === "Enter") {
                             event.preventDefault();
-                            void commitDraft("PENDING");
+                            if (motivo.trim()) setEditingMotivo(false);
                           }
                           if (event.key === "Escape") resetDraft();
                         }}
                       />
-                    ) : (
-                      <span className="text-xs text-[#6b7f9a]">Selecione a tarefa primeiro</span>
                     )}
                   </td>
                   <td className="px-4 py-3 align-middle">
                     <span className={priorityClass("high")}>Alta</span>
                   </td>
                   <td className="px-4 py-3 align-middle">
-                    <div className="flex min-h-8 flex-col items-center justify-center gap-1">
+                    <div className="flex h-8 items-center justify-center gap-2">
                       <div className="inline-flex h-7 overflow-hidden rounded-md border border-[#2a4060] bg-[#07111f]">
                         <button
                           type="button"
@@ -261,11 +280,13 @@ export function OptimizationTaskList({
                       </div>
                       <button
                         type="button"
-                        className="text-[11px] text-[#6b7f9a] hover:text-[#9db0c9]"
+                        className="inline-flex size-7 items-center justify-center rounded-md text-[#6b7f9a] hover:bg-[#122038] hover:text-white disabled:opacity-50"
                         disabled={adding}
+                        aria-label="Cancelar"
+                        title="Cancelar"
                         onClick={resetDraft}
                       >
-                        Cancelar
+                        <X className="size-3.5" />
                       </button>
                     </div>
                   </td>

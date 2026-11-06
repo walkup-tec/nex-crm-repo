@@ -79,9 +79,15 @@ export function MetricCard({
             {arrow}
             {badge.text}
           </span>
-        ) : null}
+        ) : (
+          <span className="inline-flex shrink-0 items-center rounded-md bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/55">
+            Sem base
+          </span>
+        )}
       </div>
-      {badge ? <p className={`mt-2 text-xs text-[#8fa3bf]`}>{referenceLabel}</p> : null}
+      <p className={`mt-2 text-xs text-[#8fa3bf]`}>
+        {badge ? referenceLabel : "Sem base comparável no período anterior"}
+      </p>
       {metric.quality === "UNAVAILABLE" ? (
         <p className={`mt-2 ${ni.muted}`}>Indisponível</p>
       ) : metric.quality === "NOT_VERIFIABLE" ? (

@@ -195,11 +195,15 @@ export function PeriodPicker({
         <Button
           type="button"
           variant="outline"
-          className={cn("w-full justify-start bg-background sm:w-72", triggerClassName)}
+          className={cn(
+            "w-full max-w-full justify-start overflow-hidden bg-background",
+            triggerClassName ? null : "sm:w-72",
+            triggerClassName,
+          )}
           disabled={disabled}
         >
           <CalendarRange className="size-4 shrink-0" />
-          <span className="truncate">{triggerLabel(value, totalLabel)}</span>
+          <span className="min-w-0 truncate">{triggerLabel(value, totalLabel)}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto max-w-[calc(100vw-1rem)] p-0">

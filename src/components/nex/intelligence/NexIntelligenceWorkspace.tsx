@@ -27,12 +27,15 @@ import {
 import type { MetaPeriod } from "@/lib/meta-access";
 import {
   buildPeriodOverPeriodComparison,
+  fillDailySeriesGaps,
   mapExecutionToDashboard,
+  seriesFromMetaDays,
   totalsFromCounts,
 } from "@/lib/nex-intelligence/dashboard/map-execution-to-dashboard";
 import { formatShortDate } from "@/lib/nex-intelligence/dashboard/format";
 import type {
   CampaignOption,
+  DailySeriesPoint,
   MetricComparison,
   OptimizationMarker,
   SuggestedTask,
@@ -128,6 +131,7 @@ export function NexIntelligenceWorkspace() {
   const [appliedHistory, setAppliedHistory] = useState<OptimizationMarker[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [periodComparisons, setPeriodComparisons] = useState<MetricComparison[]>([]);
+  const [liveSeries, setLiveSeries] = useState<DailySeriesPoint[]>([]);
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
@@ -151,8 +155,16 @@ export function NexIntelligenceWorkspace() {
 
   const dashboard = useMemo(() => {
     const mapped = mapExecutionToDashboard(detail, { campaignIds });
-    return { ...mapped, markers: markers.length ? markers : mapped.markers };
-  }, [detail, campaignIds, markers]);
+    const series =
+      liveSeries.length > 0
+        ? liveSeries
+        : fillDailySeriesGaps(mapped.series, mapped.periodStart, mapped.periodEnd);
+    return {
+      ...mapped,
+      series,
+      markers: markers.length ? markers : mapped.markers,
+    };
+  }, [detail, campaignIds, markers, liveSeries]);
 
   const tasks = persistedTasks ?? dashboard.tasks;
   const activeComparisons =
@@ -202,12 +214,26 @@ export function NexIntelligenceWorkspace() {
     async (orgId: string, selectedPeriod: MetaPeriod, selectedCampaignIds: string[]) => {
       if (!orgId || selectedPeriod.mode === "total") {
         setPeriodComparisons([]);
+        setLiveSeries([]);
         return;
       }
       const response = await getMetaPerformanceFn({
         data: { organizationId: orgId, ...periodRequest(selectedPeriod) },
       });
-      if (!response.ok || !response.data.previousReady || !response.data.kpis || !response.data.previous) {
+      if (!response.ok) {
+        setPeriodComparisons([]);
+        setLiveSeries([]);
+        return;
+      }
+
+      const metaSeries = seriesFromMetaDays(response.data.days ?? [], selectedCampaignIds);
+      setLiveSeries(
+        metaSeries.length > 0
+          ? fillDailySeriesGaps(metaSeries, selectedPeriod.since, selectedPeriod.until)
+          : [],
+      );
+
+      if (!response.data.previousReady || !response.data.kpis || !response.data.previous) {
         setPeriodComparisons([]);
         return;
       }
@@ -412,6 +438,9 @@ export function NexIntelligenceWorkspace() {
       mapped.tasks,
       campaignIds.length === 1 ? campaignIds[0] : undefined,
     );
+    if (response.data.organizationId) {
+      await loadPeriodComparisons(response.data.organizationId, period, campaignIds);
+    }
   };
 
   const pickExecutionForDaily = useCallback(async () => {
@@ -783,73 +812,75 @@ export function NexIntelligenceWorkspace() {
       </label>
 
       {tab === "daily" ? (
-        <label className={`${ni.field} xl:col-span-3`}>
-          <span className={ni.label}>Data</span>
-          <Input
-            type="date"
-            className={ni.input}
-            value={analysisDate}
-            onChange={(event) => setAnalysisDate(event.target.value)}
-          />
-        </label>
+        <>
+          <label className={`${ni.field} xl:col-span-3`}>
+            <span className={ni.label}>Data</span>
+            <Input
+              type="date"
+              className={ni.input}
+              value={analysisDate}
+              onChange={(event) => setAnalysisDate(event.target.value)}
+            />
+          </label>
+          <div className="min-w-0 xl:col-span-2">
+            <button
+              type="button"
+              className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
+              disabled={!organizationId || loadingDetail}
+              onClick={() => void pickExecutionForDaily()}
+            >
+              <RefreshCw className="size-4" />
+              Atualizar análise
+            </button>
+          </div>
+        </>
       ) : null}
 
       {tab === "manual" || tab === "evolution" ? (
-        <div className={`${ni.field} min-w-0 ${tab === "manual" ? "xl:col-span-2" : "xl:col-span-3"}`}>
-          <p className={ni.label}>Período</p>
-          <PeriodPicker
-            value={period}
-            disabled={analyzing}
-            triggerClassName="sm:w-full max-w-full"
-            onApply={(next) => {
-              setPeriod(next);
-              if (organizationId) {
-                void loadCampaignsForClient(organizationId, next);
-                void loadPeriodComparisons(organizationId, next, campaignIds);
-              }
+        <div
+          className={`grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end ${
+            tab === "manual" ? "xl:col-span-4" : "xl:col-span-5"
+          }`}
+        >
+          <div className={`${ni.field} min-w-0 overflow-hidden`}>
+            <p className={ni.label}>Período</p>
+            <PeriodPicker
+              value={period}
+              disabled={analyzing}
+              triggerClassName="w-full max-w-full"
+              onApply={(next) => {
+                setPeriod(next);
+                if (organizationId) {
+                  void loadCampaignsForClient(organizationId, next);
+                  void loadPeriodComparisons(organizationId, next, campaignIds);
+                }
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap sm:w-auto sm:min-w-[9.5rem]`}
+            disabled={
+              tab === "manual"
+                ? analyzing || !organizationId || loadingClients
+                : !organizationId || loadingDetail
+            }
+            onClick={() => {
+              if (tab === "manual") runAnalysis();
+              else void pickExecutionForDaily();
             }}
-          />
-        </div>
-      ) : null}
-
-      {tab === "daily" ? (
-        <div className="xl:col-span-2">
-          <button
-            type="button"
-            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
-            disabled={!organizationId || loadingDetail}
-            onClick={() => void pickExecutionForDaily()}
           >
-            <RefreshCw className="size-4" />
-            Atualizar análise
-          </button>
-        </div>
-      ) : null}
-
-      {tab === "manual" ? (
-        <div className="xl:col-span-2">
-          <button
-            type="button"
-            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
-            disabled={analyzing || !organizationId || loadingClients}
-            onClick={runAnalysis}
-          >
-            <Sparkles className="size-4" />
-            {analyzing ? "Gerando…" : "Gerar análise"}
-          </button>
-        </div>
-      ) : null}
-
-      {tab === "evolution" ? (
-        <div className="xl:col-span-2">
-          <button
-            type="button"
-            className={`${ni.btnPrimary} w-full shrink-0 whitespace-nowrap`}
-            disabled={!organizationId || loadingDetail}
-            onClick={() => void pickExecutionForDaily()}
-          >
-            <RefreshCw className="size-4" />
-            Atualizar análise
+            {tab === "manual" ? (
+              <>
+                <Sparkles className="size-4" />
+                {analyzing ? "Gerando…" : "Gerar análise"}
+              </>
+            ) : (
+              <>
+                <RefreshCw className="size-4" />
+                Atualizar análise
+              </>
+            )}
           </button>
         </div>
       ) : null}

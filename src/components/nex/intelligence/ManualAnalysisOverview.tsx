@@ -166,8 +166,11 @@ export function ManualAnalysisOverview({ dashboard, comparisons }: Props) {
                     {badge.text}
                   </span>
                 ) : (
-                  <span className="inline-flex min-w-[5.25rem] items-center justify-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">
-                    —
+                  <span
+                    className="inline-flex min-w-[5.25rem] items-center justify-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/55"
+                    title="Sem base comparável no período anterior"
+                  >
+                    Sem base
                   </span>
                 )}
               </li>

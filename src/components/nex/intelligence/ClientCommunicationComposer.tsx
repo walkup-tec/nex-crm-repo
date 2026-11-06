@@ -72,36 +72,38 @@ export function ClientCommunicationComposer({
           readOnly={!editing}
           onChange={(event) => setText(event.target.value)}
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={ni.btnGhost}
+              onClick={() => {
+                setEditing(false);
+                setText(buildDraft({ clientName, campaignName, applied }));
+              }}
+            >
+              <RefreshCw className="size-3.5" />
+              Gerar novo texto
+            </button>
+            <button
+              type="button"
+              className={ni.btnGhost}
+              onClick={async () => {
+                await navigator.clipboard.writeText(text);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              <Copy className="size-3.5" />
+              {copied ? "Copiado" : "Copiar"}
+            </button>
+            <button type="button" className={ni.btnGhost} onClick={() => setEditing((v) => !v)}>
+              {editing ? "Bloquear edição" : "Editar"}
+            </button>
+          </div>
           <button
             type="button"
-            className={ni.btnGhost}
-            onClick={() => {
-              setEditing(false);
-              setText(buildDraft({ clientName, campaignName, applied }));
-            }}
-          >
-            <RefreshCw className="size-3.5" />
-            Gerar novo texto
-          </button>
-          <button
-            type="button"
-            className={ni.btnGhost}
-            onClick={async () => {
-              await navigator.clipboard.writeText(text);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            }}
-          >
-            <Copy className="size-3.5" />
-            {copied ? "Copiado" : "Copiar"}
-          </button>
-          <button type="button" className={ni.btnGhost} onClick={() => setEditing((v) => !v)}>
-            {editing ? "Bloquear edição" : "Editar"}
-          </button>
-          <button
-            type="button"
-            className={ni.btnPrimary}
+            className={`${ni.btnPrimary} w-full justify-center`}
             disabled={!applied.length || sending}
             onClick={() => void onSend?.(text)}
           >

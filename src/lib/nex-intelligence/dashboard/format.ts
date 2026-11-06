@@ -32,8 +32,13 @@ export function formatComparisonBadge(comparison: MetricComparison | undefined):
   text: string;
   tone: "positive" | "negative" | "neutral";
 } | null {
-  if (!comparison || comparison.comparisonStatus !== "VALID") return null;
-  if (comparison.assessment === "NOT_ASSESSED") return null;
+  if (!comparison || comparison.assessment === "NOT_ASSESSED") return null;
+  if (
+    comparison.comparisonStatus !== "VALID" &&
+    comparison.comparisonStatus !== "INCOMPARABLE"
+  ) {
+    return null;
+  }
 
   const tone =
     comparison.assessment === "IMPROVED"
@@ -53,15 +58,26 @@ export function formatComparisonBadge(comparison: MetricComparison | undefined):
     };
   }
 
-  if (comparison.relativeDeltaPercent == null) return null;
-  const sign = comparison.relativeDeltaPercent > 0 ? "+" : "";
-  return {
-    text: `${sign}${comparison.relativeDeltaPercent.toLocaleString("pt-BR", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    })}%`,
-    tone,
-  };
+  if (comparison.relativeDeltaPercent != null) {
+    const sign = comparison.relativeDeltaPercent > 0 ? "+" : "";
+    return {
+      text: `${sign}${comparison.relativeDeltaPercent.toLocaleString("pt-BR", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}%`,
+      tone,
+    };
+  }
+
+  // Base anterior zerada: ainda dá para sinalizar direção pelo delta absoluto.
+  if (comparison.absoluteDelta != null && comparison.absoluteDelta !== 0) {
+    return {
+      text: comparison.absoluteDelta > 0 ? "novo" : "zerou",
+      tone: tone === "neutral" ? (comparison.absoluteDelta > 0 ? "positive" : "negative") : tone,
+    };
+  }
+
+  return null;
 }
 
 export function formatShortDate(iso: string | null | undefined): string {

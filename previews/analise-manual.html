@@ -72,9 +72,31 @@
     .body { padding: 8px 20px 24px; display: grid; gap: 14px; }
     .filters {
       display: grid;
-      grid-template-columns: 1.2fr .9fr 1.2fr 1fr auto;
+      grid-template-columns: 1.1fr .85fr 1.1fr minmax(0,1.6fr);
       gap: 12px;
       align-items: end;
+    }
+    .filters .period-action {
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto;
+      gap: 10px;
+      align-items: end;
+      min-width: 0;
+    }
+    .filters .period-action .control {
+      min-width: 0;
+      overflow: hidden;
+    }
+    .filters .period-action .control > span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .filters .period-action .btn {
+      width: auto;
+      min-width: 9.5rem;
+      flex: 0 0 auto;
     }
     .field label {
       display: block;
@@ -356,14 +378,16 @@
             <span>▾</span>
           </div>
         </div>
-        <div class="field">
-          <label>Período</label>
-          <div class="control"><span>Personalizado · 31 de out – 6 de nov</span><span>▾</span></div>
+        <div class="period-action">
+          <div class="field">
+            <label>Período</label>
+            <div class="control"><span>Personalizado · 31 de out – 6 de nov</span><span>▾</span></div>
+          </div>
+          <button class="btn" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+            Gerar análise
+          </button>
         </div>
-        <button class="btn" type="button">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
-          Gerar análise
-        </button>
       </div>
 
       <div class="kpi-row">

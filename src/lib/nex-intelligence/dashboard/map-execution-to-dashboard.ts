@@ -122,6 +122,68 @@ function aggregateDaily(rows: MetaExportDailyInsight[]): DailySeriesPoint[] {
     });
 }
 
+/** Preenche dias faltantes no intervalo para o gráfico cobrir o período inteiro. */
+export function fillDailySeriesGaps(
+  series: DailySeriesPoint[],
+  periodStart: string | null,
+  periodEnd: string | null,
+): DailySeriesPoint[] {
+  if (!periodStart || !periodEnd) return series;
+  const start = Date.parse(`${periodStart}T12:00:00`);
+  const end = Date.parse(`${periodEnd}T12:00:00`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return series;
+
+  const byDate = new Map(series.map((point) => [point.date, point]));
+  const filled: DailySeriesPoint[] = [];
+  for (let cursor = start; cursor <= end; cursor += 24 * 60 * 60 * 1000) {
+    const date = new Date(cursor);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    filled.push(
+      byDate.get(key) ?? {
+        date: key,
+        results: 0,
+        spend: 0,
+        clicks: 0,
+        impressions: 0,
+        ctr: null,
+        cpc: null,
+        cpm: null,
+        cost_per_result: null,
+      },
+    );
+  }
+  return filled;
+}
+
+/** Agrega pontos diários da Meta Performance (por campanha) em série única. */
+export function seriesFromMetaDays(
+  days: Array<{
+    date: string;
+    campaignId: string;
+    spend: number;
+    impressions: number;
+    clicks: number;
+    results: number;
+  }>,
+  campaignIds?: string[],
+): DailySeriesPoint[] {
+  const selected = campaignIds?.length ? new Set(campaignIds) : null;
+  const filtered = selected
+    ? days.filter((row) => selected.has(row.campaignId))
+    : days;
+  return aggregateDaily(
+    filtered.map((row) => ({
+      date: row.date,
+      spend: row.spend,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      results: row.results,
+      reach: null,
+      link_clicks: null,
+    })),
+  );
+}
+
 function qualityFromPresence(value: number | null, dataStatus: string | null): MetricQuality {
   if (value == null) return "UNAVAILABLE";
   if (dataStatus === "partial") return "WARNING";
@@ -233,8 +295,8 @@ function buildPointComparison(
         pointsDelta = absoluteDelta;
       }
       if (beforeValue === 0) {
-        relativeDeltaPercent = null;
-        if (key !== "ctr") comparisonStatus = "INCOMPARABLE";
+        relativeDeltaPercent = afterValue === 0 ? 0 : null;
+        // Mantém VALID para permitir badge (ex.: "novo") quando a base anterior é zero.
       } else {
         relativeDeltaPercent = (absoluteDelta / Math.abs(beforeValue)) * 100;
       }

@@ -5,21 +5,29 @@ import { Copy, MessageCircle, RefreshCw } from "lucide-react";
 
 type Props = {
   clientName: string;
-  campaignName: string | null;
+  campaignNames: string[];
   tasks: SuggestedTask[];
   sending?: boolean;
   onSend?: (text: string) => void | Promise<void>;
 };
 
+function formatCampaignBlock(names: string[]): string {
+  const cleaned = names.map((name) => name.trim()).filter(Boolean);
+  if (cleaned.length === 0) {
+    return "Realizamos otimizações na campanha selecionada:";
+  }
+  const list = cleaned.map((name) => `- ${name}`).join("\n");
+  return `Realizamos otimizações na campanha:\n${list}`;
+}
+
 function buildDraft(input: {
   clientName: string;
-  campaignName: string | null;
+  campaignNames: string[];
   applied: SuggestedTask[];
 }): string {
   if (!input.applied.length) {
     return "Nenhuma otimização concluída para comunicar. Aplique tarefas antes de gerar o texto.";
   }
-  const campaign = input.campaignName?.trim() || "campanha selecionada";
   const items = input.applied
     .map((task) => {
       const reason = task.justification?.trim() || "sem motivo registrado";
@@ -28,7 +36,7 @@ function buildDraft(input: {
     .join("\n");
   return `Olá${input.clientName ? `, ${input.clientName}` : ""}!
 
-Realizamos otimizações na campanha *${campaign}*:
+${formatCampaignBlock(input.campaignNames)}
 
 ${items}
 
@@ -37,14 +45,15 @@ Continuaremos acompanhando os indicadores para avaliar o desempenho dessas alter
 
 export function ClientCommunicationComposer({
   clientName,
-  campaignName,
+  campaignNames,
   tasks,
   sending = false,
   onSend,
 }: Props) {
   const applied = tasks.filter((task) => task.status === "APPLIED");
+  const campaignNamesKey = campaignNames.join("|");
   const [text, setText] = useState(() =>
-    buildDraft({ clientName, campaignName, applied }),
+    buildDraft({ clientName, campaignNames, applied }),
   );
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -53,11 +62,11 @@ export function ClientCommunicationComposer({
 
   useEffect(() => {
     if (!editing) {
-      setText(buildDraft({ clientName, campaignName, applied }));
+      setText(buildDraft({ clientName, campaignNames, applied }));
     }
     // Regenera só quando o conjunto aplicado muda; edição manual não é sobrescrita.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientName, campaignName, appliedKey, editing]);
+  }, [clientName, campaignNamesKey, appliedKey, editing]);
 
   return (
     <div className={`${ni.card} flex h-full flex-col`}>
@@ -79,7 +88,7 @@ export function ClientCommunicationComposer({
               className={ni.btnGhost}
               onClick={() => {
                 setEditing(false);
-                setText(buildDraft({ clientName, campaignName, applied }));
+                setText(buildDraft({ clientName, campaignNames, applied }));
               }}
             >
               <RefreshCw className="size-3.5" />

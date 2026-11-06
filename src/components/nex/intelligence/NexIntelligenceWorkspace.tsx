@@ -755,6 +755,19 @@ export function NexIntelligenceWorkspace() {
     });
   }, [availableCampaigns, dashboard.campaigns]);
 
+  const selectedCampaignNames = useMemo(() => {
+    if (campaignIds.length > 0) {
+      return campaignIds
+        .map((id) => campaignChoices.find((campaign) => campaign.id === id)?.name?.trim())
+        .filter((name): name is string => Boolean(name));
+    }
+    if (dashboard.campaigns.length === 1) {
+      const only = dashboard.campaigns[0]?.name?.trim();
+      return only ? [only] : [];
+    }
+    return [];
+  }, [campaignIds, campaignChoices, dashboard.campaigns]);
+
   const filtersShared = (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end">
       <label className={`${ni.field} xl:col-span-3`}>
@@ -1033,7 +1046,7 @@ export function NexIntelligenceWorkspace() {
             />
             <ClientCommunicationComposer
               clientName={dashboard.clientName || (selectedClient ? clientDisplayName(selectedClient) : "")}
-              campaignName={dashboard.campaignName}
+              campaignNames={selectedCampaignNames}
               tasks={tasks}
               sending={sendingWhatsapp}
               onSend={async (text) => {

@@ -1140,13 +1140,6 @@ export function NexIntelligenceWorkspace() {
             <AnalysisObjectivesPicker
               value={analysisObjectives}
               onChange={setAnalysisObjectives}
-              resultEventLabel={dashboard.resultEventLabel}
-              resultEventKey={
-                analysisObjectives.resultEventKey ??
-                (dashboard.resultEventLabel?.includes(".")
-                  ? dashboard.resultEventLabel
-                  : null)
-              }
               disabled={analyzing}
             />
             <div className="flex flex-wrap items-center justify-end gap-3">

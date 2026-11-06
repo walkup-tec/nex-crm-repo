@@ -49,3 +49,11 @@ export const ANALYSIS_GOAL_LABELS: Record<AnalysisGoal, string> = {
   INCREASE_CTR: "Aumentar CTR",
   DECREASE_CPC: "Reduzir CPC",
 };
+
+/** Legenda amigável sob o título do card (sem códigos técnicos). */
+export const ANALYSIS_GOAL_HINTS: Record<AnalysisGoal, string> = {
+  INCREASE_RESULTS: "Mais conversões, leads ou mensagens no período",
+  DECREASE_COST_PER_RESULT: "Pagar menos por cada resultado obtido",
+  INCREASE_CTR: "CTR = taxa de cliques (cliques ÷ impressões)",
+  DECREASE_CPC: "CPC = custo por clique",
+};

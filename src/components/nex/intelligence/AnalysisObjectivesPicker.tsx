@@ -1,19 +1,16 @@
 import {
+  ANALYSIS_GOAL_HINTS,
   ANALYSIS_GOAL_LABELS,
   ANALYSIS_GOALS,
   type AnalysisGoal,
   type AnalysisObjectives,
-  type GoalTarget,
 } from "@/lib/nex-intelligence/goals/types";
-import { getGoalDefinition } from "@/lib/nex-intelligence/goals/definitions";
 import { ni } from "@/components/nex/intelligence/intelligence-theme";
 import { Check } from "lucide-react";
 
 type Props = {
   value: AnalysisObjectives;
   onChange: (next: AnalysisObjectives) => void;
-  resultEventLabel?: string | null;
-  resultEventKey?: string | null;
   disabled?: boolean;
 };
 
@@ -30,31 +27,9 @@ function syncPrimary(selected: AnalysisGoal[], primary: AnalysisGoal): AnalysisG
   return selected.includes(primary) ? primary : selected[0]!;
 }
 
-function upsertTarget(
-  targets: GoalTarget[] | undefined,
-  goal: AnalysisGoal,
-  raw: string,
-): GoalTarget[] | undefined {
-  const def = getGoalDefinition(goal);
-  const next = [...(targets ?? [])].filter((row) => row.goal !== goal);
-  const trimmed = raw.trim().replace(",", ".");
-  if (!trimmed) return next.length ? next : undefined;
-  const targetValue = Number(trimmed);
-  if (!Number.isFinite(targetValue) || targetValue <= 0) return next.length ? next : undefined;
-  next.push({ goal, targetValue, unit: def.defaultTargetUnit });
-  return next;
-}
-
-function targetValueFor(targets: GoalTarget[] | undefined, goal: AnalysisGoal): string {
-  const hit = targets?.find((row) => row.goal === goal);
-  return hit ? String(hit.targetValue) : "";
-}
-
 export function AnalysisObjectivesPicker({
   value,
   onChange,
-  resultEventLabel,
-  resultEventKey,
   disabled = false,
 }: Props) {
   const selected = Array.isArray(value?.selectedGoals) ? value.selectedGoals : [];
@@ -86,7 +61,7 @@ export function AnalysisObjectivesPicker({
                   ...value,
                   selectedGoals,
                   primaryGoal: syncPrimary(selectedGoals, value.primaryGoal),
-                  targets: value.targets?.filter((row) => selectedGoals.includes(row.goal)),
+                  targets: undefined,
                 });
               }}
               className={`flex items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
@@ -104,7 +79,9 @@ export function AnalysisObjectivesPicker({
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-medium">{ANALYSIS_GOAL_LABELS[goal]}</span>
-                <span className="mt-0.5 block text-[11px] text-[#8fa3bf]">{goal}</span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-[#8fa3bf]">
+                  {ANALYSIS_GOAL_HINTS[goal]}
+                </span>
               </span>
             </button>
           );
@@ -115,7 +92,7 @@ export function AnalysisObjectivesPicker({
         <label className={`${ni.field} mt-4 max-w-md`}>
           <span className={ni.label}>Objetivo prioritário</span>
           <select
-            className={ni.input}
+            className={`${ni.input} px-3 pr-8`}
             disabled={disabled}
             value={value.primaryGoal}
             onChange={(event) =>
@@ -133,50 +110,6 @@ export function AnalysisObjectivesPicker({
           </select>
         </label>
       ) : null}
-
-      {selected.length ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {selected.map((goal) => {
-            const def = getGoalDefinition(goal);
-            const placeholder =
-              def.defaultTargetUnit === "PERCENT"
-                ? "ex.: 4"
-                : def.defaultTargetUnit === "BRL"
-                  ? "ex.: 6,00"
-                  : "ex.: 50";
-            return (
-              <label key={goal} className={ni.field}>
-                <span className={ni.label}>
-                  Meta opcional — {ANALYSIS_GOAL_LABELS[goal]} ({def.defaultTargetUnit})
-                </span>
-                <input
-                  className={ni.input}
-                  disabled={disabled}
-                  inputMode="decimal"
-                  placeholder={placeholder}
-                  value={targetValueFor(value.targets, goal)}
-                  onChange={(event) =>
-                    onChange({
-                      ...value,
-                      targets: upsertTarget(value.targets, goal, event.target.value),
-                    })
-                  }
-                />
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
-
-      <p className={`mt-4 text-sm text-[#c5d3e6]`}>
-        Resultado analisado:{" "}
-        <span className="font-medium text-white">
-          {resultEventLabel?.trim() || "Conversões (definir pelo export Meta)"}
-        </span>
-        {resultEventKey ? (
-          <span className="mt-1 block font-mono text-[11px] text-[#8fa3bf]">{resultEventKey}</span>
-        ) : null}
-      </p>
     </section>
   );
 }

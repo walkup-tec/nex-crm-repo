@@ -7,6 +7,10 @@ import {
   type GoalTargetUnit,
 } from "@/lib/nex-intelligence/goals/types";
 import { getGoalDefinition } from "@/lib/nex-intelligence/goals/definitions";
+import {
+  isTechnicalMetaResultEventKey,
+  resolveTechnicalResultEventKey,
+} from "@/lib/nex-intelligence/goals/result-event";
 
 const GOAL_SET = new Set<string>(ANALYSIS_GOALS);
 
@@ -93,10 +97,18 @@ export function validateAnalysisObjectives(raw: unknown): ValidateObjectivesResu
     }
   }
 
-  const resultEventKey =
+  const rawResultEventKey =
     typeof row.resultEventKey === "string" && row.resultEventKey.trim()
       ? row.resultEventKey.trim()
       : undefined;
+  if (rawResultEventKey && !isTechnicalMetaResultEventKey(rawResultEventKey)) {
+    return {
+      ok: false,
+      message:
+        "resultEventKey deve ser a chave técnica do evento Meta (ex.: onsite_conversion.messaging_conversation_started_7d), não um rótulo como Conversões.",
+    };
+  }
+  const resultEventKey = resolveTechnicalResultEventKey([rawResultEventKey]);
 
   return {
     ok: true,

@@ -9,6 +9,7 @@ import {
 } from "@/lib/nex-intelligence/pipeline/context";
 import type { PersistedAnalyticalOutputV130 } from "@/lib/nex-intelligence/pipeline/persistence-contract";
 import { buildBackendMetricTraceCatalog } from "@/lib/nex-intelligence/trace/build-catalog";
+import { buildBackendTraceabilityWithComparisons } from "@/lib/nex-intelligence/trace/build-comparisons";
 import type { MetricTraceability } from "@/lib/nex-intelligence/trace";
 import {
   processMetaAiRecommendations,
@@ -57,11 +58,41 @@ export async function runMetaAnalysis(input: RunMetaAnalysisInput): Promise<RunM
       ? "partial"
       : "ok";
 
-  // Camada C ANTES da OpenAI: catálogo completo de traces verificáveis.
-  const backendTraceability =
-    input.backendTraceability ?? buildBackendMetricTraceCatalog(input.payload, input.quality);
+  // Camada C ANTES da OpenAI: métricas + comparações determinísticas verificáveis.
+  const withComparisons =
+    input.backendTraceability == null
+      ? buildBackendTraceabilityWithComparisons({
+          payload: input.payload,
+          quality: input.quality,
+          objectives: input.payload.metadata.analysis_objectives,
+        })
+      : {
+          catalog: input.backendTraceability,
+          comparisons: input.backendTraceability.records
+            .filter((row) => row.trace_id.startsWith("nx-cmp-") && row.calculation.comparable)
+            .map((row) => ({
+              comparison_ref: row.trace_id,
+              kind: row.trace_id.includes("-period-")
+                ? ("PERIOD" as const)
+                : ("ENTITY" as const),
+              entity_level: row.entity_level as "campaign" | "adset" | "ad",
+              entity_id: row.entity_id,
+              other_entity_id: row.calculation.participant_entity_ids?.[1],
+              metric: row.metric,
+              operator: "delta_pct" as const,
+              left_value: Number(row.calculation.inputs.left_value ?? 0),
+              right_value: Number(row.calculation.inputs.right_value ?? 0),
+              delta: Number(row.calculation.result ?? 0),
+              result_event:
+                typeof row.calculation.result_event === "string"
+                  ? row.calculation.result_event
+                  : null,
+            })),
+        };
+  const backendTraceability = withComparisons.catalog;
   const analysisUserPrompt =
-    input.analysisUserPrompt ?? metaAiUserPrompt(input.payload, backendTraceability);
+    input.analysisUserPrompt ??
+    metaAiUserPrompt(input.payload, backendTraceability, withComparisons.comparisons);
 
   let processed: ProcessRecommendationsResult | null = null;
 

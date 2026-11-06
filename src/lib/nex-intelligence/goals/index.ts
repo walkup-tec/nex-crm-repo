@@ -6,3 +6,4 @@ export * from "@/lib/nex-intelligence/goals/prompt";
 export * from "@/lib/nex-intelligence/goals/defaults";
 export * from "@/lib/nex-intelligence/goals/scope-export";
 export * from "@/lib/nex-intelligence/goals/rank";
+export * from "@/lib/nex-intelligence/goals/result-event";

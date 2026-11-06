@@ -39,7 +39,10 @@ export function formatObjectivesForPrompt(objectives: AnalysisObjectives): strin
     "Separe explicitamente: (1) otimizações/testes executáveis com evidência suficiente, (2) investigações necessárias, (3) monitoramento — monitoramento NÃO é otimização aplicável.",
   );
   lines.push(
-    "Toda recomendação executável deve citar entity_id real, objetivo relacionado, evidência, intervenção, possíveis efeitos colaterais e critério de validação.",
+    "Toda recomendação executável deve citar entity_id real, objetivo relacionado, evidência (metric_refs + comparison_ref de available_comparisons), intervenção, risco/trade-off e critério de validação.",
+  );
+  lines.push(
+    "Não invente comparison_ref nem evidence_level. Sem comparison_ref listado, publique apenas MONITOR/investigação estruturada explicando a evidência faltante.",
   );
   lines.push(
     "Não use combinações pré-codificadas: derive o cruzamento a partir dos objetivos selecionados e das métricas acima.",

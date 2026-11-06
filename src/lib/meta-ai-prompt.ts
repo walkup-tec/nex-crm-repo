@@ -5,6 +5,10 @@ import type { MetricTraceability } from "@/lib/nex-intelligence/trace";
 import {
   availableTraceRefs,
 } from "@/lib/nex-intelligence/trace/build-catalog";
+import {
+  summarizeAvailableComparisonsForPrompt,
+  type ValidatedComparisonRef,
+} from "@/lib/nex-intelligence/trace/build-comparisons";
 import { summarizeAvailableTracesForPrompt } from "@/lib/nex-intelligence/trace/rebind";
 
 export type { MetaAiAnalysisResult } from "@/lib/meta-ai-calibration";
@@ -12,19 +16,28 @@ export type { MetaAiAnalysisResult } from "@/lib/meta-ai-calibration";
 export function metaAiUserPrompt(
   payload: NexMetaAnalysisV1,
   backendTraceability?: MetricTraceability,
+  availableComparisons?: ValidatedComparisonRef[],
 ) {
   const quality = (payload as { data_quality?: { status?: string; compromised_metrics?: string[] } })
     .data_quality;
   const computed = (payload as { computed_metrics?: { spend_total?: number | null } }).computed_metrics;
+  const metricRefs = backendTraceability
+    ? availableTraceRefs(backendTraceability, payload).filter(
+        (row) => !row.trace_id.startsWith("nx-cmp-"),
+      )
+    : [];
   const traceBlock = backendTraceability
-    ? summarizeAvailableTracesForPrompt(availableTraceRefs(backendTraceability, payload))
+    ? summarizeAvailableTracesForPrompt(metricRefs)
     : "available_traces: (catálogo será aplicado deterministicamente no backend)";
+  const comparisonBlock = summarizeAvailableComparisonsForPrompt(availableComparisons ?? []);
   const objectives = payload.metadata.analysis_objectives;
   const objectivesBlock = objectives ? formatObjectivesForPrompt(objectives) : "";
   return [
     "Analise o desempenho Meta Ads deste export NEX (schema 1.0.0, motor 1.3.0). Responda em JSON estruturado nex_intelligence_analysis_v1_3_0 com observations[] factuais (sem rótulos qualitativos sem comparação), recommendations[] com evidence_level/comparison quando E2+ e executive_points[] (preferir claim_ir tipado).",
     "NÃO invente metric_traceability. Use APENAS trace_ids listados em available_traces (entity_id+metric). O NEX descarta traces criados pela IA e reassocia deterministicamente.",
-    "CTR isolado não autoriza otimização de criativo nem escala.",
+    "NÃO invente comparison_ref. Use APENAS ids de available_comparisons. Sem comparison_ref válido, STRATEGIC_TEST/CAUSAL_HYPOTHESIS não alcançam E3.",
+    "CTR isolado não autoriza otimização de criativo nem escala. Priorize métricas dos objetivos selecionados (results, cost_per_result, etc.).",
+    "Cada proposta operacional deve informar: objetivo relacionado, entity_id real, problema, evidência (metric_refs + comparison_ref), ação, hipótese, risco/trade-off, critério de validação e confiança — sem atribuir evidence_level próprio.",
     `Cliente: ${payload.metadata.client_name}`,
     `Conta: ${payload.account.name} (${payload.account.id})`,
     `Período: ${payload.period.since ?? "?"} a ${payload.period.until ?? "?"} (${payload.period.timezone})`,
@@ -39,6 +52,8 @@ export function metaAiUserPrompt(
     objectivesBlock,
     objectivesBlock ? "" : "",
     traceBlock,
+    "",
+    comparisonBlock,
     "",
     "JSON:",
     JSON.stringify(payload),

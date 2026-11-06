@@ -83,4 +83,12 @@ describe("validateAnalysisObjectives", () => {
       );
     }
   });
+
+  it("rejeita resultEventKey de rótulo Conversões", () => {
+    const result = validateAnalysisObjectives({
+      selectedGoals: ["INCREASE_RESULTS"],
+      resultEventKey: "Conversões",
+    });
+    assert.equal(result.ok, false);
+  });
 });

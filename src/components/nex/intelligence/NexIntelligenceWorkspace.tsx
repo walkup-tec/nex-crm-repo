@@ -551,12 +551,22 @@ export function NexIntelligenceWorkspace() {
       analysisObjectives.selectedGoals.length > 0
         ? analysisObjectives
         : defaultAnalysisObjectives();
+    const technicalResultEventCandidates = [
+      objectivesPayload.resultEventKey,
+      dashboard.resultEventLabel,
+      ...dashboard.campaigns.map((row) => row.resultMetric),
+      ...campaignChoices.map((row) => row.resultMetric),
+    ];
+    const technicalResultEvent = technicalResultEventCandidates.find(
+      (value) =>
+        typeof value === "string" &&
+        value.trim() &&
+        /[._]/.test(value) &&
+        !/^convers/i.test(value.trim()),
+    );
     const objectivesCheck = validateAnalysisObjectives({
       ...objectivesPayload,
-      resultEventKey:
-        objectivesPayload.resultEventKey ||
-        dashboard.resultEventLabel ||
-        undefined,
+      ...(technicalResultEvent ? { resultEventKey: technicalResultEvent } : { resultEventKey: undefined }),
     });
     if (!objectivesCheck.ok) {
       setError(objectivesCheck.message);

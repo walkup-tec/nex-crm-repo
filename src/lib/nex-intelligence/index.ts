@@ -3,6 +3,7 @@ export * from "@/lib/nex-intelligence/errors";
 export * from "@/lib/nex-intelligence/pipeline/context";
 export * from "@/lib/nex-intelligence/pipeline/state-machine";
 export * from "@/lib/nex-intelligence/pipeline/persistence-contract";
+export * from "@/lib/nex-intelligence/pipeline/progress";
 export { runMetaAnalysis } from "@/lib/nex-intelligence/pipeline/run-meta-analysis";
 export * from "@/lib/nex-intelligence/meta/normalize";
 export * from "@/lib/nex-intelligence/meta/result-events";

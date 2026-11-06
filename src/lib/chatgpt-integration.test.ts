@@ -114,6 +114,7 @@ const detail: MetaAiExecutionDetail = {
   analysisMarkdown: "# Análise",
   warnings: ["Alcance não deve ser somado."],
   errorMessage: "",
+  pipelineProgress: null,
   inputJson: sampleInput,
   outputJson: { analysis_markdown: "# Análise", model: "gpt-4o-mini" },
   calibrationFeedback: {},

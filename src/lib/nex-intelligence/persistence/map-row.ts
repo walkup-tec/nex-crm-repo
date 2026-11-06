@@ -5,6 +5,10 @@ import type {
   MetaAiExecutionSummary,
 } from "@/lib/meta-ai-calibration";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+import {
+  inferPipelineProgress,
+  readPipelineProgress,
+} from "@/lib/nex-intelligence/pipeline/progress";
 
 export function toMetaAiExecutionSummary(row: Record<string, unknown>): MetaAiExecutionSummary {
   const warnings = Array.isArray(row.warnings) ? row.warnings : [];
@@ -27,14 +31,33 @@ export function toMetaAiExecutionSummary(row: Record<string, unknown>): MetaAiEx
 }
 
 export function toMetaAiExecutionDetail(row: Record<string, unknown>): MetaAiExecutionDetail {
+  const summary = toMetaAiExecutionSummary(row);
+  const outputJson = (row.output_json as Record<string, unknown>) ?? {};
+  const analysisMarkdown = String(row.analysis_markdown ?? "");
+  const errorMessage = String(row.error_message ?? "");
+  const publicationStatus = row.publication_status ? String(row.publication_status) : null;
+  const pipelineProgress =
+    readPipelineProgress(outputJson) ??
+    inferPipelineProgress({
+      status: summary.status,
+      errorMessage,
+      accountId: summary.accountId,
+      model: summary.model,
+      analysisMarkdown,
+      publicationStatus,
+    });
   return {
-    ...toMetaAiExecutionSummary(row),
+    ...summary,
     periodTimezone: String(row.period_timezone ?? "America/Sao_Paulo"),
-    analysisMarkdown: String(row.analysis_markdown ?? ""),
+    analysisMarkdown,
     warnings: Array.isArray(row.warnings) ? row.warnings.map(String) : [],
-    errorMessage: String(row.error_message ?? ""),
+    errorMessage,
     inputJson: (row.input_json as NexMetaAnalysisV1) ?? {},
-    outputJson: (row.output_json as Record<string, unknown>) ?? {},
+    outputJson,
     calibrationFeedback: (row.calibration_feedback as MetaAiCalibrationFeedback) ?? {},
+    pipelineProgress,
+    executionStatusAxis: row.execution_status ? String(row.execution_status) : null,
+    analyticalStatus: row.analytical_status ? String(row.analytical_status) : null,
+    publicationStatus,
   };
 }

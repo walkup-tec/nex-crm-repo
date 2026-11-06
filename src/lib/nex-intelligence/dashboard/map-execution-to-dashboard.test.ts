@@ -22,6 +22,7 @@ function baseDetail(overrides?: Partial<MetaAiExecutionDetail>): MetaAiExecution
     analysisMarkdown: "ok",
     warnings: [],
     errorMessage: "",
+    pipelineProgress: null,
     inputJson: {
       schema_version: "1.0.0",
       metadata: {

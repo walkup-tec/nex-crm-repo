@@ -557,6 +557,7 @@ const quality = qualityWithBadResults();
     analysisMarkdown: ok.publishedMarkdown,
     warnings: [],
     errorMessage: "",
+    pipelineProgress: null,
     inputJson: { ...payload, data_quality: quality, computed_metrics: quality.computed_metrics },
     outputJson: {
       analysis_markdown: ok.publishedMarkdown,

@@ -1,7 +1,9 @@
 import type { MetaPeriod } from "@/lib/meta-access";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+import type { PipelineProgress } from "@/lib/nex-intelligence/pipeline/progress";
 
 export type MetaAiExecutionStatus = "ok" | "error" | "partial" | "running";
+export type { PipelineProgress };
 
 /** Intervalo de polling do laboratório enquanto status=running. */
 export const META_AI_POLL_INTERVAL_MS = 2500;
@@ -57,6 +59,11 @@ export type MetaAiExecutionDetail = MetaAiExecutionSummary & {
   inputJson: NexMetaAnalysisV1 | Record<string, unknown>;
   outputJson: Record<string, unknown>;
   calibrationFeedback: MetaAiCalibrationFeedback;
+  /** Etapas do pipeline (Coleta → Qualidade → IA → Publicação). */
+  pipelineProgress: PipelineProgress | null;
+  executionStatusAxis?: string | null;
+  analyticalStatus?: string | null;
+  publicationStatus?: string | null;
 };
 
 export type MetaAiAnalysisResult = {

@@ -10,7 +10,10 @@ import {
   type MetaAiCalibrationFeedback,
   type MetaAiExecutionDetail,
   type MetaAiExecutionSummary,
+  type PipelineProgress,
 } from "@/lib/meta-ai-calibration";
+import { createInitialPipelineProgress } from "@/lib/nex-intelligence/pipeline/progress";
+import { ExecutionPipelineStatus } from "@/components/nex/intelligence/ExecutionPipelineStatus";
 import {
   analyzeMetaWithAiFn,
   decideIntelligenceTaskFn,
@@ -149,6 +152,7 @@ export function NexIntelligenceWorkspace() {
     id: string;
     status: string;
     protocolVersion: string | null;
+    pipelineProgress: PipelineProgress | null;
   } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -557,7 +561,12 @@ export function NexIntelligenceWorkspace() {
       }
       executionId = started.data.executionId;
       setSelectedId(executionId);
-      setPendingRun({ id: executionId, status: "running", protocolVersion: null });
+      setPendingRun({
+        id: executionId,
+        status: "running",
+        protocolVersion: null,
+        pipelineProgress: createInitialPipelineProgress(),
+      });
       // Mantém `detail` da última consulta até a nova execução ficar terminal.
       setNotice("");
       await loadExecutions(orgId);
@@ -587,6 +596,7 @@ export function NexIntelligenceWorkspace() {
               id: executionId,
               status: "interrupted",
               protocolVersion: null,
+              pipelineProgress: null,
             });
             return;
           }
@@ -597,6 +607,7 @@ export function NexIntelligenceWorkspace() {
             id: executionId,
             status: nextDetail.status,
             protocolVersion: nextDetail.protocolVersion ?? null,
+            pipelineProgress: nextDetail.pipelineProgress,
           });
           if (isMetaAiExecutionTerminal(nextDetail.status)) break;
         } catch (pollError) {
@@ -619,6 +630,7 @@ export function NexIntelligenceWorkspace() {
             id: executionId,
             status: "interrupted",
             protocolVersion: null,
+            pipelineProgress: null,
           });
           return;
         }
@@ -634,12 +646,14 @@ export function NexIntelligenceWorkspace() {
           id: executionId,
           status: "interrupted",
           protocolVersion: nextDetail?.protocolVersion ?? null,
+          pipelineProgress: nextDetail?.pipelineProgress ?? null,
         });
         return;
       }
       if (nextDetail.status === "error") {
         setError(nextDetail.errorMessage || "A análise falhou.");
         setNotice("");
+        setDetail(nextDetail);
         setPendingRun(null);
         await loadExecutions(orgId);
         return;
@@ -653,7 +667,12 @@ export function NexIntelligenceWorkspace() {
       setError(friendlyAnalysisError(raw, executionId || undefined));
       setNotice("");
       if (executionId) {
-        setPendingRun({ id: executionId, status: "interrupted", protocolVersion: null });
+        setPendingRun({
+          id: executionId,
+          status: "interrupted",
+          protocolVersion: null,
+          pipelineProgress: null,
+        });
       } else {
         setPendingRun(null);
       }
@@ -1042,70 +1061,64 @@ export function NexIntelligenceWorkspace() {
           const inProgress =
             analyzing || loadingDetail || pendingRun?.status === "running";
           const interrupted = pendingRun?.status === "interrupted";
+          const failed =
+            detail?.status === "error" &&
+            (!pendingRun || pendingRun.id === detail.id) &&
+            !inProgress;
+          const pipelineProgress =
+            pendingRun?.pipelineProgress ??
+            (detail && (!pendingRun || pendingRun.id === detail.id)
+              ? detail.pipelineProgress
+              : null);
           if (!statusId && !analyzing && !loadingDetail) return null;
+
+          const overallTone = inProgress
+            ? "running"
+            : interrupted
+              ? "interrupted"
+              : failed
+                ? "error"
+                : statusId
+                  ? "completed"
+                  : "idle";
+          const overallLabel = inProgress
+            ? pendingRun?.status === "running" || analyzing
+              ? "em andamento"
+              : "carregando"
+            : interrupted
+              ? "acompanhamento interrompido"
+              : failed
+                ? "erro"
+                : dashboard.analyticalStatus && dashboard.analyticalStatus !== "running"
+                  ? dashboard.analyticalStatus
+                  : "concluída";
+          const footnoteParts: string[] = [];
+          if (!inProgress && !interrupted && !failed && dashboard.publicationStatus) {
+            footnoteParts.push(`pub ${dashboard.publicationStatus}`);
+          }
+          if (
+            analyzing &&
+            dashboard.executionId &&
+            pendingRun?.id &&
+            pendingRun.id !== dashboard.executionId
+          ) {
+            footnoteParts.push("exibindo última consulta");
+          }
+
           return (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#8fa3bf]">
-              {inProgress ? (
-                <Loader2
-                  className="size-3.5 shrink-0 animate-spin text-[#3ecbff]"
-                  aria-hidden
-                />
-              ) : null}
-              {statusId ? (
-                <>
-                  <span>Execução</span>
-                  <code className="rounded bg-[#07111f] px-1.5 py-0.5 font-mono text-[11px] text-[#7eb6ff]">
-                    {statusId}
-                  </code>
-                  {statusProtocol ? <span>· protocolo {statusProtocol}</span> : null}
-                  {inProgress ? (
-                    <span className="inline-flex items-center rounded-full border border-[#1d6feb]/35 bg-[#1d6feb]/10 px-2 py-0.5 text-[11px] font-medium text-[#9ec5ff]">
-                      em andamento
-                    </span>
-                  ) : interrupted ? (
-                    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200">
-                      acompanhamento interrompido
-                    </span>
-                  ) : dashboard.analyticalStatus &&
-                    dashboard.analyticalStatus !== "running" ? (
-                    <span>· {dashboard.analyticalStatus}</span>
-                  ) : dashboard.analyticalStatus === "running" ? (
-                    <span className="inline-flex items-center rounded-full border border-[#1d6feb]/35 bg-[#1d6feb]/10 px-2 py-0.5 text-[11px] font-medium text-[#9ec5ff]">
-                      em andamento no servidor
-                    </span>
-                  ) : null}
-                  {!inProgress && !interrupted && dashboard.publicationStatus ? (
-                    <span>· pub {dashboard.publicationStatus}</span>
-                  ) : null}
-                  {analyzing &&
-                  dashboard.executionId &&
-                  pendingRun?.id &&
-                  pendingRun.id !== dashboard.executionId ? (
-                    <span className="text-[#6b7f9a]">· exibindo última consulta</span>
-                  ) : null}
-                  {interrupted && pendingRun?.id ? (
-                    <button
-                      type="button"
-                      className="text-[#7eb6ff] underline-offset-2 hover:underline"
-                      onClick={() => void openExecution(pendingRun.id)}
-                    >
-                      Atualizar execução
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <span>{loadingDetail ? "Carregando execução…" : "Preparando análise…"}</span>
-              )}
-              <span className="sr-only">
-                {inProgress
-                  ? "Análise em andamento"
-                  : interrupted
-                    ? "Acompanhamento interrompido"
-                    : loadingDetail
-                      ? "Carregando execução"
-                      : "Execução carregada"}
-              </span>
-            </div>
+            <ExecutionPipelineStatus
+              executionId={statusId}
+              protocolVersion={statusProtocol}
+              overallTone={overallTone}
+              overallLabel={overallLabel}
+              pipelineProgress={pipelineProgress}
+              footnote={footnoteParts.length ? footnoteParts.join(" · ") : null}
+              onRefresh={
+                interrupted && pendingRun?.id
+                  ? () => void openExecution(pendingRun.id)
+                  : null
+              }
+            />
           );
         })()}
 

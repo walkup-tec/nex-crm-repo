@@ -20,6 +20,15 @@ import {
 } from "@/intelligence/meta-leads/protocol";
 import { attachDataQuality, validateMetaAnalysisData } from "@/lib/meta-data-quality";
 import { runMetaAnalysis } from "@/lib/nex-intelligence/pipeline/run-meta-analysis";
+import {
+  advancePipelineTo,
+  completeAllPipelineSteps,
+  createInitialPipelineProgress,
+  markPipelineStep,
+  withPipelineProgress,
+  type PipelineProgress,
+  type PipelineStepId,
+} from "@/lib/nex-intelligence/pipeline/progress";
 import { markPersistedOutputPublished } from "@/lib/nex-intelligence/persistence/build-analytical-output";
 import {
   toMetaAiExecutionDetail,
@@ -81,15 +90,66 @@ async function resolveClientName(organizationId: string): Promise<string> {
   return String(data?.commercial_name || data?.legal_name || "").trim();
 }
 
+async function persistPipelineProgress(executionId: string, progress: PipelineProgress) {
+  const { error } = await supabaseAdmin
+    .from("meta_ai_executions")
+    .update({
+      output_json: { pipeline_progress: progress } as never,
+    })
+    .eq("id", executionId);
+  if (error) {
+    console.error("meta_ai_pipeline_progress", migrationHint(error.message));
+  }
+}
+
+async function failExecutionWithStep(
+  executionId: string,
+  promptHash: string,
+  progress: PipelineProgress,
+  stepId: PipelineStepId,
+  message: string,
+) {
+  const failed = markPipelineStep(progress, stepId, "error", message);
+  await supabaseAdmin
+    .from("meta_ai_executions")
+    .update({
+      status: "error",
+      execution_status: "failed",
+      analytical_status: "FAILED",
+      publication_status: "failed_persist",
+      error_message: message.slice(0, 800),
+      prompt_hash: promptHash,
+      output_json: { pipeline_progress: failed } as never,
+    })
+    .eq("id", executionId);
+}
+
 async function runAndPersistAnalysis(executionId: string, userId: string, input: AnalyzeInput) {
   const promptHash = metaAiPromptHash();
+  let progress = createInitialPipelineProgress();
+  let currentStep: PipelineStepId = "meta_export";
   try {
+    progress = advancePipelineTo(progress, "meta_export");
+    currentStep = "meta_export";
+    await persistPipelineProgress(executionId, progress);
+
     const rawPayload = await exportMetaAnalysis(userId, input);
+    progress = markPipelineStep(progress, "meta_export", "completed");
+
+    progress = advancePipelineTo(progress, "data_quality");
+    currentStep = "data_quality";
+    await persistPipelineProgress(executionId, progress);
+
     const quality = validateMetaAnalysisData(rawPayload, {
       protocolVersion: META_AI_PROTOCOL_VERSION,
       engineVersion: META_AI_ENGINE_VERSION,
     });
     const payload = attachDataQuality(rawPayload, quality);
+    progress = markPipelineStep(progress, "data_quality", "completed");
+
+    progress = advancePipelineTo(progress, "ai_analysis");
+    currentStep = "ai_analysis";
+    await persistPipelineProgress(executionId, progress);
 
     const run = await runMetaAnalysis({
       payload,
@@ -101,12 +161,33 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
       requestOpenAi: (req) => requestOpenAiAnalysis(req),
     });
 
+    if (run.executionStatus === "error") {
+      await failExecutionWithStep(
+        executionId,
+        promptHash,
+        progress,
+        "ai_analysis",
+        run.errorMessage || "Falha na OpenAI.",
+      );
+      return;
+    }
+    progress = markPipelineStep(progress, "ai_analysis", "completed");
+
+    progress = advancePipelineTo(progress, "publication");
+    currentStep = "publication";
+    await persistPipelineProgress(executionId, progress);
+
     const status: MetaAiExecutionStatus = run.executionStatus;
     const publicationReady = run.processed.publicationStatus === "pending_persist";
     const persistedOutput = publicationReady
       ? markPersistedOutputPublished(run.outputJson)
       : run.outputJson;
     const publicationStatus = publicationReady ? "published" : "not_ready";
+    progress = completeAllPipelineSteps(progress);
+    const outputWithProgress = withPipelineProgress(
+      persistedOutput as Record<string, unknown>,
+      progress,
+    );
     const { error } = await supabaseAdmin
       .from("meta_ai_executions")
       .update({
@@ -122,7 +203,7 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
         period_until: payload.period.until,
         period_timezone: payload.period.timezone,
         input_json: payload,
-        output_json: persistedOutput as never,
+        output_json: outputWithProgress as never,
         analysis_markdown: publicationReady ? run.processed.publishedMarkdown : "",
         execution_status: status === "error" ? "failed" : "succeeded",
         analytical_status: run.analyticalStatus,
@@ -136,26 +217,18 @@ async function runAndPersistAnalysis(executionId: string, userId: string, input:
 
     if (error) {
       console.error("meta_ai_persist_update", migrationHint(error.message));
-      await supabaseAdmin
-        .from("meta_ai_executions")
-        .update({
-          status: "error",
-          error_message: migrationHint(error.message),
-          prompt_hash: promptHash,
-        })
-        .eq("id", executionId);
+      await failExecutionWithStep(
+        executionId,
+        promptHash,
+        progress,
+        "publication",
+        migrationHint(error.message),
+      );
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha na análise Meta IA.";
     console.error("meta_ai_background", /access_token|EAA[A-Za-z0-9]/.test(message) ? "redacted" : message);
-    await supabaseAdmin
-      .from("meta_ai_executions")
-      .update({
-        status: "error",
-        error_message: message.slice(0, 800),
-        prompt_hash: promptHash,
-      })
-      .eq("id", executionId);
+    await failExecutionWithStep(executionId, promptHash, progress, currentStep, message);
   }
 }
 
@@ -182,6 +255,7 @@ export async function startMetaAiAnalysis(
         }
       : {};
 
+  const initialProgress = createInitialPipelineProgress();
   const { data, error } = await supabaseAdmin
     .from("meta_ai_executions")
     .insert({
@@ -204,7 +278,7 @@ export async function startMetaAiAnalysis(
       period_until: periodUntil,
       period_timezone: "America/Sao_Paulo",
       input_json: {},
-      output_json: {},
+      output_json: { pipeline_progress: initialProgress } as never,
       analysis_markdown: "",
       warnings: [],
       error_message: "",

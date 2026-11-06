@@ -69,6 +69,7 @@ const detail: MetaAiExecutionDetail = {
   analysisMarkdown: "# Análise",
   warnings: [],
   errorMessage: "",
+  pipelineProgress: null,
   inputJson: sample,
   outputJson: { analysis_markdown: "# Análise" },
   calibrationFeedback: {},

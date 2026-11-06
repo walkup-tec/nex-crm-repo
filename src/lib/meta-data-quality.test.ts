@@ -420,6 +420,7 @@ const emptyInsights = {
     analysisMarkdown: "# Análise",
     warnings: [],
     errorMessage: "",
+    pipelineProgress: null,
     inputJson: payload,
     outputJson: { analysis_markdown: "# Análise" },
     calibrationFeedback: {},

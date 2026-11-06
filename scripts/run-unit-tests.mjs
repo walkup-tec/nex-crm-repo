@@ -17,6 +17,7 @@ const META_TEST_FILES = [
   "src/lib/meta-recommendation-validation.test.ts",
   "src/lib/nex-deploy.test.ts",
   "src/lib/nex-intelligence/nex-intelligence-historical-regression.test.ts",
+  "src/lib/nex-intelligence/pipeline/progress.test.ts",
   "src/lib/nex-intelligence/pipeline/run-meta-analysis.pipeline.test.ts",
   "src/lib/nex-intelligence/pipeline/four-campaign-ctr-acceptance.test.ts",
   "src/lib/nex-intelligence/pipeline/v120-qualitative-spend-regression.test.ts",

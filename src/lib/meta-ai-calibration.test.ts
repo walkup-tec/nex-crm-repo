@@ -143,6 +143,7 @@ assert.equal(isMetaAiExecutionTerminal("error"), true);
     analysisMarkdown: "# ok",
     warnings: [],
     errorMessage: "",
+    pipelineProgress: null,
     inputJson: {
       metadata: { data_status: "live" },
       campaigns: [{ id: "c1" }],

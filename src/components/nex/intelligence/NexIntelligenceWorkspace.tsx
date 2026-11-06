@@ -165,6 +165,7 @@ export function NexIntelligenceWorkspace() {
   const [liveSeries, setLiveSeries] = useState<DailySeriesPoint[]>([]);
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [addingTask, setAddingTask] = useState(false);
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState({
     precision: "",
@@ -760,6 +761,69 @@ export function NexIntelligenceWorkspace() {
     setNotice("Rejeição registrada (histórico auditável preservado).");
   };
 
+  const onAddManualTask = async (input: {
+    title: string;
+    kind: SuggestedTask["kind"];
+    justification: string;
+    decision: "PENDING" | "APPLIED" | "REJECTED";
+  }) => {
+    if (!detail) {
+      setError("Gere ou abra uma análise antes de adicionar otimizações.");
+      return;
+    }
+    setAddingTask(true);
+    setError("");
+    const claimId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? `manual-${crypto.randomUUID()}`
+        : `manual-${Date.now()}`;
+    const entityId =
+      campaignIds.length === 1 ? campaignIds[0]! : campaignIds[0] ?? detail.accountId ?? null;
+    const draft: SuggestedTask = {
+      id: claimId,
+      claimId,
+      title: input.title,
+      justification: input.justification,
+      priority: "high",
+      evidenceLevel: null,
+      kind: input.kind,
+      entityLevel: campaignIds.length >= 1 ? "campaign" : "account",
+      entityId,
+      status: "PENDING",
+      appliedAt: null,
+    };
+    const synced = await syncIntelligenceTasksFn({
+      data: {
+        executionId: detail.id,
+        organizationId: detail.organizationId,
+        adAccountId: detail.accountId,
+        tasks: [draft],
+      },
+    });
+    if (!synced.ok) {
+      setAddingTask(false);
+      setError(synced.message);
+      return;
+    }
+    setPersistedTasks(synced.data);
+    const created = synced.data.find((row) => row.claimId === claimId);
+    if (!created) {
+      setAddingTask(false);
+      setError("A otimização foi salva, mas não retornou na lista.");
+      return;
+    }
+    setAddingTask(false);
+    if (input.decision === "APPLIED") {
+      await onApplyTask(created);
+      return;
+    }
+    if (input.decision === "REJECTED") {
+      await onRejectTask(created);
+      return;
+    }
+    setNotice("Otimização adicionada com prioridade alta.");
+  };
+
   const saveFeedback = async () => {
     if (!selectedId) return;
     setSavingFeedback(true);
@@ -1231,7 +1295,10 @@ export function NexIntelligenceWorkspace() {
               tasks={tasks}
               onApply={(task) => void onApplyTask(task)}
               onReject={(task) => void onRejectTask(task)}
+              onAdd={(input) => onAddManualTask(input)}
               busyId={busyTaskId}
+              adding={addingTask}
+              canAdd={Boolean(detail?.id)}
             />
             <ClientCommunicationComposer
               clientName={dashboard.clientName || (selectedClient ? clientDisplayName(selectedClient) : "")}

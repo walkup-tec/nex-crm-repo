@@ -67,6 +67,8 @@ export type SuggestedTask = {
   kind: "action" | "test" | "hypothesis" | "monitor";
   entityLevel: string | null;
   entityId: string | null;
+  /** Nome amigável da entidade (campanha/conjunto/anúncio), quando resolvível. */
+  entityName: string | null;
   status: "PENDING" | "APPLIED" | "REJECTED" | "IN_PROGRESS";
   appliedAt: string | null;
 };

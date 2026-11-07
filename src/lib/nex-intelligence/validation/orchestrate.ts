@@ -411,6 +411,7 @@ export async function processMetaAiRecommendations(input: {
     for (const candidate of buildStrategicTestCandidates({
       objectives,
       comparisons: availableComparisons,
+      payload: input.payload,
       limit: 3,
     })) {
       if (!claimDrafts.has(candidate.claim_id)) {

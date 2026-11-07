@@ -181,7 +181,7 @@ export function ManualAnalysisOverview({ dashboard, comparisons }: Props) {
 
       <section className={`${ni.card} px-4 py-3`}>
         <h3 className="text-[15px] font-semibold text-white">
-          Evolução dos resultados ({dashboard.resultEventLabel || "Conversões"})
+          Evolução dos resultados
         </h3>
         {chartData.length === 0 ? (
           <p className={`mt-4 ${ni.muted}`}>Sem série diária verificável para o período.</p>

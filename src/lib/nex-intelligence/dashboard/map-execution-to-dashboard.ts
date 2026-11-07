@@ -22,6 +22,10 @@ import type {
   MetricQuality,
   SuggestedTask,
 } from "@/lib/nex-intelligence/dashboard/types";
+import {
+  humanizeEntityMentionsInText,
+  resolveEntityDisplayName,
+} from "@/lib/nex-intelligence/dashboard/entity-labels";
 
 const METRIC_META: Record<
   MetricKey,
@@ -437,7 +441,11 @@ function extractApprovedClaims(outputJson: Record<string, unknown>): unknown[] {
   return Array.isArray(approved) ? approved : [];
 }
 
-function claimToTask(raw: unknown, index: number): SuggestedTask | null {
+function claimToTask(
+  raw: unknown,
+  index: number,
+  payload: NexMetaAnalysisV1 | null,
+): SuggestedTask | null {
   const row = asRecord(raw);
   if (!row) return null;
   const claimId = typeof row.claim_id === "string" ? row.claim_id : `claim-${index}`;
@@ -489,16 +497,21 @@ function claimToTask(raw: unknown, index: number): SuggestedTask | null {
     return null;
   }
 
+  const entityLevel = typeof row.entity_level === "string" ? row.entity_level : null;
+  const entityId = typeof row.entity_id === "string" ? row.entity_id : null;
+  const entityName = resolveEntityDisplayName(payload, entityLevel, entityId);
+
   return {
     id: claimId,
     claimId,
-    title,
-    justification,
+    title: humanizeEntityMentionsInText(title, payload),
+    justification: humanizeEntityMentionsInText(justification, payload),
     priority,
     evidenceLevel,
     kind,
-    entityLevel: typeof row.entity_level === "string" ? row.entity_level : null,
-    entityId: typeof row.entity_id === "string" ? row.entity_id : null,
+    entityLevel,
+    entityId,
+    entityName,
     status: "PENDING",
     appliedAt: null,
   };
@@ -681,7 +694,7 @@ export function mapExecutionToDashboard(
 
   const comparisons = buildDayComparison(series, periodStart, periodEnd, dataStatus);
   const tasks = extractApprovedClaims(output)
-    .map((raw, index) => claimToTask(raw, index))
+    .map((raw, index) => claimToTask(raw, index, input))
     .filter((task): task is SuggestedTask => Boolean(task));
 
   const resultEventLabel =

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SuggestedTask } from "@/lib/nex-intelligence/dashboard/types";
+import { entityLevelLabel } from "@/lib/nex-intelligence/dashboard/entity-labels";
 import {
   MANUAL_TASK_PRESETS,
   findManualTaskPreset,
@@ -129,7 +130,9 @@ export function OptimizationTaskList({
                         <p className="font-medium leading-snug text-white">{task.title}</p>
                         <p className="mt-0.5 text-xs text-[#8fa3bf]">
                           {task.kind} · {task.evidenceLevel ?? "—"}
-                          {task.entityId ? ` · ${task.entityLevel}:${task.entityId}` : ""}
+                          {task.entityName || task.entityId
+                            ? ` · ${entityLevelLabel(task.entityLevel)}: ${task.entityName ?? task.entityId}`
+                            : ""}
                         </p>
                       </div>
                     </div>

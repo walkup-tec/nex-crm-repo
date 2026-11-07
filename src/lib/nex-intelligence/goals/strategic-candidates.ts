@@ -4,6 +4,8 @@ import type { AnalysisObjectives } from "@/lib/nex-intelligence/goals/types";
 import type { ValidatedComparisonRef } from "@/lib/nex-intelligence/trace/build-comparisons";
 import { normalizeCanonicalMetric } from "@/lib/nex-intelligence/trace";
 import type { ClaimIR } from "@/lib/nex-intelligence/claim-ir/schema";
+import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
+import { resolveEntityDisplayName } from "@/lib/nex-intelligence/dashboard/entity-labels";
 
 /**
  * Candidatos determinísticos de STRATEGIC_TEST a partir de comparisons validadas.
@@ -12,6 +14,7 @@ import type { ClaimIR } from "@/lib/nex-intelligence/claim-ir/schema";
 export function buildStrategicTestCandidates(input: {
   objectives: AnalysisObjectives;
   comparisons: ValidatedComparisonRef[];
+  payload?: NexMetaAnalysisV1 | null;
   limit?: number;
 }): ClaimIR[] {
   const composed = composeGoalAnalysis(input.objectives);
@@ -35,7 +38,11 @@ export function buildStrategicTestCandidates(input: {
   return ranked.map((row, index) => {
     const metric = normalizeCanonicalMetric(row.metric);
     const entityId = row.entity_id;
-    const other = row.other_entity_id ?? "peer";
+    const otherId = row.other_entity_id ?? "peer";
+    const leftName =
+      resolveEntityDisplayName(input.payload, row.entity_level, entityId) ?? entityId;
+    const rightName =
+      resolveEntityDisplayName(input.payload, row.entity_level, otherId) ?? otherId;
     const scalarRef = `nx-tr-${row.entity_level}-${entityId}-${metric}`;
     return {
       claim_id: `goal-candidate-${index + 1}-${metric}`,
@@ -44,7 +51,7 @@ export function buildStrategicTestCandidates(input: {
       entity_id: entityId,
       args: {
         action_kind: "scale_budget" as const,
-        action: `Testar redistribuição de orçamento entre \`${entityId}\` e \`${other}\` com base em ${metric}.`,
+        action: `Testar redistribuição de orçamento entre “${leftName}” e “${rightName}” com base em ${metric}.`,
         hypothesis: `Diferença observável de ${metric} entre entidades comparáveis pode indicar alocação ineficiente.`,
         validation_criterion: `${metric} da entidade priorizada melhora sem deteriorar o objetivo secundário no próximo período.`,
       },

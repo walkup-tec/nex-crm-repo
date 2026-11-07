@@ -43,6 +43,11 @@ import type {
   OptimizationMarker,
   SuggestedTask,
 } from "@/lib/nex-intelligence/dashboard/types";
+import {
+  humanizeEntityMentionsInText,
+  resolveEntityDisplayName,
+} from "@/lib/nex-intelligence/dashboard/entity-labels";
+import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { MetricCard } from "@/components/nex/intelligence/MetricCard";
 import { PerformanceChart } from "@/components/nex/intelligence/PerformanceChart";
@@ -217,7 +222,21 @@ export function NexIntelligenceWorkspace() {
     };
   }, [detail, campaignIds, markers, liveSeries, analyzing]);
 
-  const tasks = persistedTasks ?? dashboard.tasks;
+  const tasks = useMemo(() => {
+    const source = persistedTasks ?? dashboard.tasks;
+    const payload =
+      detail?.inputJson && typeof detail.inputJson === "object"
+        ? (detail.inputJson as NexMetaAnalysisV1)
+        : null;
+    return source.map((task) => ({
+      ...task,
+      title: humanizeEntityMentionsInText(task.title, payload),
+      justification: humanizeEntityMentionsInText(task.justification, payload),
+      entityName:
+        task.entityName ??
+        resolveEntityDisplayName(payload, task.entityLevel, task.entityId),
+    }));
+  }, [persistedTasks, dashboard.tasks, detail]);
   const activeComparisons = analyzing
     ? frozenDisplayRef.current?.comparisons?.length
       ? frozenDisplayRef.current.comparisons
@@ -833,6 +852,10 @@ export function NexIntelligenceWorkspace() {
       kind: input.kind,
       entityLevel: campaignIds.length >= 1 ? "campaign" : "account",
       entityId,
+      entityName:
+        campaignIds.length >= 1
+          ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
+          : detail.accountName || null,
       status: "PENDING",
       appliedAt: null,
     };

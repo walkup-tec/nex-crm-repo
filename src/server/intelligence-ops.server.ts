@@ -58,6 +58,7 @@ function rowToTask(row: TaskRow): SuggestedTask {
     kind: row.kind,
     entityLevel: row.entity_level,
     entityId: row.entity_id,
+    entityName: null,
     status: row.status,
     appliedAt: row.status === "APPLIED" ? row.updated_at : null,
   };

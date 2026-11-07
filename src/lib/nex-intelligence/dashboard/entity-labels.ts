@@ -38,6 +38,47 @@ export function resolveEntityDisplayName(
   return entityId;
 }
 
+/** Hierarquia Campanha → Conjunto → entidade alvo para exibição na tarefa. */
+export function resolveEntityHierarchy(
+  payload: NexMetaAnalysisV1 | null | undefined,
+  level: string | null | undefined,
+  entityId: string | null | undefined,
+): {
+  campaignName: string | null;
+  adsetName: string | null;
+  entityName: string | null;
+} {
+  const entityName = resolveEntityDisplayName(payload, level, entityId);
+  if (!payload || !level || !entityId) {
+    return { campaignName: null, adsetName: null, entityName };
+  }
+
+  if (level === "campaign") {
+    return { campaignName: entityName, adsetName: null, entityName };
+  }
+
+  if (level === "adset") {
+    const adset = payload.adsets.find((row) => row.id === entityId);
+    const campaignName = adset?.campaign_id
+      ? resolveEntityDisplayName(payload, "campaign", adset.campaign_id)
+      : null;
+    return { campaignName, adsetName: entityName, entityName };
+  }
+
+  if (level === "ad") {
+    const ad = payload.ads.find((row) => row.id === entityId);
+    const adsetName = ad?.adset_id
+      ? resolveEntityDisplayName(payload, "adset", ad.adset_id)
+      : null;
+    const campaignName = ad?.campaign_id
+      ? resolveEntityDisplayName(payload, "campaign", ad.campaign_id)
+      : null;
+    return { campaignName, adsetName, entityName };
+  }
+
+  return { campaignName: null, adsetName: null, entityName };
+}
+
 /**
  * Troca IDs entre crases por nomes no texto da ação.
  * Mantém entity_id técnico intacto no claim; só a apresentação muda.

@@ -25,7 +25,7 @@ import type {
 } from "@/lib/nex-intelligence/dashboard/types";
 import {
   humanizeEntityMentionsInText,
-  resolveEntityDisplayName,
+  resolveEntityHierarchy,
 } from "@/lib/nex-intelligence/dashboard/entity-labels";
 import type { StrategicRecommendation } from "@/lib/nex-intelligence/goals/strategic-recommendation";
 import { ANALYSIS_GOAL_LABELS } from "@/lib/nex-intelligence/goals/types";
@@ -503,7 +503,7 @@ function claimToTask(
 
   const entityLevel = typeof row.entity_level === "string" ? row.entity_level : null;
   const entityId = typeof row.entity_id === "string" ? row.entity_id : null;
-  const entityName = resolveEntityDisplayName(payload, entityLevel, entityId);
+  const hierarchy = resolveEntityHierarchy(payload, entityLevel, entityId);
 
   return {
     id: claimId,
@@ -515,7 +515,9 @@ function claimToTask(
     kind,
     entityLevel,
     entityId,
-    entityName,
+    entityName: hierarchy.entityName,
+    campaignName: hierarchy.campaignName,
+    adsetName: hierarchy.adsetName,
     detail: null,
     status: "PENDING",
     appliedAt: null,
@@ -745,11 +747,17 @@ export function mapExecutionToDashboard(
       const strategic = strategicById.get(task.claimId);
       if (!strategic) return task;
       const detail = strategicToDetail(strategic);
+      const focusName =
+        task.entityName ??
+        strategic.scope.entityNames[0] ??
+        null;
       return {
         ...task,
         title: strategic.title,
         justification: strategic.diagnosis.detectedProblem,
-        entityName: strategic.scope.entityNames[0] ?? task.entityName,
+        entityName: focusName,
+        campaignName: task.campaignName,
+        adsetName: task.adsetName,
         detail,
         priority:
           strategic.priorityScore >= 70 ? "high" : strategic.priorityScore >= 40 ? "medium" : "low",

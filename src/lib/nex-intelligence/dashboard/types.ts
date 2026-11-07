@@ -97,6 +97,10 @@ export type SuggestedTask = {
   entityId: string | null;
   /** Nome amigável da entidade (campanha/conjunto/anúncio), quando resolvível. */
   entityName: string | null;
+  /** Campanha pai da entidade alvo (desambiguação quando anúncios repetem nome). */
+  campaignName: string | null;
+  /** Conjunto pai da entidade alvo (quando nível é adset ou ad). */
+  adsetName: string | null;
   detail: SuggestedTaskDetail | null;
   status: "PENDING" | "APPLIED" | "REJECTED" | "IN_PROGRESS";
   appliedAt: string | null;

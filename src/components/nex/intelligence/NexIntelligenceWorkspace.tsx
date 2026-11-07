@@ -45,6 +45,7 @@ import type {
 import {
   humanizeEntityMentionsInText,
   resolveEntityDisplayName,
+  resolveEntityHierarchy,
 } from "@/lib/nex-intelligence/dashboard/entity-labels";
 import type { NexMetaAnalysisV1 } from "@/lib/meta-export";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
@@ -126,6 +127,22 @@ function friendlyAnalysisError(raw: string, executionId?: string) {
       : "A conexão caiu ao iniciar a análise. Tente novamente em instantes.";
   }
   return trimmed;
+}
+
+/** Rótulo amigável do status analítico na barra de execução (protocolo permanece interno). */
+function formatAnalyticalStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "COMPLETED":
+    case "PARTIAL_VALIDATED":
+    case "FALLBACK_DETERMINISTIC":
+      return "Concluída";
+    case "INSUFFICIENT_EVIDENCE":
+      return "Evidência insuficiente";
+    case "FAILED":
+      return "Falhou";
+    default:
+      return status?.trim() || "Concluída";
+  }
 }
 
 export function NexIntelligenceWorkspace() {
@@ -216,14 +233,20 @@ export function NexIntelligenceWorkspace() {
       detail?.inputJson && typeof detail.inputJson === "object"
         ? (detail.inputJson as NexMetaAnalysisV1)
         : null;
-    return source.map((task) => ({
-      ...task,
-      title: humanizeEntityMentionsInText(task.title, payload),
-      justification: humanizeEntityMentionsInText(task.justification, payload),
-      entityName:
-        task.entityName ??
-        resolveEntityDisplayName(payload, task.entityLevel, task.entityId),
-    }));
+    return source.map((task) => {
+      const hierarchy = resolveEntityHierarchy(payload, task.entityLevel, task.entityId);
+      return {
+        ...task,
+        title: humanizeEntityMentionsInText(task.title, payload),
+        justification: humanizeEntityMentionsInText(task.justification, payload),
+        entityName:
+          task.entityName ??
+          hierarchy.entityName ??
+          resolveEntityDisplayName(payload, task.entityLevel, task.entityId),
+        campaignName: task.campaignName ?? hierarchy.campaignName,
+        adsetName: task.adsetName ?? hierarchy.adsetName,
+      };
+    });
   }, [persistedTasks, dashboard.tasks, detail]);
   const activeComparisons = analyzing
     ? frozenDisplayRef.current?.comparisons?.length
@@ -837,6 +860,11 @@ export function NexIntelligenceWorkspace() {
         campaignIds.length >= 1
           ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
           : detail.accountName || null,
+      campaignName:
+        campaignIds.length >= 1
+          ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
+          : null,
+      adsetName: null,
       detail: null,
       status: "PENDING",
       appliedAt: null,
@@ -1149,9 +1177,11 @@ export function NexIntelligenceWorkspace() {
               ? "acompanhamento interrompido"
               : failed
                 ? "erro"
-                : dashboard.analyticalStatus && dashboard.analyticalStatus !== "running"
-                  ? dashboard.analyticalStatus
-                  : "concluída";
+                : formatAnalyticalStatusLabel(
+                    dashboard.analyticalStatus && dashboard.analyticalStatus !== "running"
+                      ? dashboard.analyticalStatus
+                      : null,
+                  );
           const footnoteParts: string[] = [];
           if (!inProgress && !interrupted && !failed && dashboard.publicationStatus) {
             footnoteParts.push(`pub ${dashboard.publicationStatus}`);

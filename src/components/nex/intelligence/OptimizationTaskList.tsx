@@ -144,15 +144,27 @@ export function OptimizationTaskList({
                           />
                           <div className="min-w-0">
                             <p className="font-medium leading-snug text-white">{task.title}</p>
-                            <p className="mt-0.5 text-xs text-[#8fa3bf]">
-                              {detail?.primaryGoal ? `${detail.primaryGoal} · ` : ""}
-                              {task.evidenceLevel ?? "—"}
-                              {detail?.entityNames?.length
-                                ? ` · ${detail.entityNames.slice(0, 3).join(", ")}${detail.entityNames.length > 3 ? "…" : ""}`
-                                : task.entityName || task.entityId
+                            <div className="mt-0.5 space-y-0.5 text-xs text-[#8fa3bf]">
+                              {task.campaignName &&
+                              (task.entityLevel === "ad" || task.entityLevel === "adset") ? (
+                                <p>
+                                  Campanha:{" "}
+                                  <span className="text-[#c5d3e6]">{task.campaignName}</span>
+                                </p>
+                              ) : null}
+                              {task.adsetName && task.entityLevel === "ad" ? (
+                                <p>
+                                  Conjunto:{" "}
+                                  <span className="text-[#c5d3e6]">{task.adsetName}</span>
+                                </p>
+                              ) : null}
+                              <p>
+                                {task.evidenceLevel ?? "—"}
+                                {task.entityName || task.entityId
                                   ? ` · ${entityLevelLabel(task.entityLevel)}: ${task.entityName ?? task.entityId}`
                                   : ""}
-                            </p>
+                              </p>
+                            </div>
                             {detail ? (
                               <button
                                 type="button"

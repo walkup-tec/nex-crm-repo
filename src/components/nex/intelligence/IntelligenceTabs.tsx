@@ -1,11 +1,10 @@
-import { CalendarDays, LineChart, SlidersHorizontal } from "lucide-react";
+import { LineChart, SlidersHorizontal } from "lucide-react";
 import { ni } from "@/components/nex/intelligence/intelligence-theme";
 
-export type IntelligenceTabId = "daily" | "manual" | "evolution";
+export type IntelligenceTabId = "manual" | "evolution";
 
-const TABS: Array<{ id: IntelligenceTabId; label: string; icon: typeof CalendarDays }> = [
-  { id: "daily", label: "Análise diária", icon: CalendarDays },
-  { id: "manual", label: "Análise manual", icon: SlidersHorizontal },
+const TABS: Array<{ id: IntelligenceTabId; label: string; icon: typeof SlidersHorizontal }> = [
+  { id: "manual", label: "Análise Performance", icon: SlidersHorizontal },
   { id: "evolution", label: "Evolução", icon: LineChart },
 ];
 

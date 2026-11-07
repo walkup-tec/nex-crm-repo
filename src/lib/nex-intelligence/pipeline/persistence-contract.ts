@@ -72,4 +72,6 @@ export type PersistedAnalyticalOutputV130 = PersistedAnalyticalOutputV120 & {
     data_quality_status: string;
     publication_status: string;
   };
+  /** Aditivo: recomendações estratégicas consolidadas com diagnóstico quantitativo. */
+  strategic_recommendations?: unknown[];
 };

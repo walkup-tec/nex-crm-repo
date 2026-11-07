@@ -38,7 +38,8 @@ import { validateRecommendationList } from "@/lib/nex-intelligence/validation/re
 import { validateClaimList } from "@/lib/nex-intelligence/validation/claims";
 import { processClaimIRPipeline } from "@/lib/nex-intelligence/claim-ir/process";
 import { buildValidatedReport } from "@/lib/nex-intelligence/publication/build-validated-report";
-import { buildStrategicTestCandidates } from "@/lib/nex-intelligence/goals/strategic-candidates";
+import { buildStrategicRecommendationPackage } from "@/lib/nex-intelligence/goals/strategic-candidates";
+import type { StrategicRecommendation } from "@/lib/nex-intelligence/goals/strategic-recommendation";
 
 export {
   buildCompromisedMetricIndex,
@@ -405,17 +406,23 @@ export async function processMetaAiRecommendations(input: {
     }));
 
   const objectives = input.payload.metadata.analysis_objectives;
-  // Sempre oferece candidatos determinísticos (IDs próprios). A IA pode trazer os seus;
-  // validateClaimIR aprova só os com evidence E3 real — não inventa comparação.
+  let strategicRecommendations: StrategicRecommendation[] = [];
+  // Pacote determinístico consolidado (diagnóstico quantitativo + 1 claim E3 por cluster).
   if (objectives?.selectedGoals?.length && availableComparisons.length) {
-    for (const candidate of buildStrategicTestCandidates({
+    const packaged = buildStrategicRecommendationPackage({
       objectives,
       comparisons: availableComparisons,
       payload: input.payload,
-      limit: 3,
-    })) {
-      if (!claimDrafts.has(candidate.claim_id)) {
-        claimDrafts.set(candidate.claim_id, candidate);
+      limit: 2,
+    });
+    strategicRecommendations = packaged.recommendations;
+    for (const candidate of packaged.claims) {
+      claimDrafts.set(candidate.claim_id, candidate);
+    }
+    // Remove apenas candidatos legados pairwise (goal-candidate-*), preservando drafts da IA.
+    if (packaged.claims.length) {
+      for (const id of [...claimDrafts.keys()]) {
+        if (id.startsWith("goal-candidate-")) claimDrafts.delete(id);
       }
     }
   }
@@ -428,6 +435,16 @@ export async function processMetaAiRecommendations(input: {
     availableComparisons,
     usedAiConclusions: true,
   });
+  // Só mantém recomendações cujo claim E3 foi aprovado.
+  const approvedStrategicIds = new Set(
+    claimIr.approved
+      .filter((row) => row.operation === "STRATEGIC_TEST")
+      .map((row) => row.claim_id),
+  );
+  strategicRecommendations = strategicRecommendations.filter((row) =>
+    approvedStrategicIds.has(row.id),
+  );
+
   const report = buildValidatedReport({
     payload: input.payload,
     quality: input.quality,
@@ -490,6 +507,7 @@ export async function processMetaAiRecommendations(input: {
     needsReview,
     analyticalStatus: finalStatus,
     claimIr,
+    strategicRecommendations,
     publicationStatus: report.publicationStatus,
     publicationGate: report.gate,
   };

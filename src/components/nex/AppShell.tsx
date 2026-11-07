@@ -85,7 +85,7 @@ const clientSections = [
     paths: ["/financeiro", "/usuarios", "/minha-conta"],
   },
 ] as const;
-const masterNav = [["/master", "Dashboard", Gauge], ["/master/clientes", "Clientes", BriefcaseBusiness], ["/usuarios", "Usuários", Users], ["/master/campanhas", "Campanhas", BarChart3], ["/master/analytic-meta-ia", "Lab. Calibração IA", Sparkles], ["/master/creditos-meta", "Créditos Meta", WalletCards], ["/master/financeiro", "Financeiro", CircleDollarSign], ["/master/criativos", "Criativos", FileImage], ["/master/configuracoes", "Configurações", Settings]] as const;
+const masterNav = [["/master", "Dashboard", Gauge], ["/master/clientes", "Clientes", BriefcaseBusiness], ["/usuarios", "Usuários", Users], ["/master/campanhas", "Campanhas", BarChart3], ["/master/analytic-meta-ia", "META IA Analytics", Sparkles], ["/master/creditos-meta", "Créditos Meta", WalletCards], ["/master/financeiro", "Financeiro", CircleDollarSign], ["/master/criativos", "Criativos", FileImage], ["/master/configuracoes", "Configurações", Settings]] as const;
 function useSignedInName() {
   const [name, setName] = useState("");
   useEffect(() => {

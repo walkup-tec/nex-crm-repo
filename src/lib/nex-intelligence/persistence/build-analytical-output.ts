@@ -77,6 +77,7 @@ export function buildPersistedAnalyticalOutput(input: {
       rejected_count: claimIr?.rejected.length ?? audit.rejected_recommendation_ids.length,
     },
     publication_gate: input.processed.publicationGate,
+    strategic_recommendations: input.processed.strategicRecommendations ?? [],
     statuses: {
       execution_status: executionStatus,
       analytical_status: String(input.processed.analyticalStatus),

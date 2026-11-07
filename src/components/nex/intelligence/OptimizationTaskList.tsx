@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { SuggestedTask } from "@/lib/nex-intelligence/dashboard/types";
 import { entityLevelLabel } from "@/lib/nex-intelligence/dashboard/entity-labels";
 import {
@@ -15,7 +15,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, CheckCircle2, Plus, X } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+
+function formatDetailValue(value: number | null, unit: string): string {
+  if (value == null || !Number.isFinite(value)) return "indisponível";
+  if (unit === "currency") {
+    return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+  if (unit === "ratio_pct") {
+    return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+  }
+  return value.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
 
 type ManualAddInput = {
   title: string;
@@ -61,6 +72,7 @@ export function OptimizationTaskList({
   const [presetId, setPresetId] = useState("");
   const [motivo, setMotivo] = useState("");
   const [editingMotivo, setEditingMotivo] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const preset = presetId ? findManualTaskPreset(presetId) : null;
   const motivoTrimmed = motivo.trim();
@@ -117,76 +129,204 @@ export function OptimizationTaskList({
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => (
-                <tr key={task.id} className="border-t border-[#1e3a5f]/50">
-                  <td className="px-4 py-3 align-middle">
-                    <div className="flex items-center gap-2.5">
-                      <TaskTypeIcon
-                        title={task.title}
-                        kind={task.kind}
-                        className="size-[18px] shrink-0 stroke-[1.75] text-[#3ecbff]"
-                      />
-                      <div className="min-w-0">
-                        <p className="font-medium leading-snug text-white">{task.title}</p>
-                        <p className="mt-0.5 text-xs text-[#8fa3bf]">
-                          {task.kind} · {task.evidenceLevel ?? "—"}
-                          {task.entityName || task.entityId
-                            ? ` · ${entityLevelLabel(task.entityLevel)}: ${task.entityName ?? task.entityId}`
-                            : ""}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-middle text-[#c5d3e6]">
-                    {task.justification || "—"}
-                  </td>
-                  <td className="px-4 py-3 align-middle">
-                    <span className={priorityClass(task.priority)}>
-                      {priorityLabel(task.priority)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 align-middle">
-                    <div className="flex min-h-8 items-center justify-center">
-                      {task.status === "APPLIED" ? (
-                        <div className="inline-flex items-center gap-2 whitespace-nowrap">
-                          <span className="inline-flex h-7 items-center gap-1.5 rounded-md bg-emerald-500/20 px-2.5 text-xs font-semibold text-emerald-300">
-                            <CheckCircle2 className="size-3.5" />
-                            Aplicado
-                          </span>
-                          {task.appliedAt ? (
-                            <span className="text-xs text-[#c5d3e6]">
-                              em {formatDateTime(task.appliedAt)}
-                            </span>
-                          ) : null}
+              {tasks.map((task) => {
+                const expanded = expandedId === task.id;
+                const detail = task.detail;
+                return (
+                  <Fragment key={task.id}>
+                    <tr className="border-t border-[#1e3a5f]/50">
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex items-start gap-2.5">
+                          <TaskTypeIcon
+                            title={task.title}
+                            kind={task.kind}
+                            className="mt-0.5 size-[18px] shrink-0 stroke-[1.75] text-[#3ecbff]"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-medium leading-snug text-white">{task.title}</p>
+                            <p className="mt-0.5 text-xs text-[#8fa3bf]">
+                              {detail?.primaryGoal ? `${detail.primaryGoal} · ` : ""}
+                              {task.evidenceLevel ?? "—"}
+                              {detail?.entityNames?.length
+                                ? ` · ${detail.entityNames.slice(0, 3).join(", ")}${detail.entityNames.length > 3 ? "…" : ""}`
+                                : task.entityName || task.entityId
+                                  ? ` · ${entityLevelLabel(task.entityLevel)}: ${task.entityName ?? task.entityId}`
+                                  : ""}
+                            </p>
+                            {detail ? (
+                              <button
+                                type="button"
+                                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-[#3ecbff] hover:text-white"
+                                onClick={() =>
+                                  setExpandedId(expanded ? null : task.id)
+                                }
+                              >
+                                {expanded ? (
+                                  <>
+                                    Ocultar justificativa <ChevronUp className="size-3.5" />
+                                  </>
+                                ) : (
+                                  <>
+                                    Ver justificativa <ChevronDown className="size-3.5" />
+                                  </>
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
-                      ) : task.status === "REJECTED" ? (
-                        <span className={ni.badgeNeu}>Rejeitado</span>
-                      ) : (
-                        <div className="inline-flex h-7 overflow-hidden rounded-md border border-[#2a4060] bg-[#07111f]">
-                          <button
-                            type="button"
-                            className="inline-flex h-full items-center gap-1 border-r border-[#2a4060] px-2.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15 disabled:opacity-50"
-                            disabled={busyId === task.id}
-                            onClick={() => onApply?.(task)}
-                          >
-                            <Check className="size-3.5" />
-                            Aplicar
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex h-full items-center gap-1 px-2.5 text-xs font-medium text-[#9db0c9] transition-colors hover:bg-[#122038] hover:text-white disabled:opacity-50"
-                            disabled={busyId === task.id}
-                            onClick={() => onReject?.(task)}
-                          >
-                            <X className="size-3.5" />
-                            Rejeitar
-                          </button>
+                      </td>
+                      <td className="px-4 py-3 align-middle text-[#c5d3e6]">
+                        {task.justification || "—"}
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <span className={priorityClass(task.priority)}>
+                          {priorityLabel(task.priority)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex min-h-8 items-center justify-center">
+                          {task.status === "APPLIED" ? (
+                            <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                              <span className="inline-flex h-7 items-center gap-1.5 rounded-md bg-emerald-500/20 px-2.5 text-xs font-semibold text-emerald-300">
+                                <CheckCircle2 className="size-3.5" />
+                                Aplicado
+                              </span>
+                              {task.appliedAt ? (
+                                <span className="text-xs text-[#c5d3e6]">
+                                  em {formatDateTime(task.appliedAt)}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : task.status === "REJECTED" ? (
+                            <span className={ni.badgeNeu}>Rejeitado</span>
+                          ) : (
+                            <div className="inline-flex h-7 overflow-hidden rounded-md border border-[#2a4060] bg-[#07111f]">
+                              <button
+                                type="button"
+                                className="inline-flex h-full items-center gap-1 border-r border-[#2a4060] px-2.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15 disabled:opacity-50"
+                                disabled={busyId === task.id}
+                                onClick={() => onApply?.(task)}
+                              >
+                                <Check className="size-3.5" />
+                                Aplicar
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex h-full items-center gap-1 px-2.5 text-xs font-medium text-[#9db0c9] transition-colors hover:bg-[#122038] hover:text-white disabled:opacity-50"
+                                disabled={busyId === task.id}
+                                onClick={() => onReject?.(task)}
+                              >
+                                <X className="size-3.5" />
+                                Rejeitar
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </td>
+                    </tr>
+                    {expanded && detail ? (
+                      <tr className="border-t border-[#1e3a5f]/30 bg-[#07111f]/55">
+                        <td colSpan={4} className="px-4 py-4">
+                          <div className="grid gap-4 text-sm text-[#c5d3e6] xl:grid-cols-2">
+                            <section>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#8fa3bf]">
+                                1. Diagnóstico
+                              </h4>
+                              <p>{detail.detectedProblem || detail.diagnosisSummary}</p>
+                              {detail.opportunity ? (
+                                <p className="mt-2 text-[#9db0c9]">{detail.opportunity}</p>
+                              ) : null}
+                            </section>
+                            <section>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#8fa3bf]">
+                                2. Comparativo
+                              </h4>
+                              {detail.metricRows.length ? (
+                                <div className="overflow-x-auto rounded-md border border-[#1e3a5f]/70">
+                                  <table className="w-full min-w-[360px] text-left text-xs">
+                                    <thead className="bg-[#050c1a] text-[#8fa3bf]">
+                                      <tr>
+                                        <th className="px-2 py-1.5">Indicador</th>
+                                        {detail.metricRows[0]?.cells.map((cell) => (
+                                          <th key={cell.entityId} className="px-2 py-1.5">
+                                            {cell.entityName}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {detail.metricRows.slice(0, 8).map((row) => (
+                                        <tr key={row.metric} className="border-t border-[#1e3a5f]/40">
+                                          <td className="px-2 py-1.5 text-white">{row.label}</td>
+                                          {row.cells.map((cell) => (
+                                            <td key={cell.entityId} className="px-2 py-1.5 tabular-nums">
+                                              {formatDetailValue(cell.value, row.unit)}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <p className={ni.muted}>Sem métricas verificáveis para a tabela.</p>
+                              )}
+                            </section>
+                            <section>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#8fa3bf]">
+                                3. Por que pode melhorar
+                              </h4>
+                              <p>{detail.mechanism}</p>
+                              {detail.expectedDirection ? (
+                                <p className="mt-2 text-[#9db0c9]">Direção esperada: {detail.expectedDirection}</p>
+                              ) : null}
+                            </section>
+                            <section>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#8fa3bf]">
+                                4. O que fazer
+                              </h4>
+                              <ol className="list-decimal space-y-1 pl-4">
+                                {detail.actionSteps.map((step) => (
+                                  <li key={step}>{step}</li>
+                                ))}
+                              </ol>
+                            </section>
+                            <section>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#8fa3bf]">
+                                5. Riscos e pré-requisitos
+                              </h4>
+                              <ul className="list-disc space-y-1 pl-4">
+                                {[...detail.prerequisites, ...detail.limitations].map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
+                            </section>
+                            <section>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#8fa3bf]">
+                                6–7. Validação e confiança
+                              </h4>
+                              <ul className="list-disc space-y-1 pl-4">
+                                {detail.successCriteria.map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
+                              <p className="mt-2 text-xs text-[#8fa3bf]">
+                                Confiança: {detail.confidenceStatus ?? "—"} · Guardrails:{" "}
+                                {detail.guardrailMetrics.join(", ") || "—"}.
+                              </p>
+                              <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-[#9db0c9]">
+                                {detail.confidenceReasons.map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
+                            </section>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
 
               {draftOpen ? (
                 <tr className="border-t border-[#1e3a5f]/50 bg-[#07111f]/35">

@@ -21,11 +21,15 @@ import type {
   MetricKey,
   MetricQuality,
   SuggestedTask,
+  SuggestedTaskDetail,
 } from "@/lib/nex-intelligence/dashboard/types";
 import {
   humanizeEntityMentionsInText,
   resolveEntityDisplayName,
 } from "@/lib/nex-intelligence/dashboard/entity-labels";
+import type { StrategicRecommendation } from "@/lib/nex-intelligence/goals/strategic-recommendation";
+import { ANALYSIS_GOAL_LABELS } from "@/lib/nex-intelligence/goals/types";
+import type { AnalysisGoal } from "@/lib/nex-intelligence/goals/types";
 
 const METRIC_META: Record<
   MetricKey,
@@ -512,9 +516,47 @@ function claimToTask(
     entityLevel,
     entityId,
     entityName,
+    detail: null,
     status: "PENDING",
     appliedAt: null,
   };
+}
+
+function strategicToDetail(row: StrategicRecommendation): SuggestedTaskDetail {
+  return {
+    primaryGoal: ANALYSIS_GOAL_LABELS[row.primaryGoal as AnalysisGoal] ?? row.primaryGoal,
+    relatedGoals: row.relatedGoals.map(
+      (goal) => ANALYSIS_GOAL_LABELS[goal as AnalysisGoal] ?? goal,
+    ),
+    strategyType: row.strategyType,
+    entityNames: row.scope.entityNames,
+    diagnosisSummary: row.diagnosis.summary,
+    detectedProblem: row.diagnosis.detectedProblem,
+    opportunity: row.diagnosis.opportunity,
+    metricRows: row.diagnosis.metrics,
+    mechanism: row.rationale.mechanism,
+    expectedDirection: row.rationale.expectedDirection,
+    assumptions: row.rationale.assumptions,
+    limitations: row.rationale.limitations,
+    actionSteps: row.actionPlan.steps,
+    prerequisites: row.actionPlan.prerequisites,
+    executionLevel: row.actionPlan.executionLevel,
+    successCriteria: row.validationPlan.successCriteria,
+    guardrailMetrics: row.validationPlan.guardrailMetrics,
+    confidenceStatus: row.confidence.status,
+    confidenceReasons: row.confidence.reasons,
+    category:
+      row.confidence.status === "VALIDATED"
+        ? "optimization"
+        : row.confidence.status === "INVESTIGATION"
+          ? "investigation"
+          : "monitor",
+  };
+}
+
+function readStrategicRecommendations(output: Record<string, unknown>): StrategicRecommendation[] {
+  const raw = output.strategic_recommendations;
+  return Array.isArray(raw) ? (raw as StrategicRecommendation[]) : [];
 }
 
 function extractInsights(outputJson: Record<string, unknown>, tasks: SuggestedTask[]): InsightItem[] {
@@ -693,9 +735,26 @@ export function mapExecutionToDashboard(
   );
 
   const comparisons = buildDayComparison(series, periodStart, periodEnd, dataStatus);
+  const strategicById = new Map(
+    readStrategicRecommendations(output).map((row) => [row.id, row] as const),
+  );
   const tasks = extractApprovedClaims(output)
     .map((raw, index) => claimToTask(raw, index, input))
-    .filter((task): task is SuggestedTask => Boolean(task));
+    .filter((task): task is SuggestedTask => Boolean(task))
+    .map((task) => {
+      const strategic = strategicById.get(task.claimId);
+      if (!strategic) return task;
+      const detail = strategicToDetail(strategic);
+      return {
+        ...task,
+        title: strategic.title,
+        justification: strategic.diagnosis.detectedProblem,
+        entityName: strategic.scope.entityNames[0] ?? task.entityName,
+        detail,
+        priority:
+          strategic.priorityScore >= 70 ? "high" : strategic.priorityScore >= 40 ? "medium" : "low",
+      } satisfies SuggestedTask;
+    });
 
   const resultEventLabel =
     selectedCampaign?.result_metric?.trim() ||

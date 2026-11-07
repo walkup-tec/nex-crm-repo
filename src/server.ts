@@ -1,6 +1,5 @@
 import { startBillingNoticeRunner } from "./server/billing-notices.server";
 import { startChatbotReturnRunner } from "./server/chatbot.server";
-import { startIntelligenceDailyRunner } from "./server/intelligence-daily.server";
 import { runMetaBalanceProbe } from "./server/meta-balance-probe.server";
 import { runTransactionsDiagnose } from "./server/meta-transactions-diagnose.server";
 import "./lib/error-capture";
@@ -100,11 +99,12 @@ if (!metaBalanceProbeOnly && !transactionsDiagnoseOnly) {
     console.error("chatbot_return", error instanceof Error ? error.message : "falha");
   }
 
-  try {
-    startIntelligenceDailyRunner();
-  } catch (error) {
-    console.error("intelligence_daily", error instanceof Error ? error.message : "falha");
-  }
+  // Análise diária desativada na UI; runner permanece no código para reativação futura.
+  // try {
+  //   startIntelligenceDailyRunner();
+  // } catch (error) {
+  //   console.error("intelligence_daily", error instanceof Error ? error.message : "falha");
+  // }
 }
 
 if (metaBalanceProbeOnly) {

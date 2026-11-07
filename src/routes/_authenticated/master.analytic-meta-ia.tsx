@@ -5,12 +5,12 @@ import { MasterMetaAnalytics } from "@/components/nex/MasterMetaAnalytics";
 export const Route = createFileRoute("/_authenticated/master/analytic-meta-ia")({
   head: () => ({
     meta: [
-      { title: "Lab. Calibração IA — NEX Ads" },
+      { title: "META IA Analytics — NEX Ads" },
       {
         name: "description",
         content: "Laboratório Master para analisar Meta Ads com IA e calibrar o protocolo.",
       },
-      { property: "og:title", content: "Lab. Calibração IA — NEX Ads" },
+      { property: "og:title", content: "META IA Analytics — NEX Ads" },
       {
         property: "og:description",
         content: "Laboratório Master para analisar Meta Ads com IA e calibrar o protocolo.",
@@ -24,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/master/analytic-meta-ia")(
       live
       notes={false}
       master
-      title="Lab. Calibração IA"
+      title="META IA Analytics"
       subtitle="NEX Intelligence — execute, registre, avalie e exporte pacotes de calibração."
     >
       <MasterMetaAnalytics />

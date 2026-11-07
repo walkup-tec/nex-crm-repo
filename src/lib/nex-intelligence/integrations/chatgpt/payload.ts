@@ -181,6 +181,9 @@ export function buildChatgptMetaAnalysisPayload(
     semantic_validation: published ? persisted.semantic_validation ?? null : null,
     recommendation_validation: published ? persisted.recommendation_validation ?? null : null,
     recovery: published ? persisted.recovery ?? null : null,
+    strategic_recommendations: published
+      ? (persisted as { strategic_recommendations?: unknown[] }).strategic_recommendations ?? []
+      : [],
     report: { markdown: reportMarkdown },
     warnings: detail.warnings ?? [],
     error_message: detail.errorMessage?.trim() ? detail.errorMessage : null,

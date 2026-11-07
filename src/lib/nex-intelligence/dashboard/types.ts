@@ -57,6 +57,34 @@ export type InsightItem = {
   claimId: string | null;
 };
 
+export type SuggestedTaskDetail = {
+  primaryGoal: string | null;
+  relatedGoals: string[];
+  strategyType: string | null;
+  entityNames: string[];
+  diagnosisSummary: string | null;
+  detectedProblem: string | null;
+  opportunity: string | null;
+  metricRows: Array<{
+    metric: string;
+    label: string;
+    unit: string;
+    cells: Array<{ entityId: string; entityName: string; value: number | null }>;
+  }>;
+  mechanism: string | null;
+  expectedDirection: string | null;
+  assumptions: string[];
+  limitations: string[];
+  actionSteps: string[];
+  prerequisites: string[];
+  executionLevel: string | null;
+  successCriteria: string[];
+  guardrailMetrics: string[];
+  confidenceStatus: string | null;
+  confidenceReasons: string[];
+  category: "optimization" | "investigation" | "monitor";
+};
+
 export type SuggestedTask = {
   id: string;
   claimId: string;
@@ -69,6 +97,7 @@ export type SuggestedTask = {
   entityId: string | null;
   /** Nome amigável da entidade (campanha/conjunto/anúncio), quando resolvível. */
   entityName: string | null;
+  detail: SuggestedTaskDetail | null;
   status: "PENDING" | "APPLIED" | "REJECTED" | "IN_PROGRESS";
   appliedAt: string | null;
 };

@@ -141,6 +141,8 @@ export type ProcessRecommendationsResult = {
   needsReview: ValidatedRecommendation[];
   analyticalStatus: AnalyticalStatus;
   claimIr: ProcessClaimIRResult | null;
+  /** Recomendações estratégicas consolidadas (diagnóstico quantitativo backend). */
+  strategicRecommendations?: import("@/lib/nex-intelligence/goals/strategic-recommendation").StrategicRecommendation[];
   publicationStatus: "pending_persist" | "not_ready";
   publicationGate: {
     ok: boolean;

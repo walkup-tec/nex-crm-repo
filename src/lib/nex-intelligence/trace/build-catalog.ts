@@ -151,12 +151,16 @@ export function buildBackendMetricTraceCatalog(
       };
 
       const status = computeDeterministicTraceStatus(draft, payload, quality);
-      if (status.status !== "PASS") continue;
+      // Mantém scalars não-PASS visíveis no catálogo (status real). Só FAIL grave
+      // por entidade ausente/recompute impossível é omitido.
+      if (status.status === "FAIL" && status.reasons.some((r) => r.startsWith("entity_missing"))) {
+        continue;
+      }
       draft.validation = {
-        status: "PASS",
+        status: status.status,
         dependencies: dependenciesForMetric(metric),
-        check_codes: [],
-        reason: null,
+        check_codes: status.reasons,
+        reason: status.reasons[0] ?? null,
       };
       records.push(draft);
     }
@@ -172,6 +176,8 @@ export function availableTraceRefs(
   const out: AvailableTraceRef[] = [];
   for (const row of catalog.records) {
     if (row.entity_level === "account") continue;
+    if (row.trace_id.startsWith("nx-cmp-") || row.calculation.comparable === true) continue;
+    if (row.validation.status !== "PASS") continue;
     out.push({
       trace_id: row.trace_id,
       entity_level: row.entity_level,
@@ -182,6 +188,23 @@ export function availableTraceRefs(
     });
   }
   return out;
+}
+
+/** True se o catálogo base tem scalar PASS para entity+metric. */
+export function hasPassScalarTrace(
+  catalog: MetricTraceability,
+  level: BackendCatalogEntityLevel,
+  entityId: string,
+  metric: string,
+): boolean {
+  const id = stableTraceId(level, entityId, metric);
+  const row = catalog.records.find((r) => r.trace_id === id);
+  return Boolean(
+    row &&
+      row.validation.status === "PASS" &&
+      !row.calculation.comparable &&
+      !row.trace_id.startsWith("nx-cmp-"),
+  );
 }
 
 export function indexCatalogByEntityMetric(catalog: MetricTraceability) {

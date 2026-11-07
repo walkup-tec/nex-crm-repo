@@ -46,7 +46,7 @@ assert.notEqual(baseQuality.status, "FAIL");
   assert.ok(scoped.adsets.every((row) => row.campaign_id === "camp_eff"));
   assert.ok(scoped.ads.every((row) => row.campaign_id === "camp_eff"));
   assert.equal(scoped.adsets.length, 2);
-  assert.equal(scoped.ads.length, 2);
+  assert.equal(scoped.ads.length, 3);
   assert.ok(!scoped.campaigns.some((row) => row.id === "camp_leads"));
 }
 

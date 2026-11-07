@@ -12,6 +12,7 @@ import {
 import {
   BACKEND_CATALOG_METRICS,
   buildBackendMetricTraceCatalog,
+  hasPassScalarTrace,
   type BackendCatalogEntityLevel,
 } from "@/lib/nex-intelligence/trace/build-catalog";
 
@@ -162,6 +163,8 @@ export function buildValidatedComparisonRecords(input: {
   payload: NexMetaAnalysisV1;
   quality: MetaDataQualityReport;
   objectives?: AnalysisObjectives | null;
+  /** Catálogo scalar pré-computado; se omitido, é gerado aqui. */
+  scalarCatalog?: MetricTraceability;
 }): { records: MetricTraceRecord[]; refs: ValidatedComparisonRef[] } {
   const metrics = metricsForObjectives(input.objectives);
   const records: MetricTraceRecord[] = [];
@@ -169,6 +172,8 @@ export function buildValidatedComparisonRecords(input: {
   const preferredEvent = isTechnicalResultEvent(input.objectives?.resultEventKey)
     ? input.objectives!.resultEventKey!.trim()
     : null;
+  const scalarCatalog =
+    input.scalarCatalog ?? buildBackendMetricTraceCatalog(input.payload, input.quality);
 
   for (const level of ["campaign", "adset", "ad"] as const) {
     for (const [leftId, rightId] of entityPairs(input.payload, level)) {
@@ -181,6 +186,14 @@ export function buildValidatedComparisonRecords(input: {
           if (!isTechnicalResultEvent(leftEvent) || !isTechnicalResultEvent(rightEvent)) continue;
           if (leftEvent !== rightEvent) continue;
           if (preferredEvent && leftEvent !== preferredEvent) continue;
+        }
+
+        // Simetria: sem scalar PASS dos dois lados, não emitir nx-cmp (evita E2 fantasma).
+        if (
+          !hasPassScalarTrace(scalarCatalog, level, leftId, metric) ||
+          !hasPassScalarTrace(scalarCatalog, level, rightId, metric)
+        ) {
+          continue;
         }
 
         const left = recomputeMetricFromMeta(input.payload, level, leftId, metric);
@@ -261,6 +274,7 @@ export function buildValidatedComparisonRecords(input: {
     for (const metricRaw of metrics) {
       const metric = normalizeCanonicalMetric(metricRaw);
       if (needsCompatibleResultEvent(metric) && !isTechnicalResultEvent(event)) continue;
+      if (!hasPassScalarTrace(scalarCatalog, "campaign", campaign.id, metric)) continue;
 
       const baselineValue = sumDailyMetric(daily, window.baseline, metric);
       const currentValue = sumDailyMetric(daily, window.current, metric);
@@ -361,7 +375,10 @@ export function buildBackendTraceabilityWithComparisons(input: {
   objectives?: AnalysisObjectives | null;
 }): { catalog: MetricTraceability; comparisons: ValidatedComparisonRef[] } {
   const base = buildBackendMetricTraceCatalog(input.payload, input.quality);
-  const { records, refs } = buildValidatedComparisonRecords(input);
+  const { records, refs } = buildValidatedComparisonRecords({
+    ...input,
+    scalarCatalog: base,
+  });
   const byId = new Map(base.records.map((row) => [row.trace_id, row]));
   for (const row of records) byId.set(row.trace_id, row);
   return {

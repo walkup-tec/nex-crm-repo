@@ -38,6 +38,7 @@ import { validateRecommendationList } from "@/lib/nex-intelligence/validation/re
 import { validateClaimList } from "@/lib/nex-intelligence/validation/claims";
 import { processClaimIRPipeline } from "@/lib/nex-intelligence/claim-ir/process";
 import { buildValidatedReport } from "@/lib/nex-intelligence/publication/build-validated-report";
+import { buildStrategicTestCandidates } from "@/lib/nex-intelligence/goals/strategic-candidates";
 
 export {
   buildCompromisedMetricIndex,
@@ -385,11 +386,45 @@ export async function processMetaAiRecommendations(input: {
     const id = String(row?.claim_id ?? row?.id ?? `anonymous-${claimDrafts.size}`);
     claimDrafts.set(id, draft);
   }
+
+  const availableComparisons = backendCatalog.records
+    .filter((row) => row.trace_id.startsWith("nx-cmp-") && row.calculation.comparable === true)
+    .map((row) => ({
+      comparison_ref: row.trace_id,
+      kind: row.trace_id.includes("-period-") ? ("PERIOD" as const) : ("ENTITY" as const),
+      entity_level: row.entity_level as "campaign" | "adset" | "ad",
+      entity_id: row.entity_id,
+      other_entity_id: row.calculation.participant_entity_ids?.[1],
+      metric: row.metric,
+      operator: "delta_pct" as const,
+      left_value: Number(row.calculation.inputs.left_value ?? 0),
+      right_value: Number(row.calculation.inputs.right_value ?? 0),
+      delta: Number(row.calculation.result ?? 0),
+      result_event:
+        typeof row.calculation.result_event === "string" ? row.calculation.result_event : null,
+    }));
+
+  const objectives = input.payload.metadata.analysis_objectives;
+  // Sempre oferece candidatos determinísticos (IDs próprios). A IA pode trazer os seus;
+  // validateClaimIR aprova só os com evidence E3 real — não inventa comparação.
+  if (objectives?.selectedGoals?.length && availableComparisons.length) {
+    for (const candidate of buildStrategicTestCandidates({
+      objectives,
+      comparisons: availableComparisons,
+      limit: 3,
+    })) {
+      if (!claimDrafts.has(candidate.claim_id)) {
+        claimDrafts.set(candidate.claim_id, candidate);
+      }
+    }
+  }
+
   const claimIr = processClaimIRPipeline({
     drafts: [...claimDrafts.values()],
     payload: input.payload,
     quality: input.quality,
     backendTraceability: backendCatalog,
+    availableComparisons,
     usedAiConclusions: true,
   });
   const report = buildValidatedReport({

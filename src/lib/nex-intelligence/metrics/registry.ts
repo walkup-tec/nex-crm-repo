@@ -45,15 +45,26 @@ function integrityFor(
   entityId: string,
   metric: string,
 ): { integrity: MetricRegistryIntegrity; reason: string } {
-  const affected = quality.affected_metrics?.includes(metric);
-  if (quality.status === "FAIL" && affected) {
-    return { integrity: "FAIL", reason: `quality_fail:${metric}` };
+  const entityChecks = (quality.checks ?? []).filter(
+    (check) => check.entity_id === entityId && check.metric === metric,
+  );
+  const worst = entityChecks.reduce<MetricRegistryIntegrity | null>((acc, check) => {
+    const rank = { PASS: 0, WARNING: 1, NOT_VERIFIABLE: 2, FAIL: 3 } as const;
+    if (!acc) return check.state;
+    return rank[check.state] > rank[acc] ? check.state : acc;
+  }, null);
+  if (worst === "FAIL") {
+    return { integrity: "FAIL", reason: `entity_check_fail:${metric}` };
   }
-  if (quality.status === "WARNING" && affected) {
-    return { integrity: "WARNING", reason: `quality_warning:${metric}` };
+  if (worst === "NOT_VERIFIABLE") {
+    return { integrity: "NOT_VERIFIABLE", reason: `entity_check_not_verifiable:${metric}` };
   }
-  if (quality.status === "NOT_VERIFIABLE") {
-    return { integrity: "NOT_VERIFIABLE", reason: "global_not_verifiable" };
+  if (worst === "WARNING") {
+    return { integrity: "WARNING", reason: `entity_check_warning:${metric}` };
+  }
+  // Compromisso global da métrica (sem check da entidade): não pintar CTR/spend alheios.
+  if (quality.compromised_metrics?.includes(metric)) {
+    return { integrity: "WARNING", reason: `compromised_metric:${metric}` };
   }
   return { integrity: "PASS", reason: "ok" };
 }
@@ -124,6 +135,16 @@ function pushEntityMetrics(
       unit: "currency",
       dependencies: [],
       precision: 2,
+    },
+    {
+      metric: "results",
+      value: input.results,
+      operands: { results: input.results },
+      formula: null,
+      source_fields: ["results"],
+      unit: "count",
+      dependencies: [],
+      precision: 0,
     },
     {
       metric: "ctr",

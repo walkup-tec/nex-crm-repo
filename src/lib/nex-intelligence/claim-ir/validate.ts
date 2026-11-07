@@ -29,6 +29,10 @@ function levelRank(level: EvidenceLevelCode): number {
   return { E0: 0, E1: 1, E2: 2, E3: 3 }[level];
 }
 
+function isComparisonTrace(row: MetricTraceRecord, id: string): boolean {
+  return id.startsWith("nx-cmp-") || row.calculation.comparable === true;
+}
+
 function tracesOk(
   refs: string[],
   traces: Map<string, MetricTraceRecord>,
@@ -47,6 +51,11 @@ function tracesOk(
     if (!row) {
       reasons.push(`trace_not_found:${id}`);
       codes.push(NexIntelligenceErrorCode.TRACE_NOT_FOUND);
+      continue;
+    }
+    if (isComparisonTrace(row, id)) {
+      reasons.push(`metric_ref_not_scalar:${id}`);
+      codes.push(NexIntelligenceErrorCode.SEMANTIC_EVIDENCE_INSUFFICIENT);
       continue;
     }
     if (row.source !== "META_MARKETING_API") {
@@ -144,6 +153,7 @@ export function validateClaimIR(
       : "metric" in claim.args
         ? [normalizeCanonicalMetric(String(claim.args.metric))]
         : [];
+  const expectedSet = new Set(expectedMetrics);
   for (const metric of expectedMetrics) {
     if (
       !claim.metric_refs.some(
@@ -154,6 +164,19 @@ export function validateClaimIR(
       codes.push(NexIntelligenceErrorCode.SEMANTIC_EVIDENCE_INSUFFICIENT);
     }
   }
+  // Toda metric_ref deve ser compatível com as métricas esperadas da operação
+  // (impede CTR “extra” em METRIC_VALUE(results)).
+  if (expectedSet.size > 0) {
+    for (const id of claim.metric_refs) {
+      const row = traces.get(id);
+      if (!row || isComparisonTrace(row, id)) continue;
+      const refMetric = normalizeCanonicalMetric(row.metric);
+      if (!expectedSet.has(refMetric)) {
+        reasons.push(`metric_ref_unexpected:${id}:${refMetric}`);
+        codes.push(NexIntelligenceErrorCode.SEMANTIC_EVIDENCE_INSUFFICIENT);
+      }
+    }
+  }
 
   const comparisonTrace = claim.comparison_ref ? traces.get(claim.comparison_ref) : null;
   const comparisonValidated = Boolean(
@@ -162,6 +185,15 @@ export function validateClaimIR(
       comparisonTrace.validation.status !== "FAIL" &&
       comparisonTrace.validation.status !== "NOT_VERIFIABLE" &&
       comparisonTrace.calculation.comparable === true,
+  );
+  const comparisonMetric = comparisonTrace
+    ? normalizeCanonicalMetric(comparisonTrace.metric)
+    : null;
+  const comparisonAlignedWithMetricRefs = Boolean(
+    comparisonMetric &&
+      claim.metric_refs.some(
+        (id) => normalizeCanonicalMetric(traces.get(id)?.metric ?? "") === comparisonMetric,
+      ),
   );
 
   if (
@@ -183,6 +215,11 @@ export function validateClaimIR(
     if (!comparisonValidated) {
       reasons.push("strategic_or_causal_requires_validated_comparison");
       codes.push(NexIntelligenceErrorCode.STRATEGIC_EVIDENCE_INSUFFICIENT);
+    } else if (!comparisonAlignedWithMetricRefs) {
+      reasons.push(
+        `strategic_comparison_metric_mismatch:${comparisonMetric ?? "unknown"}`,
+      );
+      codes.push(NexIntelligenceErrorCode.STRATEGIC_EVIDENCE_INSUFFICIENT);
     }
   }
 
@@ -198,8 +235,14 @@ export function validateClaimIR(
   if (reasons.length === 0) {
     if (required === "E1") achieved = "E1";
     else if (required === "E2" && comparisonValidated) achieved = "E2";
-    else if (required === "E3" && comparisonValidated && claim.metric_refs.length > 0) achieved = "E3";
-    else achieved = "E1";
+    else if (
+      required === "E3" &&
+      comparisonValidated &&
+      comparisonAlignedWithMetricRefs &&
+      claim.metric_refs.length > 0
+    ) {
+      achieved = "E3";
+    } else achieved = "E1";
   }
 
   if (levelRank(achieved) < levelRank(required)) {

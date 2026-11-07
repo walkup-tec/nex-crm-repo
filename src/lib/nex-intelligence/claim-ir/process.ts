@@ -15,6 +15,12 @@ import {
   renderExecutiveFromApprovedIR,
 } from "@/lib/nex-intelligence/report/renderers";
 import { deriveAnalyticalStatus } from "@/lib/nex-intelligence/pipeline/state-machine";
+import {
+  deriveObjectivesCoverage,
+  type ObjectivesCoverage,
+} from "@/lib/nex-intelligence/goals/objectives-coverage";
+import type { ValidatedComparisonRef } from "@/lib/nex-intelligence/trace/build-comparisons";
+import { renderClaimIR } from "@/lib/nex-intelligence/report/renderers";
 
 export type ProcessClaimIRResult = {
   original: unknown[];
@@ -30,6 +36,7 @@ export type ProcessClaimIRResult = {
   executive_markdown: string;
   executive_claim_ids: string[];
   analytical_status: ReturnType<typeof deriveAnalyticalStatus>;
+  objectives_coverage: ObjectivesCoverage;
 };
 
 /**
@@ -40,6 +47,7 @@ export function processClaimIRPipeline(input: {
   payload: NexMetaAnalysisV1;
   quality: MetaDataQualityReport;
   backendTraceability?: MetricTraceability;
+  availableComparisons?: ValidatedComparisonRef[];
   usedAiConclusions?: boolean;
 }): ProcessClaimIRResult {
   const catalog =
@@ -57,7 +65,12 @@ export function processClaimIRPipeline(input: {
   );
 
   // Revalidação implícita já feita em recover (validateClaimIR). Filtrar aprovados.
-  const approved = recovered.filter((c) => c.verdict === "APPROVED");
+  // METRIC_VALUE sem valor no registry não publica (renderer vazio).
+  const approved = recovered.filter((c) => {
+    if (c.verdict !== "APPROVED") return false;
+    if (c.operation === "METRIC_VALUE" && !renderClaimIR(c, registry)) return false;
+    return true;
+  });
   const rejected = validated.filter((c) => c.verdict === "REJECTED");
 
   const observations = approved.filter(
@@ -84,6 +97,14 @@ export function processClaimIRPipeline(input: {
     technicalFailure: false,
   });
 
+  const objectives = input.payload.metadata.analysis_objectives ?? null;
+  const objectives_coverage = deriveObjectivesCoverage({
+    objectives,
+    approved,
+    comparisons: input.availableComparisons ?? [],
+    quality: input.quality,
+  });
+
   return {
     original: input.drafts,
     normalized,
@@ -102,5 +123,6 @@ export function processClaimIRPipeline(input: {
     executive_markdown: renderExecutiveFromApprovedIR(approved, registry, input.quality),
     executive_claim_ids: executiveClaimIdsFromApproved(approved),
     analytical_status,
+    objectives_coverage,
   };
 }

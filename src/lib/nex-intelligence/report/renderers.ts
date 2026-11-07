@@ -32,8 +32,10 @@ export function renderClaimIR(
     case "METRIC_VALUE": {
       const metric = claim.args.metric;
       const entry = lookup(registry, claim.entity_id, metric);
+      // Claim aprovado sem valor resolvível não publica texto enganoso.
+      if (!entry || !entry.value_present || entry.value == null) return "";
       const where = claim.entity_id
-        ? ` (${claim.entity_level} ${entry?.entity_name ? `“${entry.entity_name}” ` : ""}\`${claim.entity_id}\`)`
+        ? ` (${claim.entity_level} ${entry.entity_name ? `“${entry.entity_name}” ` : ""}\`${claim.entity_id}\`)`
         : " (conta)";
       return `- ${formatValue(entry, metric)} no período analisado${where}.`;
     }

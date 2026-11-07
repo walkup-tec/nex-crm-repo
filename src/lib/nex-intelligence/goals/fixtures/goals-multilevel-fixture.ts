@@ -198,12 +198,12 @@ export function buildGoalsMultilevelFixture(): NexMetaAnalysisV1 {
         targeting_summary: "amplo",
         placements: ["facebook", "instagram", "audience_network"],
         attribution_setting: "7d_click",
-        // CPC alto + CPM alto (C)
+        // CPC alto + CPM alto (C) — reconciliado com ad_costly_high_cpc
         insights: insights({
           spend: 200,
           impressions: 8000,
           clicks: 40,
-          results: 8,
+          results: 12,
           frequency: 3.8,
         }),
         daily_insights: [],
@@ -221,7 +221,8 @@ export function buildGoalsMultilevelFixture(): NexMetaAnalysisV1 {
         targeting_summary: "retargeting",
         placements: ["instagram"],
         attribution_setting: "7d_click",
-        insights: insights({ spend: 100, impressions: 17000, clicks: 210, results: 12 }),
+        // Reconciliado com ad_costly_ctr_no_results (results 8; CTR alto)
+        insights: insights({ spend: 100, impressions: 17000, clicks: 850, results: 8 }),
         daily_insights: [],
       },
       {
@@ -302,6 +303,24 @@ export function buildGoalsMultilevelFixture(): NexMetaAnalysisV1 {
         ],
       },
       {
+        // Completa adset_eff_b / camp_eff (results 12 + spend 50) para reconciliar ads×campanha.
+        id: "ad_eff_b",
+        campaign_id: "camp_eff",
+        adset_id: "adset_eff_b",
+        name: "Criativo conjunto B",
+        status: "ACTIVE",
+        effective_status: "ACTIVE",
+        creative: {
+          id: "cr_eff_3",
+          format: "IMAGE",
+          headline: "WhatsApp B",
+          body: "Conjunto B",
+          destination_type: "WHATSAPP",
+        },
+        insights: insights({ spend: 50, impressions: 8000, clicks: 140, results: 12 }),
+        daily_insights: [],
+      },
+      {
         id: "ad_costly_high_cpc",
         campaign_id: "camp_costly",
         adset_id: "adset_costly_hot",
@@ -316,10 +335,10 @@ export function buildGoalsMultilevelFixture(): NexMetaAnalysisV1 {
           destination_type: "WHATSAPP",
         },
         insights: insights({
-          spend: 120,
-          impressions: 4000,
-          clicks: 20,
-          results: 4,
+          spend: 200,
+          impressions: 8000,
+          clicks: 40,
+          results: 12,
           frequency: 4.2,
         }),
         daily_insights: [],
@@ -338,8 +357,8 @@ export function buildGoalsMultilevelFixture(): NexMetaAnalysisV1 {
           body: "Clickbait",
           destination_type: "WHATSAPP",
         },
-        // CTR alto (~5%), resultados baixos (D)
-        insights: insights({ spend: 80, impressions: 10000, clicks: 500, results: 2 }),
+        // CTR alto (~5%), resultados baixos relativos ao spend (D) — total ads = 20 (= campanha)
+        insights: insights({ spend: 100, impressions: 17000, clicks: 850, results: 8 }),
         daily_insights: [],
       },
       {
@@ -356,7 +375,7 @@ export function buildGoalsMultilevelFixture(): NexMetaAnalysisV1 {
           body: "Form",
           destination_type: "WEBSITE",
         },
-        insights: insights({ spend: 60, impressions: 5000, clicks: 50, results: 6 }),
+        insights: insights({ spend: 100, impressions: 9000, clicks: 90, results: 10 }),
         daily_insights: [],
       },
       {

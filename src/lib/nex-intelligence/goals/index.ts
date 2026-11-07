@@ -7,3 +7,5 @@ export * from "@/lib/nex-intelligence/goals/defaults";
 export * from "@/lib/nex-intelligence/goals/scope-export";
 export * from "@/lib/nex-intelligence/goals/rank";
 export * from "@/lib/nex-intelligence/goals/result-event";
+export * from "@/lib/nex-intelligence/goals/objectives-coverage";
+export * from "@/lib/nex-intelligence/goals/strategic-candidates";

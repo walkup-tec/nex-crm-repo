@@ -78,12 +78,29 @@ export function buildValidatedReport(input: {
       ? "PARTIAL_VALIDATED"
       : "COMPLETED";
 
+  const coverage = input.claimIr.objectives_coverage;
+  const coverageNote = coverage
+    ? [
+        `- Cobertura dos objetivos: ${coverage.status}` +
+          (coverage.primary_goal ? ` (prioritário: ${coverage.primary_goal})` : "") +
+          `.`,
+        ...coverage.notes.map((n) => `- ${n}`),
+        `- Testes estratégicos E3: ${coverage.strategic_approved}; MONITOR: ${coverage.monitor_approved}.`,
+      ].join("\n")
+    : "";
   const analyticalMarkdown = composeReport({
     stage1: renderStage1FromIntegrity(input.payload, input.quality),
     stage2: input.claimIr.observations_markdown,
     stage3: input.claimIr.recommendations_markdown,
     stage4: input.claimIr.executive_markdown,
-    note: "- Somente Claim IR aprovado foi renderizado.\n- Markdown e texto narrativo da IA não foram publicados.",
+    note: [
+      "- Somente Claim IR aprovado foi renderizado.",
+      "- Markdown e texto narrativo da IA não foram publicados.",
+      "- Publicação bem-sucedida ≠ objetivos atendidos; ver cobertura abaixo.",
+      coverageNote,
+    ]
+      .filter(Boolean)
+      .join("\n"),
   });
   const markdown = hasApproved
     ? analyticalMarkdown

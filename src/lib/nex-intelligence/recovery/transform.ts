@@ -39,8 +39,14 @@ export function recoverClaimIRStructural(
     };
   }
 
-  // 8.1 / refs inválidas: tentar METRIC_VALUE só com refs válidas
-  const validRefs = claim.metric_refs.filter((id) => traces.has(id));
+  // 8.1 / refs inválidas: tentar METRIC_VALUE só com scalars válidos (nunca nx-cmp)
+  const validRefs = claim.metric_refs.filter((id) => {
+    const row = traces.get(id);
+    if (!row) return false;
+    if (id.startsWith("nx-cmp-") || row.calculation.comparable === true) return false;
+    if (row.validation.status === "FAIL" || row.validation.status === "NOT_VERIFIABLE") return false;
+    return true;
+  });
 
   if (
     claim.operation === "PERIOD_COMPARISON" ||

@@ -721,13 +721,12 @@ function CreateManualChargeDialog({
 }) {
   const clients = Array.from(
     new Map(
-      charges
-        .filter((item) => item.billingProvider === "manual")
-        .map((item) => [item.organizationId, { id: item.organizationId, name: item.clientName }]),
+      charges.map((item) => [item.organizationId, { id: item.organizationId, name: item.clientName }]),
     ).values(),
   ).sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
   const [organizationId, setOrganizationId] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -736,14 +735,22 @@ function CreateManualChargeDialog({
     setSaving(false);
     setError("");
     setDueDate("");
+    setAmount("");
     setOrganizationId(clients[0]?.id ?? "");
   }, [open, charges]);
 
   const save = async () => {
     if (!organizationId || !dueDate) return;
+    const amountCents = amount.trim() ? Number(amount.replace(/\D/g, "")) : undefined;
+    if (amount.trim() && (!Number.isInteger(amountCents) || !amountCents || amountCents <= 0)) {
+      setError("Informe um valor válido.");
+      return;
+    }
     setSaving(true);
     setError("");
-    const result = await createManualChargeFn({ data: { organizationId, dueDate } });
+    const result = await createManualChargeFn({
+      data: { organizationId, dueDate, ...(amountCents ? { amountCents } : {}) },
+    });
     setSaving(false);
     if (!result.ok) {
       setError(result.message);
@@ -756,12 +763,15 @@ function CreateManualChargeDialog({
     <Dialog open={open} onOpenChange={(next) => !next && !saving && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Incluir parcela manual</DialogTitle>
-          <DialogDescription>Cria uma cobrança avulsa no financeiro (sem Cora/Asaas).</DialogDescription>
+          <DialogTitle>Incluir parcela</DialogTitle>
+          <DialogDescription>
+            Emite na Cora quando o contrato for Cora; senão cria parcela manual. Se já existir parcela
+            manual no mesmo vencimento, ela é substituída.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           {clients.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum cliente com cobrança manual na lista.</p>
+            <p className="text-sm text-muted-foreground">Nenhum cliente na lista do financeiro.</p>
           ) : (
             <>
               <label className="grid gap-2 text-sm">
@@ -782,6 +792,14 @@ function CreateManualChargeDialog({
               <label className="grid gap-2 text-sm">
                 Vencimento
                 <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+              </label>
+              <label className="grid gap-2 text-sm">
+                Valor (opcional)
+                <Input
+                  value={amount}
+                  placeholder="R$ 0,00 — vazio usa a mensalidade"
+                  onChange={(event) => setAmount(applyMask("money", event.target.value))}
+                />
               </label>
             </>
           )}

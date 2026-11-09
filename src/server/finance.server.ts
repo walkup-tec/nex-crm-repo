@@ -31,10 +31,12 @@ import {
 } from "@/lib/finance-access";
 import type { InvoiceStatus } from "@/lib/client-access";
 import {
+  assertCoraAmounts,
   coraDelinquencyFine,
   coraNegotiationDue,
   coraNegotiatedTerms,
   coraPaymentTerms,
+  noticeSchedule,
 } from "@/lib/billing-plan";
 import {
   cancelCoraInvoice,
@@ -864,37 +866,140 @@ function chargeRail(provider: string | null, externalId: string) {
   return externalId.startsWith("inv_") ? "cora" : "asaas";
 }
 
-export async function createManualCharge(
+export async function createAdHocCharge(
   userId: string,
-  input: { organizationId: string; dueDate: string },
+  input: { organizationId: string; dueDate: string; amountCents?: number },
 ) {
   const actor = await actorOf(userId);
-  if (actor.role !== "master") fail("Só o Master cria parcela manual.");
+  if (actor.role !== "master") fail("Só o Master cria parcela avulsa.");
   const due = input.dueDate.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) fail("Informe uma data de vencimento válida.");
-  const { data: contract, error: contractError } = await supabaseAdmin
-    .from("contracts")
-    .select("id, billing_provider, monthly_fee_cents, ends_on")
-    .eq("organization_id", input.organizationId)
-    .maybeSingle();
+  const [{ data: contract, error: contractError }, { data: org, error: orgError }] = await Promise.all([
+    supabaseAdmin
+      .from("contracts")
+      .select(
+        "id, billing_provider, monthly_fee_cents, ends_on, delinquency_mode, fine_percent, interest_percent_monthly, delinquency_amount_cents",
+      )
+      .eq("organization_id", input.organizationId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("organizations")
+      .select("legal_name, document, responsible_email")
+      .eq("id", input.organizationId)
+      .maybeSingle(),
+  ]);
   if (contractError) fail(contractError.message);
+  if (orgError) fail(orgError.message);
   if (!contract) fail("Este cliente ainda não tem contrato.");
-  if (contract.billing_provider !== "manual") fail("Só contratos manuais recebem parcela avulsa por aqui.");
+  if (!org?.legal_name || !org.responsible_email) {
+    fail("O cliente precisa de razão social e e-mail do responsável.");
+  }
+  const document = (org.document ?? "").replace(/\D/g, "");
+  if (document.length !== 11 && document.length !== 14) {
+    fail("O cliente precisa de CPF ou CNPJ para emitir na Cora.");
+  }
   if (contract.ends_on && due > String(contract.ends_on).slice(0, 10)) {
     fail("O vencimento não pode passar do término do contrato.");
   }
-  const amount = Number(contract.monthly_fee_cents);
-  if (!Number.isInteger(amount) || amount <= 0) fail("A mensalidade do contrato é inválida.");
+  const amount =
+    input.amountCents != null && Number.isInteger(input.amountCents) && input.amountCents > 0
+      ? input.amountCents
+      : Number(contract.monthly_fee_cents);
+  if (!Number.isInteger(amount) || amount <= 0) fail("Informe um valor válido para a parcela.");
+
   const existing = await supabaseAdmin
     .from("invoices")
-    .select("id")
+    .select("id, external_charge_id, status")
     .eq("organization_id", input.organizationId)
     .eq("due_date", due)
-    .neq("status", "cancelled")
-    .limit(1);
+    .neq("status", "cancelled");
   if (existing.error) fail(existing.error.message);
-  if ((existing.data ?? []).length) fail("Já existe cobrança com este vencimento.");
+  for (const row of existing.data ?? []) {
+    const external = String(row.external_charge_id ?? "");
+    if (external.startsWith("manual:")) {
+      await supabaseAdmin.from("billing_notices").delete().eq("organization_id", input.organizationId).eq("due_date", due);
+      const removed = await supabaseAdmin.from("invoices").delete().eq("id", row.id);
+      if (removed.error) fail(removed.error.message);
+      continue;
+    }
+    fail("Já existe cobrança com este vencimento.");
+  }
+
   const status = due < todayKey() ? "overdue" : "pending";
+  const provider = contract.billing_provider;
+
+  if (provider === "cora") {
+    const amountError = assertCoraAmounts([amount]);
+    if (amountError) fail(amountError);
+    const mode =
+      contract.delinquency_mode === "amount" || contract.delinquency_mode === "rate"
+        ? contract.delinquency_mode
+        : "rate";
+    const fineCents =
+      mode === "amount"
+        ? Math.max(
+            0,
+            coraDelinquencyFine(
+              amount,
+              contract.delinquency_amount_cents == null ? amount : Number(contract.delinquency_amount_cents),
+            ),
+          )
+        : 0;
+    const created = await createCoraInvoice({
+      code: `${input.organizationId}:${due}:adhoc:${Date.now()}`.slice(0, 64),
+      name: org.legal_name,
+      email: org.responsible_email,
+      document,
+      amountCents: amount,
+      paymentTerms: coraPaymentTerms(
+        due,
+        mode,
+        Number(contract.fine_percent ?? 0),
+        Number(contract.interest_percent_monthly ?? 0),
+        fineCents,
+      ),
+    });
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from("invoices")
+      .insert({
+        organization_id: input.organizationId,
+        contract_id: contract.id,
+        competence: due,
+        due_date: due,
+        base_amount_cents: amount,
+        total_amount_cents: amount,
+        status,
+        external_charge_id: created.id,
+        invoice_url: created.url || null,
+        pix_code: created.pixCode || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (insertError) fail(insertError.message);
+    if (!inserted) fail("Não foi possível gravar a parcela da Cora.");
+    const notices = noticeSchedule(due).map((item) => ({
+      organization_id: input.organizationId,
+      due_date: due,
+      kind: item.kind,
+      send_on: item.sendOn,
+      status: "pending",
+      body: "",
+    }));
+    const savedNotices = await supabaseAdmin.from("billing_notices").insert(notices);
+    if (savedNotices.error) fail(savedNotices.error.message);
+    const names = await namesOf([input.organizationId]);
+    await audit(actor.id, input.organizationId, "finance.cora_create", inserted.id, {
+      clientName: names.get(input.organizationId)?.legalName ?? "cliente",
+      due,
+      amountCents: amount,
+    });
+    return { id: inserted.id, dueDate: due, billingProvider: "cora" as const };
+  }
+
+  if (provider !== "manual") {
+    fail("Parcela avulsa só está disponível para contratos Cora ou Manual.");
+  }
+
   const { data: inserted, error: insertError } = await supabaseAdmin
     .from("invoices")
     .insert({
@@ -917,8 +1022,17 @@ export async function createManualCharge(
   await audit(actor.id, input.organizationId, "finance.manual_create", inserted.id, {
     clientName: names.get(input.organizationId)?.legalName ?? "cliente",
     due,
+    amountCents: amount,
   });
-  return { id: inserted.id, dueDate: due };
+  return { id: inserted.id, dueDate: due, billingProvider: "manual" as const };
+}
+
+/** @deprecated use createAdHocCharge */
+export async function createManualCharge(
+  userId: string,
+  input: { organizationId: string; dueDate: string; amountCents?: number },
+) {
+  return createAdHocCharge(userId, input);
 }
 
 export async function markManualChargePaid(userId: string, invoiceId: string) {

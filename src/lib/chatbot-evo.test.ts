@@ -113,6 +113,8 @@ import {
   evolutionInstanceNameOf,
   evolutionNumberInUse,
   whatsappDeviceRemoved,
+  evolutionWebhookBaseUrl,
+  evolutionWebhookPathUrl,
   whatsappJidPhone,
   whatsappGroupJid,
   whatsappGroupLabel,
@@ -173,6 +175,15 @@ assert.equal(sameWhatsappAccount("5551998335401", "555198335401@s.whatsapp.net")
 assert.equal(sameWhatsappAccount("5551998335401", "5511999999999"), false);
 assert.equal(whatsappDeviceRemoved(401), true);
 assert.equal(whatsappDeviceRemoved(428), false);
+assert.equal(
+  evolutionWebhookBaseUrl({ EVO_WEBHOOK_BASE_URL: "http://172.17.0.1:30320/", APP_URL: "https://app.nexmeta.com.br" }),
+  "http://172.17.0.1:30320",
+);
+assert.equal(evolutionWebhookBaseUrl({ APP_URL: "https://app.nexmeta.com.br/" }), "https://app.nexmeta.com.br");
+assert.equal(
+  evolutionWebhookPathUrl("secret", { EVO_WEBHOOK_BASE_URL: "http://172.17.0.1:30320" }),
+  "http://172.17.0.1:30320/api/chatbot/evo?token=secret",
+);
 assert.equal(headerAttendant("  Marina Costa  "), "Marina Costa");
 assert.equal(headerAttendant("   "), "Fila");
 assert.equal(finishAttendanceGate({ status: "queue", assigneeId: "", userId: "ana", admin: false }), "ok");

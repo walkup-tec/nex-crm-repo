@@ -554,6 +554,28 @@ export function whatsappDeviceRemoved(reason: unknown) {
   return Number(reason) === 401;
 }
 
+/**
+ * Base URL que a Evolution usa para POSTar webhooks no NEX.
+ * Na VPS, preferir EVO_WEBHOOK_BASE_URL=http://172.17.0.1:30320 para evitar
+ * hairpin HTTPS (app.nexmeta.com.br → 72.60.51.127:443 → ECONNREFUSED).
+ */
+export function evolutionWebhookBaseUrl(
+  env: { EVO_WEBHOOK_BASE_URL?: string; APP_URL?: string } = process.env,
+) {
+  const raw = (env.EVO_WEBHOOK_BASE_URL || env.APP_URL || "https://app.nexmeta.com.br").trim();
+  return raw.replace(/\/$/, "");
+}
+
+export function evolutionWebhookPathUrl(
+  apiKey: string,
+  env: { EVO_WEBHOOK_BASE_URL?: string; APP_URL?: string } = process.env,
+) {
+  const base = evolutionWebhookBaseUrl(env);
+  const token = apiKey.trim();
+  if (!token) return `${base}/api/chatbot/evo`;
+  return `${base}/api/chatbot/evo?token=${encodeURIComponent(token)}`;
+}
+
 export function sameWhatsappAccount(left: string, right: string) {
   const compact = (value: string) => {
     const digits = value.replace(/\D/g, "");

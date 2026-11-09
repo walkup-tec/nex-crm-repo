@@ -65,6 +65,7 @@ import {
   sameWhatsappAccount,
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
+  evolutionWebhookPathUrl,
   whatsappJidPhone,
   artesFileNames,
   artesMime,
@@ -359,9 +360,8 @@ async function applyEvolutionStabilitySettings(instanceName: string) {
 }
 
 function webhookUrl() {
-  const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
   const { key } = evolutionRuntime();
-  return `${base}/api/chatbot/evo?token=${encodeURIComponent(key)}`;
+  return evolutionWebhookPathUrl(key);
 }
 
 function webhookBody() {

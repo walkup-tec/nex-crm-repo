@@ -38,6 +38,22 @@ export function creditTopupLedger(cents: number, at = new Date().toISOString()):
   };
 }
 
+/** Soma uma nova recarga ao crédito já registrado, preservando a data da primeira recarga. */
+export function appendCreditTopup(
+  previous: CreditTopup | null,
+  amountCents: number,
+  now = new Date().toISOString(),
+): CreditTopup {
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error("Informe um valor de crédito válido.");
+  }
+  if (!previous) return { cents: amountCents, at: now };
+  return {
+    cents: previous.cents + amountCents,
+    at: previous.at,
+  };
+}
+
 export function hasRegisteredCreditTopup(ledger: unknown) {
   return readCreditTopup(ledger) != null;
 }

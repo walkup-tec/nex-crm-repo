@@ -11,6 +11,7 @@ import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
 import { formatMetaFieldRead, type MetaFieldReport } from "@/lib/meta-balance-debug";
 import { moneyCents, type MetaCreditView } from "@/lib/meta-credit";
 import {
+  appendCreditTopup,
   availableFromRegisteredCredit,
   creditTopupLedger,
   encodePrepaidSyncStatus,
@@ -311,10 +312,16 @@ export async function registerMetaCreditTopup(userId: string, cents: number) {
   if (!Number.isInteger(amount) || amount <= 0) fail("Informe o valor da recarga.");
   const account = await selectedAccount(actor.organizationId);
   if (!account) fail("Nenhuma conta de anúncio está integrada a este acesso.");
-  const at = new Date().toISOString();
-  const ledger = creditTopupLedger(amount, at);
-  // The card shows the added amount right away. Later loads subtract campaign spend.
-  await rememberBalance(account.id, amount, ledger, true);
+  const previous = resolveCreditTopup(account.prepaid_ledger, account.sync_status);
+  const topup = appendCreditTopup(previous, amount);
+  const ledger = creditTopupLedger(topup.cents, topup.at);
+  const spentCents = await spentSinceTopup(
+    actor.organizationId,
+    account.external_account_id,
+    topup.at,
+  );
+  const availableCents = availableFromRegisteredCredit(topup.cents, spentCents) ?? amount;
+  await rememberBalance(account.id, availableCents, ledger, true);
   let paymentError = false;
   try {
     paymentError = await hasBillingPaymentError(
@@ -325,8 +332,8 @@ export async function registerMetaCreditTopup(userId: string, cents: number) {
     paymentError = false;
   }
   const alert = metaCreditAlertState({
-    topup: { cents: amount, at },
-    availableCents: amount,
+    topup,
+    availableCents,
     paymentError,
   });
   try {
@@ -335,9 +342,9 @@ export async function registerMetaCreditTopup(userId: string, cents: number) {
     console.error("meta_low_balance", error instanceof Error ? error.name : "error");
   }
   return {
-    balanceCents: amount,
-    creditTopupAt: at,
-    creditTopupCents: amount,
+    balanceCents: availableCents,
+    creditTopupAt: topup.at,
+    creditTopupCents: topup.cents,
     low: alert.low,
     missingTopup: alert.missingTopup,
     balanceLow: alert.balanceLow,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  appendCreditTopup,
   availableFromRegisteredCredit,
   creditTopupLedger,
   encodePrepaidSyncStatus,
@@ -23,6 +24,15 @@ assert.equal(ledger.creditedCents, 20000);
 assert.equal(ledger.manualCredit, true);
 assert.deepEqual(readCreditTopup(ledger), { cents: 20000, at: "2026-10-07T15:00:00.000Z" });
 assert.equal(hasRegisteredCreditTopup(ledger), true);
+assert.deepEqual(appendCreditTopup(null, 10000, "2026-11-09T12:00:00.000Z"), {
+  cents: 10000,
+  at: "2026-11-09T12:00:00.000Z",
+});
+assert.deepEqual(
+  appendCreditTopup({ cents: 20000, at: "2026-10-07T15:00:00.000Z" }, 10000, "2026-11-09T12:00:00.000Z"),
+  { cents: 30000, at: "2026-10-07T15:00:00.000Z" },
+);
+assert.equal(availableFromRegisteredCredit(30000, 15757), 14243);
 assert.equal(hasRegisteredCreditTopup({ manualCredit: true, entries: [] }), false);
 assert.equal(readCreditTopup(null), null);
 

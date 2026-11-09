@@ -9,3 +9,6 @@
 ### Buscar depois
 
 `pipeline_progress`, `ExecutionPipelineStatus`, `copiar ID`, `NexIntelligenceWorkspace`
+
+- 2026-11-07: Fix freeze tarefa manual (finally + timeout 45s). Keywords: addingTask, syncIntelligenceTasksFn. LOG: LOG--manual-task-adding-freeze.md
+

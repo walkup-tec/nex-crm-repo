@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, CheckCircle2, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, ChevronUp, Loader2, Plus, X } from "lucide-react";
 
 function formatDetailValue(value: number | null, unit: string): string {
   if (value == null || !Number.isFinite(value)) return "indisponível";
@@ -40,7 +40,7 @@ type Props = {
   tasks: SuggestedTask[];
   onApply?: (task: SuggestedTask) => void;
   onReject?: (task: SuggestedTask) => void;
-  onAdd?: (input: ManualAddInput) => void | Promise<void>;
+  onAdd?: (input: ManualAddInput) => boolean | Promise<boolean>;
   busyId?: string | null;
   adding?: boolean;
   canAdd?: boolean;
@@ -88,13 +88,17 @@ export function OptimizationTaskList({
 
   const commitDraft = async (decision: ManualAddInput["decision"]) => {
     if (!preset || !motivo.trim() || !onAdd) return;
-    await onAdd({
-      title: preset.title,
-      kind: preset.kind,
-      justification: motivo.trim(),
-      decision,
-    });
-    resetDraft();
+    try {
+      const saved = await onAdd({
+        title: preset.title,
+        kind: preset.kind,
+        justification: motivo.trim(),
+        decision,
+      });
+      if (saved) resetDraft();
+    } catch {
+      // Mantém o rascunho aberto para correção/retry; o pai limpa `adding` no finally.
+    }
   };
 
   return (
@@ -420,8 +424,12 @@ export function OptimizationTaskList({
                           disabled={!canDecide}
                           onClick={() => void commitDraft("APPLIED")}
                         >
-                          <Check className="size-3.5" />
-                          {adding ? "…" : "Aplicar"}
+                          {adding ? (
+                            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Check className="size-3.5" />
+                          )}
+                          {adding ? "Salvando" : "Aplicar"}
                         </button>
                         <button
                           type="button"

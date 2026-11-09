@@ -773,59 +773,77 @@ export function NexIntelligenceWorkspace() {
   const onApplyTask = async (task: SuggestedTask) => {
     setBusyTaskId(task.id);
     setError("");
-    const response = await decideIntelligenceTaskFn({
-      data: {
-        taskId: task.id,
-        decision: "APPLIED",
-        description: task.justification || task.title,
-        effectiveAt: new Date().toISOString(),
-      },
-    });
-    setBusyTaskId(null);
-    if (!response.ok) {
-      setError(response.message);
+    try {
+      const response = await decideIntelligenceTaskFn({
+        data: {
+          taskId: task.id,
+          decision: "APPLIED",
+          description: task.justification || task.title,
+          effectiveAt: new Date().toISOString(),
+        },
+      });
+      if (!response.ok) {
+        setError(response.message);
+        setNotice(
+          /0052_nex_intelligence/i.test(response.message)
+            ? response.message
+            : "Não foi possível aplicar a tarefa.",
+        );
+        return;
+      }
+      const appliedTask = {
+        ...response.data.task,
+        status: "APPLIED" as const,
+        appliedAt: response.data.task.appliedAt ?? new Date().toISOString(),
+      };
+      setPersistedTasks((current) =>
+        (current ?? tasks).map((row) => (row.id === task.id ? appliedTask : row)),
+      );
       setNotice(
-        /0052_nex_intelligence/i.test(response.message)
-          ? response.message
+        response.data.eventId
+          ? `Otimização registrada (marco ${response.data.eventId}).`
+          : "Tarefa aplicada.",
+      );
+      if (detail) {
+        await hydrateOps(detail, [], campaignIds.length === 1 ? campaignIds[0] : undefined);
+      } else if (organizationId) {
+        await loadAppliedHistory(organizationId);
+      }
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message.trim()
+          ? error.message
           : "Não foi possível aplicar a tarefa.",
       );
-      return;
-    }
-    const appliedTask = {
-      ...response.data.task,
-      status: "APPLIED" as const,
-      appliedAt: response.data.task.appliedAt ?? new Date().toISOString(),
-    };
-    setPersistedTasks((current) =>
-      (current ?? tasks).map((row) => (row.id === task.id ? appliedTask : row)),
-    );
-    setNotice(
-      response.data.eventId
-        ? `Otimização registrada (marco ${response.data.eventId}).`
-        : "Tarefa aplicada.",
-    );
-    if (detail) {
-      await hydrateOps(detail, [], campaignIds.length === 1 ? campaignIds[0] : undefined);
-    } else if (organizationId) {
-      await loadAppliedHistory(organizationId);
+    } finally {
+      setBusyTaskId(null);
     }
   };
 
   const onRejectTask = async (task: SuggestedTask) => {
     setBusyTaskId(task.id);
     setError("");
-    const response = await decideIntelligenceTaskFn({
-      data: { taskId: task.id, decision: "REJECTED", note: "Rejeitada pelo gestor" },
-    });
-    setBusyTaskId(null);
-    if (!response.ok) {
-      setError(response.message);
-      return;
+    try {
+      const response = await decideIntelligenceTaskFn({
+        data: { taskId: task.id, decision: "REJECTED", note: "Rejeitada pelo gestor" },
+      });
+      if (!response.ok) {
+        setError(response.message);
+        return;
+      }
+      setPersistedTasks((current) =>
+        (current ?? tasks).map((row) => (row.id === task.id ? response.data.task : row)),
+      );
+      setNotice("Rejeição registrada (histórico auditável preservado).");
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Não foi possível rejeitar a tarefa.",
+      );
+    } finally {
+      setBusyTaskId(null);
     }
-    setPersistedTasks((current) =>
-      (current ?? tasks).map((row) => (row.id === task.id ? response.data.task : row)),
-    );
-    setNotice("Rejeição registrada (histórico auditável preservado).");
   };
 
   const onAddManualTask = async (input: {
@@ -833,72 +851,89 @@ export function NexIntelligenceWorkspace() {
     kind: SuggestedTask["kind"];
     justification: string;
     decision: "PENDING" | "APPLIED" | "REJECTED";
-  }) => {
+  }): Promise<boolean> => {
     if (!detail) {
       setError("Gere ou abra uma análise antes de adicionar otimizações.");
-      return;
+      return false;
     }
     setAddingTask(true);
     setError("");
-    const claimId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? `manual-${crypto.randomUUID()}`
-        : `manual-${Date.now()}`;
-    const entityId =
-      campaignIds.length === 1 ? campaignIds[0]! : campaignIds[0] ?? detail.accountId ?? null;
-    const draft: SuggestedTask = {
-      id: claimId,
-      claimId,
-      title: input.title,
-      justification: input.justification,
-      priority: "high",
-      evidenceLevel: null,
-      kind: input.kind,
-      entityLevel: campaignIds.length >= 1 ? "campaign" : "account",
-      entityId,
-      entityName:
-        campaignIds.length >= 1
-          ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
-          : detail.accountName || null,
-      campaignName:
-        campaignIds.length >= 1
-          ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
-          : null,
-      adsetName: null,
-      detail: null,
-      status: "PENDING",
-      appliedAt: null,
-    };
-    const synced = await syncIntelligenceTasksFn({
-      data: {
-        executionId: detail.id,
-        organizationId: detail.organizationId,
-        adAccountId: detail.accountId,
-        tasks: [draft],
-      },
-    });
-    if (!synced.ok) {
+    try {
+      const claimId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? `manual-${crypto.randomUUID()}`
+          : `manual-${Date.now()}`;
+      const entityId =
+        campaignIds.length === 1 ? campaignIds[0]! : campaignIds[0] ?? detail.accountId ?? null;
+      const draft: SuggestedTask = {
+        id: claimId,
+        claimId,
+        title: input.title,
+        justification: input.justification,
+        priority: "high",
+        evidenceLevel: null,
+        kind: input.kind,
+        entityLevel: campaignIds.length >= 1 ? "campaign" : "account",
+        entityId,
+        entityName:
+          campaignIds.length >= 1
+            ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
+            : detail.accountName || null,
+        campaignName:
+          campaignIds.length >= 1
+            ? (dashboard.campaigns.find((row) => row.id === entityId)?.name ?? null)
+            : null,
+        adsetName: null,
+        detail: null,
+        status: "PENDING",
+        appliedAt: null,
+      };
+      const synced = await Promise.race([
+        syncIntelligenceTasksFn({
+          data: {
+            executionId: detail.id,
+            organizationId: detail.organizationId,
+            adAccountId: detail.accountId,
+            tasks: [draft],
+          },
+        }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(
+            () => reject(new Error("Tempo esgotado ao salvar a otimização. Tente de novo.")),
+            45_000,
+          );
+        }),
+      ]);
+      if (!synced.ok) {
+        setError(synced.message);
+        return false;
+      }
+      setPersistedTasks(synced.data);
+      const created = synced.data.find((row) => row.claimId === claimId);
+      if (!created) {
+        setError("A otimização foi salva, mas não retornou na lista.");
+        return false;
+      }
+      if (input.decision === "APPLIED") {
+        await onApplyTask(created);
+        return true;
+      }
+      if (input.decision === "REJECTED") {
+        await onRejectTask(created);
+        return true;
+      }
+      setNotice("Otimização adicionada com prioridade alta.");
+      return true;
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Não foi possível adicionar a otimização.",
+      );
+      return false;
+    } finally {
       setAddingTask(false);
-      setError(synced.message);
-      return;
     }
-    setPersistedTasks(synced.data);
-    const created = synced.data.find((row) => row.claimId === claimId);
-    if (!created) {
-      setAddingTask(false);
-      setError("A otimização foi salva, mas não retornou na lista.");
-      return;
-    }
-    setAddingTask(false);
-    if (input.decision === "APPLIED") {
-      await onApplyTask(created);
-      return;
-    }
-    if (input.decision === "REJECTED") {
-      await onRejectTask(created);
-      return;
-    }
-    setNotice("Otimização adicionada com prioridade alta.");
   };
 
   const saveFeedback = async () => {

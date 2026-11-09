@@ -150,6 +150,14 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
     };
   }
   const { base, headers, instance } = target;
+  const registered = await whatsappNumberExists(base, headers, instance, number, "evo_finance");
+  if (registered === false) {
+    return {
+      ok: false,
+      messageId: "",
+      error: "O telefone financeiro não está no WhatsApp ou está inválido.",
+    };
+  }
   // Pix EMV parece URL; linkPreview ativo faz a Evolution falhar/timeout no sendText.
   const text = await evoPost(
     `${base}/message/sendText/${encodeURIComponent(instance)}`,
@@ -306,18 +314,56 @@ async function evoPost(
   }
 }
 
+async function whatsappNumberExists(
+  base: string,
+  headers: Record<string, string>,
+  instance: string,
+  number: string,
+  tag: string,
+) {
+  const checked = await evoPost(
+    `${base}/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
+    headers,
+    { numbers: [number] },
+    12000,
+    tag,
+  );
+  if (!checked.ok || checked.body == null) return null;
+  const rows = evolutionNumberRows(checked.body);
+  const hit = rows.find((row) => {
+    const candidate = String(row["number"] ?? "").replace(/\D/g, "");
+    return candidate === number || candidate.endsWith(number.slice(-11));
+  });
+  if (!hit) return null;
+  return hit["exists"] === true;
+}
+
+function evolutionNumberRows(body: unknown) {
+  const lists = Array.isArray(body)
+    ? [body]
+    : body && typeof body === "object"
+      ? Object.values(body as Record<string, unknown>).filter(Array.isArray)
+      : [];
+  const rows = (lists[0] as unknown[] | undefined) ?? [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    return [row as Record<string, unknown>];
+  });
+}
+
 function evolutionFailureMessage(body: unknown, fallback: string) {
   const detail = summarizeEvoBody(body).trim();
   if (!detail) return fallback;
   if (/tempo esgotado|timeout/i.test(detail)) {
     return "O WhatsApp demorou demais para confirmar a mensagem. Tente de novo em instantes.";
   }
-  if (/not.*(in|on).*whatsapp|exists.*false|número.*(inválido|inexistente)|invalid.*(number|jid)/i.test(detail)) {
+  if (/not.*(in|on).*whatsapp|exists\s*[:=]\s*false|número.*(inválido|inexistente)|invalid.*(number|jid)/i.test(detail)) {
     return "O telefone financeiro não está no WhatsApp ou está inválido.";
   }
   if (/connect|closed|logout|session/i.test(detail)) {
     return "A instância do WhatsApp financeiro desconectou. Reconecte e tente de novo.";
   }
+  if (/^bad request$/i.test(detail)) return fallback;
   return detail.length <= 160 ? detail : fallback;
 }
 
@@ -326,21 +372,18 @@ function summarizeEvoBody(body: unknown) {
   if (typeof body === "string") return body.slice(0, 240);
   if (typeof body !== "object") return String(body).slice(0, 240);
   const record = body as Record<string, unknown>;
-  const nested = record["response"] ?? record["error"] ?? record["data"];
-  const candidates = [record["message"], record["error"], record["msg"], nested];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) return candidate.trim().slice(0, 240);
-    if (Array.isArray(candidate)) {
-      const joined = candidate
-        .map((item) => (typeof item === "string" ? item : typeof item === "object" && item && "message" in item ? String((item as { message: unknown }).message) : ""))
-        .filter(Boolean)
-        .join("; ");
-      if (joined) return joined.slice(0, 240);
-    }
-    if (candidate && typeof candidate === "object") {
-      const inner = candidate as Record<string, unknown>;
-      const message = inner["message"] ?? inner["error"] ?? inner["msg"];
-      if (typeof message === "string" && message.trim()) return message.trim().slice(0, 240);
+  const response = record["response"];
+  const fromResponse =
+    response && typeof response === "object"
+      ? flattenEvoMessages((response as Record<string, unknown>)["message"] ?? response)
+      : "";
+  if (fromResponse) return fromResponse;
+  const fromMessage = flattenEvoMessages(record["message"]);
+  if (fromMessage) return fromMessage;
+  for (const key of ["error", "msg"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() && !/^bad request|internal server error|unauthorized|forbidden|not found$/i.test(value.trim())) {
+      return value.trim().slice(0, 240);
     }
   }
   try {
@@ -348,4 +391,24 @@ function summarizeEvoBody(body: unknown) {
   } catch {
     return "";
   }
+}
+
+function flattenEvoMessages(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim().slice(0, 240);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => flattenEvoMessages(item))
+      .filter(Boolean)
+      .join("; ")
+      .slice(0, 240);
+  }
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (record["exists"] === false) {
+    const number = typeof record["number"] === "string" ? record["number"] : "";
+    return number ? `exists:false number=${number}` : "exists:false";
+  }
+  const nested = record["message"] ?? record["error"] ?? record["msg"];
+  if (nested !== undefined) return flattenEvoMessages(nested);
+  return "";
 }

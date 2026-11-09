@@ -66,9 +66,8 @@ export async function resendDueBillingWhatsappByInvoice(invoiceId: string) {
     fail("Esta cobrança não está em aberto.");
   }
   const context = await noticeContext(invoice.organization_id, invoice.due_date);
-  if (!context.financePhone.trim() || context.financePhone.trim().toLocaleLowerCase("pt-BR") === "não informado") {
-    fail("Cliente sem telefone financeiro.");
-  }
+  const phones = noticePhones(context);
+  if (!phones.length) fail("Cliente sem telefone financeiro.");
   const pixCode = pixQrPayload(invoice.pix_code || context.pixCode || "");
   if (!pixCode) fail("Cobrança sem código Pix válido.");
   const faceCents = Number(invoice.base_amount_cents ?? invoice.total_amount_cents ?? 0);
@@ -94,11 +93,14 @@ export async function resendDueBillingWhatsappByInvoice(invoiceId: string) {
     promoMonthlyCents: context.promoMonthlyCents,
     nominalMonthlyCents: context.nominalMonthlyCents,
   });
-  const sent = await sendFinanceWhatsapp({ phone: context.financePhone, text, imagePng: image });
-  if (!sent.ok) {
-    fail(sent.error || "O WhatsApp não confirmou a mensagem.");
+  let lastError = "";
+  for (const phone of phones) {
+    const sent = await sendFinanceWhatsapp({ phone, text, imagePng: image });
+    if (sent.ok) return { ok: true as const, messageId: sent.messageId || "" };
+    lastError = sent.error || "O WhatsApp não confirmou a mensagem.";
+    if (!/não está no WhatsApp|Telefone financeiro inválido/i.test(lastError)) break;
   }
-  return { ok: true as const, messageId: sent.messageId || "" };
+  fail(lastError || "O WhatsApp não confirmou a mensagem.");
 }
 
 export async function runBillingNotices(now = new Date()) {
@@ -138,6 +140,7 @@ async function deliverNotice(notice: NoticeRow, today: string) {
     await finishNotice(notice.id, { status: "skipped", error: "Sem cobrança Cora para esta parcela." });
     return;
   }
+  const phones = noticePhones(context);
   const verdict = judgeNotice({
     kind,
     sendOn: notice.send_on.slice(0, 10),
@@ -145,7 +148,7 @@ async function deliverNotice(notice: NoticeRow, today: string) {
     status: "pending",
     coraStatus: context.localStatus === "paid" ? "PAID" : context.localStatus === "cancelled" ? "CANCELLED" : "OPEN",
     legalName: context.legalName,
-    financePhone: context.financePhone,
+    financePhone: phones[0] ?? "",
     pixCode: context.pixCode,
     faceCents: context.faceCents,
     delinquencyCents: context.delinquencyCents,
@@ -176,7 +179,7 @@ async function deliverNotice(notice: NoticeRow, today: string) {
     status: "pending",
     coraStatus: remote,
     legalName: context.legalName,
-    financePhone: context.financePhone,
+    financePhone: phones[0] ?? "",
     pixCode: context.pixCode,
     faceCents: context.faceCents,
     delinquencyCents: context.delinquencyCents,
@@ -213,7 +216,17 @@ async function deliverNotice(notice: NoticeRow, today: string) {
       promoMonthlyCents: context.promoMonthlyCents,
       nominalMonthlyCents: context.nominalMonthlyCents,
     });
-    const sent = await sendFinanceWhatsapp({ phone: context.financePhone, text, imagePng: image });
+    const phones = noticePhones(context);
+    let sent: { ok: boolean; messageId: string; error: string } = {
+      ok: false,
+      messageId: "",
+      error: "Cliente sem telefone financeiro.",
+    };
+    for (const phone of phones) {
+      sent = await sendFinanceWhatsapp({ phone, text, imagePng: image });
+      if (sent.ok) break;
+      if (!/não está no WhatsApp|Telefone financeiro inválido/i.test(sent.error || "")) break;
+    }
     if (!sent.ok) {
       const retryLater = sent.error === "Nenhuma instância do WhatsApp financeiro está conectada.";
       await finishNotice(notice.id, {
@@ -288,7 +301,7 @@ async function noticeContext(organizationId: string, dueDate: string) {
   const [organization, invoices, contract, promotions] = await Promise.all([
     supabaseAdmin
       .from("organizations")
-      .select("legal_name, finance_phone, responsible_email, ads_meta, ads_google")
+      .select("legal_name, finance_phone, responsible_phone, responsible_email, ads_meta, ads_google")
       .eq("id", organizationId)
       .maybeSingle(),
     supabaseAdmin
@@ -323,6 +336,7 @@ async function noticeContext(organizationId: string, dueDate: string) {
   return {
     legalName: organization.data?.legal_name ?? "",
     financePhone: organization.data?.finance_phone ?? "",
+    responsiblePhone: organization.data?.responsible_phone ?? "",
     responsibleEmail: organization.data?.responsible_email ?? "",
     adsMeta: organization.data?.ads_meta !== false,
     adsGoogle: organization.data?.ads_google === true,
@@ -409,6 +423,20 @@ async function releaseStaleClaims(now: Date) {
     if (claimed && claimed > limit) continue;
     await finishNotice(row.id, { status: "failed", error: "Envio sem confirmação." });
   }
+}
+
+function noticePhones(context: { financePhone: string; responsiblePhone: string }) {
+  const seen = new Set<string>();
+  const phones: string[] = [];
+  for (const raw of [context.financePhone, context.responsiblePhone]) {
+    const phone = raw.trim();
+    if (!phone || phone.toLocaleLowerCase("pt-BR") === "não informado") continue;
+    const key = phone.replace(/\D/g, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    phones.push(phone);
+  }
+  return phones;
 }
 
 function fail(message: string): never {

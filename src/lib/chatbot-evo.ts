@@ -850,6 +850,13 @@ export function evolutionQrConnectPlan(input: {
   return "create_then_connect";
 }
 
+/** Ao mover conversas de um canal para outro (troca de número / exclusão). */
+export type ConversationReassignAction = "move" | "merge";
+
+export function conversationReassignAction(hasConversationOnTarget: boolean): ConversationReassignAction {
+  return hasConversationOnTarget ? "merge" : "move";
+}
+
 export function evolutionInstanceNameOf(record: Record<string, unknown>) {
   const nested = record["instance"];
   const nestedRecord = nested && typeof nested === "object" ? (nested as Record<string, unknown>) : null;

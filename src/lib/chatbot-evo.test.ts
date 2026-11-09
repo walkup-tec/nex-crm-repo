@@ -3,6 +3,7 @@ import { chatbotProfileLabel, chatbotProfilesFromStorage, defaultChatbotProfiles
 import { allChatbotMenus } from "./chatbot-menus";
 import {
   evolutionConnectionStatus,
+  conversationReassignAction,
   evolutionQrConnectPlan,
   evolutionReportedStatus,
   evolutionContactAvatar,
@@ -785,6 +786,8 @@ assert.equal(evolutionQrConnectPlan({ instancePresent: true, state: "close" }), 
 assert.equal(evolutionQrConnectPlan({ instancePresent: true, state: "connecting" }), "connect_only");
 assert.equal(evolutionQrConnectPlan({ instancePresent: false, state: "" }), "create_then_connect");
 assert.equal(evolutionQrConnectPlan({ instancePresent: false, state: "close" }), "create_then_connect");
+assert.equal(conversationReassignAction(false), "move");
+assert.equal(conversationReassignAction(true), "merge");
 assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");
 assert.equal(evolutionMessageText({ buttonsResponseMessage: { selectedButtonId: "1", selectedDisplayText: "Vendas" } }), "Vendas");
 assert.equal(evolutionMessageText({ imageMessage: { url: "x" } }), "[imagem]");

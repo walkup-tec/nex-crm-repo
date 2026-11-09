@@ -18,6 +18,7 @@ import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
   chatbotInstanceName,
+  conversationReassignAction,
   inboxOrder,
   inboxUnread,
   inboxVisible,
@@ -463,7 +464,12 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   ]);
   const allowedConnections = admin ? null : await teamConnectionIds(userId, organizationId);
   const scopedConversations = conversationRows.filter((row) => {
-    if (allowedConnections && !allowedConnections.has(cell(row, "connection_id"))) return false;
+    const connectionId = cell(row, "connection_id");
+    if (allowedConnections) {
+      // Conversas órfãs (canal excluído) ficam visíveis só para admin até reconectar.
+      if (!connectionId) return admin;
+      if (!allowedConnections.has(connectionId)) return false;
+    }
     return inboxVisible({ assigneeId: cell(row, "assignee_id"), userId, admin });
   });
   const visibleConversationIds = new Set(scopedConversations.map((row) => cell(row, "id")));
@@ -636,7 +642,9 @@ export async function createChatbotConnection(userId: string, name: string, phon
     .select("*")
     .maybeSingle();
   if (inserted.error || !inserted.data) fail(schemaMessage(inserted.error?.message ?? ""));
-  return { id: cell(inserted.data, "id"), qrCode: qr };
+  const connectionId = cell(inserted.data, "id");
+  await reassignConversationsFromConnection(organizationId, null, connectionId);
+  return { id: connectionId, qrCode: qr };
 }
 
 async function readEvolutionConnection(instanceName: string) {
@@ -799,26 +807,204 @@ export async function listChatbotChannels(userId: string) {
   }));
 }
 
+/**
+ * Move conversas de um canal (ou órfãs) para outro, mesclando quando o contato já tem conversa no destino.
+ * fromConnectionId = null → pega conversas órfãs (connection_id IS NULL).
+ * toConnectionId = null → deixa órfãs (aguardando novo canal).
+ */
+async function reassignConversationsFromConnection(
+  organizationId: string,
+  fromConnectionId: string | null,
+  toConnectionId: string | null,
+) {
+  if (fromConnectionId && toConnectionId && fromConnectionId === toConnectionId) return;
+
+  let query = table("chatbot_conversations")
+    .select("id, contact_id, connection_id")
+    .eq("organization_id", organizationId);
+  query = fromConnectionId
+    ? query.eq("connection_id", fromConnectionId)
+    : query.is("connection_id", null);
+  const sourceRows = await rows(query);
+  if (!sourceRows.length) return;
+
+  for (const source of sourceRows) {
+    const conversationId = cell(source, "id");
+    const contactId = cell(source, "contact_id");
+    if (!conversationId || !contactId) continue;
+
+    if (!toConnectionId) {
+      const orphaned = await table("chatbot_conversations")
+        .update({ connection_id: null, updated_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("organization_id", organizationId)
+        .select("id")
+        .maybeSingle();
+      if (orphaned.error) fail(schemaMessage(orphaned.error.message));
+      continue;
+    }
+
+    const existing = await table("chatbot_conversations")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("connection_id", toConnectionId)
+      .eq("contact_id", contactId)
+      .maybeSingle();
+    if (existing.error) fail(schemaMessage(existing.error.message));
+
+    const targetId = cell(existing.data, "id");
+    const action = conversationReassignAction(Boolean(targetId) && targetId !== conversationId);
+
+    if (action === "move" || !targetId) {
+      const moved = await table("chatbot_conversations")
+        .update({ connection_id: toConnectionId, updated_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("organization_id", organizationId)
+        .select("id")
+        .maybeSingle();
+      if (moved.error) {
+        if (!duplicate(moved.error)) fail(schemaMessage(moved.error.message));
+        // Corrida: destino passou a existir — mescla abaixo.
+        const again = await table("chatbot_conversations")
+          .select("id")
+          .eq("organization_id", organizationId)
+          .eq("connection_id", toConnectionId)
+          .eq("contact_id", contactId)
+          .neq("id", conversationId)
+          .maybeSingle();
+        if (again.error) fail(schemaMessage(again.error.message));
+        const mergeInto = cell(again.data, "id");
+        if (!mergeInto) fail(schemaMessage(moved.error.message));
+        await mergeConversationInto(organizationId, conversationId, mergeInto);
+      }
+      continue;
+    }
+
+    await mergeConversationInto(organizationId, conversationId, targetId);
+  }
+}
+
+async function adoptConversationToConnection(
+  organizationId: string,
+  conversationId: string,
+  contactId: string,
+  toConnectionId: string,
+) {
+  if (!conversationId || !toConnectionId) return conversationId;
+  const existing = await table("chatbot_conversations")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("connection_id", toConnectionId)
+    .eq("contact_id", contactId)
+    .maybeSingle();
+  if (existing.error) fail(schemaMessage(existing.error.message));
+  const targetId = cell(existing.data, "id");
+  if (targetId && targetId !== conversationId) {
+    await mergeConversationInto(organizationId, conversationId, targetId);
+    return targetId;
+  }
+  if (targetId === conversationId) return conversationId;
+  const moved = await table("chatbot_conversations")
+    .update({ connection_id: toConnectionId, updated_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("organization_id", organizationId)
+    .select("id")
+    .maybeSingle();
+  if (moved.error) {
+    if (!duplicate(moved.error)) fail(schemaMessage(moved.error.message));
+    const again = await table("chatbot_conversations")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("connection_id", toConnectionId)
+      .eq("contact_id", contactId)
+      .neq("id", conversationId)
+      .maybeSingle();
+    const mergeInto = cell(again.data, "id");
+    if (!mergeInto) fail(schemaMessage(moved.error.message));
+    await mergeConversationInto(organizationId, conversationId, mergeInto);
+    return mergeInto;
+  }
+  return cell(moved.data, "id") || conversationId;
+}
+
+async function mergeConversationInto(organizationId: string, sourceId: string, targetId: string) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+
+  await done(
+    table("chatbot_messages")
+      .update({ conversation_id: targetId })
+      .eq("conversation_id", sourceId)
+      .eq("organization_id", organizationId),
+  );
+
+  await ignoreMissingTable(
+    table("chatbot_conversation_pins")
+      .update({ conversation_id: targetId })
+      .eq("conversation_id", sourceId)
+      .eq("organization_id", organizationId),
+  );
+  await ignoreMissingTable(
+    table("chatbot_conversation_reads")
+      .update({ conversation_id: targetId })
+      .eq("conversation_id", sourceId)
+      .eq("organization_id", organizationId),
+  );
+  await ignoreMissingTable(
+    table("chatbot_ratings")
+      .update({ conversation_id: targetId })
+      .eq("conversation_id", sourceId)
+      .eq("organization_id", organizationId),
+  );
+  await ignoreMissingTable(
+    table("chatbot_returns")
+      .update({ conversation_id: targetId })
+      .eq("conversation_id", sourceId)
+      .eq("organization_id", organizationId),
+  );
+
+  // flow_runs: PK = conversation_id — se o destino já tem, descarta o do origem.
+  const targetFlow = await table("chatbot_flow_runs").select("conversation_id").eq("conversation_id", targetId).maybeSingle();
+  if (targetFlow.error && !/does not exist|schema cache|PGRST205/i.test(targetFlow.error.message)) {
+    fail(schemaMessage(targetFlow.error.message));
+  }
+  if (!targetFlow.error && !targetFlow.data) {
+    await ignoreMissingTable(table("chatbot_flow_runs").update({ conversation_id: targetId }).eq("conversation_id", sourceId));
+  } else {
+    await ignoreMissingTable(table("chatbot_flow_runs").delete().eq("conversation_id", sourceId));
+  }
+
+  await done(table("chatbot_conversations").delete().eq("id", sourceId).eq("organization_id", organizationId));
+
+  await table("chatbot_conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", targetId)
+    .eq("organization_id", organizationId);
+}
+
+async function ignoreMissingTable(query: Query) {
+  const result = await (query as unknown as Promise<{ error: DbError | null }>);
+  if (!result.error) return;
+  if (/does not exist|schema cache|PGRST205|duplicate/i.test(result.error.message)) return;
+  fail(schemaMessage(result.error.message));
+}
+
 export async function deleteChatbotConnection(userId: string, connectionId: string) {
   const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
   const current = await ownedConnection(organizationId, connectionId);
+  const siblings = await rows(
+    table("chatbot_connections")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .neq("id", connectionId)
+      .order("created_at", { ascending: true }),
+  );
+  const targetConnectionId = cell(siblings[0], "id") || null;
+  // Preserva conversas/contatos/kanban/compras/agenda: só troca o canal (ou deixa órfão até reconectar).
+  await reassignConversationsFromConnection(organizationId, connectionId, targetConnectionId);
   await removeEvolutionInstance(cell(current, "instance_name"));
   await releaseTeamsFromChannel(organizationId, connectionId);
-  const conversations = await rows(
-    table("chatbot_conversations").select("contact_id").eq("connection_id", connectionId).eq("organization_id", organizationId),
-  );
-  const contactIds = [...new Set(conversations.map((row) => cell(row, "contact_id")).filter(Boolean))];
   await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
-  for (const contactId of contactIds) {
-    const still = await table("chatbot_conversations")
-      .select("id")
-      .eq("contact_id", contactId)
-      .eq("organization_id", organizationId)
-      .maybeSingle();
-    if (still.error) fail(schemaMessage(still.error.message));
-    if (!still.data) await done(table("chatbot_contacts").delete().eq("id", contactId).eq("organization_id", organizationId));
-  }
 }
 
 async function evolutionDeleteAccepted(instanceName: string) {
@@ -2212,18 +2398,33 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   const storedText = group ? groupInboundText(sender, text) : text;
   if (!contactId) return;
   const botsDisabled = await contactBotsDisabled(organizationId, contactId);
+  const connectionId = cell(connection, "id");
   const existingConversation = await table("chatbot_conversations")
     .select("id")
-    .eq("connection_id", cell(connection, "id"))
+    .eq("connection_id", connectionId)
     .eq("contact_id", contactId)
     .maybeSingle();
   let conversationId = cell(existingConversation.data, "id");
+  if (!conversationId) {
+    // Adota conversa do mesmo contato em outro canal/órfã (troca de número preserva histórico).
+    const legacy = await table("chatbot_conversations")
+      .select("id, connection_id")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const legacyId = cell(legacy.data, "id");
+    if (legacyId) {
+      conversationId = await adoptConversationToConnection(organizationId, legacyId, contactId, connectionId);
+    }
+  }
   if (!conversationId) {
     const created = await table("chatbot_conversations")
       .insert({
         organization_id: organizationId,
         contact_id: contactId,
-        connection_id: cell(connection, "id"),
+        connection_id: connectionId,
         status: "queue",
         bot_paused: botsDisabled,
       })
@@ -2233,7 +2434,7 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
       if (!duplicate(created.error)) return;
       const again = await table("chatbot_conversations")
         .select("id")
-        .eq("connection_id", cell(connection, "id"))
+        .eq("connection_id", connectionId)
         .eq("contact_id", contactId)
         .maybeSingle();
       conversationId = cell(again.data, "id");

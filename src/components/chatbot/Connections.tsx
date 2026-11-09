@@ -365,7 +365,7 @@ export function Connections() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir número</AlertDialogTitle>
             <AlertDialogDescription>
-              Excluir {removing?.name ?? "este número"} e apagar essa instância na Evolution? As conversas desse número também serão removidas.
+              Excluir {removing?.name ?? "este número"} e apagar essa instância na Evolution? Conversas, contatos, kanban, compras e agendamentos são preservados e voltam ao reconectar outro número.
             </AlertDialogDescription>
             {dialogError ? (
               <p role="alert" className="text-sm text-destructive">

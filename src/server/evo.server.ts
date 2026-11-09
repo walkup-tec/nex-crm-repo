@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { readProviderMessageId } from "@/lib/billing-notice";
+import { whatsappTextPayload } from "@/lib/chatbot-evo";
 import { evolutionBaseUrls, gatewayFromProcRoute } from "@/lib/evolution-route";
 import {
   inviteAccessLink,
@@ -120,13 +121,17 @@ export async function sendPlainWhatsapp(input: { phone: string; text: string }) 
   const text = await evoPost(
     `${base}/message/sendText/${encodeURIComponent(instance)}`,
     headers,
-    { number, text: clean },
+    whatsappTextPayload(number, clean),
     20000,
     "evo_intelligence",
   );
   const messageId = readProviderMessageId(text.body);
   if (!text.ok) {
-    return { ok: false as const, messageId, error: "O WhatsApp não confirmou a mensagem." };
+    return {
+      ok: false as const,
+      messageId,
+      error: evolutionFailureMessage(text.body, "O WhatsApp não confirmou a mensagem."),
+    };
   }
   return { ok: true as const, messageId, error: "" };
 }
@@ -145,18 +150,22 @@ export async function sendFinanceWhatsapp(input: { phone: string; text: string; 
     };
   }
   const { base, headers, instance } = target;
+  // Pix EMV parece URL; linkPreview ativo faz a Evolution falhar/timeout no sendText.
   const text = await evoPost(
     `${base}/message/sendText/${encodeURIComponent(instance)}`,
     headers,
-    {
-      number,
-      text: input.text,
-    },
+    whatsappTextPayload(number, input.text),
     20000,
     "evo_finance",
   );
   const messageId = readProviderMessageId(text.body);
-  if (!text.ok) return { ok: false, messageId, error: "O WhatsApp não confirmou a mensagem." };
+  if (!text.ok) {
+    return {
+      ok: false,
+      messageId,
+      error: evolutionFailureMessage(text.body, "O WhatsApp não confirmou a mensagem."),
+    };
+  }
   const image = await evoPost(
     `${base}/message/sendMedia/${encodeURIComponent(instance)}`,
     headers,
@@ -283,12 +292,60 @@ async function evoPost(
       }
     }
     if (!response.ok) {
-      console.error(tag, response.status);
+      console.error(tag, response.status, summarizeEvoBody(body));
       return { ok: false, body };
     }
     return { ok: true, body };
   } catch (error) {
-    console.error(tag, error instanceof Error ? error.name : "error");
-    return { ok: false, body: null };
+    const name = error instanceof Error ? error.name : "error";
+    console.error(tag, name);
+    return {
+      ok: false,
+      body: name === "TimeoutError" || name === "AbortError" ? { message: "Tempo esgotado ao falar com o WhatsApp." } : null,
+    };
+  }
+}
+
+function evolutionFailureMessage(body: unknown, fallback: string) {
+  const detail = summarizeEvoBody(body).trim();
+  if (!detail) return fallback;
+  if (/tempo esgotado|timeout/i.test(detail)) {
+    return "O WhatsApp demorou demais para confirmar a mensagem. Tente de novo em instantes.";
+  }
+  if (/not.*(in|on).*whatsapp|exists.*false|número.*(inválido|inexistente)|invalid.*(number|jid)/i.test(detail)) {
+    return "O telefone financeiro não está no WhatsApp ou está inválido.";
+  }
+  if (/connect|closed|logout|session/i.test(detail)) {
+    return "A instância do WhatsApp financeiro desconectou. Reconecte e tente de novo.";
+  }
+  return detail.length <= 160 ? detail : fallback;
+}
+
+function summarizeEvoBody(body: unknown) {
+  if (body == null) return "";
+  if (typeof body === "string") return body.slice(0, 240);
+  if (typeof body !== "object") return String(body).slice(0, 240);
+  const record = body as Record<string, unknown>;
+  const nested = record["response"] ?? record["error"] ?? record["data"];
+  const candidates = [record["message"], record["error"], record["msg"], nested];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim().slice(0, 240);
+    if (Array.isArray(candidate)) {
+      const joined = candidate
+        .map((item) => (typeof item === "string" ? item : typeof item === "object" && item && "message" in item ? String((item as { message: unknown }).message) : ""))
+        .filter(Boolean)
+        .join("; ");
+      if (joined) return joined.slice(0, 240);
+    }
+    if (candidate && typeof candidate === "object") {
+      const inner = candidate as Record<string, unknown>;
+      const message = inner["message"] ?? inner["error"] ?? inner["msg"];
+      if (typeof message === "string" && message.trim()) return message.trim().slice(0, 240);
+    }
+  }
+  try {
+    return JSON.stringify(body).slice(0, 240);
+  } catch {
+    return "";
   }
 }

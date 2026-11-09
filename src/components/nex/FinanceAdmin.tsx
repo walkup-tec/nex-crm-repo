@@ -40,6 +40,7 @@ import {
   type FinanceMonitorItem,
   type MasterFinance,
 } from "@/lib/finance-access";
+import { readDashboardSnapshot, writeDashboardSnapshot } from "@/lib/dashboard-cache";
 import { applyMask } from "@/lib/masks";
 import {
   cancelMasterChargeFn,
@@ -54,9 +55,27 @@ import {
 import type { MetaPeriod } from "@/lib/meta-access";
 import { cn } from "@/lib/utils";
 
+const masterFinanceCacheKey = "nex-master-finance-v3";
+
+function isMasterFinance(value: unknown): value is MasterFinance {
+  if (!value || typeof value !== "object") return false;
+  const row = value as MasterFinance;
+  return Array.isArray(row.charges) && Array.isArray(row.monitor);
+}
+
+function browserStorage() {
+  try {
+    return typeof window !== "undefined" ? window.sessionStorage : null;
+  } catch {
+    return null;
+  }
+}
+
 export function FinanceAdmin() {
-  const [snapshot, setSnapshot] = useState<MasterFinance | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = readDashboardSnapshot(browserStorage(), masterFinanceCacheKey, isMasterFinance);
+  const [snapshot, setSnapshot] = useState<MasterFinance | null>(cached);
+  const [loading, setLoading] = useState(!cached);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -85,20 +104,23 @@ export function FinanceAdmin() {
     });
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (refresh = false) => {
+    if (refresh) setRefreshing(true);
+    else if (!cached) setLoading(true);
     setError("");
-    const result = await listMasterFinanceFn();
+    const result = await listMasterFinanceFn({ data: { refresh } });
     setLoading(false);
+    setRefreshing(false);
     if (!result.ok) {
-      setError(result.message);
+      if (!cached) setError(result.message);
       return;
     }
     setSnapshot(result.data);
-  }, []);
+    writeDashboardSnapshot(browserStorage(), masterFinanceCacheKey, result.data);
+  }, [cached]);
 
   useEffect(() => {
-    void load();
+    void load(false);
   }, [load]);
 
   const today = todayKey();
@@ -106,13 +128,16 @@ export function FinanceAdmin() {
   const listedStatus = (item: FinanceCharge) =>
     item.status === "pending" && item.dueDate.slice(0, 10) < today ? "overdue" : item.status;
   const inPeriod = (snapshot?.charges ?? []).filter((item) => chargeInPeriod(item.dueDate, bounds));
-  const charges = inPeriod.filter((item) => {
-    const status = listedStatus(item);
-    if (filter === "pending") return status === "pending";
-    if (filter === "overdue") return status === "overdue";
-    if (filter === "paid") return status === "paid";
-    return true;
-  }).filter((item) => chargeMatchesClient(item, query));
+  const charges = inPeriod
+    .filter((item) => {
+      const status = listedStatus(item);
+      if (filter === "pending") return status === "pending";
+      if (filter === "overdue") return status === "overdue";
+      if (filter === "paid") return status === "paid";
+      return true;
+    })
+    .filter((item) => chargeMatchesClient(item, query))
+    .sort((left, right) => left.dueDate.localeCompare(right.dueDate));
   const receivableCents =
     period.mode === "total"
       ? snapshot?.receivableCents ?? 0
@@ -130,6 +155,9 @@ export function FinanceAdmin() {
   return (
     <div className="space-y-5">
       {loading && <p className="text-sm text-muted-foreground">Consultando cobranças...</p>}
+      {!loading && refreshing ? (
+        <p className="text-sm text-muted-foreground">Atualizando cobranças em segundo plano...</p>
+      ) : null}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {resendNotice ? (
         <p className={cn("text-sm", resendNotice.ok ? "text-emerald-600" : "text-destructive")}>

@@ -321,6 +321,7 @@ export async function syncFinance(userId: string, organizationId?: string) {
   if (actor.role !== "master" && organizationId && organizationId !== actor.organizationId)
     fail("Você não pode sincronizar o financeiro deste cliente.");
   const synced = await runFinanceSync(actor, target);
+  invalidateMasterFinanceCache();
   return synced.notice;
 }
 
@@ -523,7 +524,7 @@ async function invoicesOf(organizationId?: string) {
     .select(
       "id, organization_id, competence, due_date, base_amount_cents, total_amount_cents, status, paid_at, invoice_url, external_charge_id, pix_code",
     )
-    .order("due_date", { ascending: false });
+    .order("due_date", { ascending: true });
   if (organizationId) query = query.eq("organization_id", organizationId);
   const { data, error } = await query;
   if (error) fail(error.message);
@@ -613,17 +614,33 @@ async function financeMonitorOf(
   ];
 }
 
-export async function listMasterFinance(userId: string): Promise<MasterFinance> {
-  const actor = await actorOf(userId);
-  if (actor.role !== "master") fail("Só o Master consulta o financeiro geral.");
-  const synced = await runFinanceSync(actor);
+const idleMonitor: FinanceMonitorItem[] = [
+  { id: "cora", label: "Integração", ok: true, detail: "OK" },
+  { id: "cora_sync", label: "Cobranças", ok: true, detail: "consulta local" },
+  { id: "asaas", label: "Integração", ok: true, detail: "OK" },
+  { id: "asaas_sync", label: "Cobranças", ok: true, detail: "consulta local" },
+];
+
+type MasterFinanceMemory = {
+  at: number;
+  data: MasterFinance;
+  monitor: FinanceMonitorItem[];
+};
+
+let masterFinanceMemory: MasterFinanceMemory | null = null;
+let masterFinanceSyncAt = 0;
+let masterFinanceSyncing: Promise<void> | null = null;
+const MASTER_FINANCE_TTL_MS = 45_000;
+const MASTER_FINANCE_SYNC_EVERY_MS = 120_000;
+
+export function invalidateMasterFinanceCache() {
+  masterFinanceMemory = null;
+}
+
+async function assembleMasterFinance(monitor: FinanceMonitorItem[]): Promise<MasterFinance> {
   const rows = await invoicesOf();
   const organizationIds = [...new Set(rows.map((row) => row.organization_id))];
-  const [names, providers, monitor] = await Promise.all([
-    namesOf(organizationIds),
-    providersOf(organizationIds),
-    financeMonitorOf(synced.notice, synced.coraSync),
-  ]);
+  const [names, providers] = await Promise.all([namesOf(organizationIds), providersOf(organizationIds)]);
   const charges = rows
     .map((row) => toCharge(row, names, providers))
     .filter(
@@ -633,7 +650,8 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
           clientName: item.clientName,
           clientDocument: item.clientDocument,
         }),
-    );
+    )
+    .sort((left, right) => left.dueDate.localeCompare(right.dueDate));
   const month = todayKey().slice(0, 7);
   return {
     receivableCents: charges
@@ -649,6 +667,57 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
     monitor,
     notice: "",
   };
+}
+
+async function runMasterFinanceBackgroundSync(actor: Actor) {
+  if (masterFinanceSyncing) return masterFinanceSyncing;
+  masterFinanceSyncing = (async () => {
+    try {
+      const synced = await runFinanceSync(actor);
+      const monitor = await financeMonitorOf(synced.notice, synced.coraSync);
+      const data = await assembleMasterFinance(monitor);
+      masterFinanceMemory = { at: Date.now(), data, monitor };
+      masterFinanceSyncAt = Date.now();
+    } catch (error) {
+      console.error("master_finance_sync", error instanceof Error ? error.message : "falha");
+    } finally {
+      masterFinanceSyncing = null;
+    }
+  })();
+  return masterFinanceSyncing;
+}
+
+export async function listMasterFinance(
+  userId: string,
+  input: { refresh?: boolean } = {},
+): Promise<MasterFinance> {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") fail("Só o Master consulta o financeiro geral.");
+
+  if (input.refresh) {
+    const synced = await runFinanceSync(actor);
+    const monitor = await financeMonitorOf(synced.notice, synced.coraSync);
+    const data = await assembleMasterFinance(monitor);
+    masterFinanceMemory = { at: Date.now(), data, monitor };
+    masterFinanceSyncAt = Date.now();
+    return data;
+  }
+
+  const now = Date.now();
+  if (masterFinanceMemory && now - masterFinanceMemory.at < MASTER_FINANCE_TTL_MS) {
+    if (now - masterFinanceSyncAt > MASTER_FINANCE_SYNC_EVERY_MS) {
+      void runMasterFinanceBackgroundSync(actor);
+    }
+    return masterFinanceMemory.data;
+  }
+
+  const monitor = masterFinanceMemory?.monitor ?? idleMonitor;
+  const data = await assembleMasterFinance(monitor);
+  masterFinanceMemory = { at: now, data, monitor };
+  if (now - masterFinanceSyncAt > MASTER_FINANCE_SYNC_EVERY_MS) {
+    void runMasterFinanceBackgroundSync(actor);
+  }
+  return data;
 }
 
 async function organizationBillingProfile(organizationId: string) {
@@ -993,6 +1062,7 @@ export async function createAdHocCharge(
       due,
       amountCents: amount,
     });
+    invalidateMasterFinanceCache();
     return { id: inserted.id, dueDate: due, billingProvider: "cora" as const };
   }
 
@@ -1024,6 +1094,7 @@ export async function createAdHocCharge(
     due,
     amountCents: amount,
   });
+  invalidateMasterFinanceCache();
   return { id: inserted.id, dueDate: due, billingProvider: "manual" as const };
 }
 
@@ -1072,6 +1143,7 @@ export async function markManualChargePaid(userId: string, invoiceId: string) {
     clientName: names.get(invoice.organization_id)?.legalName ?? "cliente",
     competence: invoice.competence,
   });
+  invalidateMasterFinanceCache();
 }
 
 async function negotiateCoraCharge(
@@ -1499,6 +1571,7 @@ export async function changeInvoiceDueDate(
     from: invoice.due_date.slice(0, 10),
     to: due,
   });
+  invalidateMasterFinanceCache();
 }
 
 export async function resendChargeDueWhatsapp(userId: string, invoiceId: string) {
@@ -1552,4 +1625,5 @@ export async function cancelMasterCharge(userId: string, invoiceId: string) {
     competence: invoice.competence,
     provider: rail,
   });
+  invalidateMasterFinanceCache();
 }

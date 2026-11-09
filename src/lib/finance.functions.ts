@@ -23,9 +23,10 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
 
 export const listMasterFinanceFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Result<MasterFinance>> => {
+  .validator((data?: { refresh?: boolean }) => data ?? {})
+  .handler(async ({ context, data }): Promise<Result<MasterFinance>> => {
     const { listMasterFinance } = await import("@/server/finance.server");
-    return guard(() => listMasterFinance(context.userId));
+    return guard(() => listMasterFinance(context.userId, { refresh: data.refresh === true }));
   });
 
 export const listOwnFinanceFn = createServerFn({ method: "GET" })

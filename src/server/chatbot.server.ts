@@ -32,6 +32,7 @@ import {
   freshRunBlocksResend,
   evolutionConnectionStatus,
   evolutionInactiveMessage,
+  evolutionQrConnectPlan,
   evolutionReportedStatus,
   evolutionInstanceClosed,
   evolutionInstanceNameOf,
@@ -294,7 +295,7 @@ function attendantMenus(value: unknown) {
   return menus;
 }
 
-async function evo(path: string, method: "GET" | "POST" | "DELETE", payload?: unknown, timeoutMs = 20000) {
+async function evo(path: string, method: "GET" | "POST" | "PUT" | "DELETE", payload?: unknown, timeoutMs = 20000) {
   const { base, key } = evolutionRuntime();
   if (!base || !key) fail("A Evolution API ainda não está configurada no servidor.");
   const init: RequestInit = {
@@ -326,6 +327,36 @@ async function applyWhatsappName(instanceName: string, name: string) {
   await evo(`/chat/updateProfileName/${encodeURIComponent(instanceName)}`, "POST", { name: clean }).catch(() => null);
 }
 
+/** Atualizar nome logo no pareamento derruba a sessão Baileys com frequência. */
+const whatsappNameTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleWhatsappName(instanceName: string, name: string) {
+  const clean = name.trim();
+  if (!instanceName || clean.length < 2) return;
+  const previous = whatsappNameTimers.get(instanceName);
+  if (previous) clearTimeout(previous);
+  whatsappNameTimers.set(
+    instanceName,
+    setTimeout(() => {
+      whatsappNameTimers.delete(instanceName);
+      void applyWhatsappName(instanceName, clean);
+    }, 25_000),
+  );
+}
+
+async function applyEvolutionStabilitySettings(instanceName: string) {
+  if (!instanceName) return;
+  await evo(`/settings/set/${encodeURIComponent(instanceName)}`, "POST", {
+    rejectCall: true,
+    msgCall: "Não posso atender ligações neste número.",
+    groupsIgnore: false,
+    alwaysOnline: true,
+    readMessages: false,
+    syncFullHistory: false,
+    readStatus: false,
+  }).catch(() => null);
+}
+
 function webhookUrl() {
   const base = (process.env["APP_URL"] || "https://app.nexmeta.com.br").replace(/\/$/, "");
   const { key } = evolutionRuntime();
@@ -342,7 +373,7 @@ function webhookBody() {
       // Include media bytes in MESSAGES_UPSERT so the inbox can show them without a late getBase64 round-trip.
       base64: true,
       headers: { apikey: key, authorization: `Bearer ${key}` },
-      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "CONTACTS_UPDATE"],
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CONTACTS_UPDATE"],
     },
   };
 }
@@ -588,6 +619,7 @@ export async function createChatbotConnection(userId: string, name: string, phon
     integration: "WHATSAPP-BAILEYS",
     number,
   });
+  await applyEvolutionStabilitySettings(instanceName);
   const webhookReady = await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody())
     .then(() => true)
     .catch(() => false);
@@ -633,24 +665,50 @@ async function readEvolutionConnection(instanceName: string) {
 
 async function openConnectionQr(instanceName: string, phone: string) {
   const number = attendancePhone(phone);
-  await evo(
-    "/instance/create",
-    "POST",
-    {
-      instanceName,
-      qrcode: true,
-      integration: "WHATSAPP-BAILEYS",
-      ...(number ? { number } : {}),
-    },
-    8000,
-  ).catch(() => null);
-  void ensureWebhook(instanceName);
-  const connected = await evo(
-    `/instance/connect/${encodeURIComponent(instanceName)}`,
-    "GET",
-    undefined,
-    12000,
-  ).catch(() => null);
+  const live = await readEvolutionConnection(instanceName);
+  const listed = live.record ? live.record : await findEvolutionInstance(instanceName);
+  const instancePresent = Boolean(listed) || Boolean(live.state.trim());
+  const plan = evolutionQrConnectPlan({
+    instancePresent,
+    state: live.state,
+  });
+
+  if (plan === "already_open") {
+    void ensureWebhook(instanceName);
+    return "";
+  }
+
+  if (plan === "create_then_connect") {
+    await evo(
+      "/instance/create",
+      "POST",
+      {
+        instanceName,
+        qrcode: true,
+        integration: "WHATSAPP-BAILEYS",
+        ...(number ? { number } : {}),
+      },
+      8000,
+    ).catch(() => null);
+  }
+
+  await applyEvolutionStabilitySettings(instanceName);
+  void ensureWebhook(instanceName, true);
+
+  const connectPath = number
+    ? `/instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(number)}`
+    : `/instance/connect/${encodeURIComponent(instanceName)}`;
+
+  let connected = await evo(connectPath, "GET", undefined, 12000).catch(() => null);
+  let qr = evolutionQrImage(connected);
+  if (qr) return qr;
+
+  // Segunda tentativa sem recriar: restart leve + connect.
+  await evo(`/instance/restart/${encodeURIComponent(instanceName)}`, "PUT", undefined, 8000).catch(async () => {
+    await evo(`/instance/restart/${encodeURIComponent(instanceName)}`, "POST", undefined, 8000).catch(() => null);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  connected = await evo(connectPath, "GET", undefined, 12000).catch(() => null);
   return evolutionQrImage(connected);
 }
 
@@ -672,7 +730,7 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
       state = "";
     }
     if (evolutionConnectionStatus(state) === "connected") {
-      if (previous !== "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
+      if (previous !== "connected") scheduleWhatsappName(instanceName, cell(current, "display_name"));
       const updated = await table("chatbot_connections")
         .update({ status: "connected", last_error: "", updated_at: new Date().toISOString() })
         .eq("id", savedId)
@@ -715,7 +773,9 @@ export async function refreshChatbotConnection(userId: string, connectionId: str
         : next === "disconnected"
           ? evolutionInactiveMessage
           : cell(current, "last_error");
-  if (next === "connected" && previous !== "connected") await applyWhatsappName(instanceName, cell(current, "display_name"));
+  if (next === "connected" && previous !== "connected") {
+    scheduleWhatsappName(instanceName, cell(current, "display_name"));
+  }
   const updated = await table("chatbot_connections")
     .update({ status: next, last_error: lastError, updated_at: new Date().toISOString() })
     .eq("id", savedId)
@@ -1857,7 +1917,9 @@ export async function ingestEvolutionWebhook(request: Request) {
     const sender = payload["sender"];
     const senderPhone = whatsappJidPhone(typeof sender === "string" ? sender : "");
     const phone = preferredWhatsappPhone(cell(found.data, "phone"), senderPhone);
-    if (next === "connected" && previous !== "connected") await applyWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
+    if (next === "connected" && previous !== "connected") {
+      scheduleWhatsappName(cell(found.data, "instance_name"), cell(found.data, "display_name"));
+    }
     await table("chatbot_connections")
       .update({
         status: next,

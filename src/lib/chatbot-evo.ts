@@ -833,6 +833,23 @@ export function evolutionReportedStatus(input: { state: string; instancePresent:
   return observed;
 }
 
+/**
+ * Plano determinístico para abrir QR sem recriar instância existente.
+ * Recriar a cada "Ver QR" derruba sessão Baileys e gera falha de pareamento.
+ */
+export type EvolutionQrConnectAction = "already_open" | "connect_only" | "create_then_connect";
+
+export function evolutionQrConnectPlan(input: {
+  instancePresent: boolean;
+  state: string;
+}): EvolutionQrConnectAction {
+  if (input.instancePresent && evolutionConnectionStatus(input.state) === "connected") {
+    return "already_open";
+  }
+  if (input.instancePresent) return "connect_only";
+  return "create_then_connect";
+}
+
 export function evolutionInstanceNameOf(record: Record<string, unknown>) {
   const nested = record["instance"];
   const nestedRecord = nested && typeof nested === "object" ? (nested as Record<string, unknown>) : null;

@@ -3,6 +3,7 @@ import { chatbotProfileLabel, chatbotProfilesFromStorage, defaultChatbotProfiles
 import { allChatbotMenus } from "./chatbot-menus";
 import {
   evolutionConnectionStatus,
+  evolutionQrConnectPlan,
   evolutionReportedStatus,
   evolutionContactAvatar,
   evolutionContactPhone,
@@ -779,6 +780,11 @@ assert.equal(evolutionReportedStatus({ state: "open", instancePresent: true, rem
 assert.equal(evolutionReportedStatus({ state: "close", instancePresent: true, removed: false, qrReady: false }), "disconnected");
 assert.equal(evolutionReportedStatus({ state: "", instancePresent: false, removed: false, qrReady: false }), "disconnected");
 assert.equal(evolutionReportedStatus({ state: "close", instancePresent: true, removed: false, qrReady: true }), "qr");
+assert.equal(evolutionQrConnectPlan({ instancePresent: true, state: "open" }), "already_open");
+assert.equal(evolutionQrConnectPlan({ instancePresent: true, state: "close" }), "connect_only");
+assert.equal(evolutionQrConnectPlan({ instancePresent: true, state: "connecting" }), "connect_only");
+assert.equal(evolutionQrConnectPlan({ instancePresent: false, state: "" }), "create_then_connect");
+assert.equal(evolutionQrConnectPlan({ instancePresent: false, state: "close" }), "create_then_connect");
 assert.equal(evolutionMessageText({ conversation: "Olá" }), "Olá");
 assert.equal(evolutionMessageText({ buttonsResponseMessage: { selectedButtonId: "1", selectedDisplayText: "Vendas" } }), "Vendas");
 assert.equal(evolutionMessageText({ imageMessage: { url: "x" } }), "[imagem]");

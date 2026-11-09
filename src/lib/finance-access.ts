@@ -191,7 +191,21 @@ export function competenceOf(dueDate: string) {
 /** Inclui no Master Financeiro qualquer CPF/CNPJ real. Não usar allowlist de teste. */
 export function countsInMasterFinance(document: string) {
   const digits = document.replace(/\D/g, "");
-  return digits.length === 11 || digits.length === 14;
+  if (!(digits.length === 11 || digits.length === 14)) return false;
+  // Walkup (testes internos) — não listar no financeiro Master.
+  if (digits === "50248188000160") return false;
+  return true;
+}
+
+export function excludedFromMasterFinance(client: {
+  clientName?: string;
+  clientDocument?: string;
+  legalName?: string;
+}) {
+  const document = client.clientDocument ?? "";
+  if (document && !countsInMasterFinance(document)) return true;
+  const name = client.clientName ?? client.legalName ?? "";
+  return matchesInternalDashboardName(name) && /WALKUP/i.test(name);
 }
 
 const localPaidCharge = {

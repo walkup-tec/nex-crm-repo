@@ -15,7 +15,7 @@ assert.equal(chargeMatchesClient(walkup, "MMS"), false);
 assert.equal(countsInMasterFinance("67.141.813/0001-72"), true);
 assert.equal(countsInMasterFinance("67141813000172"), true);
 assert.equal(countsInMasterFinance("67.851.513/0001-87"), true);
-assert.equal(countsInMasterFinance("50.248.188/0001-60"), true);
+assert.equal(countsInMasterFinance("50.248.188/0001-60"), false);
 assert.equal(countsInMasterFinance("123"), false);
 assert.equal(countsInMasterFinance(""), false);
 

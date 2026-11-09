@@ -265,17 +265,20 @@ export function FinanceAdmin() {
                               <div className="flex items-center gap-2">
                                 {status !== "paid" && status !== "cancelled" ? (
                                   <>
-                                    {item.pixCode ? (
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="icon"
-                                        aria-label={`Ver Pix de ${item.clientName}`}
-                                        onClick={() => setPixCharge(item)}
-                                      >
-                                        <Eye className="size-4" />
-                                      </Button>
-                                    ) : null}
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label={`Ver cobrança de ${item.clientName}`}
+                                      title={
+                                        item.billingProvider === "manual" || !item.pixCode
+                                          ? "Ver cobrança"
+                                          : "Ver Pix"
+                                      }
+                                      onClick={() => setPixCharge(item)}
+                                    >
+                                      <Eye className="size-4" />
+                                    </Button>
                                     <Button
                                       type="button"
                                       variant="outline"
@@ -411,6 +414,7 @@ function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onCl
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const manualOnly = charge?.billingProvider === "manual" || (!charge?.pixCode && charge?.canMarkPaid);
 
   useEffect(() => {
     setPix(null);
@@ -418,6 +422,10 @@ function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onCl
     setError("");
     setNotice("");
     if (!charge) return;
+    if (charge.billingProvider === "manual" || (!charge.pixCode && charge.canMarkPaid)) {
+      setLoading(false);
+      return;
+    }
     let alive = true;
     void (async () => {
       setLoading(true);
@@ -433,7 +441,7 @@ function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onCl
     return () => {
       alive = false;
     };
-  }, [charge?.id]);
+  }, [charge?.id, charge?.billingProvider, charge?.pixCode, charge?.canMarkPaid]);
 
   useEffect(() => {
     const payload = pix?.payload?.trim() || pixQrPayload(charge?.pixCode ?? null);
@@ -470,14 +478,28 @@ function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onCl
     <Dialog open={charge !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Pix da cobrança</DialogTitle>
+          <DialogTitle>{manualOnly ? "Cobrança manual" : "Pix da cobrança"}</DialogTitle>
           <DialogDescription>
             {charge ? `${charge.clientName} • ${competenceLabel(charge.competence)}` : ""}
           </DialogDescription>
         </DialogHeader>
-        {loading ? <p className="text-sm text-muted-foreground">Carregando Pix...</p> : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        {!loading && !error && charge ? (
+        {manualOnly && charge ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Parcela de Pix pessoal (sem Cora/Asaas). Vencimento{" "}
+              <strong>{dateBr(charge.dueDate)}</strong>.
+            </p>
+            <p className="text-center text-lg font-semibold tabular-nums">
+              {moneyFromCents(charge.totalCents)}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Confirme o recebimento pelo menu ··· → Marcar como paga.
+            </p>
+          </div>
+        ) : null}
+        {!manualOnly && loading ? <p className="text-sm text-muted-foreground">Carregando Pix...</p> : null}
+        {!manualOnly && error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {!manualOnly && !loading && !error && charge ? (
           <div className="space-y-4">
             <div className="grid place-items-center rounded-xl border bg-white p-4">
               {qrImage ? (

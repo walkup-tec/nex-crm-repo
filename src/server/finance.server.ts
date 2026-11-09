@@ -9,6 +9,7 @@ import {
   competenceOf,
   daysPast,
   countsInMasterFinance,
+  excludedFromMasterFinance,
   keepsNominalValue,
   dropsLocalCharge,
   keepsAccessWithoutPayment,
@@ -618,7 +619,14 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
   ]);
   const charges = rows
     .map((row) => toCharge(row, names, providers))
-    .filter((item) => countsInMasterFinance(item.clientDocument));
+    .filter(
+      (item) =>
+        countsInMasterFinance(item.clientDocument) &&
+        !excludedFromMasterFinance({
+          clientName: item.clientName,
+          clientDocument: item.clientDocument,
+        }),
+    );
   const month = todayKey().slice(0, 7);
   return {
     receivableCents: charges

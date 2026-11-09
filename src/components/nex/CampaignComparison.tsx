@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, BarChart3, Check, Info, X } from "lucide-react";
 import {
   campaignCompareMetrics,
+  campaignMark,
   formatInteger,
   formatMoney,
   formatPercent,
@@ -75,7 +76,7 @@ function CompareSummary({ summary }: { summary: CampaignCompareSummary }) {
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="size-2 rounded-full bg-destructive" aria-hidden />
-            Melhor desempenho da concorrente
+            Melhor desempenho em outra campanha
           </span>
         </div>
       </div>
@@ -126,14 +127,24 @@ function CompareSummary({ summary }: { summary: CampaignCompareSummary }) {
   );
 }
 
+function CampaignSignal({ row }: { row: Pick<MetaCampaignRow, "status" | "statusGroup"> }) {
+  const mark = campaignMark(row);
+  const tone = mark === "ativa" ? "bg-emerald-500" : mark === "erro" ? "bg-red-500" : "bg-zinc-400";
+  const label =
+    mark === "ativa" ? "Campanha ativa" : mark === "erro" ? "Campanha com erro" : "Campanha inativa";
+  return <span className={`size-2 shrink-0 rounded-full ${tone}`} title={label} aria-label={label} />;
+}
+
 function ComparePanel({
   panel,
   currency,
   warnObjectives,
+  campaignById,
 }: {
   panel: CampaignComparePanel;
   currency: string;
   warnObjectives: boolean;
+  campaignById: Map<string, MetaCampaignRow>;
 }) {
   const peak = panel.rows.reduce((max, row) => {
     if (row.value == null) return max;
@@ -186,10 +197,14 @@ function ComparePanel({
       <ul className="mt-5 space-y-4">
         {panel.rows.map((row) => {
           const width = barWidthPercent(row.value, peak);
+          const source = campaignById.get(row.id);
           return (
             <li key={row.id} className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
-                <p className="min-w-0 truncate text-sm text-foreground">{row.name}</p>
+                <p className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                  {source ? <CampaignSignal row={source} /> : null}
+                  <span className="truncate">{row.name}</span>
+                </p>
                 <p className="shrink-0 text-sm font-semibold tabular-nums">
                   {formatMetric(panel.key, row.value, currency)}
                 </p>
@@ -216,13 +231,22 @@ export function CampaignComparison({
   campaigns: MetaCampaignRow[];
   currency: string;
 }) {
+  if (campaigns.length < 2) {
+    return (
+      <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        Selecione pelo menos 2 campanhas no topo para montar o comparativo. Ativas aparecem com
+        sinal verde e inativas com sinal cinza.
+      </p>
+    );
+  }
   const model = campaignCompareMetrics(campaigns);
+  const campaignById = new Map(campaigns.map((row) => [row.id, row]));
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Compare os indicadores das campanhas ativas no período selecionado e identifique quais
-          apresentam os melhores resultados.
+          Compare os indicadores das campanhas selecionadas no período e identifique quais
+          apresentam os melhores resultados. Inclui campanhas ativas e inativas.
         </p>
         {model.summary ? <CompareSummary summary={model.summary} /> : null}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -232,6 +256,7 @@ export function CampaignComparison({
               panel={panel}
               currency={currency}
               warnObjectives={!model.comparable}
+              campaignById={campaignById}
             />
           ))}
         </div>

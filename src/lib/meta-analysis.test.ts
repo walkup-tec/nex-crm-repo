@@ -412,6 +412,13 @@ assert.deepEqual(
 const compare = campaignCompareMetrics(activeCampaigns(compareSource));
 assert.equal(compare.comparable, true);
 assert.equal(compare.panels.length, 6);
+
+const withInactive = campaignCompareMetrics(compareSource);
+assert.equal(withInactive.campaigns.length, 3);
+assert.deepEqual(
+  withInactive.campaigns.map((row) => row.id).sort(),
+  ["a", "b", "c"],
+);
 assert.equal(compare.panels[0]?.key, "costPerResult");
 assert.equal(compare.panels[0]?.rows[0]?.id, "b");
 assert.equal(compare.panels[0]?.rows[0]?.value, 4);

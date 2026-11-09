@@ -13,6 +13,10 @@ import {
 } from "recharts";
 import { CampaignAnalysis } from "@/components/nex/CampaignAnalysis";
 import { CampaignComparison } from "@/components/nex/CampaignComparison";
+import {
+  CampaignCompareSelect,
+  defaultCompareCampaignIds,
+} from "@/components/nex/CampaignCompareSelect";
 import { PeriodPicker } from "@/components/nex/PeriodPicker";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,7 +36,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { readDashboardSnapshot, retryDroppedDashboard, writeDashboardSnapshot, type DashboardStorage } from "@/lib/dashboard-cache";
-import { activeCampaigns, campaignMark, campaignSeriesColor } from "@/lib/meta-analysis";
+import { campaignMark, campaignSeriesColor } from "@/lib/meta-analysis";
 import type { MetaCampaignRow, MetaPerformanceView, MetaPeriod } from "@/lib/meta-access";
 import { getMetaPerformanceFn } from "@/lib/meta.functions";
 
@@ -99,6 +103,7 @@ export function MetaPerformance({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [campaignId, setCampaignId] = useState("all");
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   const [chartId, setChartId] = useState<string | null>(null);
   const [dashView, setDashView] = useState<"individual" | "comparativo">("individual");
   const busy = loading || refreshing;
@@ -138,14 +143,18 @@ export function MetaPerformance({
   }, []);
 
   const listedCampaigns = view?.campaigns ?? noCampaigns;
-  const activeRows = useMemo(() => activeCampaigns(listedCampaigns), [listedCampaigns]);
-  const showCompareTabs = mode === "overview" && activeRows.length > 1;
+  const showCompareTabs = mode === "overview" && listedCampaigns.length > 1;
   const comparing = showCompareTabs && dashView === "comparativo";
   const showCampaignFilter = listedCampaigns.length > 1 && !comparing;
   const selectedCampaign =
     showCampaignFilter && campaignId !== "all"
       ? (listedCampaigns.find((row) => row.id === campaignId) ?? null)
       : null;
+  const compareCampaigns = useMemo(() => {
+    if (!comparing) return noCampaigns;
+    const selected = new Set(compareIds);
+    return listedCampaigns.filter((row) => selected.has(row.id));
+  }, [comparing, compareIds, listedCampaigns]);
 
   useEffect(() => {
     if (campaignId !== "all" && !listedCampaigns.some((row) => row.id === campaignId))
@@ -155,6 +164,18 @@ export function MetaPerformance({
   useEffect(() => {
     if (!showCompareTabs && dashView !== "individual") setDashView("individual");
   }, [showCompareTabs, dashView]);
+
+  useEffect(() => {
+    if (!listedCampaigns.length) {
+      setCompareIds([]);
+      return;
+    }
+    setCompareIds((current) => {
+      const valid = current.filter((id) => listedCampaigns.some((row) => row.id === id));
+      if (valid.length >= 2) return valid;
+      return defaultCompareCampaignIds(listedCampaigns);
+    });
+  }, [listedCampaigns]);
 
   const campaigns = useMemo(() => {
     const rows = selectedCampaign
@@ -207,6 +228,14 @@ export function MetaPerformance({
                 ))}
               </SelectContent>
             </Select>
+          )}
+          {comparing && (
+            <CampaignCompareSelect
+              campaigns={listedCampaigns}
+              selectedIds={compareIds}
+              onChange={setCompareIds}
+              disabled={busy}
+            />
           )}
           <PeriodPicker value={period} disabled={busy} onApply={(next) => void load(next)} />
           <Button type="button" onClick={() => void load(period)} disabled={busy}>
@@ -269,7 +298,7 @@ export function MetaPerformance({
       {ready && view?.kpis && (
         <>
           {mode === "overview" && comparing && (
-            <CampaignComparison campaigns={activeRows} currency={view.currency || "BRL"} />
+            <CampaignComparison campaigns={compareCampaigns} currency={view.currency || "BRL"} />
           )}
           {mode === "overview" && !comparing && (
             <CampaignAnalysis view={view} campaignId={selectedCampaign?.id ?? null} />

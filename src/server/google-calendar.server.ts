@@ -7,7 +7,6 @@ import { evolutionRuntime } from "@/server/evo.server";
 import {
   canReadAvailability,
   cleanEmail,
-  googleCalendarForMms,
   googleCalendarScopes,
   googleFailure,
   meetingGuests,
@@ -174,16 +173,14 @@ function connectionView(row: Row | null): GoogleCalendarConnectionView {
   };
 }
 
-const hiddenCalendar: GoogleCalendarConnectionView = { enabled: false, status: "missing", email: "", calendarId: "primary" };
-
-async function mmsCalendar(organizationId: string) {
-  const org = await supabaseAdmin.from("organizations").select("legal_name").eq("id", organizationId).maybeSingle();
-  if (org.error || !org.data?.legal_name) fail("Sua conta ainda não está ligada a uma empresa.");
-  return googleCalendarForMms(org.data.legal_name);
+async function requireCalendarOrg(organizationId: string) {
+  const org = await supabaseAdmin.from("organizations").select("id").eq("id", organizationId).maybeSingle();
+  if (org.error || !org.data) fail("Sua conta ainda não está ligada a uma empresa.");
 }
 
+/** Mantido o nome histórico; agenda liberada para qualquer org assinante (não só MMS). */
 async function requireMms(organizationId: string) {
-  if (!(await mmsCalendar(organizationId))) fail("O Google Calendar está disponível apenas para o MMS Master.");
+  await requireCalendarOrg(organizationId);
 }
 
 async function connectionForUser(organizationId: string, userId: string) {
@@ -412,7 +409,7 @@ export async function completeGoogleCalendarOAuth(userId: string, input: { code?
 
 export async function googleCalendarConnection(userId: string) {
   const gate = await access(userId, "schedules");
-  if (!(await mmsCalendar(gate.organizationId))) return hiddenCalendar;
+  await requireCalendarOrg(gate.organizationId);
   return connectionView(await connectionForUser(gate.organizationId, userId));
 }
 
@@ -611,7 +608,7 @@ async function syncQuietly(organizationId: string, userId: string, manager: bool
 
 export async function listLeadMeetings(userId: string, leadId = "") {
   const gate = leadId ? await accessAny(userId, ["inbox", "schedules"]) : await access(userId, "schedules");
-  if (!(await mmsCalendar(gate.organizationId))) return [];
+  await requireCalendarOrg(gate.organizationId);
   if (leadId) await leadInOrg(gate.organizationId, leadId);
   await syncQuietly(gate.organizationId, userId, gate.manager);
   let query = from("lead_meetings").select("*").eq("organization_id", gate.organizationId);
@@ -641,9 +638,7 @@ function shiftIsoDay(date: string, days: number) {
 export async function listAgendaBoard(userId: string, weekStartInput = "") {
   const { agendaDayKey, agendaWeekStart, buildAgendaBoard } = await import("@/lib/google-calendar");
   const gate = await access(userId, "schedules");
-  if (!(await mmsCalendar(gate.organizationId))) {
-    return buildAgendaBoard(agendaWeekStart(), [], []);
-  }
+  await requireCalendarOrg(gate.organizationId);
   await syncQuietly(gate.organizationId, userId, gate.manager);
   const weekStart = agendaWeekStart(/^\d{4}-\d{2}-\d{2}$/.test(weekStartInput) ? weekStartInput : undefined);
   const prevStart = shiftIsoDay(weekStart, -7);
@@ -671,7 +666,7 @@ export async function listAgendaBoard(userId: string, weekStartInput = "") {
 
 export async function listMeetingCalendar(userId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  if (!(await mmsCalendar(gate.organizationId))) return [];
+  await requireCalendarOrg(gate.organizationId);
   const days = meetingCalendar();
   const first = days[0];
   const last = days[days.length - 1];

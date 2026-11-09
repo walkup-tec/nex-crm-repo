@@ -17,6 +17,8 @@ import {
   overlapsBusy,
   activeClientMeetingName,
   agendaMenuForMmsMaster,
+  agendaMenuForSubscriberAdmin,
+  agendaMenuVisible,
   mmsMasterAutomation,
   googleCalendarForMms,
   remoteMeetingPatch,
@@ -49,6 +51,13 @@ assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "c
 assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), true);
 assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_user"), false);
 assert.equal(agendaMenuForMmsMaster("WALKUP SISTEMAS E INTELIGENCIA LTDA", "client_admin"), false);
+assert.equal(agendaMenuForSubscriberAdmin("client_admin"), true);
+assert.equal(agendaMenuForSubscriberAdmin("client_user"), false);
+assert.equal(agendaMenuForSubscriberAdmin("master"), false);
+assert.equal(agendaMenuVisible("WALKUP SISTEMAS E INTELIGENCIA LTDA", "client_admin"), true);
+assert.equal(agendaMenuVisible("EMPRESA QUALQUER LTDA", "client_admin"), true);
+assert.equal(agendaMenuVisible("EMPRESA QUALQUER LTDA", "client_user"), false);
+assert.equal(agendaMenuVisible("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), true);
 assert.equal(mmsMasterAutomation("MMS MARKETING E SISTEMAS DIGITAIS LTDA", true), true);
 assert.equal(mmsMasterAutomation("MMS MARKETING E SISTEMAS DIGITAIS LTDA", false), false);
 assert.equal(mmsMasterAutomation("WALKUP SISTEMAS E INTELIGENCIA LTDA", true), false);

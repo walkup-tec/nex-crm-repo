@@ -56,8 +56,17 @@ export function googleCalendarForMms(legalName: string) {
   return keepsAccessWithoutPayment(legalName);
 }
 
+/** Admin do cliente assinante (master da conta) vê Solicitar Reunião e Agendamentos. */
+export function agendaMenuForSubscriberAdmin(role: string) {
+  return role === "client_admin";
+}
+
 export function agendaMenuForMmsMaster(legalName: string, role: string) {
   return googleCalendarForMms(legalName) && (role === "client_admin" || role === "master");
+}
+
+export function agendaMenuVisible(legalName: string, role: string) {
+  return agendaMenuForSubscriberAdmin(role) || agendaMenuForMmsMaster(legalName, role);
 }
 
 export function activeClientMeetingName(userName: string) {

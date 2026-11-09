@@ -9,7 +9,7 @@ import {
 } from "@/lib/client-permissions";
 import { allChatbotMenus, chatbotMenusFromStorage, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
-import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
+import { agendaMenuVisible } from "@/lib/google-calendar";
 import { readMasterRoles } from "@/lib/master-role";
 import type { UserPermissions, UserRole } from "@/lib/user-access";
 
@@ -92,7 +92,7 @@ export const Route = createFileRoute("/_authenticated")({
       }
     }
     const role: UserRole = master || roles.includes("master") ? "master" : roles.includes("client_admin") ? "client_admin" : "client_user";
-    calendarMenu = agendaMenuForMmsMaster(legalName, role);
+    calendarMenu = agendaMenuVisible(legalName, role);
     if (location.pathname === "/chatbot/agendamentos" && !calendarMenu) throw redirect({ to: "/chatbot" });
     const loaded = role === "client_user" ? await readOwnPermissions(data.user.id) : null;
     const permissions = loaded?.permissions ?? null;

@@ -7,7 +7,7 @@ import {
   overduePixCopy,
 } from "./client-access";
 import { adsFromProductNames } from "./chatbot-client";
-import { chargeActionFlags } from "./finance-access";
+import { chargeActionFlags, resolveChargeBillingProvider } from "./finance-access";
 
 assert.equal(hasClientProduct({ adsMeta: false, adsGoogle: false, productHosting: true }), true);
 assert.equal(hasClientProduct({ adsMeta: false, adsGoogle: false, productHosting: false }), false);
@@ -75,5 +75,19 @@ const manualPaid = chargeActionFlags({
 });
 assert.equal(manualPaid.canMarkPaid, false);
 assert.equal(manualPaid.canCancel, false);
+
+assert.equal(
+  resolveChargeBillingProvider({ billingProvider: "cora", externalChargeId: "manual:org:2026-11-28" }),
+  "manual",
+);
+const forcedManual = chargeActionFlags({
+  status: "pending",
+  dueDate: "2026-11-28",
+  today: "2026-11-09",
+  billingProvider: "cora",
+  externalChargeId: "manual:org:2026-11-28",
+});
+assert.equal(forcedManual.canMarkPaid, true);
+assert.equal(forcedManual.canNegotiate, false);
 
 console.log("client hosting manual tests ok");

@@ -5,6 +5,7 @@ import {
   chargeActionFlags,
   chargeQuote,
   chargeStatus,
+  resolveChargeBillingProvider,
   competenceLabel,
   competenceOf,
   daysPast,
@@ -534,11 +535,15 @@ function toCharge(
 ): FinanceCharge {
   const org = names.get(row.organization_id);
   const provider = providers.get(row.organization_id) ?? "";
+  const billingProvider = resolveChargeBillingProvider({
+    billingProvider: provider,
+    externalChargeId: row.external_charge_id,
+  });
   const actions = chargeActionFlags({
     status: row.status,
     dueDate: row.due_date,
     today: todayKey(),
-    billingProvider: provider,
+    billingProvider,
     externalChargeId: row.external_charge_id,
   });
   return {
@@ -555,7 +560,7 @@ function toCharge(
     invoiceUrl: row.invoice_url,
     pixCode: row.pix_code,
     ...actions,
-    billingProvider: provider,
+    billingProvider,
   };
 }
 
@@ -854,8 +859,8 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
 }
 
 function chargeRail(provider: string | null, externalId: string) {
-  if (provider === "cora" || provider === "asaas" || provider === "manual") return provider;
   if (externalId.startsWith("manual:")) return "manual";
+  if (provider === "cora" || provider === "asaas" || provider === "manual") return provider;
   return externalId.startsWith("inv_") ? "cora" : "asaas";
 }
 

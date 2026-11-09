@@ -20,6 +20,14 @@ export type FinanceCharge = {
   billingProvider: "cora" | "asaas" | "manual" | "";
 };
 
+export function resolveChargeBillingProvider(input: {
+  billingProvider: FinanceCharge["billingProvider"];
+  externalChargeId: string | null;
+}): FinanceCharge["billingProvider"] {
+  if (String(input.externalChargeId ?? "").startsWith("manual:")) return "manual";
+  return input.billingProvider;
+}
+
 export function chargeActionFlags(input: {
   status: InvoiceStatus;
   dueDate: string;
@@ -29,10 +37,10 @@ export function chargeActionFlags(input: {
 }) {
   const open = input.status !== "paid" && input.status !== "cancelled";
   const due = input.dueDate.slice(0, 10);
-  const manual = input.billingProvider === "manual";
+  const provider = resolveChargeBillingProvider(input);
+  const manual = provider === "manual";
   const linked = Boolean(input.externalChargeId);
-  const bankLinked =
-    linked && !manual && !String(input.externalChargeId ?? "").startsWith("manual:");
+  const bankLinked = linked && !manual;
   return {
     canNegotiate: open && bankLinked && (input.status === "overdue" || due < input.today),
     canCancel: open && (bankLinked || manual),

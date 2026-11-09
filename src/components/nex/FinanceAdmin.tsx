@@ -414,7 +414,10 @@ function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onCl
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const manualOnly = charge?.billingProvider === "manual" || (!charge?.pixCode && charge?.canMarkPaid);
+  const manualOnly =
+    charge?.billingProvider === "manual" ||
+    charge?.canMarkPaid === true ||
+    (!!charge && !charge.pixCode && charge.billingProvider !== "cora" && charge.billingProvider !== "asaas");
 
   useEffect(() => {
     setPix(null);
@@ -422,7 +425,11 @@ function PixViewDialog({ charge, onClose }: { charge: FinanceCharge | null; onCl
     setError("");
     setNotice("");
     if (!charge) return;
-    if (charge.billingProvider === "manual" || (!charge.pixCode && charge.canMarkPaid)) {
+    const localManual =
+      charge.billingProvider === "manual" ||
+      charge.canMarkPaid ||
+      (!charge.pixCode && charge.billingProvider !== "cora" && charge.billingProvider !== "asaas");
+    if (localManual) {
       setLoading(false);
       return;
     }

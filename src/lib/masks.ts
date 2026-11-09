@@ -27,7 +27,7 @@ export function applyMask(kind: MaskKind, value: string): string {
     case "date":
       return d.slice(0, 8).replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})(\d)/, "$1/$2");
     case "day": {
-      const n = Math.min(Number(d.slice(0, 2)) || 0, 28);
+      const n = Math.min(Number(d.slice(0, 2)) || 0, 31);
       return d ? String(n || "") : "";
     }
     case "rg":

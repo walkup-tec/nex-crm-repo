@@ -33,14 +33,28 @@ export function addIsoDays(value: string, days: number) {
   return `${date.getUTCFullYear()}-${month}-${day}`;
 }
 
+function daysInMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Dia de vencimento mensal (1–31); em meses curtos usa o último dia do mês. */
+export function dueDateInMonth(year: number, month: number, dueDay: number) {
+  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) return "";
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return "";
+  const day = Math.min(dueDay, daysInMonth(year, month));
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 export function contractDueDates(startsOn: string, endsOn: string, dueDay: number, today: string) {
-  if (!isoParts(startsOn) || !isoParts(endsOn) || !isoParts(today) || dueDay < 1 || dueDay > 28 || endsOn < startsOn) return [];
+  if (!isoParts(startsOn) || !isoParts(endsOn) || !isoParts(today) || dueDay < 1 || dueDay > 31 || endsOn < startsOn) {
+    return [];
+  }
   const dates: string[] = [];
   let year = Number(startsOn.slice(0, 4));
   let month = Number(startsOn.slice(5, 7));
   for (let guard = 0; guard < 240; guard += 1) {
-    const due = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(dueDay).padStart(2, "0")}`;
-    if (due > endsOn) break;
+    const due = dueDateInMonth(year, month, dueDay);
+    if (!due || due > endsOn) break;
     if (due >= startsOn && due >= today) dates.push(due);
     month += 1;
     if (month > 12) {

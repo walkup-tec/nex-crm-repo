@@ -132,8 +132,8 @@ function parseDraft(input: ClientDraft) {
   const feeDigits = digits(input.monthlyFee);
   if (!feeDigits) fail("Informe a mensalidade.");
   const dueDay = Number(digits(input.dueDay));
-  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28)
-    fail("O vencimento precisa ser um dia entre 1 e 28.");
+  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31)
+    fail("O vencimento precisa ser um dia entre 1 e 31.");
   const billingProvider = input.billingProvider;
   if (billingProvider !== "asaas" && billingProvider !== "cora" && billingProvider !== "manual") {
     fail("Escolha a cobrança pela Cora, pelo Asaas ou Manual (Pix pessoal).");
@@ -626,19 +626,28 @@ async function issueManualCharges(
   today = brazilTodayKey(),
 ) {
   if (parsed.billingProvider !== "manual" || !parsed.endsOn) return;
-  const existing = await supabaseAdmin.from("invoices").select("id").eq("organization_id", organizationId).limit(1);
-  if (existing.error) fail(migrationMessage(existing.error.message));
-  if ((existing.data ?? []).length) return;
   const dues = contractDueDates(parsed.startsOn, parsed.endsOn, parsed.dueDay, today);
   if (!dues.length) fail("Não há vencimento futuro até o término do contrato.");
-  const amounts = dues.map((due) => chargeCents(due, parsed.monthlyFeeCents, null));
+  const existing = await supabaseAdmin
+    .from("invoices")
+    .select("due_date, external_charge_id")
+    .eq("organization_id", organizationId);
+  if (existing.error) fail(migrationMessage(existing.error.message));
+  const have = new Set(
+    (existing.data ?? []).flatMap((row) => {
+      const due = String(row.due_date ?? "").slice(0, 10);
+      const external = String(row.external_charge_id ?? "");
+      return [due, external].filter(Boolean);
+    }),
+  );
+  const missing = dues.filter((due) => !have.has(due) && !have.has(`manual:${organizationId}:${due}`));
+  if (!missing.length) return;
   const contract = await supabaseAdmin.from("contracts").select("id").eq("organization_id", organizationId).maybeSingle();
   if (contract.error || !contract.data) {
     fail(migrationMessage(contract.error?.message || "Não foi possível localizar o contrato."));
   }
-  for (let index = 0; index < dues.length; index += 1) {
-    const due = dues[index] ?? "";
-    const amount = amounts[index] ?? 0;
+  for (const due of missing) {
+    const amount = chargeCents(due, parsed.monthlyFeeCents, null);
     const inserted = await supabaseAdmin.from("invoices").insert({
       organization_id: organizationId,
       contract_id: contract.data.id,
@@ -733,6 +742,72 @@ export async function provisionClientCharges(
   today?: string,
 ) {
   await issueCoraCharges(organizationId, parsed, today);
+}
+
+/** Preenche parcelas manuais faltantes conforme o contrato (sem apagar as já existentes). */
+export async function ensureMissingManualCharges(organizationId?: string) {
+  let contractsQuery = supabaseAdmin
+    .from("contracts")
+    .select(
+      "organization_id, monthly_fee_cents, due_day, starts_on, ends_on, billing_provider",
+    )
+    .eq("billing_provider", "manual");
+  if (organizationId) contractsQuery = contractsQuery.eq("organization_id", organizationId);
+  const { data: contracts, error } = await contractsQuery;
+  if (error) {
+    console.error("ensure_manual_charges", error.message);
+    return;
+  }
+  for (const contract of contracts ?? []) {
+    if (!contract.ends_on) continue;
+    const org = await supabaseAdmin
+      .from("organizations")
+      .select("legal_name, document, responsible_email, responsible_phone, finance_phone, ads_meta, ads_google, product_hosting")
+      .eq("id", contract.organization_id)
+      .maybeSingle();
+    if (org.error || !org.data) {
+      console.error("ensure_manual_charges", org.error?.message || "organização ausente");
+      continue;
+    }
+    try {
+      await issueManualCharges(
+        contract.organization_id,
+        {
+          legalName: org.data.legal_name,
+          commercialName: "",
+          document: digits(org.data.document ?? ""),
+          responsibleName: org.data.legal_name,
+          responsibleEmail: (org.data.responsible_email ?? "noreply@nexmeta.com.br").trim().toLowerCase(),
+          whatsapp: org.data.responsible_phone || "11999999999",
+          financePhone: org.data.finance_phone || org.data.responsible_phone || "não informado",
+          billingProvider: "manual",
+          adsMeta: org.data.ads_meta === true,
+          adsGoogle: org.data.ads_google === true,
+          productHosting: org.data.product_hosting === true,
+          monthlyFeeCents: Number(contract.monthly_fee_cents),
+          dueDay: Number(contract.due_day),
+          startsOn: String(contract.starts_on).slice(0, 10),
+          endsOn: String(contract.ends_on).slice(0, 10),
+          finePercent: 0,
+          interestPercent: 0,
+          asaasSubscriptionId: "",
+          promoEnabled: false,
+          promoStartsOn: null,
+          promoEndsOn: null,
+          afterPromoCents: null,
+          delinquencyMode: null,
+          delinquencyAmountCents: null,
+        },
+        brazilTodayKey(),
+      );
+    } catch (ensureError) {
+      console.error(
+        "ensure_manual_charges",
+        contract.organization_id,
+        ensureError instanceof Error ? ensureError.message : "falha",
+      );
+    }
+  }
 }
 
 /** Reemite cobranças Cora quando o contrato está completo e não há invoices locais. */
@@ -1107,8 +1182,8 @@ export async function updateContractSchedule(
 ) {
   await requireMaster(userId);
   const dueDay = Number(digits(input.dueDay));
-  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) {
-    fail("O vencimento precisa ser um dia entre 1 e 28.");
+  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
+    fail("O vencimento precisa ser um dia entre 1 e 31.");
   }
   const { data: contract, error } = await supabaseAdmin
     .from("contracts")

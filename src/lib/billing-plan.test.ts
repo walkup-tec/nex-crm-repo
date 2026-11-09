@@ -7,6 +7,17 @@ assert.deepEqual(contractDueDates("2026-10-17", "2027-01-31", 10, "2026-10-17"),
   "2027-01-10",
 ]);
 assert.deepEqual(contractDueDates("2026-10-01", "2026-12-31", 10, "2026-10-17"), ["2026-11-10", "2026-12-10"]);
+assert.deepEqual(contractDueDates("2026-11-01", "2027-02-28", 29, "2026-11-09"), [
+  "2026-11-29",
+  "2026-12-29",
+  "2027-01-29",
+  "2027-02-28",
+]);
+assert.deepEqual(contractDueDates("2026-11-09", "2027-01-31", 28, "2026-11-09"), [
+  "2026-11-28",
+  "2026-12-28",
+  "2027-01-28",
+]);
 
 const promo = { startsOn: "2026-11-01", endsOn: "2027-01-31", afterCents: 20000 };
 assert.equal(chargeCents("2026-10-10", 10000, promo), 20000);

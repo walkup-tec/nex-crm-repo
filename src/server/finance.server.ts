@@ -324,10 +324,11 @@ async function runFinanceSync(actor: Actor, target?: string) {
   await markPreservedInvoicePaid();
   await removeDroppedInvoice();
   try {
-    const { ensureMissingCoraCharges } = await import("@/server/clients.server");
+    const { ensureMissingCoraCharges, ensureMissingManualCharges } = await import("@/server/clients.server");
     await ensureMissingCoraCharges(target);
+    await ensureMissingManualCharges(target);
   } catch (ensureError) {
-    console.error("ensure_cora_charges", ensureError instanceof Error ? ensureError.message : "falha");
+    console.error("ensure_charges", ensureError instanceof Error ? ensureError.message : "falha");
   }
   const contracts = await contractsOf(target);
   const coraSync = await syncCoraCharges(target);
@@ -848,6 +849,63 @@ function chargeRail(provider: string | null, externalId: string) {
   if (provider === "cora" || provider === "asaas" || provider === "manual") return provider;
   if (externalId.startsWith("manual:")) return "manual";
   return externalId.startsWith("inv_") ? "cora" : "asaas";
+}
+
+export async function createManualCharge(
+  userId: string,
+  input: { organizationId: string; dueDate: string },
+) {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") fail("Só o Master cria parcela manual.");
+  const due = input.dueDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) fail("Informe uma data de vencimento válida.");
+  const { data: contract, error: contractError } = await supabaseAdmin
+    .from("contracts")
+    .select("id, billing_provider, monthly_fee_cents, ends_on")
+    .eq("organization_id", input.organizationId)
+    .maybeSingle();
+  if (contractError) fail(contractError.message);
+  if (!contract) fail("Este cliente ainda não tem contrato.");
+  if (contract.billing_provider !== "manual") fail("Só contratos manuais recebem parcela avulsa por aqui.");
+  if (contract.ends_on && due > String(contract.ends_on).slice(0, 10)) {
+    fail("O vencimento não pode passar do término do contrato.");
+  }
+  const amount = Number(contract.monthly_fee_cents);
+  if (!Number.isInteger(amount) || amount <= 0) fail("A mensalidade do contrato é inválida.");
+  const existing = await supabaseAdmin
+    .from("invoices")
+    .select("id")
+    .eq("organization_id", input.organizationId)
+    .eq("due_date", due)
+    .neq("status", "cancelled")
+    .limit(1);
+  if (existing.error) fail(existing.error.message);
+  if ((existing.data ?? []).length) fail("Já existe cobrança com este vencimento.");
+  const status = due < todayKey() ? "overdue" : "pending";
+  const { data: inserted, error: insertError } = await supabaseAdmin
+    .from("invoices")
+    .insert({
+      organization_id: input.organizationId,
+      contract_id: contract.id,
+      competence: due,
+      due_date: due,
+      base_amount_cents: amount,
+      total_amount_cents: amount,
+      status,
+      external_charge_id: `manual:${input.organizationId}:${due}`,
+      invoice_url: null,
+      pix_code: null,
+    })
+    .select("id")
+    .maybeSingle();
+  if (insertError) fail(insertError.message);
+  if (!inserted) fail("Não foi possível criar a parcela.");
+  const names = await namesOf([input.organizationId]);
+  await audit(actor.id, input.organizationId, "finance.manual_create", inserted.id, {
+    clientName: names.get(input.organizationId)?.legalName ?? "cliente",
+    due,
+  });
+  return { id: inserted.id, dueDate: due };
 }
 
 export async function markManualChargePaid(userId: string, invoiceId: string) {

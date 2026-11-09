@@ -237,9 +237,9 @@ export function contractFromSubscription(subscription: Subscription): AsaasContr
   if (!Number.isInteger(due) || due < 1 || due > 31) fail("O vencimento do Asaas é inválido.");
   const notes: string[] = ["Assinatura localizada. O contrato foi preenchido."];
   let dueDay = due;
-  if (due > 28) {
-    dueDay = 28;
-    notes.push(`O vencimento no Asaas é dia ${due}. O contrato guarda até o dia 28.`);
+  if (due > 31) {
+    dueDay = 31;
+    notes.push(`O vencimento no Asaas é dia ${due}. O contrato guarda até o dia 31.`);
   }
   const fine = subscription.fine?.value;
   const interest = subscription.interest?.value;

@@ -115,6 +115,37 @@ export function adsPlatformLabel(client: {
   return parts.length ? parts.join(" · ") : "Não informado";
 }
 
+export function isHostingOnlyClient(client: {
+  adsMeta?: boolean;
+  adsGoogle?: boolean;
+  productHosting?: boolean;
+}) {
+  return client.productHosting === true && client.adsMeta !== true && client.adsGoogle !== true;
+}
+
+/** Resumo à direita do card de cliente: saldo Meta/Google ou só Hospedagem. */
+export function clientListBalanceSummary(client: {
+  adsMeta?: boolean;
+  adsGoogle?: boolean;
+  productHosting?: boolean;
+  balanceKnown: boolean;
+  balanceCents: number;
+}) {
+  if (isHostingOnlyClient(client)) {
+    return { label: "Hospedagem", value: "Hospedagem", low: false };
+  }
+  const googleOnly = client.adsGoogle === true && client.adsMeta !== true;
+  return {
+    label: googleOnly ? "Saldo Google" : "Saldo Meta",
+    value: client.balanceKnown
+      ? moneyFromCents(client.balanceCents)
+      : googleOnly
+        ? "Aguardando o Google"
+        : "Aguardando a Meta",
+    low: false,
+  };
+}
+
 export function overdueAccessCopy(client: {
   adsMeta: boolean;
   adsGoogle: boolean;

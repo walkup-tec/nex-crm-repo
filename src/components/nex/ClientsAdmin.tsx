@@ -8,10 +8,12 @@ import { applyMask } from "@/lib/masks";
 import {
   adsPlatformLabel,
   clientDisplayName,
+  clientListBalanceSummary,
   clientStatusLabel,
   dateBr,
   hasClientProduct,
   invoiceStatusLabel,
+  isHostingOnlyClient,
   isInactiveClient,
   moneyFromCents,
   percentBr,
@@ -284,18 +286,21 @@ export function ClientsAdmin() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Saldo Meta</p>
-                    <p
-                      className={
-                        client.balanceKnown && isLowMetaBalance(client.balanceCents)
-                          ? "font-bold text-destructive"
-                          : "font-bold"
-                      }
-                    >
-                      {client.balanceKnown
-                        ? moneyFromCents(client.balanceCents)
-                        : "Aguardando a Meta"}
-                    </p>
+                    {(() => {
+                      const balance = clientListBalanceSummary(client);
+                      const low =
+                        !isHostingOnlyClient(client) &&
+                        client.balanceKnown &&
+                        isLowMetaBalance(client.balanceCents);
+                      return (
+                        <>
+                          <p className="text-xs text-muted-foreground">{balance.label}</p>
+                          <p className={low ? "font-bold text-destructive" : "font-bold"}>
+                            {balance.value}
+                          </p>
+                        </>
+                      );
+                    })()}
                   </div>
                   <Badge variant={client.status === "active" ? "default" : "destructive"}>
                     {clientStatusLabel(client.status)}
@@ -486,12 +491,10 @@ function ClientDialog({
               <Info label="Produtos" value={adsPlatformLabel(client)} />
               <Info label="Situação" value={clientStatusLabel(client.status)} />
               <Info label="Financeiro" value={client.financeLabel} />
-              <Info
-                label="Saldo Meta"
-                value={
-                  client.balanceKnown ? moneyFromCents(client.balanceCents) : "Aguardando a Meta"
-                }
-              />
+              {(() => {
+                const balance = clientListBalanceSummary(client);
+                return <Info label={balance.label} value={balance.value} />;
+              })()}
             </TabsContent>
             <TabsContent value="contract" className="grid gap-3 sm:grid-cols-2">
               <Info

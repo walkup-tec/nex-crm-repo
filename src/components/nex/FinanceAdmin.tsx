@@ -45,6 +45,7 @@ import {
   cancelMasterChargeFn,
   changeInvoiceDueDateFn,
   chargePixFn,
+  createManualChargeFn,
   listMasterFinanceFn,
   markManualChargePaidFn,
   negotiateChargeFn,
@@ -65,6 +66,7 @@ export function FinanceAdmin() {
   const [dueCharge, setDueCharge] = useState<FinanceCharge | null>(null);
   const [cancelCharge, setCancelCharge] = useState<FinanceCharge | null>(null);
   const [markPaidCharge, setMarkPaidCharge] = useState<FinanceCharge | null>(null);
+  const [createManualOpen, setCreateManualOpen] = useState(false);
   const [resendingId, setResendingId] = useState("");
   const [resendNotice, setResendNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -195,6 +197,9 @@ export function FinanceAdmin() {
                     totalLabel="Todo o período"
                     totalHint="Exibe cobranças e totais de todo o período disponível."
                   />
+                  <Button type="button" variant="outline" onClick={() => setCreateManualOpen(true)}>
+                    Incluir parcela
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -370,6 +375,15 @@ export function FinanceAdmin() {
         onClose={() => setMarkPaidCharge(null)}
         onSaved={async () => {
           setMarkPaidCharge(null);
+          await load();
+        }}
+      />
+      <CreateManualChargeDialog
+        open={createManualOpen}
+        charges={snapshot?.charges ?? []}
+        onClose={() => setCreateManualOpen(false)}
+        onSaved={async () => {
+          setCreateManualOpen(false);
           await load();
         }}
       />
@@ -658,6 +672,101 @@ function CancelChargeDialog({
           </Button>
           <Button variant="destructive" onClick={() => void save()} disabled={saving}>
             {saving ? "Excluindo..." : "Excluir cobrança"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateManualChargeDialog({
+  open,
+  charges,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  charges: FinanceCharge[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const clients = Array.from(
+    new Map(
+      charges
+        .filter((item) => item.billingProvider === "manual")
+        .map((item) => [item.organizationId, { id: item.organizationId, name: item.clientName }]),
+    ).values(),
+  ).sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  const [organizationId, setOrganizationId] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setSaving(false);
+    setError("");
+    setDueDate("");
+    setOrganizationId(clients[0]?.id ?? "");
+  }, [open, charges]);
+
+  const save = async () => {
+    if (!organizationId || !dueDate) return;
+    setSaving(true);
+    setError("");
+    const result = await createManualChargeFn({ data: { organizationId, dueDate } });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    await onSaved();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && !saving && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Incluir parcela manual</DialogTitle>
+          <DialogDescription>Cria uma cobrança avulsa no financeiro (sem Cora/Asaas).</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {clients.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum cliente com cobrança manual na lista.</p>
+          ) : (
+            <>
+              <label className="grid gap-2 text-sm">
+                Cliente
+                <Select value={organizationId} onValueChange={setOrganizationId}>
+                  <SelectTrigger aria-label="Cliente da parcela">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="grid gap-2 text-sm">
+                Vencimento
+                <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+              </label>
+            </>
+          )}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => void save()}
+            disabled={saving || !organizationId || !dueDate || clients.length === 0}
+          >
+            {saving ? "Criando..." : "Criar parcela"}
           </Button>
         </DialogFooter>
       </DialogContent>

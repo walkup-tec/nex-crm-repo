@@ -1,5 +1,13 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { clientDisplayName, type ClientDraft, type ClientInvoice, type ClientStatus, type InvoiceStatus, type ListedClient } from "@/lib/client-access";
+import {
+  clientDisplayName,
+  hasClientProduct,
+  type ClientDraft,
+  type ClientInvoice,
+  type ClientStatus,
+  type InvoiceStatus,
+  type ListedClient,
+} from "@/lib/client-access";
 import { assertCoraAmounts, chargeCents, contractDueDates, coraDelinquencyFine, coraPaymentTerms, noticeSchedule, promotionsOverlap } from "@/lib/billing-plan";
 import { excludedFromMasterDashboard, keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { masterDashboardFrom, type DashboardClient, type MasterDashboard } from "@/lib/master-dashboard";
@@ -44,6 +52,9 @@ function migrationMessage(message: string) {
   if (/commercial_name/i.test(message)) {
     return "Falta a coluna commercial_name em organizations. Rode no Supabase: ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS commercial_name text NOT NULL DEFAULT '';";
   }
+  if (/product_hosting/i.test(message)) {
+    return "Aplique a migração 0054_client_hosting_manual_billing.sql no Supabase para Hospedagem e cobrança Manual.";
+  }
   if (/ads_meta|ads_google/i.test(message)) {
     return "A migração das plataformas de anúncio ainda não foi aplicada no Supabase.";
   }
@@ -68,6 +79,7 @@ async function insertOrganization(parsed: ReturnType<typeof parseDraft>) {
     finance_phone: parsed.financePhone,
     ads_meta: parsed.adsMeta,
     ads_google: parsed.adsGoogle,
+    product_hosting: parsed.productHosting,
     status: "active",
   };
   const first = await supabaseAdmin.from("organizations").insert(full).select("id").single();
@@ -123,20 +135,32 @@ function parseDraft(input: ClientDraft) {
   if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28)
     fail("O vencimento precisa ser um dia entre 1 e 28.");
   const billingProvider = input.billingProvider;
-  if (billingProvider !== "asaas" && billingProvider !== "cora") fail("Escolha a cobrança pela Cora ou pelo Asaas.");
-  if (!input.adsMeta && !input.adsGoogle) fail("Informe se o cliente usa Meta Ads, Google Ads ou os dois.");
+  if (billingProvider !== "asaas" && billingProvider !== "cora" && billingProvider !== "manual") {
+    fail("Escolha a cobrança pela Cora, pelo Asaas ou Manual (Pix pessoal).");
+  }
+  if (!hasClientProduct(input)) {
+    fail("Marque Meta Ads, Google Ads ou Hospedagem.");
+  }
   const startsOn = parseDate(input.startsOn, "o início do contrato");
   const endsOn = input.endsOn.trim() ? parseDate(input.endsOn, "o término do contrato") : null;
-  if (billingProvider === "cora" && !endsOn) fail("Informe o término do contrato para gerar as cobranças da Cora.");
+  if ((billingProvider === "cora" || billingProvider === "manual") && !endsOn) {
+    fail(
+      billingProvider === "manual"
+        ? "Informe o término do contrato para gerar as parcelas manuais."
+        : "Informe o término do contrato para gerar as cobranças da Cora.",
+    );
+  }
   if (endsOn && endsOn < startsOn) fail("O término do contrato não pode ser antes do início.");
   const finePercent = input.finePercent.trim() ? Number(digits(input.finePercent)) / 100 : 0;
   const interestPercent = input.interestPercent.trim()
     ? Number(digits(input.interestPercent)) / 100
     : 0;
-  if (!Number.isFinite(finePercent) || finePercent < 0 || finePercent > 100)
-    fail("Informe a multa entre 0% e 100%.");
-  if (!Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100)
-    fail("Informe os juros entre 0% e 100%.");
+  if (billingProvider !== "manual") {
+    if (!Number.isFinite(finePercent) || finePercent < 0 || finePercent > 100)
+      fail("Informe a multa entre 0% e 100%.");
+    if (!Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100)
+      fail("Informe os juros entre 0% e 100%.");
+  }
   const asaasSubscriptionId = billingProvider === "asaas" ? input.asaasSubscriptionId.trim() : "";
   if (asaasSubscriptionId && !/^[A-Za-z0-9_]{1,64}$/.test(asaasSubscriptionId))
     fail("A assinatura do Asaas é inválida.");
@@ -168,14 +192,15 @@ function parseDraft(input: ClientDraft) {
     whatsapp,
     financePhone: input.sameFinancePhone ? whatsapp : "não informado",
     billingProvider,
-    adsMeta: input.adsMeta,
-    adsGoogle: input.adsGoogle,
+    adsMeta: input.adsMeta === true,
+    adsGoogle: input.adsGoogle === true,
+    productHosting: input.productHosting === true,
     monthlyFeeCents: Number(feeDigits),
     dueDay,
     startsOn,
     endsOn,
-    finePercent,
-    interestPercent,
+    finePercent: billingProvider === "manual" ? 0 : finePercent,
+    interestPercent: billingProvider === "manual" ? 0 : interestPercent,
     asaasSubscriptionId,
     promoEnabled,
     promoStartsOn,
@@ -228,26 +253,50 @@ function financeLabel(invoices: ClientInvoice[]) {
 async function loadOrganizations() {
   const named = "id, legal_name, commercial_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status, created_at";
   const legacy = "id, legal_name, document, responsible_name, responsible_email, responsible_phone, finance_phone, status, created_at";
-  const full = await supabaseAdmin.from("organizations").select(`${named}, ads_meta, ads_google`).order("legal_name");
+  const withProducts = `${named}, ads_meta, ads_google, product_hosting`;
+  const full = await supabaseAdmin.from("organizations").select(withProducts).order("legal_name");
   if (!full.error) return full;
+  if (/product_hosting/i.test(full.error.message)) {
+    const withoutHosting = await supabaseAdmin
+      .from("organizations")
+      .select(`${named}, ads_meta, ads_google`)
+      .order("legal_name");
+    if (!withoutHosting.error) {
+      return {
+        data: (withoutHosting.data ?? []).map((row) => ({ ...row, product_hosting: false })),
+        error: null,
+      };
+    }
+  }
   if (/commercial_name/i.test(full.error.message)) {
     const withAds = await supabaseAdmin.from("organizations").select(`${legacy}, ads_meta, ads_google`).order("legal_name");
     if (!withAds.error || !/ads_meta|ads_google/i.test(withAds.error.message)) {
       return {
-        data: (withAds.data ?? []).map((row) => ({ ...row, commercial_name: "" })),
+        data: (withAds.data ?? []).map((row) => ({ ...row, commercial_name: "", product_hosting: false })),
         error: withAds.error,
       };
     }
     const basic = await supabaseAdmin.from("organizations").select(legacy).order("legal_name");
     return {
-      data: (basic.data ?? []).map((row) => ({ ...row, ads_meta: true, ads_google: false, commercial_name: "" })),
+      data: (basic.data ?? []).map((row) => ({
+        ...row,
+        ads_meta: true,
+        ads_google: false,
+        product_hosting: false,
+        commercial_name: "",
+      })),
       error: basic.error,
     };
   }
   if (!/ads_meta|ads_google/i.test(full.error.message)) return full;
   const basic = await supabaseAdmin.from("organizations").select(named).order("legal_name");
   return {
-    data: (basic.data ?? []).map((row) => ({ ...row, ads_meta: true, ads_google: false })),
+    data: (basic.data ?? []).map((row) => ({
+      ...row,
+      ads_meta: true,
+      ads_google: false,
+      product_hosting: false,
+    })),
     error: basic.error,
   };
 }
@@ -429,9 +478,15 @@ export async function listClients(userId: string): Promise<ListedClient[]> {
       finePercent: contract ? Number(contract.fine_percent) : null,
       interestPercent: contract ? Number(contract.interest_percent_monthly) : null,
       asaasSubscriptionId: contract?.external_subscription_id ?? "",
-      billingProvider: contract?.billing_provider === "cora" || contract?.billing_provider === "asaas" ? contract.billing_provider : "",
-      adsMeta: org.ads_meta !== false,
+      billingProvider:
+        contract?.billing_provider === "cora" ||
+        contract?.billing_provider === "asaas" ||
+        contract?.billing_provider === "manual"
+          ? contract.billing_provider
+          : "",
+      adsMeta: org.ads_meta === true,
       adsGoogle: org.ads_google === true,
+      productHosting: org.product_hosting === true,
       promoEnabled: contract?.promo_enabled === true,
       promoStartsOn: contract?.promo_starts_on ?? null,
       promoEndsOn: contract?.promo_ends_on ?? null,
@@ -563,6 +618,41 @@ function brazilTodayKey(now = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).format(now);
+}
+
+async function issueManualCharges(
+  organizationId: string,
+  parsed: ReturnType<typeof parseDraft>,
+  today = brazilTodayKey(),
+) {
+  if (parsed.billingProvider !== "manual" || !parsed.endsOn) return;
+  const existing = await supabaseAdmin.from("invoices").select("id").eq("organization_id", organizationId).limit(1);
+  if (existing.error) fail(migrationMessage(existing.error.message));
+  if ((existing.data ?? []).length) return;
+  const dues = contractDueDates(parsed.startsOn, parsed.endsOn, parsed.dueDay, today);
+  if (!dues.length) fail("Não há vencimento futuro até o término do contrato.");
+  const amounts = dues.map((due) => chargeCents(due, parsed.monthlyFeeCents, null));
+  const contract = await supabaseAdmin.from("contracts").select("id").eq("organization_id", organizationId).maybeSingle();
+  if (contract.error || !contract.data) {
+    fail(migrationMessage(contract.error?.message || "Não foi possível localizar o contrato."));
+  }
+  for (let index = 0; index < dues.length; index += 1) {
+    const due = dues[index] ?? "";
+    const amount = amounts[index] ?? 0;
+    const inserted = await supabaseAdmin.from("invoices").insert({
+      organization_id: organizationId,
+      contract_id: contract.data.id,
+      competence: due,
+      due_date: due,
+      base_amount_cents: amount,
+      total_amount_cents: amount,
+      status: "pending",
+      external_charge_id: `manual:${organizationId}:${due}`,
+      invoice_url: null,
+      pix_code: null,
+    });
+    if (inserted.error) fail(migrationMessage(inserted.error.message));
+  }
 }
 
 async function issueCoraCharges(organizationId: string, parsed: ReturnType<typeof parseDraft>, today = brazilTodayKey()) {
@@ -743,6 +833,7 @@ export async function createClient(userId: string, input: ClientDraft) {
   try {
     await saveContract(org.id, parsed);
     await issueCoraCharges(org.id, parsed);
+    await issueManualCharges(org.id, parsed);
     await audit(userId, org.id, "client.create");
   } catch (error) {
     await supabaseAdmin.from("organizations").delete().eq("id", org.id);
@@ -789,6 +880,7 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
     finance_phone: parsed.financePhone,
     ads_meta: parsed.adsMeta,
     ads_google: parsed.adsGoogle,
+    product_hosting: parsed.productHosting,
     updated_at: new Date().toISOString(),
   };
   let { error } = await supabaseAdmin.from("organizations").update(orgPatch).eq("id", id);
@@ -796,8 +888,12 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
     const { commercial_name: _ignored, ...withoutCommercial } = orgPatch;
     ({ error } = await supabaseAdmin.from("organizations").update(withoutCommercial).eq("id", id));
   }
+  if (error && /product_hosting/i.test(error.message)) {
+    const { product_hosting: _h, ...withoutHosting } = orgPatch;
+    ({ error } = await supabaseAdmin.from("organizations").update(withoutHosting).eq("id", id));
+  }
   if (error && /ads_meta|ads_google/i.test(error.message)) {
-    const { ads_meta: _a, ads_google: _b, commercial_name: _c, ...basic } = orgPatch;
+    const { ads_meta: _a, ads_google: _b, commercial_name: _c, product_hosting: _h, ...basic } = orgPatch;
     ({ error } = await supabaseAdmin.from("organizations").update(basic).eq("id", id));
   }
   if (error)
@@ -808,19 +904,29 @@ export async function updateClient(userId: string, id: string, input: ClientDraf
     );
   await saveContract(id, parsed);
   await issueCoraCharges(id, parsed);
+  await issueManualCharges(id, parsed);
   await audit(userId, id, "client.update");
   return { id };
 }
 
-export async function updateClientProducts(userId: string, id: string, input: { adsMeta: boolean; adsGoogle: boolean }) {
+export async function updateClientProducts(
+  userId: string,
+  id: string,
+  input: { adsMeta: boolean; adsGoogle: boolean; productHosting: boolean },
+) {
   await requireMaster(userId);
-  if (!input.adsMeta && !input.adsGoogle) fail("Informe se o cliente usa Meta Ads, Google Ads ou os dois.");
+  if (!hasClientProduct(input)) fail("Marque Meta Ads, Google Ads ou Hospedagem.");
   const { data: current, error: currentError } = await supabaseAdmin.from("organizations").select("id").eq("id", id).maybeSingle();
   if (currentError) fail(currentError.message);
   if (!current) fail("Cliente não encontrado.");
   const { error } = await supabaseAdmin
     .from("organizations")
-    .update({ ads_meta: input.adsMeta, ads_google: input.adsGoogle, updated_at: new Date().toISOString() })
+    .update({
+      ads_meta: input.adsMeta,
+      ads_google: input.adsGoogle,
+      product_hosting: input.productHosting,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id);
   if (error) fail(migrationMessage(error.message));
   await audit(userId, id, "client.products");

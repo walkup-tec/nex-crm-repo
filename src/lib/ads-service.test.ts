@@ -27,6 +27,14 @@ assert.equal(
   adsServiceDescription({ adsMeta: true, adsGoogle: true }),
   "Mensalidade referente ao serviço de anúncios na plataforma Google e Meta Ads.",
 );
+assert.equal(
+  adsServiceDescription({ adsMeta: false, adsGoogle: false, productHosting: true }),
+  "Mensalidade referente ao serviço de hospedagem.",
+);
+assert.equal(
+  overduePixCopy({ provider: "manual", nominal: null }),
+  "Esta parcela é de cobrança manual. O Master confirma o pagamento no financeiro.",
+);
 
 assert.equal(
   overdueAccessCopy({ adsMeta: true, adsGoogle: false }),

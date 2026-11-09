@@ -84,6 +84,17 @@ export const cancelMasterChargeFn = createServerFn({ method: "POST" })
     });
   });
 
+export const markManualChargePaidFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { invoiceId: string }) => data)
+  .handler(async ({ context, data }): Promise<Result<true>> => {
+    const { markManualChargePaid } = await import("@/server/finance.server");
+    return guard(async () => {
+      await markManualChargePaid(context.userId, data.invoiceId);
+      return true as const;
+    });
+  });
+
 export const resendChargeDueWhatsappFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { invoiceId: string }) => data)

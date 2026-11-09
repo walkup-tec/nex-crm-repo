@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preview — Análise manual (bloco superior)</title>
+    <style>
+      :root {
+        --bg: #050c1a;
+        --card: #0b1729;
+        --border: #1e3a5f;
+        --text: #f4f7fb;
+        --muted: #9db0c9;
+        --cyan: #3ecbff;
+        --blue: #3b82f6;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, Segoe UI, system-ui, sans-serif;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 600;
+        margin: 0 0 14px;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1.05fr 1.55fr 0.95fr;
+        width: 100%;
+        max-width: 1280px;
+        align-items: stretch;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        border-radius: 14px;
+        padding: 12px 16px;
+      }
+      .title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 650;
+        margin: 0 0 8px;
+      }
+      .title svg { width: 16px; height: 16px; color: var(--cyan); }
+      .metric {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) auto auto;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+      .metric:last-child { border-bottom: 0; }
+      .metric .label { color: #fff; font-size: 14px; font-weight: 400; margin: 0; }
+      .metric .value {
+        font-size: 17px;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.02em;
+        text-align: right;
+      }
+      .badge {
+        background: rgba(16, 185, 129, 0.25);
+        color: #fff;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        min-width: 5.25rem;
+        text-align: center;
+      }
+      .chart-wrap { height: 168px; margin-top: 8px; }
+      svg.chart { width: 100%; height: 100%; }
+      .pills {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin-top: 4px;
+        font-size: 11px;
+      }
+      .pill {
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-weight: 600;
+      }
+      .pill.before { background: rgba(91, 77, 255, 0.25); color: #c4b5ff; }
+      .pill.during { background: rgba(29, 111, 235, 0.25); color: #9ec5ff; }
+      .summary dt { color: var(--muted); font-size: 12px; }
+      .summary dd { margin: 2px 0 12px; font-size: 14px; font-weight: 600; }
+      .status {
+        display: inline-flex;
+        border-radius: 999px;
+        padding: 2px 10px;
+        background: rgba(16, 185, 129, 0.2);
+        color: #34d399;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      @media (max-width: 960px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Preview atualizado — cards mais largos e baixos</h1>
+    <div class="grid">
+      <section class="card">
+        <div class="title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/></svg>
+          Desempenho do período
+        </div>
+        <div class="metric"><p class="label">Resultados</p><p class="value">78</p><span class="badge">↑ +25,8%</span></div>
+        <div class="metric"><p class="label">CTR</p><p class="value">2,51%</p><span class="badge">↑ +0,96 p.p.</span></div>
+        <div class="metric"><p class="label">CPC</p><p class="value">R$ 2,50</p><span class="badge">↓ -12,3%</span></div>
+        <div class="metric"><p class="label">Custo por resultado</p><p class="value">R$ 7,69</p><span class="badge">↓ -18,4%</span></div>
+      </section>
+
+      <section class="card">
+        <div class="title">Evolução dos resultados (Conversões)</div>
+        <div class="chart-wrap">
+          <svg class="chart" viewBox="0 0 640 168" preserveAspectRatio="xMidYMid meet">
+            <g stroke="#1a2d4a" stroke-dasharray="3 3">
+              <line x1="36" y1="28" x2="610" y2="28"/>
+              <line x1="36" y1="58" x2="610" y2="58"/>
+              <line x1="36" y1="88" x2="610" y2="88"/>
+              <line x1="36" y1="118" x2="610" y2="118"/>
+            </g>
+            <line x1="250" y1="20" x2="250" y2="128" stroke="#c9d7ef" stroke-dasharray="5 5" stroke-width="1.5"/>
+            <polyline fill="none" stroke="#3b82f6" stroke-width="2.5" points="60,96 140,88 230,112 320,84 410,62 500,48 580,42"/>
+            <g fill="#fff" stroke="#3b82f6" stroke-width="2">
+              <circle cx="60" cy="96" r="4"/><circle cx="140" cy="88" r="4"/><circle cx="230" cy="112" r="4"/>
+              <circle cx="320" cy="84" r="4"/><circle cx="410" cy="62" r="4"/><circle cx="500" cy="48" r="4"/><circle cx="580" cy="42" r="4"/>
+            </g>
+            <g fill="#dbe7f8" font-size="10" font-weight="600" text-anchor="middle">
+              <text x="60" y="84">62</text><text x="140" y="76">64</text><text x="230" y="100">58</text>
+              <text x="320" y="72">66</text><text x="410" y="50">72</text><text x="500" y="36">76</text><text x="580" y="30">78</text>
+            </g>
+            <g fill="#8fa3bf" font-size="10" text-anchor="middle">
+              <text x="60" y="146">01/11</text><text x="140" y="146">02/11</text><text x="230" y="146">03/11</text>
+              <text x="320" y="146">04/11</text><text x="410" y="146">05/11</text><text x="500" y="146">06/11</text><text x="580" y="146">07/11</text>
+            </g>
+          </svg>
+          <div class="pills">
+            <span class="pill before">Antes da análise</span>
+            <span class="pill during">Durante o período</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card summary">
+        <div class="title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/></svg>
+          Resumo da análise
+        </div>
+        <dt>Período analisado</dt>
+        <dd>01/11 – 07/11</dd>
+        <dt>Objetivo da campanha</dt>
+        <dd>Engajamento (WhatsApp)</dd>
+        <dt>Status</dt>
+        <dd><span class="status">Análise concluída</span></dd>
+      </section>
+    </div>
+  </body>
+</html>

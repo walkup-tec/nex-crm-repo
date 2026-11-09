@@ -2,6 +2,7 @@ import { resendDueBillingWhatsappByInvoice, stopOpenBillingNotices } from "@/ser
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   centsFromReais,
+  chargeActionFlags,
   chargeQuote,
   chargeStatus,
   competenceLabel,
@@ -527,13 +528,17 @@ async function invoicesOf(organizationId?: string) {
 function toCharge(
   row: InvoiceRow,
   names: Map<string, { legalName: string; document: string }>,
-  providers: Map<string, "cora" | "asaas" | "">,
+  providers: Map<string, "cora" | "asaas" | "manual" | "">,
 ): FinanceCharge {
   const org = names.get(row.organization_id);
-  const due = row.due_date.slice(0, 10);
-  const open = row.status !== "paid" && row.status !== "cancelled";
   const provider = providers.get(row.organization_id) ?? "";
-  const linked = Boolean(row.external_charge_id);
+  const actions = chargeActionFlags({
+    status: row.status,
+    dueDate: row.due_date,
+    today: todayKey(),
+    billingProvider: provider,
+    externalChargeId: row.external_charge_id,
+  });
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -547,15 +552,13 @@ function toCharge(
     paidAt: row.paid_at,
     invoiceUrl: row.invoice_url,
     pixCode: row.pix_code,
-    canNegotiate: open && linked && (row.status === "overdue" || due < todayKey()),
-    canCancel: open && linked,
-    canChangeDue: open && linked,
+    ...actions,
     billingProvider: provider,
   };
 }
 
 async function providersOf(ids: string[]) {
-  const providers = new Map<string, "cora" | "asaas" | "">();
+  const providers = new Map<string, "cora" | "asaas" | "manual" | "">();
   if (!ids.length) return providers;
   const { data, error } = await supabaseAdmin
     .from("contracts")
@@ -563,7 +566,14 @@ async function providersOf(ids: string[]) {
     .in("organization_id", ids);
   if (error) return providers;
   for (const row of data ?? []) {
-    providers.set(row.organization_id, row.billing_provider === "cora" || row.billing_provider === "asaas" ? row.billing_provider : "");
+    providers.set(
+      row.organization_id,
+      row.billing_provider === "cora" ||
+        row.billing_provider === "asaas" ||
+        row.billing_provider === "manual"
+        ? row.billing_provider
+        : "",
+    );
   }
   return providers;
 }
@@ -628,7 +638,7 @@ export async function listMasterFinance(userId: string): Promise<MasterFinance> 
 async function organizationBillingProfile(organizationId: string) {
   const full = await supabaseAdmin
     .from("organizations")
-    .select("document, ads_meta, ads_google")
+    .select("document, ads_meta, ads_google, product_hosting")
     .eq("id", organizationId)
     .maybeSingle();
   if (!full.error) {
@@ -636,16 +646,17 @@ async function organizationBillingProfile(organizationId: string) {
       document: full.data?.document ?? "",
       adsMeta: full.data?.ads_meta !== false,
       adsGoogle: full.data?.ads_google === true,
+      productHosting: full.data?.product_hosting === true,
     };
   }
-  if (!/ads_meta|ads_google/i.test(full.error.message)) fail(full.error.message);
+  if (!/ads_meta|ads_google|product_hosting/i.test(full.error.message)) fail(full.error.message);
   const basic = await supabaseAdmin
     .from("organizations")
     .select("document")
     .eq("id", organizationId)
     .maybeSingle();
   if (basic.error) fail(basic.error.message);
-  return { document: basic.data?.document ?? "", adsMeta: true, adsGoogle: false };
+  return { document: basic.data?.document ?? "", adsMeta: true, adsGoogle: false, productHosting: false };
 }
 
 async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolean }> {
@@ -764,10 +775,14 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
   const clientName = names.get(actor.organizationId)?.legalName ?? actor.fullName;
   const demoAccess = keepsAccessWithoutPayment(clientName);
   if (demoAccess) await keepDemoClientActive();
-  const providers = new Map<string, "cora" | "asaas" | "">([
+  const providers = new Map<string, "cora" | "asaas" | "manual" | "">([
     [
       actor.organizationId,
-      contract?.billing_provider === "cora" || contract?.billing_provider === "asaas" ? contract.billing_provider : "",
+      contract?.billing_provider === "cora" ||
+      contract?.billing_provider === "asaas" ||
+      contract?.billing_provider === "manual"
+        ? contract.billing_provider
+        : "",
     ],
   ]);
   const charges = rows.map((row) => toCharge(row, names, providers));
@@ -793,12 +808,15 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
     overdueChargeId: demoAccess ? null : (oldestOverdue?.id ?? null),
     notice,
     billingProvider:
-      contract?.billing_provider === "cora" || contract?.billing_provider === "asaas"
+      contract?.billing_provider === "cora" ||
+      contract?.billing_provider === "asaas" ||
+      contract?.billing_provider === "manual"
         ? contract.billing_provider
         : "",
     clientDocument: company.document,
     adsMeta: company.adsMeta,
     adsGoogle: company.adsGoogle,
+    productHosting: company.productHosting,
     promoMonthlyCents:
       contract?.promo_enabled && contract.after_promo_cents != null
         ? Number(contract.monthly_fee_cents)
@@ -827,8 +845,48 @@ export async function listOwnFinance(userId: string): Promise<OwnFinance> {
 }
 
 function chargeRail(provider: string | null, externalId: string) {
-  if (provider === "cora" || provider === "asaas") return provider;
+  if (provider === "cora" || provider === "asaas" || provider === "manual") return provider;
+  if (externalId.startsWith("manual:")) return "manual";
   return externalId.startsWith("inv_") ? "cora" : "asaas";
+}
+
+export async function markManualChargePaid(userId: string, invoiceId: string) {
+  const actor = await actorOf(userId);
+  if (actor.role !== "master") fail("Só o Master marca cobrança manual como paga.");
+  const { data: invoice, error } = await supabaseAdmin
+    .from("invoices")
+    .select(
+      "id, organization_id, competence, due_date, status, external_charge_id, paid_at",
+    )
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (error) fail(error.message);
+  if (!invoice) fail("Cobrança não encontrada.");
+  if (invoice.status === "paid") fail("Esta cobrança já está paga.");
+  if (invoice.status === "cancelled") fail("Cobrança cancelada não pode ser marcada como paga.");
+  const { data: contract, error: contractError } = await supabaseAdmin
+    .from("contracts")
+    .select("billing_provider")
+    .eq("organization_id", invoice.organization_id)
+    .maybeSingle();
+  if (contractError) fail(contractError.message);
+  const rail = chargeRail(contract?.billing_provider ?? null, invoice.external_charge_id ?? "");
+  if (rail !== "manual") fail("Só cobranças manuais podem ser marcadas como pagas por aqui.");
+  const paidAt = new Date().toISOString();
+  const { error: updateError } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "paid",
+      paid_at: paidAt,
+      updated_at: paidAt,
+    })
+    .eq("id", invoice.id);
+  if (updateError) fail(updateError.message);
+  const names = await namesOf([invoice.organization_id]);
+  await audit(actor.id, invoice.organization_id, "finance.manual_paid", invoice.id, {
+    clientName: names.get(invoice.organization_id)?.legalName ?? "cliente",
+    competence: invoice.competence,
+  });
 }
 
 async function negotiateCoraCharge(
@@ -1048,7 +1106,11 @@ export async function chargePix(userId: string, invoiceId: string) {
     .select("billing_provider")
     .eq("organization_id", invoice.organization_id)
     .limit(1);
-  if (chargeRail(billing?.[0]?.billing_provider ?? null, invoice.external_charge_id) === "cora") {
+  const rail = chargeRail(billing?.[0]?.billing_provider ?? null, invoice.external_charge_id);
+  if (rail === "manual") {
+    fail("Cobrança manual não tem Pix integrado. Marque como paga no financeiro quando receber.");
+  }
+  if (rail === "cora") {
     const payload = invoice.pix_code?.trim() ?? "";
     if (!payload.startsWith("000201")) fail("A Cora não devolveu o código Pix desta cobrança.");
     return {
@@ -1142,6 +1204,26 @@ export async function changeInvoiceDueDate(
   const rail = chargeRail(contract?.billing_provider ?? null, invoice.external_charge_id);
   const names = await namesOf([invoice.organization_id]);
   const clientName = names.get(invoice.organization_id)?.legalName ?? "cliente";
+
+  if (rail === "manual") {
+    const { error: updateError } = await supabaseAdmin
+      .from("invoices")
+      .update({
+        due_date: due,
+        external_charge_id: `manual:${invoice.organization_id}:${due}`,
+        status: due < todayKey() ? "overdue" : "pending",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoice.id);
+    if (updateError) fail(updateError.message);
+    await audit(actor.id, invoice.organization_id, "finance.due_change", invoice.id, {
+      clientName,
+      competence: invoice.competence,
+      from: invoice.due_date.slice(0, 10),
+      to: due,
+    });
+    return;
+  }
 
   if (rail === "cora") {
     const [{ data: org, error: orgError }] = await Promise.all([
@@ -1264,8 +1346,10 @@ export async function cancelMasterCharge(userId: string, invoiceId: string) {
   const rail = chargeRail(contract?.billing_provider ?? null, invoice.external_charge_id);
   if (rail === "cora") {
     await cancelCoraInvoice(invoice.external_charge_id);
-  } else {
+  } else if (rail === "asaas") {
     await deletePayment(invoice.external_charge_id);
+  } else if (rail !== "manual") {
+    fail("Esta cobrança não pode ser excluída.");
   }
   const { error: updateError } = await supabaseAdmin
     .from("invoices")

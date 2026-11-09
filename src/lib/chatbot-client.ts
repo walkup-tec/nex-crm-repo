@@ -15,6 +15,7 @@ export function adsFromProductNames(names: string[]) {
   return {
     adsMeta: names.some((name) => /meta/i.test(name)),
     adsGoogle: names.some((name) => /google/i.test(name)),
+    productHosting: names.some((name) => /hospedagem/i.test(name)),
   };
 }
 

@@ -46,6 +46,7 @@ import {
   changeInvoiceDueDateFn,
   chargePixFn,
   listMasterFinanceFn,
+  markManualChargePaidFn,
   negotiateChargeFn,
   resendChargeDueWhatsappFn,
 } from "@/lib/finance.functions";
@@ -63,6 +64,7 @@ export function FinanceAdmin() {
   const [pixCharge, setPixCharge] = useState<FinanceCharge | null>(null);
   const [dueCharge, setDueCharge] = useState<FinanceCharge | null>(null);
   const [cancelCharge, setCancelCharge] = useState<FinanceCharge | null>(null);
+  const [markPaidCharge, setMarkPaidCharge] = useState<FinanceCharge | null>(null);
   const [resendingId, setResendingId] = useState("");
   const [resendNotice, setResendNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -258,15 +260,17 @@ export function FinanceAdmin() {
                               <div className="flex items-center gap-2">
                                 {status !== "paid" && status !== "cancelled" ? (
                                   <>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      aria-label={`Ver Pix de ${item.clientName}`}
-                                      onClick={() => setPixCharge(item)}
-                                    >
-                                      <Eye className="size-4" />
-                                    </Button>
+                                    {item.pixCode ? (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        aria-label={`Ver Pix de ${item.clientName}`}
+                                        onClick={() => setPixCharge(item)}
+                                      >
+                                        <Eye className="size-4" />
+                                      </Button>
+                                    ) : null}
                                     <Button
                                       type="button"
                                       variant="outline"
@@ -293,6 +297,12 @@ export function FinanceAdmin() {
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
                                     <DropdownMenuItem
+                                      disabled={!item.canMarkPaid}
+                                      onSelect={() => setMarkPaidCharge(item)}
+                                    >
+                                      Marcar como paga
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
                                       disabled={!item.canChangeDue}
                                       onSelect={() => setDueCharge(item)}
                                     >
@@ -305,7 +315,11 @@ export function FinanceAdmin() {
                                       Negociação
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      disabled={!item.canCancel || item.billingProvider !== "cora"}
+                                      disabled={
+                                        !item.canCancel ||
+                                        (item.billingProvider !== "cora" &&
+                                          item.billingProvider !== "manual")
+                                      }
                                       className="text-destructive focus:text-destructive"
                                       onSelect={() => setCancelCharge(item)}
                                     >
@@ -348,6 +362,14 @@ export function FinanceAdmin() {
         onClose={() => setCancelCharge(null)}
         onSaved={async () => {
           setCancelCharge(null);
+          await load();
+        }}
+      />
+      <MarkPaidDialog
+        charge={markPaidCharge}
+        onClose={() => setMarkPaidCharge(null)}
+        onSaved={async () => {
+          setMarkPaidCharge(null);
           await load();
         }}
       />
@@ -605,6 +627,13 @@ function CancelChargeDialog({
     await onSaved();
   };
 
+  const cancelCopy =
+    charge?.billingProvider === "cora"
+      ? "A cobrança será cancelada na Cora e marcada como excluída no NEX."
+      : charge?.billingProvider === "manual"
+        ? "A parcela manual será marcada como excluída no NEX. Não há cobrança na Cora/Asaas."
+        : "A cobrança será removida no Asaas e marcada como excluída no NEX.";
+
   return (
     <Dialog open={charge !== null} onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent>
@@ -617,10 +646,7 @@ function CancelChargeDialog({
         {charge ? (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              {charge.billingProvider === "cora"
-                ? "A cobrança será cancelada na Cora e marcada como excluída no NEX."
-                : "A cobrança será removida no Asaas e marcada como excluída no NEX."}{" "}
-              Valor: <strong>{moneyFromCents(charge.totalCents)}</strong> • vencimento{" "}
+              {cancelCopy} Valor: <strong>{moneyFromCents(charge.totalCents)}</strong> • vencimento{" "}
               <strong>{dateBr(charge.dueDate)}</strong>.
             </p>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -632,6 +658,68 @@ function CancelChargeDialog({
           </Button>
           <Button variant="destructive" onClick={() => void save()} disabled={saving}>
             {saving ? "Excluindo..." : "Excluir cobrança"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MarkPaidDialog({
+  charge,
+  onClose,
+  onSaved,
+}: {
+  charge: FinanceCharge | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setSaving(false);
+    setError("");
+  }, [charge?.id]);
+
+  const save = async () => {
+    if (!charge) return;
+    setSaving(true);
+    setError("");
+    const result = await markManualChargePaidFn({ data: { invoiceId: charge.id } });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    await onSaved();
+  };
+
+  return (
+    <Dialog open={charge !== null} onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Marcar como paga</DialogTitle>
+          <DialogDescription>
+            {charge ? `${charge.clientName} • ${competenceLabel(charge.competence)}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+        {charge ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Confirma o recebimento desta parcela manual? Valor:{" "}
+              <strong>{moneyFromCents(charge.totalCents)}</strong> • vencimento{" "}
+              <strong>{dateBr(charge.dueDate)}</strong>.
+            </p>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button onClick={() => void save()} disabled={saving}>
+            {saving ? "Salvando..." : "Marcar como paga"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agendamentos – Preview</title>
+<style>
+  :root{
+    --bg:#0b1220;
+    --card:#101a2e;
+    --border:rgba(148,163,184,.16);
+    --text:#f1f5f9;
+    --muted:#94a3b8;
+    --green:#10b981;
+    --orange:#f59e0b;
+    --red:#ef4444;
+    --blue:#3b82f6;
+    --purple:#8b5cf6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .page{max-width:1280px;margin:0 auto;padding:28px 24px 56px;display:flex;flex-direction:column;gap:18px}
+
+  /* Header */
+  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .head h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em}
+  .head p{margin:6px 0 0;color:var(--muted);font-size:14px}
+  .head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .date-pill,.select-pill,.btn,.btn-ghost,.btn-icon{
+    height:38px;border-radius:10px;border:1px solid var(--border);background:#0d1628;color:var(--text);
+    font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:8px;padding:0 12px;cursor:default
+  }
+  .select-pill{min-width:140px;justify-content:space-between}
+  .select-pill svg,.date-pill svg{opacity:.7}
+
+  /* Google banner */
+  .gcal{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    background:linear-gradient(180deg,#101a2e 0%,#0d1527 100%);
+    border:1px solid var(--border);border-radius:12px;padding:16px 18px;
+    box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 8px 24px -12px rgba(0,0,0,.55)
+  }
+  .gcal-left{display:flex;align-items:center;gap:12px;min-width:0}
+  .g-icon{
+    width:40px;height:40px;border-radius:10px;background:#fff;display:grid;place-items:center;flex-shrink:0
+  }
+  .gcal-text{min-width:0}
+  .gcal-email{font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+  .gcal-sub{margin-top:3px;font-size:13px;color:var(--muted);line-height:1.35}
+  .gcal-right{display:flex;align-items:center;gap:10px}
+  .badge-ok{
+    display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;
+    border:1px solid rgba(16,185,129,.35);background:rgba(16,185,129,.12);color:#6ee7b7;font-size:12px;font-weight:600
+  }
+  .badge-ok i{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block}
+  .btn-outline{
+    background:#0d1628;border:1px solid rgba(148,163,184,.28);color:#e2e8f0;
+    height:34px;padding:0 14px;border-radius:9px;font:inherit;font-size:13px
+  }
+
+  /* KPI — barra lateral colorida (igual ao print) */
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  @media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.kpis{grid-template-columns:1fr}}
+  .kpi{
+    --accent:var(--blue);
+    position:relative;overflow:hidden;min-width:0;padding:0;
+    display:flex;flex-direction:column;
+    background:linear-gradient(180deg,#101a2e 0%,#0d1527 100%);
+    border:1px solid rgba(148,163,184,.14);border-radius:12px;
+    box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 8px 24px -12px rgba(0,0,0,.6)
+  }
+  .kpi.blue{--accent:#3b82f6}
+  .kpi.green{--accent:#22c55e}
+  .kpi.orange{--accent:#f59e0b}
+  .kpi.red{--accent:#ef4444}
+  .kpi-accent{
+    position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);
+    box-shadow:0 0 10px 1px var(--accent),0 0 22px 2px color-mix(in srgb,var(--accent) 45%,transparent)
+  }
+  .kpi-body{padding:14px 14px 14px 22px;display:flex;flex-direction:column;gap:0}
+  .kpi-top{display:flex;align-items:center;gap:8px}
+  .kpi-ico{
+    flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+    color:var(--accent);
+    background:color-mix(in srgb,var(--accent) 16%,transparent);
+    border:1px solid color-mix(in srgb,var(--accent) 28%,transparent)
+  }
+  .kpi-label{flex:1;min-width:0;font-size:12.5px;font-weight:500;color:#fff;line-height:1.25}
+  .kpi-val{
+    margin-top:12px;font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1;
+    font-variant-numeric:tabular-nums;color:#fff
+  }
+  .kpi-meta{
+    margin-top:8px;font-size:12px;font-weight:600;color:var(--muted);
+    display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-variant-numeric:tabular-nums
+  }
+  .kpi-meta.up{color:#34d399}
+  .kpi-meta .cmp{font-weight:500;color:#8190a6}
+  .kpi-meta.share{font-weight:500;color:#94a3b8}
+
+  /* Board card */
+  .board{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 16px 20px;
+    display:flex;flex-direction:column;gap:14px;overflow:hidden
+  }
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .toolbar-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .btn-today{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:#0d1628;color:#e2e8f0;font:inherit;font-size:13px}
+  .btn-icon{width:34px;height:34px;padding:0;justify-content:center}
+  .filters{display:flex;align-items:center;gap:14px;margin-left:8px;flex-wrap:wrap}
+  .chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#cbd5e1;cursor:default}
+  .chk b{width:14px;height:14px;border-radius:4px;display:grid;place-items:center;border:1.5px solid currentColor}
+  .chk b svg{width:10px;height:10px}
+  .chk.green{color:var(--green)} .chk.green b{background:rgba(16,185,129,.2)}
+  .chk.orange{color:var(--orange)} .chk.orange b{background:rgba(245,158,11,.18)}
+  .chk.red{color:var(--red)} .chk.red b{background:rgba(239,68,68,.18)}
+  .btn-new{
+    height:36px;padding:0 14px;border:0;border-radius:10px;background:var(--purple);color:#fff;
+    font:inherit;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 20px -10px rgba(139,92,246,.8)
+  }
+
+  /* Calendar — colunas por dia (estilo do print) */
+  .cal-wrap{overflow-x:auto;padding-bottom:4px}
+  .cal{min-width:980px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
+  .day-col{
+    background:#0c1424;border:1px solid rgba(148,163,184,.16);border-radius:12px;
+    display:flex;flex-direction:column;min-height:560px;overflow:hidden
+  }
+  .day-h{
+    display:flex;align-items:flex-start;justify-content:center;gap:8px;
+    padding:12px 10px 10px;border-bottom:1px solid rgba(148,163,184,.12);position:relative
+  }
+  .day-h-main{text-align:center}
+  .day-h .wd{font-size:13px;font-weight:650;color:#fff;line-height:1.2}
+  .day-h .dm{margin-top:2px;font-size:12px;font-weight:500;color:#cbd5e1}
+  .day-h .cnt{
+    position:absolute;right:10px;top:12px;
+    min-width:22px;height:22px;padding:0 6px;border-radius:6px;display:grid;place-items:center;
+    background:rgba(59,130,246,.18);color:#93c5fd;font-size:11px;font-weight:700;
+    border:1px solid rgba(59,130,246,.28)
+  }
+  .day-body{padding:10px 8px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+  .day-gap{height:18px;flex:none}
+  .ev{
+    display:grid;grid-template-columns:8px 1fr;column-gap:8px;align-items:start;
+    border-radius:10px;padding:10px 10px 10px 8px;line-height:1.25;overflow:hidden
+  }
+  .ev .dot{width:8px;height:8px;border-radius:50%;margin-top:4px;box-shadow:0 0 8px currentColor}
+  .ev .meta{min-width:0}
+  .ev .when{display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,.88)}
+  .ev .who{
+    display:block;margin-top:3px;font-size:12.5px;font-weight:650;color:#fff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  }
+  .ev.ok{background:#064e3b;border:1px solid rgba(34,197,94,.28)}
+  .ev.ok .dot{background:#22c55e;color:#22c55e}
+  .ev.pend{background:#78350f;border:1px solid rgba(245,158,11,.35)}
+  .ev.pend .dot{background:#f59e0b;color:#f59e0b}
+  .ev.canc{background:#7f1d1d;border:1px solid rgba(239,68,68,.35)}
+  .ev.canc .dot{background:#ef4444;color:#ef4444}
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="head">
+      <div>
+        <h1>Agendamentos</h1>
+        <p>Reuniões do Google Calendar com seus clientes.</p>
+      </div>
+      <div class="head-right">
+        <div class="date-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          26/10/2026 - 01/11/2026
+        </div>
+        <div class="select-pill">
+          Esta semana
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <section class="gcal">
+      <div class="gcal-left">
+        <div class="g-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H24v7.1h11.3C33.7 32.8 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.3-5.3C33.6 6.2 29.1 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 5.9 4.3C13.8 15.1 18.5 12 24 12c3 0 5.7 1.1 7.8 2.9l5.3-5.3C33.6 6.2 29.1 4 24 4 16.3 4 9.6 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.1C29.2 35.5 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-5.9 4.5C10.5 39.6 16.7 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H24v7.1h11.3c-1.1 3.1-3.5 5.5-6.1 6.7l.1.1 6.2 5.1C38.3 37.2 44 32 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+        </div>
+        <div class="gcal-text">
+          <div class="gcal-email">walkup@walkuptec.com.br</div>
+          <div class="gcal-sub">Conta conectada. As próximas reuniões aparecem abaixo.</div>
+        </div>
+      </div>
+      <div class="gcal-right">
+        <span class="badge-ok"><i></i> Conectado</span>
+        <button type="button" class="btn-outline">Desconectar</button>
+      </div>
+    </section>
+
+    <section class="kpis">
+      <article class="kpi blue">
+        <span class="kpi-accent" aria-hidden="true"></span>
+        <div class="kpi-body">
+          <div class="kpi-top">
+            <span class="kpi-ico">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </span>
+            <span class="kpi-label">Total de agendamentos</span>
+          </div>
+          <div class="kpi-val">58</div>
+          <div class="kpi-meta up">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+            <span>12%</span>
+            <span class="cmp">vs. semana anterior</span>
+          </div>
+        </div>
+      </article>
+      <article class="kpi green">
+        <span class="kpi-accent" aria-hidden="true"></span>
+        <div class="kpi-body">
+          <div class="kpi-top">
+            <span class="kpi-ico">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+            </span>
+            <span class="kpi-label">Confirmados</span>
+          </div>
+          <div class="kpi-val">52</div>
+          <div class="kpi-meta share">90% do total</div>
+        </div>
+      </article>
+      <article class="kpi orange">
+        <span class="kpi-accent" aria-hidden="true"></span>
+        <div class="kpi-body">
+          <div class="kpi-top">
+            <span class="kpi-ico">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </span>
+            <span class="kpi-label">Pendentes</span>
+          </div>
+          <div class="kpi-val">3</div>
+          <div class="kpi-meta share">5% do total</div>
+        </div>
+      </article>
+      <article class="kpi red">
+        <span class="kpi-accent" aria-hidden="true"></span>
+        <div class="kpi-body">
+          <div class="kpi-top">
+            <span class="kpi-ico">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+            </span>
+            <span class="kpi-label">Cancelados</span>
+          </div>
+          <div class="kpi-val">3</div>
+          <div class="kpi-meta share">5% do total</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="board">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button type="button" class="btn-today">Hoje</button>
+          <button type="button" class="btn-icon" aria-label="Anterior">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button type="button" class="btn-icon" aria-label="Próxima">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <div class="filters">
+            <label class="chk green"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></b> Confirmado</label>
+            <label class="chk orange"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></b> Pendente</label>
+            <label class="chk red"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></b> Cancelado</label>
+          </div>
+        </div>
+        <button type="button" class="btn-new">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Novo agendamento
+        </button>
+      </div>
+
+      <div class="cal-wrap">
+        <div class="cal" id="cal"></div>
+      </div>
+    </section>
+  </div>
+
+<script>
+(function () {
+  const days = [
+    {
+      wd: "Seg", dm: "26/10", count: 8,
+      items: [
+        { start: "09:00", end: "09:30", name: "Almeida Cred", tone: "ok" },
+        { start: "10:00", end: "10:30", name: "Brasil Financeira", tone: "ok" },
+        { start: "11:00", end: "11:30", name: "Finance Soluções", tone: "ok" },
+        { start: "12:00", end: "12:30", name: "Marques Soluções", tone: "ok" },
+        { gap: true },
+        { start: "14:00", end: "14:30", name: "New Cred", tone: "ok" },
+        { start: "15:00", end: "15:30", name: "Soma Conecta", tone: "ok" },
+        { start: "16:00", end: "16:30", name: "Credilix", tone: "ok" },
+        { start: "17:00", end: "17:30", name: "Walkup Tec", tone: "ok" },
+      ],
+    },
+    {
+      wd: "Ter", dm: "27/10", count: 7,
+      items: [
+        { start: "09:00", end: "09:30", name: "Delta Cred", tone: "ok" },
+        { start: "10:00", end: "10:30", name: "Epsilon Corban", tone: "ok" },
+        { start: "11:00", end: "11:30", name: "Drax Sistemas", tone: "pend" },
+        { gap: true },
+        { start: "14:00", end: "14:30", name: "Zeta Cred", tone: "ok" },
+        { start: "15:00", end: "15:30", name: "Eta Finance", tone: "ok" },
+        { start: "16:00", end: "16:30", name: "Theta Cred", tone: "ok" },
+        { start: "16:30", end: "17:00", name: "Soma Promotora", tone: "canc" },
+      ],
+    },
+    {
+      wd: "Qua", dm: "28/10", count: 6,
+      items: [
+        { start: "09:00", end: "09:30", name: "Iota Corban", tone: "ok" },
+        { start: "10:00", end: "10:30", name: "Kappa Cred", tone: "ok" },
+        { start: "11:30", end: "12:00", name: "Lambda Finance", tone: "ok" },
+        { gap: true },
+        { start: "14:00", end: "14:30", name: "Cliente Cancelado", tone: "canc" },
+        { start: "15:00", end: "15:30", name: "Aguardando confirmação", tone: "pend" },
+        { start: "16:00", end: "16:30", name: "Mu Cred", tone: "ok" },
+      ],
+    },
+    {
+      wd: "Qui", dm: "29/10", count: 5,
+      items: [
+        { start: "09:00", end: "09:30", name: "Nu Corban", tone: "ok" },
+        { start: "10:00", end: "10:30", name: "Xi Finance", tone: "ok" },
+        { start: "11:00", end: "11:30", name: "Omicron Cred", tone: "ok" },
+        { gap: true },
+        { start: "14:00", end: "14:30", name: "Pi Soluções", tone: "ok" },
+        { start: "16:00", end: "16:30", name: "Rho Cred", tone: "ok" },
+      ],
+    },
+    {
+      wd: "Sex", dm: "30/10", count: 4,
+      items: [
+        { start: "09:00", end: "09:30", name: "Sigma Corban", tone: "ok" },
+        { start: "10:30", end: "11:00", name: "Tau Finance", tone: "ok" },
+        { gap: true },
+        { start: "14:00", end: "14:30", name: "Upsilon Cred", tone: "ok" },
+        { start: "15:00", end: "15:30", name: "Phi Soluções", tone: "ok" },
+      ],
+    },
+  ];
+
+  const root = document.getElementById("cal");
+  root.innerHTML = days.map((day) => {
+    const body = day.items.map((item) => {
+      if (item.gap) return `<div class="day-gap" aria-hidden="true"></div>`;
+      return `<article class="ev ${item.tone}">
+        <span class="dot" aria-hidden="true"></span>
+        <div class="meta">
+          <span class="when">${item.start} - ${item.end}</span>
+          <span class="who">${item.name}</span>
+        </div>
+      </article>`;
+    }).join("");
+    return `<section class="day-col">
+      <header class="day-h">
+        <div class="day-h-main">
+          <div class="wd">${day.wd}</div>
+          <div class="dm">${day.dm}</div>
+        </div>
+        <span class="cnt">${day.count}</span>
+      </header>
+      <div class="day-body">${body}</div>
+    </section>`;
+  }).join("");
+})();
+</script>
+</body>
+</html>

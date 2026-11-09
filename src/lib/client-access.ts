@@ -10,12 +10,20 @@ export type ClientInvoice = {
   paidAt: string | null;
 };
 
-export type BillingProvider = "asaas" | "cora";
+export type BillingProvider = "asaas" | "cora" | "manual";
 export type DelinquencyMode = "rate" | "amount";
 
 export function clientDisplayName(client: { legalName: string; commercialName?: string | null }) {
   const commercial = client.commercialName?.trim() ?? "";
   return commercial || client.legalName.trim();
+}
+
+export function hasClientProduct(flags: {
+  adsMeta?: boolean;
+  adsGoogle?: boolean;
+  productHosting?: boolean;
+}) {
+  return flags.adsMeta === true || flags.adsGoogle === true || flags.productHosting === true;
 }
 
 export type ClientDraft = {
@@ -29,6 +37,7 @@ export type ClientDraft = {
   billingProvider: BillingProvider | "";
   adsMeta: boolean;
   adsGoogle: boolean;
+  productHosting: boolean;
   monthlyFee: string;
   dueDay: string;
   startsOn: string;
@@ -76,6 +85,7 @@ export type ListedClient = {
   billingProvider: BillingProvider | "";
   adsMeta: boolean;
   adsGoogle: boolean;
+  productHosting: boolean;
   promoEnabled: boolean;
   promoStartsOn: string | null;
   promoEndsOn: string | null;
@@ -92,14 +102,27 @@ export type ListedClient = {
   invoices: ClientInvoice[];
 };
 
-export function adsPlatformLabel(client: { adsMeta: boolean; adsGoogle: boolean }) {
-  if (client.adsMeta && client.adsGoogle) return "Meta e Google Ads";
-  if (client.adsGoogle) return "Google Ads";
-  if (client.adsMeta) return "Meta Ads";
-  return "Não informado";
+export function adsPlatformLabel(client: {
+  adsMeta: boolean;
+  adsGoogle: boolean;
+  productHosting?: boolean;
+}) {
+  const parts: string[] = [];
+  if (client.adsMeta && client.adsGoogle) parts.push("Meta e Google Ads");
+  else if (client.adsGoogle) parts.push("Google Ads");
+  else if (client.adsMeta) parts.push("Meta Ads");
+  if (client.productHosting) parts.push("Hospedagem");
+  return parts.length ? parts.join(" · ") : "Não informado";
 }
 
-export function overdueAccessCopy(client: { adsMeta: boolean; adsGoogle: boolean }) {
+export function overdueAccessCopy(client: {
+  adsMeta: boolean;
+  adsGoogle: boolean;
+  productHosting?: boolean;
+}) {
+  if (!client.adsMeta && !client.adsGoogle && client.productHosting) {
+    return "Continue com nossos serviços de hospedagem. Regularize sua pendência para restabelecer o acesso.";
+  }
   const channel =
     client.adsMeta && client.adsGoogle
       ? "anúncios na Meta e no Google"
@@ -109,13 +132,18 @@ export function overdueAccessCopy(client: { adsMeta: boolean; adsGoogle: boolean
   return `Continue impulsionando o crescimento do seu negócio com ${channel}. Regularize sua pendência para restabelecer o acesso aos nossos serviços.`;
 }
 
-export function overduePixCopy(input: { provider: "cora" | "asaas" | ""; nominal: boolean | null }) {
+export function overduePixCopy(input: {
+  provider: "cora" | "asaas" | "manual" | "";
+  nominal: boolean | null;
+}) {
   const closing =
     input.provider === "cora"
       ? "A cobrança vencida sai da Cora quando este pagamento for identificado."
       : input.provider === "asaas"
         ? "A cobrança vencida sai do Asaas quando este pagamento for identificado."
-        : "A cobrança vencida sai quando este pagamento for identificado.";
+        : input.provider === "manual"
+          ? "Esta parcela é de cobrança manual. O Master confirma o pagamento no financeiro."
+          : "A cobrança vencida sai quando este pagamento for identificado.";
   if (input.nominal == null) return closing;
   if (input.nominal) return `Pix do valor nominal desta parcela. ${closing}`;
   return `Pix desta parcela com multa e juros calculados. ${closing}`;
@@ -128,14 +156,24 @@ export function promoChargeCopy(nominal: string, promotional: string, afterDue: 
   };
 }
 
-export function adsServiceDescription(client: { adsMeta: boolean; adsGoogle: boolean }) {
+export function adsServiceDescription(client: {
+  adsMeta: boolean;
+  adsGoogle: boolean;
+  productHosting?: boolean;
+}) {
+  if (!client.adsMeta && !client.adsGoogle && client.productHosting) {
+    return "Mensalidade referente ao serviço de hospedagem.";
+  }
   if (client.adsMeta && client.adsGoogle) {
     return "Mensalidade referente ao serviço de anúncios na plataforma Google e Meta Ads.";
   }
   if (client.adsGoogle) {
     return "Mensalidade referente ao serviço de anúncios na plataforma Google Ads.";
   }
-  return "Mensalidade referente ao serviço de anúncios na plataforma Meta Ads.";
+  if (client.adsMeta) {
+    return "Mensalidade referente ao serviço de anúncios na plataforma Meta Ads.";
+  }
+  return "Mensalidade referente aos serviços contratados.";
 }
 
 export function isInactiveClient(status: ClientStatus) {

@@ -61,10 +61,11 @@ export const createClientFn = createServerFn({ method: "POST" })
 
 export const updateClientProductsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { id: string; adsMeta: boolean; adsGoogle: boolean }) => ({
+  .validator((data: { id: string; adsMeta: boolean; adsGoogle: boolean; productHosting?: boolean }) => ({
     id: data.id.trim(),
     adsMeta: data.adsMeta === true,
     adsGoogle: data.adsGoogle === true,
+    productHosting: data.productHosting === true,
   }))
   .handler(async ({ context, data }): Promise<Result<SavedClient>> => {
     const { updateClientProducts } = await import("@/server/clients.server");

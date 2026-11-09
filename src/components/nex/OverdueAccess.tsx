@@ -44,7 +44,7 @@ function penaltyNote(pix: ChargePix) {
 export function OverdueAccess({ children }: { children: React.ReactNode }) {
   const [overdueChargeId, setOverdueChargeId] = useState<string | null>(null);
   const [platforms, setPlatforms] = useState({ adsMeta: true, adsGoogle: false });
-  const [billingProvider, setBillingProvider] = useState<"cora" | "asaas" | "">("");
+  const [billingProvider, setBillingProvider] = useState<"cora" | "asaas" | "manual" | "">("");
   const [pixOpen, setPixOpen] = useState(false);
   const [pix, setPix] = useState<ChargePix | null>(null);
   const [pixError, setPixError] = useState("");

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Dashboard – Top5 / Vencimentos / Status</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0b1220;color:#fff;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 20px}
+  .bottom-grid{display:grid;grid-template-columns:1fr;gap:16px;max-width:1480px;margin:0 auto}
+  @media(min-width:1100px){.bottom-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  .bt-card{background:linear-gradient(180deg,#101a2e,#0d1527);border:1px solid rgba(148,163,184,.14);border-radius:12px;padding:22px 24px;box-shadow:0 8px 24px -12px rgba(0,0,0,.6);min-width:0}
+  .bt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
+  .bt-card h2{margin:0;font-size:18px;font-weight:700}
+  .bt-sub{margin:4px 0 0;font-size:13px;color:#8190a6}
+  .bt-select{appearance:none;background:#0b1220;color:#e2e8f0;border:1px solid rgba(148,163,184,.2);border-radius:8px;height:36px;padding:0 28px 0 12px;font:inherit;font-size:13px}
+  .bt-tbl-head,.bt-tbl-row{display:grid;grid-template-columns:28px minmax(0,1.2fr) minmax(0,1fr) 88px 64px;gap:8px;align-items:center}
+  .bt-tbl-head{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;padding-bottom:10px;border-bottom:1px solid rgba(148,163,184,.1)}
+  .bt-tbl-head span:nth-child(n+4),.bt-tbl-row .bt-money,.bt-tbl-row .bt-pct{text-align:right}
+  .bt-tbl-row{padding:12px 0;border-bottom:1px solid rgba(148,163,184,.08)}
+  .bt-tbl-row:last-child{border-bottom:0}
+  .bt-rank{width:24px;height:24px;border-radius:999px;display:grid;place-items:center;background:rgba(148,163,184,.1);font-size:12px;font-weight:600;color:#cbd5e1}
+  .bt-name{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bt-bar{height:6px;border-radius:99px;background:rgba(148,163,184,.12);overflow:hidden}
+  .bt-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#8b5cf6,#3b82f6)}
+  .bt-money{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .bt-pct{font-size:14px;color:#8190a6;font-variant-numeric:tabular-nums}
+  #due{width:100%;height:280px}
+  .status-row{display:flex;align-items:center;gap:22px;margin-top:8px}
+  .donut{position:relative;width:180px;height:180px;flex-shrink:0}
+  .donut svg{width:100%;height:100%}
+  .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  .center b{font-size:24px;font-weight:700}
+  .center small{font-size:12px;color:#94a3b8}
+  .status-list{flex:1;display:flex;flex-direction:column;gap:16px}
+  .status-item{display:grid;grid-template-columns:10px 1fr auto auto;gap:12px;align-items:center;font-size:14px}
+  .bt-dot{width:10px;height:10px;border-radius:50%}
+  .status-item .n{font-weight:600;font-variant-numeric:tabular-nums}
+  .status-item .p{color:#8190a6;font-variant-numeric:tabular-nums}
+  @media(max-width:560px){.status-row{flex-direction:column}.bt-tbl-head,.bt-tbl-row{grid-template-columns:28px 1fr 80px;}.bt-tbl-head span:nth-child(3),.bt-tbl-row .bt-bar{display:none}}
+</style>
+</head>
+<body>
+<section class="bottom-grid" aria-label="Top clientes, vencimentos e status">
+
+  <article class="bt-card">
+    <div class="bt-head">
+      <div>
+        <h2>Top 5 clientes em receita</h2>
+        <p class="bt-sub">Clientes com maior receita no período selecionado.</p>
+      </div>
+      <select class="bt-select" aria-label="Métrica"><option>Receita do período</option></select>
+    </div>
+    <div class="bt-tbl-head"><span>#</span><span>Cliente</span><span></span><span>Receita</span><span>% do total</span></div>
+    <div class="bt-tbl-row"><span class="bt-rank">1</span><span class="bt-name">Almeida Cred</span><div class="bt-bar"><i style="width:100%"></i></div><span class="bt-money">R$ 2.980,00</span><span class="bt-pct">19,9%</span></div>
+    <div class="bt-tbl-row"><span class="bt-rank">2</span><span class="bt-name">Brasil Financeira</span><div class="bt-bar"><i style="width:84%"></i></div><span class="bt-money">R$ 2.500,00</span><span class="bt-pct">16,7%</span></div>
+    <div class="bt-tbl-row"><span class="bt-rank">3</span><span class="bt-name">Nova Soluções</span><div class="bt-bar"><i style="width:74%"></i></div><span class="bt-money">R$ 2.200,00</span><span class="bt-pct">14,7%</span></div>
+    <div class="bt-tbl-row"><span class="bt-rank">4</span><span class="bt-name">Prime Crédito</span><div class="bt-bar"><i style="width:67%"></i></div><span class="bt-money">R$ 2.000,00</span><span class="bt-pct">13,4%</span></div>
+    <div class="bt-tbl-row"><span class="bt-rank">5</span><span class="bt-name">Atlas Pagamentos</span><div class="bt-bar"><i style="width:60%"></i></div><span class="bt-money">R$ 1.800,00</span><span class="bt-pct">12,0%</span></div>
+  </article>
+
+  <article class="bt-card">
+    <div class="bt-head">
+      <div>
+        <h2>Vencimentos por semana</h2>
+        <p class="bt-sub">Valores a vencer nas próximas semanas.</p>
+      </div>
+      <span class="bt-select" style="display:inline-flex;align-items:center">Próximas 4 semanas</span>
+    </div>
+    <div id="due"></div>
+  </article>
+
+  <article class="bt-card">
+    <div class="bt-head">
+      <div>
+        <h2>Clientes por status</h2>
+        <p class="bt-sub">Quantidade de clientes por situação.</p>
+      </div>
+    </div>
+    <div class="status-row">
+      <div class="donut">
+        <svg viewBox="0 0 200 200" id="statusDonut"></svg>
+        <div class="center"><b>32</b><small>clientes</small></div>
+      </div>
+      <div class="status-list">
+        <div class="status-item"><span class="bt-dot" style="background:#22c55e"></span><span>Ativos</span><span class="n">25</span><span class="p">78%</span></div>
+        <div class="status-item"><span class="bt-dot" style="background:#ef4444"></span><span>Em atraso</span><span class="n">4</span><span class="p">12%</span></div>
+        <div class="status-item"><span class="bt-dot" style="background:#3b82f6"></span><span>Inativos</span><span class="n">3</span><span class="p">10%</span></div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<script>
+(function(){
+  const NS='http://www.w3.org/2000/svg';
+  const el=(t,a={},p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e;};
+
+  function drawDue(){
+    const host=document.getElementById('due');
+    if(!host) return;
+    host.innerHTML='';
+    const labels=['Esta semana','Próxima semana','Semana 3','Semana 4'];
+    const values=[432000,648000,280000,150000];
+    const W=Math.max(host.clientWidth||360,300),H=280;
+    const m={t:28,r:12,b:36,l:56};
+    const iw=W-m.l-m.r, ih=H-m.t-m.b;
+    const max=800000;
+    const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',height:'100%'},host);
+    const defs=el('defs',{},svg);
+    const g=el('linearGradient',{id:'dueGrad',x1:0,y1:0,x2:0,y2:1},defs);
+    el('stop',{offset:'0%','stop-color':'#8b5cf6'},g);
+    el('stop',{offset:'100%','stop-color':'#3b82f6'},g);
+    const y=v=>m.t+ih-(v/max)*ih;
+    for(let i=0;i<=4;i++){
+      const v=i*200000, yy=y(v);
+      el('line',{x1:m.l,x2:W-m.r,y1:yy,y2:yy,stroke:'rgba(148,163,184,.14)','stroke-dasharray':'3 4'},svg);
+      const t=el('text',{x:m.l-8,y:yy+4,'text-anchor':'end',fill:'#94a3b8','font-size':11},svg);
+      t.textContent='R$ '+(v/100).toLocaleString('pt-BR');
+    }
+    const band=iw/labels.length, bw=Math.min(44,band*0.45);
+    labels.forEach((lab,i)=>{
+      const cx=m.l+band*i+band/2;
+      const top=y(values[i]);
+      el('path',{d:`M${cx-bw/2},${m.t+ih} V${top+6} Q${cx-bw/2},${top} ${cx-bw/2+6},${top} H${cx+bw/2-6} Q${cx+bw/2},${top} ${cx+bw/2},${top+6} V${m.t+ih} Z`,fill:'url(#dueGrad)'},svg);
+      const val=el('text',{x:cx,y:top-8,'text-anchor':'middle',fill:'#e2e8f0','font-size':11,'font-weight':600},svg);
+      val.textContent='R$ '+(values[i]/100).toLocaleString('pt-BR');
+      const lx=el('text',{x:cx,y:H-10,'text-anchor':'middle',fill:'#94a3b8','font-size':11},svg);
+      lx.textContent=lab;
+    });
+  }
+
+  const svg=document.getElementById('statusDonut');
+  if(svg){
+    const data=[{v:78,c:'#22c55e'},{v:12,c:'#ef4444'},{v:10,c:'#3b82f6'}];
+    const cx=100,cy=100,R=82,r=58,gap=2.5;
+    let a=-90;
+    const pt=(rad,deg)=>[cx+rad*Math.cos(deg*Math.PI/180),cy+rad*Math.sin(deg*Math.PI/180)];
+    data.forEach(d=>{
+      const sweep=d.v/100*360;
+      const s=a+gap/2,e=a+sweep-gap/2;
+      const [x1,y1]=pt(R,s),[x2,y2]=pt(R,e),[x3,y3]=pt(r,e),[x4,y4]=pt(r,s);
+      const large=(e-s)>180?1:0;
+      el('path',{d:`M${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} L${x3},${y3} A${r},${r} 0 ${large} 0 ${x4},${y4} Z`,fill:d.c},svg);
+      a+=sweep;
+    });
+  }
+
+  requestAnimationFrame(()=>requestAnimationFrame(drawDue));
+  addEventListener('resize', drawDue);
+})();
+</script>
+</body>
+</html>

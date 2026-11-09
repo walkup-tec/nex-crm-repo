@@ -16,8 +16,30 @@ export type FinanceCharge = {
   canNegotiate: boolean;
   canCancel: boolean;
   canChangeDue: boolean;
-  billingProvider: "cora" | "asaas" | "";
+  canMarkPaid: boolean;
+  billingProvider: "cora" | "asaas" | "manual" | "";
 };
+
+export function chargeActionFlags(input: {
+  status: InvoiceStatus;
+  dueDate: string;
+  today: string;
+  billingProvider: FinanceCharge["billingProvider"];
+  externalChargeId: string | null;
+}) {
+  const open = input.status !== "paid" && input.status !== "cancelled";
+  const due = input.dueDate.slice(0, 10);
+  const manual = input.billingProvider === "manual";
+  const linked = Boolean(input.externalChargeId);
+  const bankLinked =
+    linked && !manual && !String(input.externalChargeId ?? "").startsWith("manual:");
+  return {
+    canNegotiate: open && bankLinked && (input.status === "overdue" || due < input.today),
+    canCancel: open && (bankLinked || manual),
+    canChangeDue: open && (bankLinked || manual),
+    canMarkPaid: open && manual,
+  };
+}
 
 export function chargeMatchesClient(charge: { clientName: string; clientDocument: string }, query: string) {
   const text = query.trim().toLocaleLowerCase("pt-BR");
@@ -101,10 +123,11 @@ export type OwnFinance = {
   openChargeId: string | null;
   overdueChargeId: string | null;
   notice: string;
-  billingProvider: "cora" | "asaas" | "";
+  billingProvider: "cora" | "asaas" | "manual" | "";
   clientDocument: string;
   adsMeta: boolean;
   adsGoogle: boolean;
+  productHosting?: boolean;
   promoMonthlyCents: number | null;
   nominalMonthlyCents: number | null;
   promotions: { startsOn: string; endsOn: string; amountCents: number; nominalCents: number }[];

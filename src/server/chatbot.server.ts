@@ -1723,7 +1723,9 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
   const productNames = products.rows.filter((row) => selectedProducts.has(cell(row, "id"))).map((row) => cell(row, "name"));
   const { adsFromProductNames } = await import("@/lib/chatbot-client");
   const ads = adsFromProductNames(productNames);
-  if (!ads.adsMeta && !ads.adsGoogle) fail("Marque Meta Ads ou Google Ads em Produtos e serviços.");
+  if (!ads.adsMeta && !ads.adsGoogle && !ads.productHosting) {
+    fail("Marque Meta Ads, Google Ads ou Hospedagem em Produtos e serviços.");
+  }
 
   const progress = await table("chatbot_messages")
     .insert({
@@ -3594,7 +3596,9 @@ async function provisionChatbotNexClient(organizationId: string, contactId: stri
   const names = products.rows.filter((row) => selected.has(cell(row, "id"))).map((row) => cell(row, "name"));
   const { adsFromProductNames, brazilToday, chatbotClientTerms, chatbotDelinquencyCents, chatbotSchedulingMessage } = await import("@/lib/chatbot-client");
   const ads = adsFromProductNames(names);
-  if (!ads.adsMeta && !ads.adsGoogle) fail("Marque Meta Ads ou Google Ads em Produtos e serviços.");
+  if (!ads.adsMeta && !ads.adsGoogle && !ads.productHosting) {
+    fail("Marque Meta Ads, Google Ads ou Hospedagem em Produtos e serviços.");
+  }
   const deal = await table("chatbot_contacts").select("negotiated_cents").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
   if (deal.error) fail(schemaMessage(deal.error.message));
   const cents = Number(deal.data?.["negotiated_cents"]);
@@ -3620,6 +3624,7 @@ async function provisionChatbotNexClient(organizationId: string, contactId: stri
     billingProvider: "cora",
     adsMeta: ads.adsMeta,
     adsGoogle: ads.adsGoogle,
+    productHosting: ads.productHosting,
     monthlyFee: String(cents),
     dueDay: terms.dueDay,
     startsOn: terms.startsOn,

@@ -2,10 +2,31 @@ import assert from "node:assert/strict";
 import { contractDueDates } from "./billing-plan";
 import { adsFromProductNames, chatbotClientTerms, chatbotDelinquencyCents, chatbotSchedulingMessage, firstBusinessDueDate, monthlyDueDay } from "./chatbot-client";
 
-assert.deepEqual(adsFromProductNames(["Meta Ads"]), { adsMeta: true, adsGoogle: false });
-assert.deepEqual(adsFromProductNames(["Google Ads", "Site"]), { adsMeta: false, adsGoogle: true });
-assert.deepEqual(adsFromProductNames(["Meta Ads", "Google Ads"]), { adsMeta: true, adsGoogle: true });
-assert.deepEqual(adsFromProductNames(["Consultoria"]), { adsMeta: false, adsGoogle: false });
+assert.deepEqual(adsFromProductNames(["Meta Ads"]), {
+  adsMeta: true,
+  adsGoogle: false,
+  productHosting: false,
+});
+assert.deepEqual(adsFromProductNames(["Google Ads", "Site"]), {
+  adsMeta: false,
+  adsGoogle: true,
+  productHosting: false,
+});
+assert.deepEqual(adsFromProductNames(["Meta Ads", "Google Ads"]), {
+  adsMeta: true,
+  adsGoogle: true,
+  productHosting: false,
+});
+assert.deepEqual(adsFromProductNames(["Consultoria"]), {
+  adsMeta: false,
+  adsGoogle: false,
+  productHosting: false,
+});
+assert.deepEqual(adsFromProductNames(["Hospedagem"]), {
+  adsMeta: false,
+  adsGoogle: false,
+  productHosting: true,
+});
 
 const october = chatbotClientTerms("2026-10-20");
 assert.equal(october?.startsOn, "20/10/2026");

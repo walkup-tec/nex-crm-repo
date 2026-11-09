@@ -5,15 +5,19 @@ import { normalizeBalanceLink } from "@/lib/balance-link";
 import { keepsAccessWithoutPayment } from "@/lib/finance-access";
 import { isLowMetaBalance } from "@/lib/low-balance";
 import { applyMask } from "@/lib/masks";
-import { clientDisplayName, type ClientDraft, type ClientPromotion, type ListedClient } from "@/lib/client-access";
 import {
   adsPlatformLabel,
+  clientDisplayName,
   clientStatusLabel,
   dateBr,
+  hasClientProduct,
   invoiceStatusLabel,
   isInactiveClient,
   moneyFromCents,
   percentBr,
+  type ClientDraft,
+  type ClientPromotion,
+  type ListedClient,
 } from "@/lib/client-access";
 import { lookupCnpjFn } from "@/lib/cnpj.functions";
 import {
@@ -64,6 +68,7 @@ const emptyDraft: ClientDraft = {
   billingProvider: "",
   adsMeta: false,
   adsGoogle: false,
+  productHosting: false,
   monthlyFee: "",
   dueDay: "",
   startsOn: "",
@@ -95,6 +100,7 @@ function draftFrom(client: ListedClient): ClientDraft {
     billingProvider: client.billingProvider,
     adsMeta: client.adsMeta,
     adsGoogle: client.adsGoogle,
+    productHosting: client.productHosting,
     monthlyFee: client.monthlyFeeCents == null ? "" : moneyFromCents(client.monthlyFeeCents),
     dueDay: client.dueDay == null ? "" : String(client.dueDay),
     startsOn: dateBr(client.startsOn, ""),
@@ -477,7 +483,7 @@ function ClientDialog({
               <Info label="Nome comercial" value={client.commercialName || "—"} />
               <Info label="Razão social" value={client.legalName} />
               <Info label="Responsável" value={client.responsibleName || "—"} />
-              <Info label="Anúncios" value={adsPlatformLabel(client)} />
+              <Info label="Produtos" value={adsPlatformLabel(client)} />
               <Info label="Situação" value={clientStatusLabel(client.status)} />
               <Info label="Financeiro" value={client.financeLabel} />
               <Info
@@ -890,7 +896,14 @@ function ClientForm({
     setSaving(true);
     setFormError("");
     try {
-      const result = await updateClientProductsFn({ data: { id: client.id, adsMeta: draft.adsMeta, adsGoogle: draft.adsGoogle } });
+      const result = await updateClientProductsFn({
+        data: {
+          id: client.id,
+          adsMeta: draft.adsMeta,
+          adsGoogle: draft.adsGoogle,
+          productHosting: draft.productHosting,
+        },
+      });
       if (!result.ok) {
         setFormError(result.message);
         return;
@@ -1035,8 +1048,10 @@ function ClientForm({
               Mesmo WhatsApp do responsável
             </label>
             <fieldset className="sm:col-span-2 grid gap-3">
-              <legend className="text-sm font-medium">Anúncios</legend>
-              <p className="text-xs text-muted-foreground">Marque Meta Ads, Google Ads ou os dois.</p>
+              <legend className="text-sm font-medium">Produtos</legend>
+              <p className="text-xs text-muted-foreground">
+                Marque Meta Ads, Google Ads e/ou Hospedagem. Pelo menos um é obrigatório.
+              </p>
               <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1052,11 +1067,20 @@ function ClientForm({
                   />
                   Google Ads
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.productHosting}
+                    onCheckedChange={(value) => set({ productHosting: value === true })}
+                  />
+                  Hospedagem
+                </label>
               </div>
             </fieldset>
             <fieldset className="sm:col-span-2 grid gap-3">
               <legend className="text-sm font-medium">Cobrança</legend>
-              <p className="text-xs text-muted-foreground">Escolha um banco. O cliente não pode ser cobrado pelos dois.</p>
+              <p className="text-xs text-muted-foreground">
+                Escolha Cora, Asaas ou Manual (Pix pessoal). Um cliente não pode usar Cora e Asaas juntos.
+              </p>
               <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -1075,6 +1099,23 @@ function ClientForm({
                     onChange={() => set({ billingProvider: "asaas" })}
                   />
                   Asaas
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="billing-provider"
+                    checked={draft.billingProvider === "manual"}
+                    onChange={() =>
+                      set({
+                        billingProvider: "manual",
+                        asaasSubscriptionId: "",
+                        promoEnabled: false,
+                        delinquencyMode: "",
+                        delinquencyAmount: "",
+                      })
+                    }
+                  />
+                  Manual (Pix pessoal)
                 </label>
               </div>
             </fieldset>
@@ -1178,6 +1219,11 @@ function ClientForm({
                 A Cora gera um Pix para cada vencimento até o término. O WhatsApp avisa 7 dias antes, 3 dias antes, no dia, e 1, 3 e 5 dias depois. O texto das mensagens entra depois.
               </p>
             )}
+            {draft.billingProvider === "manual" && (
+              <p className="sm:col-span-2 text-xs text-muted-foreground">
+                Parcelas no financeiro até o término; você marca como paga. Sem Pix Cora/Asaas.
+              </p>
+            )}
           </div>
         )}
         <DialogFooter>
@@ -1192,14 +1238,18 @@ function ClientForm({
           {step < 2 ? (
             <>
               {client ? (
-                <Button type="button" disabled={saving || (!draft.adsMeta && !draft.adsGoogle)} onClick={() => void saveProducts()}>
-                  {saving ? "Salvando..." : "Salvar anúncios"}
+                <Button
+                  type="button"
+                  disabled={saving || !hasClientProduct(draft)}
+                  onClick={() => void saveProducts()}
+                >
+                  {saving ? "Salvando..." : "Salvar produtos"}
                 </Button>
               ) : null}
               <Button
                 type="button"
                 variant={client ? "outline" : "default"}
-                disabled={saving || !draft.billingProvider || (!draft.adsMeta && !draft.adsGoogle)}
+                disabled={saving || !draft.billingProvider || !hasClientProduct(draft)}
                 onClick={() => setStep((current) => current + 1)}
               >
                 Continuar

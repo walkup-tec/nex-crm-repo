@@ -22,6 +22,11 @@ import {
   mmsMasterAutomation,
   googleCalendarForMms,
   remoteMeetingPatch,
+  importedMeetingDraft,
+  mergeGoogleEvents,
+  pickLeadForImportedMeeting,
+  googleAgendaContactName,
+  googleEventEmails,
   standardMeetingDescription,
   standardMeetingTitle,
   meetingConfirmButton,
@@ -207,6 +212,65 @@ assert.deepEqual(
     calendarUrl: "https://www.google.com/calendar/event?eid=1",
   },
 );
+
+assert.equal(importedMeetingDraft({ id: "evt1", status: "cancelled", start: { dateTime: "2026-11-10T12:00:00-03:00" }, end: { dateTime: "2026-11-10T13:00:00-03:00" } }), null);
+assert.equal(importedMeetingDraft({ id: "evt1", start: { dateTime: undefined }, end: { dateTime: "2026-11-10T13:00:00-03:00" } }), null);
+assert.deepEqual(googleEventEmails({
+  organizer: { email: "Walkup@Walkuptec.com.br" },
+  attendees: [{ email: "cliente@empresa.com" }, { email: "walkup@walkuptec.com.br", self: true }],
+}), ["cliente@empresa.com"]);
+assert.deepEqual(googleEventEmails({
+  organizer: { email: "Walkup@Walkuptec.com.br" },
+  attendees: [{ email: "walkup@walkuptec.com.br", self: true }],
+}), ["walkup@walkuptec.com.br"]);
+const draft = importedMeetingDraft({
+  id: "abc123",
+  summary: "Reunião comercial",
+  description: "Alinhamento",
+  hangoutLink: "https://meet.google.com/xyz",
+  htmlLink: "https://www.google.com/calendar/event?eid=abc",
+  start: { dateTime: "2026-11-10T15:00:00-03:00" },
+  end: { dateTime: "2026-11-10T16:00:00-03:00" },
+  attendees: [{ email: "cliente@empresa.com" }],
+});
+assert.equal(draft?.googleEventId, "abc123");
+assert.equal(draft?.requestId, "gcal:abc123");
+assert.equal(draft?.title, "Reunião comercial");
+assert.equal(draft?.attendeeEmail, "cliente@empresa.com");
+assert.equal(draft?.meetUrl, "https://meet.google.com/xyz");
+assert.equal(
+  pickLeadForImportedMeeting({
+    emails: ["cliente@empresa.com"],
+    summary: "Reunião comercial",
+    byEmail: { "cliente@empresa.com": "lead-1" },
+    byName: {},
+    fallbackLeadId: "fallback",
+  }),
+  "lead-1",
+);
+assert.equal(
+  pickLeadForImportedMeeting({
+    emails: [],
+    summary: "Almeida Cred",
+    byEmail: {},
+    byName: { "almeida cred": "lead-2" },
+    fallbackLeadId: "fallback",
+  }),
+  "lead-2",
+);
+assert.equal(
+  pickLeadForImportedMeeting({
+    emails: [],
+    summary: "Qualquer",
+    byEmail: {},
+    byName: {},
+    fallbackLeadId: "fallback",
+  }),
+  "fallback",
+);
+assert.equal(googleAgendaContactName, "Agenda Google");
+assert.equal(mergeGoogleEvents([{ id: "1", summary: "a" }, { id: "2" }], [{ id: "1", summary: "b" }]).length, 2);
+assert.equal(mergeGoogleEvents([{ id: "1", summary: "a" }], [{ id: "1", summary: "b" }])[0]?.summary, "b");
 
 assert.equal(agendaDisplayStatus("scheduled"), "confirmed");
 assert.equal(agendaDisplayStatus("failed"), "pending");

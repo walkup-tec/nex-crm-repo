@@ -81,12 +81,109 @@ export function mmsMasterAutomation(legalName: string, admin: boolean) {
 export type GoogleEventShape = {
   id?: string;
   status?: string;
+  summary?: string;
+  description?: string;
   htmlLink?: string;
   hangoutLink?: string;
   start?: { dateTime?: string };
   end?: { dateTime?: string };
+  organizer?: { email?: string };
+  attendees?: { email?: string; self?: boolean }[];
   conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
+  extendedProperties?: { private?: { nexRequestId?: string } };
 };
+
+/** Contato placeholder para eventos criados só no Google (sem lead amarrado). */
+export const googleAgendaContactName = "Agenda Google";
+export const googleAgendaContactPhone = "00000000000";
+
+export type ImportedMeetingDraft = {
+  googleEventId: string;
+  requestId: string;
+  title: string;
+  description: string;
+  startAt: string;
+  endAt: string;
+  status: "scheduled" | "cancelled";
+  meetUrl: string;
+  calendarUrl: string;
+  emails: string[];
+  attendeeEmail: string;
+};
+
+export function googleEventEmails(event: GoogleEventShape) {
+  const emails: string[] = [];
+  const push = (value: string | undefined) => {
+    const email = cleanEmail(value ?? "");
+    if (email && !emails.includes(email)) emails.push(email);
+  };
+  for (const guest of event.attendees ?? []) {
+    if (guest.self) continue;
+    push(guest.email);
+  }
+  // Sem convidados, usa o organizador só como fallback de contato.
+  if (!emails.length) push(event.organizer?.email);
+  return emails;
+}
+
+export function importedMeetingDraft(event: GoogleEventShape): ImportedMeetingDraft | null {
+  const googleEventId = typeof event.id === "string" ? event.id.trim() : "";
+  if (!googleEventId) return null;
+  if (event.status === "cancelled") return null;
+  const startRaw = event.start?.dateTime;
+  const endRaw = event.end?.dateTime;
+  if (!startRaw || !endRaw) return null;
+  const startAt = new Date(startRaw).toISOString();
+  const endAt = new Date(endRaw).toISOString();
+  if (!Number.isFinite(Date.parse(startAt)) || !Number.isFinite(Date.parse(endAt)) || endAt <= startAt) return null;
+  const title = cleanMeetingTitle(event.summary ?? "") || "Reunião Google Calendar";
+  const description = cleanMeetingDescription(event.description ?? "") ?? "";
+  const emails = googleEventEmails(event);
+  return {
+    googleEventId,
+    requestId: `gcal:${googleEventId}`.slice(0, 120),
+    title,
+    description,
+    startAt,
+    endAt,
+    status: "scheduled",
+    meetUrl: meetUrlFromEvent(event),
+    calendarUrl: httpsLink(event.htmlLink),
+    emails,
+    attendeeEmail: emails[0] ?? "",
+  };
+}
+
+export function pickLeadForImportedMeeting(input: {
+  emails: string[];
+  summary: string;
+  byEmail: Map<string, string> | Record<string, string>;
+  byName: Map<string, string> | Record<string, string>;
+  fallbackLeadId: string;
+}) {
+  const emailMap = input.byEmail instanceof Map ? input.byEmail : new Map(Object.entries(input.byEmail));
+  const nameMap = input.byName instanceof Map ? input.byName : new Map(Object.entries(input.byName));
+  for (const email of input.emails) {
+    const leadId = emailMap.get(cleanEmail(email));
+    if (leadId) return leadId;
+  }
+  const nameKey = input.summary.trim().toLocaleLowerCase("pt-BR");
+  if (nameKey) {
+    const byName = nameMap.get(nameKey);
+    if (byName) return byName;
+  }
+  return input.fallbackLeadId;
+}
+
+export function mergeGoogleEvents(left: GoogleEventShape[], right: GoogleEventShape[]) {
+  const map = new Map<string, GoogleEventShape>();
+  for (const event of [...left, ...right]) {
+    const id = typeof event.id === "string" ? event.id.trim() : "";
+    if (!id) continue;
+    map.set(id, event);
+  }
+  return [...map.values()];
+}
 
 const availabilityScopes = new Set([
   "https://www.googleapis.com/auth/calendar.freebusy",

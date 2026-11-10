@@ -7,8 +7,11 @@ import { evolutionRuntime } from "@/server/evo.server";
 import {
   canReadAvailability,
   cleanEmail,
+  googleAgendaContactName,
+  googleAgendaContactPhone,
   googleCalendarScopes,
   googleFailure,
+  importedMeetingDraft,
   meetingGuests,
   meetingOnContactCard,
   meetingRecordId,
@@ -21,7 +24,9 @@ import {
   markMeetingCalendar,
   lastMeetingFields,
   meetUrlFromEvent,
+  mergeGoogleEvents,
   overlapsBusy,
+  pickLeadForImportedMeeting,
   remoteMeetingPatch,
   standardMeetingDescription,
   standardMeetingTitle,
@@ -527,7 +532,10 @@ async function listedEvents(token: string, calendarId: string, syncToken: string
   for (let index = 0; index < 4; index += 1) {
     const params = new URLSearchParams({ singleEvents: "true", showDeleted: "true", maxResults: "50" });
     if (syncToken) params.set("syncToken", syncToken);
-    else params.set("timeMin", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+    else {
+      params.set("timeMin", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString());
+      params.set("timeMax", new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString());
+    }
     if (page) params.set("pageToken", page);
     const result = await googleJson(token, `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?${params}`);
     if (result.status === 410) return { status: 410, events, nextSyncToken: "" };
@@ -541,46 +549,192 @@ async function listedEvents(token: string, calendarId: string, syncToken: string
   return { status: 200, events, nextSyncToken };
 }
 
+/** Janela fixa para importar eventos criados direto no Google (fora do syncToken incremental). */
+async function listedCatchupEvents(token: string, calendarId: string) {
+  const events: GoogleEventShape[] = [];
+  let page = "";
+  for (let index = 0; index < 4; index += 1) {
+    const params = new URLSearchParams({
+      singleEvents: "true",
+      showDeleted: "true",
+      maxResults: "100",
+      timeMin: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+      timeMax: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    if (page) params.set("pageToken", page);
+    const result = await googleJson(token, `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?${params}`);
+    if (result.status !== 200) return { status: result.status, events };
+    const body = result.body as { nextPageToken?: string };
+    events.push(...eventItems(result.body));
+    if (!body?.nextPageToken) break;
+    page = body.nextPageToken;
+  }
+  return { status: 200, events };
+}
+
+async function ensureGoogleAgendaLead(organizationId: string) {
+  const existing = await from("chatbot_contacts")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("phone", googleAgendaContactPhone)
+    .maybeSingle();
+  if (existing.error) schemaFail(existing.error.message);
+  if (existing.data) return cell(existing.data, "id");
+  const inserted = await from("chatbot_contacts")
+    .insert({
+      organization_id: organizationId,
+      name: googleAgendaContactName,
+      phone: googleAgendaContactPhone,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error) {
+    if (/duplicate key|23505/i.test(inserted.error.message)) {
+      const raced = await from("chatbot_contacts")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("phone", googleAgendaContactPhone)
+        .maybeSingle();
+      if (raced.data) return cell(raced.data, "id");
+    }
+    schemaFail(inserted.error.message);
+  }
+  if (!inserted.data) fail("Não foi possível preparar o contato da Agenda Google.");
+  return cell(inserted.data, "id");
+}
+
+async function leadMapsForImport(organizationId: string) {
+  const byEmail = new Map<string, string>();
+  const byName = new Map<string, string>();
+  const [meetings, intakes, contacts] = await Promise.all([
+    rows(from("lead_meetings").select("lead_id, attendee_email, attendees").eq("organization_id", organizationId).limit(800)),
+    rows(from("contracting_intakes").select("contact_id, representative_email").eq("organization_id", organizationId).limit(800)),
+    rows(from("chatbot_contacts").select("id, name").eq("organization_id", organizationId).limit(2000)),
+  ]);
+  for (const row of meetings) {
+    const leadId = cell(row, "lead_id");
+    if (!leadId) continue;
+    const email = cleanEmail(cell(row, "attendee_email"));
+    if (email && !byEmail.has(email)) byEmail.set(email, leadId);
+    for (const item of emailsOf(row.attendees)) {
+      const guest = cleanEmail(item);
+      if (guest && !byEmail.has(guest)) byEmail.set(guest, leadId);
+    }
+  }
+  for (const row of intakes) {
+    const leadId = cell(row, "contact_id");
+    const email = cleanEmail(cell(row, "representative_email"));
+    if (leadId && email && !byEmail.has(email)) byEmail.set(email, leadId);
+  }
+  for (const row of contacts) {
+    const leadId = cell(row, "id");
+    const name = cell(row, "name").trim().toLocaleLowerCase("pt-BR");
+    if (leadId && name && name !== googleAgendaContactName.toLocaleLowerCase("pt-BR") && !byName.has(name)) {
+      byName.set(name, leadId);
+    }
+  }
+  return { byEmail, byName };
+}
+
 async function syncConnection(organizationId: string, connection: Row) {
   if (cell(connection, "connection_status") !== "connected") return;
   const calendarId = encodeURIComponent(cell(connection, "calendar_id") || "primary");
   const loaded = await withGoogle(connection, async (token) => {
     const page = await listedEvents(token, calendarId, cell(connection, "sync_token"));
-    return { status: page.status, body: page };
+    const catchup = await listedCatchupEvents(token, calendarId);
+    return {
+      status: page.status === 200 || catchup.status === 200 ? 200 : page.status,
+      body: {
+        status: page.status,
+        events: mergeGoogleEvents(page.events, catchup.status === 200 ? catchup.events : []),
+        nextSyncToken: page.nextSyncToken,
+        catchupStatus: catchup.status,
+      },
+    };
   });
-  let page = loaded.body as { status: number; events: GoogleEventShape[]; nextSyncToken: string };
+  let page = loaded.body as {
+    status: number;
+    events: GoogleEventShape[];
+    nextSyncToken: string;
+    catchupStatus?: number;
+  };
   if (page.status === 410) {
     await from("google_calendar_connections").update({ sync_token: null, updated_at: new Date().toISOString() }).eq("id", cell(connection, "id"));
     const again = await withGoogle(loaded.connection, async (token) => {
       const listed = await listedEvents(token, calendarId, "");
-      return { status: listed.status, body: listed };
+      const catchup = await listedCatchupEvents(token, calendarId);
+      return {
+        status: listed.status,
+        body: {
+          status: listed.status,
+          events: mergeGoogleEvents(listed.events, catchup.status === 200 ? catchup.events : []),
+          nextSyncToken: listed.nextSyncToken,
+        },
+      };
     });
     page = again.body as typeof page;
   }
-  if (page.status !== 200) return;
+  if (page.status !== 200 && !(page.events?.length)) return;
   const ids = page.events.map((event) => event.id || "").filter(Boolean);
   if (ids.length) {
     const locals = await rows(from("lead_meetings").select("*").eq("organization_id", organizationId).in("google_event_id", ids));
     const byEvent = new Map(locals.map((row) => [cell(row, "google_event_id"), row]));
+    let fallbackLeadId = "";
+    let maps: Awaited<ReturnType<typeof leadMapsForImport>> | null = null;
     for (const event of page.events) {
       const local = event.id ? byEvent.get(event.id) : undefined;
-      if (!local) continue;
-      const patch = remoteMeetingPatch({
-        startAt: cell(local, "start_at"),
-        endAt: cell(local, "end_at"),
-        status: cell(local, "status"),
-        meetUrl: cell(local, "meet_url"),
-        calendarUrl: cell(local, "calendar_url"),
-      }, event);
-      if (!patch) continue;
-      await from("lead_meetings").update({
-        status: patch.status,
-        start_at: patch.startAt,
-        end_at: patch.endAt,
-        meet_url: patch.meetUrl || null,
-        calendar_url: patch.calendarUrl || null,
+      if (local) {
+        const patch = remoteMeetingPatch({
+          startAt: cell(local, "start_at"),
+          endAt: cell(local, "end_at"),
+          status: cell(local, "status"),
+          meetUrl: cell(local, "meet_url"),
+          calendarUrl: cell(local, "calendar_url"),
+        }, event);
+        if (!patch) continue;
+        await from("lead_meetings").update({
+          status: patch.status,
+          start_at: patch.startAt,
+          end_at: patch.endAt,
+          meet_url: patch.meetUrl || null,
+          calendar_url: patch.calendarUrl || null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", cell(local, "id")).eq("organization_id", organizationId);
+        continue;
+      }
+      const draft = importedMeetingDraft(event);
+      if (!draft) continue;
+      if (!fallbackLeadId) fallbackLeadId = await ensureGoogleAgendaLead(organizationId);
+      if (!maps) maps = await leadMapsForImport(organizationId);
+      const leadId = pickLeadForImportedMeeting({
+        emails: draft.emails,
+        summary: draft.title,
+        byEmail: maps.byEmail,
+        byName: maps.byName,
+        fallbackLeadId,
+      });
+      const inserted = await from("lead_meetings").insert({
+        organization_id: organizationId,
+        lead_id: leadId,
+        user_id: cell(connection, "user_id"),
+        google_connection_id: cell(connection, "id"),
+        google_event_id: draft.googleEventId,
+        request_id: draft.requestId,
+        title: draft.title,
+        description: draft.description,
+        attendee_email: draft.attendeeEmail,
+        attendees: draft.emails,
+        start_at: draft.startAt,
+        end_at: draft.endAt,
+        timezone: meetingTimeZone,
+        meet_url: draft.meetUrl || null,
+        calendar_url: draft.calendarUrl || null,
+        status: draft.status,
         updated_at: new Date().toISOString(),
-      }).eq("id", cell(local, "id")).eq("organization_id", organizationId);
+      });
+      if (inserted.error && !/duplicate key|23505/i.test(inserted.error.message)) {
+        console.error("google_calendar_import", inserted.error.message);
+      }
     }
   }
   await from("google_calendar_connections").update({

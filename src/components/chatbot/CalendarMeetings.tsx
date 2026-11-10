@@ -19,6 +19,7 @@ import {
   agendaClock,
   agendaDisplayStatus,
   agendaWeekStart,
+  googleAgendaContactName,
   meetingOnContactCard,
   meetingWhen,
   type AgendaBoardView,
@@ -287,7 +288,9 @@ function MeetingBlock({ meeting, onOpen }: { meeting: LeadMeetingView; onOpen: (
         <span className="block text-[11px] font-medium text-white/90">
           {start} - {end}
         </span>
-        <span className="mt-0.5 block truncate text-[12.5px] font-semibold text-white">{meeting.leadName || meeting.title}</span>
+        <span className="mt-0.5 block truncate text-[12.5px] font-semibold text-white">
+          {meeting.leadName === googleAgendaContactName ? meeting.title || meeting.leadName : meeting.leadName || meeting.title}
+        </span>
       </span>
     </button>
   );

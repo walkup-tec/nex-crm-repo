@@ -19,6 +19,7 @@ import {
   agendaMenuForMmsMaster,
   agendaMenuForSubscriberAdmin,
   agendaMenuVisible,
+  requestMeetingButtonVisible,
   mmsMasterAutomation,
   googleCalendarForMms,
   remoteMeetingPatch,
@@ -53,16 +54,20 @@ assert.equal(googleCalendarForMms("MMS MARKETING E SISTEMAS DIGITAIS LTDA"), tru
 assert.equal(googleCalendarForMms(" mms marketing e sistemas digitais ltda "), true);
 assert.equal(googleCalendarForMms("WALKUP SISTEMAS E INTELIGENCIA LTDA"), false);
 assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_admin"), true);
-assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), true);
+assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), false);
 assert.equal(agendaMenuForMmsMaster("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_user"), false);
 assert.equal(agendaMenuForMmsMaster("WALKUP SISTEMAS E INTELIGENCIA LTDA", "client_admin"), false);
 assert.equal(agendaMenuForSubscriberAdmin("client_admin"), true);
 assert.equal(agendaMenuForSubscriberAdmin("client_user"), false);
 assert.equal(agendaMenuForSubscriberAdmin("master"), false);
-assert.equal(agendaMenuVisible("WALKUP SISTEMAS E INTELIGENCIA LTDA", "client_admin"), true);
-assert.equal(agendaMenuVisible("EMPRESA QUALQUER LTDA", "client_admin"), true);
+assert.equal(agendaMenuVisible("WALKUP SISTEMAS E INTELIGENCIA LTDA", "client_admin"), false);
+assert.equal(agendaMenuVisible("EMPRESA QUALQUER LTDA", "client_admin"), false);
 assert.equal(agendaMenuVisible("EMPRESA QUALQUER LTDA", "client_user"), false);
-assert.equal(agendaMenuVisible("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), true);
+assert.equal(agendaMenuVisible("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "master"), false);
+assert.equal(agendaMenuVisible("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_admin"), true);
+assert.equal(requestMeetingButtonVisible("EMPRESA QUALQUER LTDA", "client_admin"), false);
+assert.equal(requestMeetingButtonVisible("EMPRESA QUALQUER LTDA", "client_user"), false);
+assert.equal(requestMeetingButtonVisible("MMS MARKETING E SISTEMAS DIGITAIS LTDA", "client_admin"), false);
 assert.equal(mmsMasterAutomation("MMS MARKETING E SISTEMAS DIGITAIS LTDA", true), true);
 assert.equal(mmsMasterAutomation("MMS MARKETING E SISTEMAS DIGITAIS LTDA", false), false);
 assert.equal(mmsMasterAutomation("WALKUP SISTEMAS E INTELIGENCIA LTDA", true), false);

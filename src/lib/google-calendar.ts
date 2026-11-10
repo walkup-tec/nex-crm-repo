@@ -56,17 +56,24 @@ export function googleCalendarForMms(legalName: string) {
   return keepsAccessWithoutPayment(legalName);
 }
 
-/** Admin do cliente assinante (master da conta) vê Solicitar Reunião e Agendamentos. */
+/** Mantido para testes/legado; assinante não vê Agendamentos nem Solicitar Reunião. */
 export function agendaMenuForSubscriberAdmin(role: string) {
   return role === "client_admin";
 }
 
+/** Agendamentos: somente o Master da MMS (admin da conta MMS). */
 export function agendaMenuForMmsMaster(legalName: string, role: string) {
-  return googleCalendarForMms(legalName) && (role === "client_admin" || role === "master");
+  return googleCalendarForMms(legalName) && role === "client_admin";
 }
 
+/** Menu Agendamentos: exclusivo do Master da MMS. */
 export function agendaMenuVisible(legalName: string, role: string) {
-  return agendaMenuForSubscriberAdmin(role) || agendaMenuForMmsMaster(legalName, role);
+  return agendaMenuForMmsMaster(legalName, role);
+}
+
+/** Solicitar Reunião no topo: desligado para assinante; só MMS Master usa Agendamentos. */
+export function requestMeetingButtonVisible(_legalName: string, _role: string) {
+  return false;
 }
 
 export function activeClientMeetingName(userName: string) {

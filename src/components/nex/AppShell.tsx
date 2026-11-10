@@ -257,12 +257,20 @@ export function AppShell({
   };
   const userName = useSignedInName();
   const session = useRouteContext({ strict: false }) as
-    | { master?: boolean; role?: string; permissions?: UserPermissions | null; chatbotMenus?: ChatbotMenuMap | null; calendarMenu?: boolean }
+    | {
+        master?: boolean;
+        role?: string;
+        permissions?: UserPermissions | null;
+        chatbotMenus?: ChatbotMenuMap | null;
+        calendarMenu?: boolean;
+        requestMeeting?: boolean;
+      }
     | undefined;
   const showClients = !master && !onDemoNavigate && session?.master === true;
   const restricted = !master && !onDemoNavigate && session?.role === "client_user" ? session.permissions ?? noClientPermissions : null;
   const menus = restricted ? session?.chatbotMenus ?? allChatbotMenus(false) : null;
   const calendarMenu = !master && !onDemoNavigate && session?.calendarMenu === true;
+  const requestMeeting = !master && !onDemoNavigate && session?.requestMeeting === true;
   const balanceAlert = useLowBalance(live && !master && !onDemoNavigate && (!restricted || restricted.balance || restricted.credit));
   const lowBalance = balanceAlert.low;
   const connectionProblems = useMetaConnectionProblems(master && !onDemoNavigate);
@@ -354,7 +362,7 @@ export function AppShell({
             )}
           </div>
           <div className="flex items-center gap-1">
-            {calendarMenu ? <RequestMeetingButton /> : null}
+            {requestMeeting ? <RequestMeetingButton /> : null}
             <WhatsAppChannelStatus enabled={live && !master && !onDemoNavigate && (!menus || Object.values(menus).some(Boolean))} />
             <LowBalanceBell
               low={lowBalance}

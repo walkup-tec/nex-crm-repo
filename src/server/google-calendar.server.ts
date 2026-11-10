@@ -5,10 +5,12 @@ import { chatbotMenuAllowed, chatbotMenusFromStorage } from "@/lib/chatbot-menus
 import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
 import { evolutionRuntime } from "@/server/evo.server";
 import {
+  agendaMenuForMmsMaster,
   canReadAvailability,
   cleanEmail,
   googleAgendaContactName,
   googleAgendaContactPhone,
+  googleCalendarForMms,
   googleCalendarScopes,
   googleFailure,
   importedMeetingDraft,
@@ -138,7 +140,8 @@ async function access(userId: string, menu: "inbox" | "schedules") {
   if (roleError) fail("Não foi possível confirmar o acesso.");
   if (!profile || profile.is_blocked) fail("Este acesso está bloqueado.");
   if (!profile.organization_id) fail("Sua conta ainda não está ligada a uma empresa.");
-  const admin = (roles ?? []).some((role) => role.role === "master" || role.role === "client_admin");
+  const roleNames = (roles ?? []).map((role) => role.role);
+  const admin = roleNames.some((role) => role === "master" || role === "client_admin");
   let menus = chatbotMenusFromStorage(null);
   if (!admin) {
     const full = await supabaseAdmin.from("user_permissions").select("can_use_chatbot, chatbot_menus").eq("user_id", userId).maybeSingle();
@@ -151,7 +154,15 @@ async function access(userId: string, menu: "inbox" | "schedules") {
     menus = chatbotMenusFromStorage(stored);
     if (!chatbotMenuAllowed(menus, menu)) fail("Você não tem permissão para esta área do chatbot.");
   }
-  return { organizationId: profile.organization_id, admin, manager: admin || menus.overview };
+  if (menu === "schedules") {
+    const org = await supabaseAdmin.from("organizations").select("legal_name").eq("id", profile.organization_id).maybeSingle();
+    if (org.error || !org.data) fail("Sua conta ainda não está ligada a uma empresa.");
+    const gateRole = roleNames.includes("client_admin") ? "client_admin" : roleNames.includes("master") ? "master" : "client_user";
+    if (!agendaMenuForMmsMaster(org.data.legal_name ?? "", gateRole)) {
+      fail("Agendamentos está disponível apenas para o Master da MMS.");
+    }
+  }
+  return { organizationId: profile.organization_id, admin, manager: admin || menus.overview, roleNames };
 }
 
 async function accessAny(userId: string, menus: ("inbox" | "schedules")[]) {
@@ -179,13 +190,26 @@ function connectionView(row: Row | null): GoogleCalendarConnectionView {
 }
 
 async function requireCalendarOrg(organizationId: string) {
-  const org = await supabaseAdmin.from("organizations").select("id").eq("id", organizationId).maybeSingle();
+  const org = await supabaseAdmin.from("organizations").select("id, legal_name").eq("id", organizationId).maybeSingle();
   if (org.error || !org.data) fail("Sua conta ainda não está ligada a uma empresa.");
+  return org.data;
 }
 
-/** Mantido o nome histórico; agenda liberada para qualquer org assinante (não só MMS). */
+/** Agenda Google: somente organização MMS. */
 async function requireMms(organizationId: string) {
-  await requireCalendarOrg(organizationId);
+  const org = await requireCalendarOrg(organizationId);
+  if (!googleCalendarForMms(org.legal_name ?? "")) {
+    fail("Agendamentos está disponível apenas para o Master da MMS.");
+  }
+}
+
+/** Agenda Google: somente o Master (client_admin) da MMS. */
+async function requireMmsMaster(organizationId: string, roleNames: string[]) {
+  const org = await requireCalendarOrg(organizationId);
+  const gateRole = roleNames.includes("client_admin") ? "client_admin" : roleNames.includes("master") ? "master" : "client_user";
+  if (!agendaMenuForMmsMaster(org.legal_name ?? "", gateRole)) {
+    fail("Agendamentos está disponível apenas para o Master da MMS.");
+  }
 }
 
 async function connectionForUser(organizationId: string, userId: string) {
@@ -414,7 +438,7 @@ export async function completeGoogleCalendarOAuth(userId: string, input: { code?
 
 export async function googleCalendarConnection(userId: string) {
   const gate = await access(userId, "schedules");
-  await requireCalendarOrg(gate.organizationId);
+  await requireMms(gate.organizationId);
   return connectionView(await connectionForUser(gate.organizationId, userId));
 }
 
@@ -456,7 +480,7 @@ async function leadInOrg(organizationId: string, leadId: string) {
 
 export async function leadMeetingContext(userId: string, leadId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMms(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   const lead = await leadInOrg(gate.organizationId, leadId);
   const saved = await from("lead_meetings").select("attendee_email, attendees").eq("lead_id", leadId).eq("organization_id", gate.organizationId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const previous = saved.error || !saved.data ? { email: "", attendees: "" } : lastMeetingFields({ email: cell(saved.data, "attendee_email"), attendees: saved.data.attendees });
@@ -762,7 +786,7 @@ async function syncQuietly(organizationId: string, userId: string, manager: bool
 
 export async function listLeadMeetings(userId: string, leadId = "") {
   const gate = leadId ? await accessAny(userId, ["inbox", "schedules"]) : await access(userId, "schedules");
-  await requireCalendarOrg(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   if (leadId) await leadInOrg(gate.organizationId, leadId);
   await syncQuietly(gate.organizationId, userId, gate.manager);
   let query = from("lead_meetings").select("*").eq("organization_id", gate.organizationId);
@@ -792,7 +816,7 @@ function shiftIsoDay(date: string, days: number) {
 export async function listAgendaBoard(userId: string, weekStartInput = "") {
   const { agendaDayKey, agendaWeekStart, buildAgendaBoard } = await import("@/lib/google-calendar");
   const gate = await access(userId, "schedules");
-  await requireCalendarOrg(gate.organizationId);
+  await requireMms(gate.organizationId);
   await syncQuietly(gate.organizationId, userId, gate.manager);
   const weekStart = agendaWeekStart(/^\d{4}-\d{2}-\d{2}$/.test(weekStartInput) ? weekStartInput : undefined);
   const prevStart = shiftIsoDay(weekStart, -7);
@@ -820,7 +844,7 @@ export async function listAgendaBoard(userId: string, weekStartInput = "") {
 
 export async function listMeetingCalendar(userId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireCalendarOrg(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   const days = meetingCalendar();
   const first = days[0];
   const last = days[days.length - 1];
@@ -1019,7 +1043,7 @@ export async function createLeadMeeting(userId: string, input: {
   meet: boolean;
 }) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMms(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   if (!meetingRecordId(input.requestId)) fail("Esse agendamento não é válido. Abra o formulário de novo.");
   const title = standardMeetingTitle;
   const description = standardMeetingDescription;
@@ -1120,7 +1144,7 @@ export async function createLeadMeeting(userId: string, input: {
 
 async function managedMeeting(userId: string, meetingId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMms(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   if (!meetingRecordId(meetingId)) fail("Essa reunião não é válida.");
   const result = await from("lead_meetings").select("*").eq("id", meetingId).eq("organization_id", gate.organizationId).maybeSingle();
   if (result.error) schemaFail(result.error.message);
@@ -1199,7 +1223,7 @@ async function requesterIdentity(userId: string) {
 
 export async function requestClientMeetingContext(userId: string) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMms(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   const identity = await requesterIdentity(userId);
   const connection = await connectionForUser(gate.organizationId, userId);
   return { ...identity, connected: cell(connection ?? {}, "connection_status") === "connected" };
@@ -1213,7 +1237,7 @@ export async function requestClientMeeting(userId: string, input: {
   meet: boolean;
 }) {
   const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMms(gate.organizationId);
+  await requireMmsMaster(gate.organizationId, gate.roleNames);
   if (!meetingRecordId(input.requestId)) fail("Esse agendamento não é válido. Abra o formulário de novo.");
   const identity = await requesterIdentity(userId);
   if (!identity.email) fail("Não há e-mail neste acesso para solicitar a reunião.");

@@ -7,7 +7,7 @@ import {
   whatsappNumber,
 } from "@/lib/low-balance";
 import { sendLowBalanceWhatsapp } from "@/server/evo.server";
-import { agendaMenuForMmsMaster } from "@/lib/google-calendar";
+import { mmsMasterAutomation } from "@/lib/google-calendar";
 import { formatMetaFieldRead, type MetaFieldReport } from "@/lib/meta-balance-debug";
 import { moneyCents, type MetaCreditView } from "@/lib/meta-credit";
 import {
@@ -80,7 +80,7 @@ async function mmsMaster(organizationId: string, role: Role) {
     .eq("id", organizationId)
     .maybeSingle();
   if (error || !data) return false;
-  return agendaMenuForMmsMaster(data.legal_name ?? "", role);
+  return mmsMasterAutomation(data.legal_name ?? "", role === "master" || role === "client_admin");
 }
 
 async function selectedAccount(organizationId: string) {

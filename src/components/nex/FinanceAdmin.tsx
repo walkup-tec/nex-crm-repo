@@ -75,7 +75,6 @@ export function FinanceAdmin() {
   const cached = readDashboardSnapshot(browserStorage(), masterFinanceCacheKey, isMasterFinance);
   const [snapshot, setSnapshot] = useState<MasterFinance | null>(cached);
   const [loading, setLoading] = useState(!cached);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -105,12 +104,10 @@ export function FinanceAdmin() {
   }, []);
 
   const load = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
-    else if (!cached) setLoading(true);
+    if (!cached) setLoading(true);
     setError("");
     const result = await listMasterFinanceFn({ data: { refresh } });
     setLoading(false);
-    setRefreshing(false);
     if (!result.ok) {
       if (!cached) setError(result.message);
       return;
@@ -156,9 +153,6 @@ export function FinanceAdmin() {
   return (
     <div className="space-y-5">
       {loading && <p className="text-sm text-muted-foreground">Consultando cobranças...</p>}
-      {!loading && refreshing ? (
-        <p className="text-sm text-muted-foreground">Atualizando cobranças em segundo plano...</p>
-      ) : null}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {resendNotice ? (
         <p className={cn("text-sm", resendNotice.ok ? "text-emerald-600" : "text-destructive")}>

@@ -120,7 +120,8 @@ export function FinanceAdmin() {
   }, [cached]);
 
   useEffect(() => {
-    void load(false);
+    // Primeira carga com refresh para reconciliar Pix Cora pagos cujo webhook falhou.
+    void load(true);
   }, [load]);
 
   const today = todayKey();

@@ -711,12 +711,16 @@ export async function listMasterFinance(
     return masterFinanceMemory.data;
   }
 
+  // Cache frio: espera o sync da Cora antes de montar a lista.
+  // Sem isso, Pix pago ontem fica "em atraso" se o webhook não chegou.
+  if (now - masterFinanceSyncAt > MASTER_FINANCE_SYNC_EVERY_MS) {
+    await runMasterFinanceBackgroundSync(actor);
+    if (masterFinanceMemory) return masterFinanceMemory.data;
+  }
+
   const monitor = masterFinanceMemory?.monitor ?? idleMonitor;
   const data = await assembleMasterFinance(monitor);
   masterFinanceMemory = { at: now, data, monitor };
-  if (now - masterFinanceSyncAt > MASTER_FINANCE_SYNC_EVERY_MS) {
-    void runMasterFinanceBackgroundSync(actor);
-  }
   return data;
 }
 

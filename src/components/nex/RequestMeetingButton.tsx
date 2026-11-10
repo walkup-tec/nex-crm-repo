@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { listMeetingCalendarFn, requestClientMeetingContextFn, requestClientMeetingFn } from "@/lib/google-calendar.functions";
@@ -157,9 +156,7 @@ export function RequestMeetingButton() {
               Gerar Google Meet
             </label>
             {!connected ? (
-              <p className="composer-error">
-                Conecte o Google Calendar em <Link to="/chatbot/agendamentos">Agendamentos</Link>.
-              </p>
+              <p className="composer-error">Agenda do Master indisponível no momento.</p>
             ) : null}
             {note ? <p className="composer-error">{note}</p> : null}
             <div className="modal-actions">

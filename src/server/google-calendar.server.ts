@@ -212,6 +212,57 @@ async function requireMmsMaster(organizationId: string, roleNames: string[]) {
   }
 }
 
+/** Usuário de cliente assinante (não MMS) pode solicitar reunião na agenda do Master. */
+async function accessSubscriberMeeting(userId: string) {
+  const [{ data: profile, error: profileError }, { data: roles, error: roleError }] = await Promise.all([
+    supabaseAdmin.from("profiles").select("organization_id, is_blocked").eq("id", userId).maybeSingle(),
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+  ]);
+  if (profileError || roleError) fail("Não foi possível confirmar o acesso.");
+  if (!profile || profile.is_blocked) fail("Este acesso está bloqueado.");
+  if (!profile.organization_id) fail("Sua conta ainda não está ligada a uma empresa.");
+  const org = await requireCalendarOrg(profile.organization_id);
+  if (googleCalendarForMms(org.legal_name ?? "")) {
+    fail("Use Agendamentos para gerenciar a agenda do Master.");
+  }
+  const roleNames = (roles ?? []).map((role) => role.role);
+  if (!roleNames.length) fail("Você não tem permissão para solicitar reunião.");
+  return { organizationId: profile.organization_id, roleNames, legalName: org.legal_name ?? "" };
+}
+
+async function mmsHostOrganization() {
+  const listed = await supabaseAdmin
+    .from("organizations")
+    .select("id, legal_name")
+    .ilike("legal_name", "MMS MARKETING E SISTEMAS DIGITAIS LTDA")
+    .limit(5);
+  if (listed.error) fail("Não foi possível localizar a agenda do Master.");
+  const match = (listed.data ?? []).find((row) => googleCalendarForMms(row.legal_name ?? ""));
+  if (!match) fail("Agenda do Master indisponível no momento.");
+  return match;
+}
+
+/** Conexão Google do Master da MMS — onde o assinante reserva horário. */
+async function mmsHostConnection() {
+  const org = await mmsHostOrganization();
+  const connections = await rows(
+    from("google_calendar_connections")
+      .select("*")
+      .eq("organization_id", org.id)
+      .eq("connection_status", "connected")
+      .limit(20),
+  );
+  if (!connections.length) return { org, connection: null as Row | null };
+  const userIds = connections.map((row) => cell(row, "user_id")).filter(Boolean);
+  const roles = userIds.length
+    ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", userIds)
+    : { data: [], error: null };
+  if (roles.error) fail("Não foi possível localizar a agenda do Master.");
+  const adminIds = new Set((roles.data ?? []).filter((row) => row.role === "client_admin").map((row) => row.user_id));
+  const preferred = connections.find((row) => adminIds.has(cell(row, "user_id"))) ?? connections[0] ?? null;
+  return { org, connection: preferred };
+}
+
 async function connectionForUser(organizationId: string, userId: string) {
   const result = await from("google_calendar_connections").select("*").eq("organization_id", organizationId).eq("user_id", userId).maybeSingle();
   if (result.error) schemaFail(result.error.message);
@@ -843,8 +894,6 @@ export async function listAgendaBoard(userId: string, weekStartInput = "") {
 }
 
 export async function listMeetingCalendar(userId: string) {
-  const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMmsMaster(gate.organizationId, gate.roleNames);
   const days = meetingCalendar();
   const first = days[0];
   const last = days[days.length - 1];
@@ -852,19 +901,52 @@ export async function listMeetingCalendar(userId: string) {
   const rangeStart = new Date(`${first.date}T00:00:00-03:00`).toISOString();
   const rangeEnd = new Date(`${last.date}T23:59:59-03:00`).toISOString();
   const named: { start: string; end: string; note?: string }[] = [];
-  const stored = await from("lead_meetings").select("start_at, end_at, lead_id").eq("organization_id", gate.organizationId).eq("user_id", userId).eq("status", "scheduled").gte("end_at", rangeStart).lt("start_at", rangeEnd).order("start_at", { ascending: true }).limit(200);
+
+  const [{ data: profile }, { data: roles }] = await Promise.all([
+    supabaseAdmin.from("profiles").select("organization_id, is_blocked").eq("id", userId).maybeSingle(),
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+  ]);
+  if (!profile || profile.is_blocked || !profile.organization_id) fail("Não foi possível confirmar o acesso.");
+  const org = await requireCalendarOrg(profile.organization_id);
+  const roleNames = (roles ?? []).map((role) => role.role);
+  const mms = googleCalendarForMms(org.legal_name ?? "");
+
+  let organizationId = profile.organization_id;
+  let connection: Row | null = null;
+  let meetingUserId = userId;
+
+  if (mms) {
+    await requireMmsMaster(profile.organization_id, roleNames);
+    connection = await connectionForUser(profile.organization_id, userId);
+  } else {
+    await accessSubscriberMeeting(userId);
+    const host = await mmsHostConnection();
+    organizationId = host.org.id;
+    connection = host.connection;
+    meetingUserId = connection ? cell(connection, "user_id") : "";
+  }
+
+  let storedQuery = from("lead_meetings")
+    .select("start_at, end_at, lead_id")
+    .eq("organization_id", organizationId)
+    .eq("status", "scheduled")
+    .gte("end_at", rangeStart)
+    .lt("start_at", rangeEnd)
+    .order("start_at", { ascending: true })
+    .limit(200);
+  if (mms && meetingUserId) storedQuery = storedQuery.eq("user_id", meetingUserId);
+  const stored = await storedQuery;
   if (!stored.error) {
-    const rows = stored.data ?? [];
-    const leadIds = [...new Set(rows.map((row) => cell(row, "lead_id")).filter(Boolean))];
+    const meetingRows = stored.data ?? [];
+    const leadIds = [...new Set(meetingRows.map((row) => cell(row, "lead_id")).filter(Boolean))];
     const leads = leadIds.length ? await from("chatbot_contacts").select("id, name").in("id", leadIds) : { data: [], error: null };
     const names = new Map((leads.error ? [] : leads.data ?? []).map((row) => [cell(row, "id"), cell(row, "name")]));
-    for (const row of rows) {
+    for (const row of meetingRows) {
       const start = cell(row, "start_at");
       const end = cell(row, "end_at");
       if (start && end) named.push({ start, end, note: names.get(cell(row, "lead_id")) || "Ocupado" });
     }
   }
-  const connection = await connectionForUser(gate.organizationId, userId);
   if (connection && cell(connection, "connection_status") === "connected") {
     try {
       const busy = await busyRanges(connection, rangeStart, rangeEnd);
@@ -1222,11 +1304,13 @@ async function requesterIdentity(userId: string) {
 }
 
 export async function requestClientMeetingContext(userId: string) {
-  const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMmsMaster(gate.organizationId, gate.roleNames);
+  await accessSubscriberMeeting(userId);
   const identity = await requesterIdentity(userId);
-  const connection = await connectionForUser(gate.organizationId, userId);
-  return { ...identity, connected: cell(connection ?? {}, "connection_status") === "connected" };
+  const host = await mmsHostConnection();
+  return {
+    ...identity,
+    connected: Boolean(host.connection && cell(host.connection, "connection_status") === "connected"),
+  };
 }
 
 export async function requestClientMeeting(userId: string, input: {
@@ -1236,8 +1320,7 @@ export async function requestClientMeeting(userId: string, input: {
   time: string;
   meet: boolean;
 }) {
-  const gate = await accessAny(userId, ["inbox", "schedules"]);
-  await requireMmsMaster(gate.organizationId, gate.roleNames);
+  await accessSubscriberMeeting(userId);
   if (!meetingRecordId(input.requestId)) fail("Esse agendamento não é válido. Abra o formulário de novo.");
   const identity = await requesterIdentity(userId);
   if (!identity.email) fail("Não há e-mail neste acesso para solicitar a reunião.");
@@ -1246,7 +1329,9 @@ export async function requestClientMeeting(userId: string, input: {
   if (!open) fail("Escolha um dia e um horário disponíveis.");
   const slot = meetingSlot({ date: input.date, time: input.time });
   if (!slot) fail("Escolha um dia e um horário disponíveis.");
-  const connection = requireConnected(await connectionForUser(gate.organizationId, userId));
+  const host = await mmsHostConnection();
+  if (!host.connection) fail("Agenda do Master indisponível no momento.");
+  const connection = requireConnected(host.connection);
   const guests = meetingGuests(identity.email, input.attendees, cell(connection, "google_account_email"));
   if ("error" in guests) fail(guests.error);
   const calendarId = encodeURIComponent(cell(connection, "calendar_id") || "primary");
@@ -1256,14 +1341,21 @@ export async function requestClientMeeting(userId: string, input: {
   const saved = await withGoogle(connection, async (token) => {
     const found = await findExistingEvent(token, calendarId, input.requestId);
     if (found) return { status: 200, body: found };
+    // Evento criado na agenda do Master (organizador) — já entra como confirmado/aceito.
     const event: Row = {
       summary: standardMeetingTitle,
       description,
+      status: "confirmed",
       start: { dateTime: slot.start, timeZone: meetingTimeZone },
       end: { dateTime: slot.end, timeZone: meetingTimeZone },
       extendedProperties: { private: { nexRequestId: input.requestId } },
     };
-    if (guests.emails.length) event.attendees = guests.emails.map((email) => ({ email }));
+    if (guests.emails.length) {
+      event.attendees = guests.emails.map((email) => ({
+        email,
+        responseStatus: email === guests.lead ? "accepted" : "needsAction",
+      }));
+    }
     if (input.meet) {
       event.conferenceData = {
         createRequest: {
@@ -1281,27 +1373,23 @@ export async function requestClientMeeting(userId: string, input: {
   });
   if ((saved.status !== 200 && saved.status !== 201) || !saved.body || typeof saved.body !== "object") fail(googleFailure(saved.status, googleReason(saved.body)));
   const event = saved.body as GoogleEventShape;
-  const intake = await from("contracting_intakes").select("contact_id").eq("organization_id", gate.organizationId).eq("representative_email", identity.email).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  const contactId = intake.error ? "" : cell(intake.data ?? {}, "contact_id");
-  if (contactId && event.id) {
-    const lead = await from("chatbot_contacts").select("id").eq("id", contactId).eq("organization_id", gate.organizationId).maybeSingle();
-    if (!lead.error && lead.data) {
-      await from("lead_meetings").insert({
-        organization_id: gate.organizationId,
-        lead_id: contactId,
-        user_id: userId,
-        google_connection_id: cell(connection, "id"),
-        request_id: input.requestId,
-        title: standardMeetingTitle,
-        description,
-        attendee_email: guests.lead,
-        attendees: guests.emails,
-        start_at: slot.start,
-        end_at: slot.end,
-        timezone: meetingTimeZone,
-        ...storedEvent(event),
-      });
-    }
+  if (event.id) {
+    const leadId = await ensureGoogleAgendaLead(host.org.id);
+    await from("lead_meetings").insert({
+      organization_id: host.org.id,
+      lead_id: leadId,
+      user_id: cell(connection, "user_id"),
+      google_connection_id: cell(connection, "id"),
+      request_id: input.requestId,
+      title: standardMeetingTitle,
+      description,
+      attendee_email: guests.lead,
+      attendees: guests.emails,
+      start_at: slot.start,
+      end_at: slot.end,
+      timezone: meetingTimeZone,
+      ...storedEvent(event),
+    });
   }
   return { name: identity.name, email: identity.email, when: meetingWhen(slot.start, slot.end) };
 }

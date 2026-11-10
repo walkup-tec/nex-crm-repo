@@ -30,6 +30,8 @@ import {
   googleEventEmails,
   standardMeetingDescription,
   standardMeetingTitle,
+  supportMeetingTitle,
+  supportMeetingNoticeText,
   meetingConfirmButton,
   meetingConfirmUrl,
   meetingNoticeMessages,
@@ -78,6 +80,22 @@ assert.equal(activeClientMeetingName("   "), "Cliente-[Cliente ativo]");
 assert.equal(cleanEmail("  Ana@Empresa.com "), "ana@empresa.com");
 assert.equal(cleanEmail("ana@"), "");
 assert.equal(standardMeetingTitle, "Apresentação NEX Mkt Digital");
+assert.equal(supportMeetingTitle(" Keilla Jaqueline Souza Batista "), "Suporte - Keilla Jaqueline Souza Batista");
+assert.equal(supportMeetingTitle("  "), "Suporte - Cliente");
+assert.equal(
+  supportMeetingNoticeText({
+    name: "Keilla",
+    when: "19/11/2026 09:00–09:30",
+    meetUrl: "https://meet.google.com/abc",
+  }),
+  [
+    "Olá, Keilla!",
+    "A NEX recebeu e aceitou seu agendamento de suporte.",
+    "Quando: 19/11/2026 09:00–09:30",
+    "Google Meet: https://meet.google.com/abc",
+    "Qualquer imprevisto, é só nos avisar. Até lá!",
+  ].join("\n"),
+);
 assert.equal(cleanMeetingTitle(standardMeetingTitle), standardMeetingTitle);
 assert.equal(standardMeetingDescription.startsWith("Muito obrigado pelo seu tempo!"), true);
 assert.equal(cleanMeetingDescription(standardMeetingDescription), standardMeetingDescription);

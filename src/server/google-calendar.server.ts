@@ -35,11 +35,14 @@ import {
   meetingConfirmButton,
   meetingConfirmUrl,
   meetingNoticeMessages,
+  supportMeetingNoticeText,
+  supportMeetingTitle,
   type GoogleCalendarConnectionView,
   type GoogleEventShape,
   type LeadMeetingView,
   type MeetingStatus,
 } from "@/lib/google-calendar";
+import { sendPlainWhatsapp } from "@/server/evo.server";
 
 type Row = Record<string, unknown>;
 type DbError = { message: string };
@@ -1293,14 +1296,55 @@ export async function cancelLeadMeeting(userId: string, meetingId: string) {
 }
 
 async function requesterIdentity(userId: string) {
-  const profile = await from("profiles").select("full_name").eq("id", userId).maybeSingle();
+  const profile = await from("profiles").select("full_name, whatsapp").eq("id", userId).maybeSingle();
   if (profile.error) fail("Não foi possível confirmar o acesso.");
   const auth = await supabaseAdmin.auth.admin.getUserById(userId);
   if (auth.error) fail("Não foi possível confirmar o e-mail.");
+  const displayName = cell(profile.data ?? {}, "full_name").trim().replace(/\s+/g, " ") || "Cliente";
   return {
-    name: activeClientMeetingName(cell(profile.data ?? {}, "full_name")),
+    name: activeClientMeetingName(displayName),
+    displayName,
     email: cleanEmail(auth.data.user?.email ?? ""),
+    whatsapp: cell(profile.data ?? {}, "whatsapp"),
   };
+}
+
+async function subscriberNoticePhone(userId: string, organizationId: string, profileWhatsapp: string) {
+  const fromProfile = whatsappNumber(profileWhatsapp);
+  if (fromProfile) return fromProfile;
+  const org = await supabaseAdmin
+    .from("organizations")
+    .select("responsible_phone, finance_phone")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (org.error || !org.data) return "";
+  return whatsappNumber(org.data.responsible_phone ?? "") || whatsappNumber(org.data.finance_phone ?? "") || "";
+}
+
+async function sendSupportMeetingNotice(input: {
+  userId: string;
+  organizationId: string;
+  profileWhatsapp: string;
+  displayName: string;
+  when: string;
+  meetUrl: string;
+}) {
+  try {
+    const phone = await subscriberNoticePhone(input.userId, input.organizationId, input.profileWhatsapp);
+    if (!phone) {
+      console.error("support_meeting_notice", "missing_phone");
+      return;
+    }
+    const text = supportMeetingNoticeText({
+      name: input.displayName,
+      when: input.when,
+      meetUrl: input.meetUrl,
+    });
+    const sent = await sendPlainWhatsapp({ phone, text });
+    if (!sent.ok) console.error("support_meeting_notice", sent.error || "send_failed");
+  } catch (error) {
+    console.error("support_meeting_notice", error instanceof Error ? error.name : "error");
+  }
 }
 
 export async function requestClientMeetingContext(userId: string) {
@@ -1320,7 +1364,7 @@ export async function requestClientMeeting(userId: string, input: {
   time: string;
   meet: boolean;
 }) {
-  await accessSubscriberMeeting(userId);
+  const subscriber = await accessSubscriberMeeting(userId);
   if (!meetingRecordId(input.requestId)) fail("Esse agendamento não é válido. Abra o formulário de novo.");
   const identity = await requesterIdentity(userId);
   if (!identity.email) fail("Não há e-mail neste acesso para solicitar a reunião.");
@@ -1335,7 +1379,9 @@ export async function requestClientMeeting(userId: string, input: {
   const guests = meetingGuests(identity.email, input.attendees, cell(connection, "google_account_email"));
   if ("error" in guests) fail(guests.error);
   const calendarId = encodeURIComponent(cell(connection, "calendar_id") || "primary");
+  const title = supportMeetingTitle(identity.displayName);
   const description = `${standardMeetingDescription}\nSolicitante: ${identity.name}`;
+  const when = meetingWhen(slot.start, slot.end);
   const busy = await busyRanges(connection, slot.start, slot.end);
   if (busy && overlapsBusy(slot.start, slot.end, busy)) fail("Esse horário já está ocupado na agenda.");
   const saved = await withGoogle(connection, async (token) => {
@@ -1343,7 +1389,7 @@ export async function requestClientMeeting(userId: string, input: {
     if (found) return { status: 200, body: found };
     // Evento criado na agenda do Master (organizador) — já entra como confirmado/aceito.
     const event: Row = {
-      summary: standardMeetingTitle,
+      summary: title,
       description,
       status: "confirmed",
       start: { dateTime: slot.start, timeZone: meetingTimeZone },
@@ -1373,15 +1419,16 @@ export async function requestClientMeeting(userId: string, input: {
   });
   if ((saved.status !== 200 && saved.status !== 201) || !saved.body || typeof saved.body !== "object") fail(googleFailure(saved.status, googleReason(saved.body)));
   const event = saved.body as GoogleEventShape;
+  const meetUrl = meetUrlFromEvent(event);
   if (event.id) {
     const leadId = await ensureGoogleAgendaLead(host.org.id);
-    await from("lead_meetings").insert({
+    const inserted = await from("lead_meetings").insert({
       organization_id: host.org.id,
       lead_id: leadId,
       user_id: cell(connection, "user_id"),
       google_connection_id: cell(connection, "id"),
       request_id: input.requestId,
-      title: standardMeetingTitle,
+      title,
       description,
       attendee_email: guests.lead,
       attendees: guests.emails,
@@ -1389,7 +1436,16 @@ export async function requestClientMeeting(userId: string, input: {
       end_at: slot.end,
       timezone: meetingTimeZone,
       ...storedEvent(event),
-    });
+    }).select("id").maybeSingle();
+    if (inserted.error) schemaFail(inserted.error.message);
   }
-  return { name: identity.name, email: identity.email, when: meetingWhen(slot.start, slot.end) };
+  void sendSupportMeetingNotice({
+    userId,
+    organizationId: subscriber.organizationId,
+    profileWhatsapp: identity.whatsapp,
+    displayName: identity.displayName,
+    when,
+    meetUrl,
+  });
+  return { name: identity.name, email: identity.email, when };
 }

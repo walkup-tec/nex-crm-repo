@@ -214,6 +214,26 @@ export const standardMeetingDescription = [
   "Em breve teremos um momento produtivo, aonde você poderá conhecer melhor a NEX e retirar todas as dúvidas a respeito das ações de marketing digital que irão impulsionar o seu negócio.",
 ].join("\n");
 
+/** Título do evento criado pelo botão Solicitar Reunião (agenda do Master). */
+export function supportMeetingTitle(userName: string) {
+  const name = userName.trim().replace(/\s+/g, " ");
+  return `Suporte - ${name || "Cliente"}`;
+}
+
+/** Confirmação curta via WhatsApp após a NEX aceitar o horário solicitado. */
+export function supportMeetingNoticeText(input: { name: string; when: string; meetUrl: string }) {
+  const name = input.name.trim() || "olá";
+  return [
+    `Olá, ${name}!`,
+    "A NEX recebeu e aceitou seu agendamento de suporte.",
+    input.when ? `Quando: ${input.when}` : "",
+    input.meetUrl ? `Google Meet: ${input.meetUrl}` : "",
+    "Qualquer imprevisto, é só nos avisar. Até lá!",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function meetingConfirmUrl(meetingId: string) {
   return `https://app.nexmeta.com.br/agenda/${meetingId}`;
 }

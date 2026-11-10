@@ -24,6 +24,8 @@ import {
   waivedOnCharge,
   asaasSyncMonitor,
   coraChargeStatus,
+  coraPaidAtIso,
+  coraSyncInvoiceEligible,
   type FinanceCharge,
   type FinanceMonitorItem,
   type MasterFinance,
@@ -387,12 +389,13 @@ async function syncCoraCharges(organizationId?: string): Promise<{ ok: boolean; 
   let failed = 0;
   for (const organization of organizationIds) {
     const refreshed = await refreshCoraPayments(organization);
-    if (!refreshed.ok) failed += 1;
+    failed += refreshed.failed;
   }
   void ensureCoraPaidWebhook().catch((registerError) => {
     console.error("cora_webhook_register", registerError instanceof Error ? registerError.message : "falha");
   });
-  return failed > 0 ? { ok: false, detail: "falhou" } : { ok: true, detail: "OK" };
+  if (failed <= 0) return { ok: true, detail: "OK" };
+  return { ok: false, detail: failed === 1 ? "1 falha" : `${failed} falhas` };
 }
 
 const paidAsaas = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"]);
@@ -748,13 +751,32 @@ async function organizationBillingProfile(organizationId: string) {
   return { document: basic.data?.document ?? "", adsMeta: true, adsGoogle: false, productHosting: false };
 }
 
-async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolean }> {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readCoraInvoiceResilient(externalChargeId: string) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      if (attempt > 0) await sleep(400 * attempt);
+      return await readCoraInvoice(externalChargeId);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : "";
+      if (!/CORA_RATE_LIMIT/i.test(message)) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("CORA_RATE_LIMIT");
+}
+
+async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolean; failed: number }> {
   const { data: contract, error } = await supabaseAdmin
     .from("contracts")
     .select("billing_provider")
     .eq("organization_id", organizationId)
     .limit(1);
-  if (error || contract?.[0]?.billing_provider !== "cora") return { ok: true };
+  if (error || contract?.[0]?.billing_provider !== "cora") return { ok: true, failed: 0 };
   const today = todayKey();
   const { data: invoices, error: invoiceError } = await supabaseAdmin
     .from("invoices")
@@ -763,26 +785,37 @@ async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolea
     .in("status", ["pending", "overdue"]);
   if (invoiceError) {
     console.error("cora_payment_list", invoiceError.message);
-    return { ok: false };
+    return { ok: false, failed: 1 };
   }
+  const eligible = (invoices ?? []).filter((invoice) =>
+    coraSyncInvoiceEligible({
+      externalChargeId: invoice.external_charge_id,
+      dueDate: invoice.due_date,
+      today,
+    }),
+  );
   let failed = 0;
-  for (const invoice of invoices ?? []) {
-    if (!invoice.external_charge_id) continue;
+  for (const invoice of eligible) {
+    const external = String(invoice.external_charge_id ?? "");
     try {
-      const remote = await readCoraInvoice(invoice.external_charge_id);
+      const remote = await readCoraInvoiceResilient(external);
       const next = coraChargeStatus(remote.status, invoice.due_date, today);
-      if (next === invoice.status) continue;
+      if (next === invoice.status) {
+        await sleep(120);
+        continue;
+      }
       if (next === "paid") {
         await supabaseAdmin
           .from("invoices")
           .update({
             status: "paid",
-            paid_at: remote.paidAt ?? new Date().toISOString(),
+            paid_at: coraPaidAtIso(remote.paidAt),
             updated_at: new Date().toISOString(),
           })
           .eq("id", invoice.id)
           .neq("status", "paid");
         await stopOpenBillingNotices(organizationId, invoice.due_date, "Pagamento confirmado na Cora.");
+        await sleep(120);
         continue;
       }
       if (next === "cancelled") {
@@ -795,6 +828,7 @@ async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolea
           .eq("id", invoice.id)
           .in("status", ["pending", "overdue"]);
         await stopOpenBillingNotices(organizationId, invoice.due_date, "Cobrança cancelada na Cora.");
+        await sleep(120);
         continue;
       }
       if (next === "overdue" && invoice.status === "pending") {
@@ -807,12 +841,14 @@ async function refreshCoraPayments(organizationId: string): Promise<{ ok: boolea
           .eq("id", invoice.id)
           .eq("status", "pending");
       }
+      await sleep(120);
     } catch (checkError) {
       failed += 1;
       console.error("cora_payment_check", checkError instanceof Error ? checkError.message : "falha");
+      await sleep(250);
     }
   }
-  return { ok: failed === 0 };
+  return { ok: failed === 0, failed };
 }
 
 export async function applyCoraPaidNotice(externalChargeId: string) {
@@ -832,7 +868,7 @@ export async function applyCoraPaidNotice(externalChargeId: string) {
       .from("invoices")
       .update({
         status: "paid",
-        paid_at: remote.paidAt ?? new Date().toISOString(),
+        paid_at: coraPaidAtIso(remote.paidAt),
         updated_at: new Date().toISOString(),
       })
       .eq("id", data.id);

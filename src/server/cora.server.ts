@@ -219,6 +219,7 @@ export async function readCoraInvoice(id: string) {
   const response = await coraRequest(settings, invoicePath(id), "GET", { authorization: `Bearer ${token}` });
   if (response.status === 404) return { status: "CANCELLED", paidAt: null };
   if (response.status === 401 || response.status === 403) fail("A Cora recusou o acesso para consultar a cobrança.");
+  if (response.status === 429) fail("CORA_RATE_LIMIT");
   if (response.status < 200 || response.status >= 300) fail(coraMessage(response.text) || "Não foi possível consultar a cobrança na Cora.");
   const body = JSON.parse(response.text) as { status?: string; occurrence_date?: string | null };
   const paidAt = textOf(body.occurrence_date);

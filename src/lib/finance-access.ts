@@ -188,6 +188,39 @@ export function coraChargeStatus(remoteStatus: string, dueDate: string, today: s
   return "pending";
 }
 
+/** Só IDs reais da Cora entram no sync de pagamento (ignora manual:/asaas). */
+export function isCoraInvoiceId(externalChargeId: string | null | undefined) {
+  return String(externalChargeId ?? "").startsWith("inv_");
+}
+
+/**
+ * Limita consultas à Cora às parcelas próximas do vencimento.
+ * Parcelas futuras longe geram 429 e marcam "Cobranças: falhou" sem necessidade.
+ */
+export function coraSyncInvoiceEligible(input: {
+  externalChargeId: string | null | undefined;
+  dueDate: string;
+  today: string;
+  horizonDays?: number;
+}) {
+  if (!isCoraInvoiceId(input.externalChargeId)) return false;
+  const due = input.dueDate.slice(0, 10);
+  const today = input.today.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return false;
+  const horizonDays = input.horizonDays ?? 14;
+  const date = new Date(`${today}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + horizonDays);
+  const horizon = date.toISOString().slice(0, 10);
+  return due <= horizon;
+}
+
+export function coraPaidAtIso(paidAt: string | null | undefined, fallback = new Date().toISOString()) {
+  const raw = String(paidAt ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T15:00:00.000Z`;
+  if (raw && Number.isFinite(Date.parse(raw))) return new Date(raw).toISOString();
+  return fallback;
+}
+
 export function centsFromReais(value: number) {
   return Math.round(value * 100);
 }

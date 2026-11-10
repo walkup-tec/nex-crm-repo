@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import {
   asaasSyncMonitor,
   coraChargeStatus,
+  coraPaidAtIso,
+  coraSyncInvoiceEligible,
   financeMonitorCaption,
   financeMonitorGroups,
+  isCoraInvoiceId,
 } from "./finance-access";
 
 assert.equal(
@@ -31,6 +34,33 @@ assert.equal(coraChargeStatus("CANCELLED", "2026-10-01", "2026-11-02"), "cancell
 assert.equal(coraChargeStatus("OPEN", "2026-10-01", "2026-11-02"), "overdue");
 assert.equal(coraChargeStatus("OPEN", "2026-11-10", "2026-11-02"), "pending");
 assert.equal(coraChargeStatus("LATE", "2026-11-10", "2026-11-02"), "overdue");
+assert.equal(isCoraInvoiceId("inv_abc"), true);
+assert.equal(isCoraInvoiceId("manual:x:2026-11-28"), false);
+assert.equal(
+  coraSyncInvoiceEligible({
+    externalChargeId: "inv_abc",
+    dueDate: "2026-11-10",
+    today: "2026-11-10",
+  }),
+  true,
+);
+assert.equal(
+  coraSyncInvoiceEligible({
+    externalChargeId: "inv_abc",
+    dueDate: "2027-06-06",
+    today: "2026-11-10",
+  }),
+  false,
+);
+assert.equal(
+  coraSyncInvoiceEligible({
+    externalChargeId: "manual:x:2026-11-10",
+    dueDate: "2026-11-10",
+    today: "2026-11-10",
+  }),
+  false,
+);
+assert.equal(coraPaidAtIso("2026-11-09"), "2026-11-09T15:00:00.000Z");
 
 const groups = financeMonitorGroups([
   { id: "asaas", label: "Integração", ok: false, detail: "chave recusada" },

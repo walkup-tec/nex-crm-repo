@@ -52,6 +52,7 @@ import {
   evolutionMessageText,
   evolutionMessageContent,
   evolutionMediaFile,
+  evolutionMediaFetchMessage,
   evolutionSameOwnerInstance,
   evolutionProfileNumber,
   evolutionProfilePictureUrl,
@@ -832,6 +833,18 @@ assert.equal(
 assert.equal(evolutionMessageContent({ message: { conversation: "Olá" } }).text, "Olá");
 assert.deepEqual(evolutionMediaFile({ mimetype: "image/jpeg", base64: "data:image/jpeg;base64,abc" }), { mime: "image/jpeg", base64: "abc", kind: "image" });
 assert.equal(evolutionMediaFile({ base64: "abc" }, "video").kind, "video");
+assert.deepEqual(evolutionMediaFetchMessage({ externalId: "ABC", remoteJid: "5511999999999@s.whatsapp.net", fromMe: false }), {
+  key: { id: "ABC", remoteJid: "5511999999999@s.whatsapp.net", fromMe: false },
+});
+assert.deepEqual(
+  evolutionMediaFetchMessage({
+    externalId: "ABC",
+    remoteJid: "5511999999999@s.whatsapp.net",
+    fromMe: false,
+    raw: { key: { id: "ABC" }, message: { imageMessage: {} } },
+  }).key,
+  { id: "ABC", remoteJid: "5511999999999@s.whatsapp.net", fromMe: false },
+);
 assert.equal(
   evolutionQrImage({ qrcode: { base64: "data:image/png;base64,abc" } }),
   "data:image/png;base64,abc",

@@ -58,6 +58,7 @@ import {
   whatsappGroupJid,
   whatsappGroupLabel,
   evolutionIncomingMessages,
+  evolutionMediaFetchMessage,
   evolutionMediaFile,
   evolutionMessageContent,
   evolutionMessageText,
@@ -1272,6 +1273,7 @@ function warmIncomingMedia(
   externalId: string,
   kind: "image" | "video" | "audio" | "document",
   record: unknown,
+  persist?: { organizationId: string; contactId: string; messageId: string; remoteJid?: string; fromMe?: boolean },
 ) {
   if (!instanceName || !externalId) return;
   const root = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
@@ -1284,9 +1286,25 @@ function warmIncomingMedia(
       base64: immediate.base64,
       kind: immediate.kind,
     });
+    if (persist?.messageId) {
+      void persistMessageMedia(persist.organizationId, persist.contactId, persist.messageId, {
+        mime: immediate.mime,
+        base64: immediate.base64,
+        kind: immediate.kind,
+      }).catch(() => null);
+    }
     return;
   }
-  void fetchEvolutionMedia(instanceName, externalId, kind, record).catch(() => null);
+  void fetchEvolutionMedia(instanceName, externalId, kind, {
+    raw: record,
+    remoteJid: persist?.remoteJid,
+    fromMe: persist?.fromMe,
+  })
+    .then((file) => {
+      if (!file || !persist?.messageId) return;
+      return persistMessageMedia(persist.organizationId, persist.contactId, persist.messageId, file);
+    })
+    .catch(() => null);
 }
 
 export async function sendChatbotMedia(userId: string, conversationId: string, input: { kind: string; name: string; mime: string; base64: string }) {
@@ -1356,6 +1374,11 @@ export async function sendChatbotMedia(userId: string, conversationId: string, i
   if (externalId) {
     rememberMediaFile(instanceName, externalId, { mime: file.mime, base64: raw, kind: file.kind });
   }
+  void persistMessageMedia(organizationId, cell(conversation.data, "contact_id"), messageId, {
+    mime: file.mime,
+    base64: raw,
+    kind: file.kind,
+  }).catch(() => null);
   const startingAttendance = !assignee || assignee !== userId || cell(conversation.data, "status") !== "active";
   const assigned = await assignConversation(conversationId, organizationId, userId, {
     status: "active",
@@ -2608,7 +2631,24 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     return;
   }
   if (content.mediaKind && externalId) {
-    warmIncomingMedia(cell(connection, "instance_name"), externalId, content.mediaKind, record);
+    let messageId = cell(saved.data, "id");
+    if (!messageId) {
+      const existingMedia = await table("chatbot_messages")
+        .select("id")
+        .eq("conversation_id", conversationId)
+        .eq("external_id", externalId)
+        .maybeSingle();
+      messageId = cell(existingMedia.data, "id");
+    }
+    warmIncomingMedia(cell(connection, "instance_name"), externalId, content.mediaKind, record, messageId
+      ? {
+          organizationId,
+          contactId,
+          messageId,
+          remoteJid: whatsappRemoteJid(phone),
+          fromMe: false,
+        }
+      : undefined);
   }
   const action = inboundBotAction({ inserted, source });
   console.log(JSON.stringify({ source: "nex.chatbot", ingest: source, instance: cell(connection, "instance_name"), externalId, conversationId, direction: "in", action }));
@@ -2843,33 +2883,35 @@ async function fetchEvolutionMedia(
   instanceName: string,
   externalId: string,
   kind: "image" | "video" | "audio" | "document",
-  message?: unknown,
+  options?: { raw?: unknown; remoteJid?: string; fromMe?: boolean },
 ) {
   if (!instanceName || !externalId) return null;
   const cacheKey = mediaCacheKey(instanceName, externalId, kind);
   const cached = mediaFileCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached;
+  if (cached && Date.now() - cached.at < 30 * 60 * 1000) return cached;
   const pending = mediaFileInflight.get(cacheKey);
   if (pending) return pending;
 
   const work = (async () => {
-    const messagePayload =
-      message && typeof message === "object"
-        ? message
-        : { key: { id: externalId } };
+    const messagePayload = evolutionMediaFetchMessage({
+      externalId,
+      remoteJid: options?.remoteJid,
+      fromMe: options?.fromMe,
+      raw: options?.raw,
+    });
     const payload = await evo(
       `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
       "POST",
-      { message: messagePayload, convertToMp4: kind === "video" },
-      60000,
+      { message: messagePayload, convertToMp4: false },
+      25000,
     );
     let file = evolutionMediaFile(payload, kind === "image" ? "" : kind);
-    if (kind === "video" && file.kind === "video" && file.mime !== "video/mp4" && file.mime !== "video/webm") {
+    if (kind === "video" && file.kind === "video" && file.mime && file.mime !== "video/mp4" && file.mime !== "video/webm") {
       const converted = await evo(
         `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
         "POST",
         { message: messagePayload, convertToMp4: true },
-        60000,
+        45000,
       );
       const next = evolutionMediaFile(converted, "video");
       if (next.kind) file = next;
@@ -2885,6 +2927,87 @@ async function fetchEvolutionMedia(
     return await work;
   } finally {
     mediaFileInflight.delete(cacheKey);
+  }
+}
+
+function mediaStorageExtension(file: { mime: string; kind: "image" | "video" | "audio" | "document" }) {
+  if (file.kind === "document") return "pdf";
+  if (file.mime.includes("png")) return "png";
+  if (file.mime.includes("webp")) return "webp";
+  if (file.mime.includes("gif")) return "gif";
+  if (file.kind === "video") return "mp4";
+  if (file.kind === "audio") return file.mime.includes("mpeg") ? "mp3" : "ogg";
+  return "jpg";
+}
+
+async function loadPersistedMessageMedia(organizationId: string, messageId: string) {
+  if (!organizationId || !messageId) return null;
+  const existing = await table("chatbot_contact_files")
+    .select("storage_path, mime_type, name")
+    .eq("organization_id", organizationId)
+    .eq("message_id", messageId)
+    .maybeSingle();
+  if (existing.error || !existing.data) return null;
+  const path = cell(existing.data, "storage_path");
+  if (!path) return null;
+  const downloaded = await supabaseAdmin.storage.from(mediaBucket).download(path);
+  if (downloaded.error || !downloaded.data) return null;
+  const bytes = Buffer.from(await downloaded.data.arrayBuffer());
+  if (!bytes.length || bytes.length > 40 * 1024 * 1024) return null;
+  const mime =
+    cell(existing.data, "mime_type").split(";")[0]?.trim().toLowerCase() ||
+    (path.endsWith(".pdf")
+      ? "application/pdf"
+      : path.endsWith(".mp4")
+        ? "video/mp4"
+        : path.endsWith(".ogg") || path.endsWith(".mp3")
+          ? path.endsWith(".mp3")
+            ? "audio/mpeg"
+            : "audio/ogg"
+          : "image/jpeg");
+  const kind = storedMediaKind(
+    mime.startsWith("video/") ? "video" : mime.startsWith("audio/") ? "audio" : mime === "application/pdf" ? "document" : "image",
+    "",
+  );
+  if (!kind) return null;
+  return { mime, base64: bytes.toString("base64"), kind };
+}
+
+async function persistMessageMedia(
+  organizationId: string,
+  contactId: string,
+  messageId: string,
+  file: { mime: string; base64: string; kind: "image" | "video" | "audio" | "document" },
+) {
+  if (!organizationId || !contactId || !messageId || !file.base64 || !file.kind) return;
+  const existing = await table("chatbot_contact_files").select("id").eq("organization_id", organizationId).eq("message_id", messageId).maybeSingle();
+  if (!existing.error && existing.data) return;
+  await ensureMediaBucket();
+  const extension = mediaStorageExtension(file);
+  const id = crypto.randomUUID();
+  const storagePath = `${organizationId}/${contactId}/${id}.${extension}`;
+  const contentType =
+    file.mime.split(";")[0]?.trim().toLowerCase() ||
+    (file.kind === "document" ? "application/pdf" : file.kind === "audio" ? "audio/ogg" : file.kind === "video" ? "video/mp4" : "image/jpeg");
+  const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(storagePath, Buffer.from(file.base64, "base64"), {
+    contentType,
+    upsert: false,
+  });
+  if (uploaded.error) return;
+  const inserted = await table("chatbot_contact_files")
+    .insert({
+      id,
+      organization_id: organizationId,
+      contact_id: contactId,
+      message_id: messageId,
+      name: file.kind === "document" ? "arquivo.pdf" : file.kind === "video" ? `video.${extension}` : file.kind === "audio" ? `audio.${extension}` : `imagem.${extension}`,
+      mime_type: contentType,
+      storage_path: storagePath,
+    })
+    .select("id")
+    .maybeSingle();
+  if (inserted.error) {
+    await supabaseAdmin.storage.from(mediaBucket).remove([storagePath]).catch(() => null);
   }
 }
 
@@ -2911,11 +3034,38 @@ export async function chatbotMessageMedia(userId: string, messageId: string) {
   const text = cell(owned.message, "text");
   const hinted = storedMediaKind(cell(owned.message, "media_kind"), text);
   if (!hinted && !mediaPlaceholder(text)) fail("Essa mensagem não tem mídia.");
+  const contactId = cell(owned.conversation, "contact_id");
   let file: { mime: string; base64: string; kind: "image" | "video" | "audio" | "document" } | null = null;
   try {
-    file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), hinted || "image");
+    file = await loadPersistedMessageMedia(owned.organizationId, messageId);
   } catch {
     file = null;
+  }
+  const instanceName = cell(owned.connection, "instance_name");
+  const externalId = cell(owned.message, "external_id");
+  if (file && externalId) {
+    rememberMediaFile(instanceName, externalId, file);
+  }
+  if (!file) {
+    const contact = await table("chatbot_contacts")
+      .select("phone")
+      .eq("id", contactId)
+      .eq("organization_id", owned.organizationId)
+      .maybeSingle();
+    const phone = cell(contact.data, "phone");
+    const remoteJid = phone ? whatsappRemoteJid(phone) : "";
+    const fromMe = cell(owned.message, "direction") === "out";
+    try {
+      file = await fetchEvolutionMedia(instanceName, externalId, hinted || "image", {
+        remoteJid: remoteJid || undefined,
+        fromMe,
+      });
+    } catch {
+      file = null;
+    }
+    if (file && contactId) {
+      void persistMessageMedia(owned.organizationId, contactId, messageId, file).catch(() => null);
+    }
   }
   if (!file) {
     if (!hinted && mediaPlaceholder(text)) return { kind: "" as const, mime: "", base64: "" };
@@ -2943,48 +3093,25 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
   if (existing.data) return { saved: true as const };
   const text = cell(owned.message, "text");
   const kind = storedMediaKind(cell(owned.message, "media_kind"), text);
-  const file = await fetchEvolutionMedia(cell(owned.connection, "instance_name"), cell(owned.message, "external_id"), kind || "image");
-  if (!file) fail("Não foi possível salvar essa mídia.");
-  await ensureMediaBucket();
-  const id = crypto.randomUUID();
-  const extension = file.kind === "document"
-    ? "pdf"
-    : file.mime.includes("png")
-      ? "png"
-      : file.mime.includes("webp")
-        ? "webp"
-        : file.mime.includes("gif")
-          ? "gif"
-          : file.kind === "video"
-            ? "mp4"
-            : file.kind === "audio"
-              ? file.mime.includes("mpeg")
-                ? "mp3"
-                : "ogg"
-              : "jpg";
-  const storagePath = `${owned.organizationId}/${contactId}/${id}.${extension}`;
-  const contentType = file.mime.split(";")[0]?.trim().toLowerCase() || (file.kind === "document" ? "application/pdf" : file.kind === "audio" ? "audio/ogg" : file.kind === "video" ? "video/mp4" : "image/jpeg");
-  const uploaded = await supabaseAdmin.storage.from(mediaBucket).upload(storagePath, Buffer.from(file.base64, "base64"), {
-    contentType,
-    upsert: false,
-  });
-  if (uploaded.error) fail("Não foi possível salvar a mídia no contato.");
-  const inserted = await table("chatbot_contact_files")
-    .insert({
-      id,
-      organization_id: owned.organizationId,
-      contact_id: contactId,
-      message_id: messageId,
-      name: file.kind === "document" ? (text.toLowerCase().endsWith(".pdf") ? text.slice(0, 80) : "arquivo.pdf") : file.kind === "video" ? `video.${extension}` : file.kind === "audio" ? `audio.${extension}` : `imagem.${extension}`,
-      mime_type: contentType,
-      storage_path: storagePath,
-    })
-    .select("id")
+  const contact = await table("chatbot_contacts")
+    .select("phone")
+    .eq("id", contactId)
+    .eq("organization_id", owned.organizationId)
     .maybeSingle();
-  if (inserted.error) {
-    await supabaseAdmin.storage.from(mediaBucket).remove([storagePath]);
-    fail(schemaMessage(inserted.error.message));
-  }
+  const phone = cell(contact.data, "phone");
+  const file = await fetchEvolutionMedia(
+    cell(owned.connection, "instance_name"),
+    cell(owned.message, "external_id"),
+    kind || "image",
+    {
+      remoteJid: phone ? whatsappRemoteJid(phone) : undefined,
+      fromMe: cell(owned.message, "direction") === "out",
+    },
+  );
+  if (!file) fail("Não foi possível salvar essa mídia.");
+  await persistMessageMedia(owned.organizationId, contactId, messageId, file);
+  const savedRow = await table("chatbot_contact_files").select("id").eq("organization_id", owned.organizationId).eq("message_id", messageId).maybeSingle();
+  if (savedRow.error || !savedRow.data) fail("Não foi possível salvar a mídia no contato.");
   return { saved: true as const };
 }
 

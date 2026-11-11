@@ -207,16 +207,16 @@ function ChatMedia({
       void chatbotMessageMediaFn({ data: { messageId: item.id } }).then((result) => {
         if (!active) return;
         if (!result.ok) {
-          if (attempt < 1) {
-            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 1200);
+          if (attempt < 2) {
+            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 800 + attempt * 1200);
             return;
           }
           setError(result.message);
           return;
         }
         if (!result.data.kind) {
-          if (attempt < 1) {
-            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 1200);
+          if (attempt < 2) {
+            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 800 + attempt * 1200);
             return;
           }
           loadedMedia.set(item.id, { none: true });

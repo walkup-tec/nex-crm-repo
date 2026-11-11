@@ -1343,6 +1343,35 @@ export function evolutionMessageContent(data: unknown): {
   };
 }
 
+/** Payload mínimo para getBase64FromMediaMessage (remoteJid/fromMe evitam falha após reconectar). */
+export function evolutionMediaFetchMessage(input: {
+  externalId: string;
+  remoteJid?: string;
+  fromMe?: boolean;
+  raw?: unknown;
+}) {
+  if (input.raw && typeof input.raw === "object" && !Array.isArray(input.raw)) {
+    const root = { ...(input.raw as Record<string, unknown>) };
+    if (isRecord(root["key"]) || isRecord(root["message"])) {
+      if (isRecord(root["key"])) {
+        const key = { ...root["key"] };
+        if (input.externalId && !key["id"]) key["id"] = input.externalId;
+        if (input.remoteJid && !key["remoteJid"]) key["remoteJid"] = input.remoteJid;
+        if (typeof input.fromMe === "boolean" && key["fromMe"] == null) key["fromMe"] = input.fromMe;
+        root["key"] = key;
+      }
+      return root;
+    }
+  }
+  return {
+    key: {
+      id: input.externalId,
+      ...(input.remoteJid ? { remoteJid: input.remoteJid } : {}),
+      ...(typeof input.fromMe === "boolean" ? { fromMe: input.fromMe } : {}),
+    },
+  };
+}
+
 export function evolutionMediaFile(payload: unknown, hint: "" | "image" | "video" | "audio" | "document" = ""): { mime: string; base64: string; kind: "" | "image" | "video" | "audio" | "document" } {
   const root = isRecord(payload) ? payload : {};
   const record = typeof root["base64"] === "string" ? root : isRecord(root["data"]) && typeof root["data"]["base64"] === "string" ? root["data"] : root;

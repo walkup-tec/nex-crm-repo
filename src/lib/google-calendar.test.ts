@@ -26,6 +26,7 @@ import {
   importedMeetingDraft,
   mergeGoogleEvents,
   pickLeadForImportedMeeting,
+  orphanMeetingBelongsToContact,
   googleAgendaContactName,
   googleEventEmails,
   standardMeetingDescription,
@@ -222,6 +223,46 @@ assert.equal(meetUrlFromEvent({ hangoutLink: "javascript:alert(1)" }), "");
 assert.equal(meetingOnContactCard("scheduled"), true);
 assert.equal(meetingOnContactCard("cancelled"), false);
 assert.equal(meetingOnContactCard("failed"), false);
+assert.equal(
+  orphanMeetingBelongsToContact({
+    title: "Keilla",
+    attendeeEmail: "",
+    attendees: [],
+    contactName: "Keilla",
+    contactEmails: [],
+  }),
+  true,
+);
+assert.equal(
+  orphanMeetingBelongsToContact({
+    title: "Apresentação NEX Mkt Digital",
+    attendeeEmail: "keilla@empresa.com",
+    attendees: [],
+    contactName: "Keilla",
+    contactEmails: ["keilla@empresa.com"],
+  }),
+  true,
+);
+assert.equal(
+  orphanMeetingBelongsToContact({
+    title: "Aniversário Henrique 2001",
+    attendeeEmail: "",
+    attendees: [],
+    contactName: "Flávia",
+    contactEmails: [],
+  }),
+  false,
+);
+assert.equal(
+  orphanMeetingBelongsToContact({
+    title: "Aniversário Henrique 2001",
+    attendeeEmail: "",
+    attendees: [],
+    contactName: "Henrique",
+    contactEmails: [],
+  }),
+  true,
+);
 const contactNow = Date.parse("2026-11-04T12:00:00-03:00");
 assert.equal(meetingOnContactCard("scheduled", "2026-11-03T12:00:00.000Z", contactNow), false);
 assert.equal(meetingOnContactCard("scheduled", "2026-11-04T12:00:00.000Z", contactNow), true);

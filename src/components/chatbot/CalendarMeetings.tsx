@@ -247,14 +247,16 @@ export function LeadMeetings({ leadId, tick }: { leadId: string; tick: number })
   const visible = meetings.filter((meeting) => meetingOnContactCard(meeting.status, meeting.startAt));
   if (!visible.length && !note) return null;
   return (
-    <section className="contact-section">
+    <section className="contact-section contact-meetings">
       <h3>Reuniões</h3>
       {note ? <p className="composer-error">{note}</p> : null}
-      <MeetingCards
-        meetings={visible}
-        empty="Nenhuma reunião agendada."
-        onChanged={() => setVersion((value) => value + 1)}
-      />
+      {visible.length ? (
+        <MeetingCards
+          meetings={visible}
+          empty="Nenhuma reunião agendada."
+          onChanged={() => setVersion((value) => value + 1)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -270,29 +272,69 @@ function GoogleMark() {
   );
 }
 
-function MeetingBlock({ meeting, onOpen }: { meeting: LeadMeetingView; onOpen: (meeting: LeadMeetingView) => void }) {
+function WhatsAppIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+      <circle cx="9" cy="9" r="9" fill="#25D366" />
+      <path
+        fill="#fff"
+        d="M12.7 10.2c-.2-.1-1.1-.55-1.27-.61-.17-.06-.3-.1-.42.1-.12.19-.48.61-.59.74-.11.12-.22.14-.41.05-.19-.1-.79-.29-1.5-.93-.56-.5-.93-1.11-1.04-1.3-.11-.19-.01-.29.08-.38.08-.08.19-.22.28-.33.09-.11.12-.19.19-.32.06-.12.03-.24-.02-.33-.05-.1-.42-1.02-.58-1.4-.15-.36-.31-.31-.42-.32h-.32c-.13 0-.33.05-.5.24-.17.19-.66.64-.66 1.57s.68 1.82.77 1.95c.1.12 1.33 2.03 3.22 2.85.45.19.8.31 1.07.4.45.14.86.12 1.18.07.36-.05 1.1-.45 1.26-.89.15-.44.15-.81.11-.89-.05-.08-.17-.12-.36-.21z"
+      />
+    </svg>
+  );
+}
+
+function meetingHasChatContact(meeting: LeadMeetingView) {
+  return Boolean(meeting.leadId) && meeting.leadName !== googleAgendaContactName;
+}
+
+function MeetingBlock({
+  meeting,
+  calling,
+  onOpen,
+  onCall,
+}: {
+  meeting: LeadMeetingView;
+  calling: string;
+  onOpen: (meeting: LeadMeetingView) => void;
+  onCall: (leadId: string) => void;
+}) {
   const tone = agendaDisplayStatus(meeting.status);
   const start = agendaClock(meeting.startAt);
   const end = agendaClock(meeting.endAt);
+  const canCall = meetingHasChatContact(meeting);
+  const busy = calling === meeting.leadId;
   return (
-    <button
-      type="button"
-      className={cn(
-        "grid w-full grid-cols-[8px_minmax(0,1fr)] items-start gap-x-2 rounded-[10px] border px-2.5 py-2.5 text-left transition hover:brightness-110",
-        eventTone[tone],
-      )}
-      onClick={() => onOpen(meeting)}
-    >
-      <span className={cn("mt-1 size-2 rounded-full", eventDot[tone])} aria-hidden />
-      <span className="min-w-0">
-        <span className="block text-[11px] font-medium text-white/90">
-          {start} - {end}
+    <article className={cn("rounded-[10px] border px-2.5 py-2.5 transition hover:brightness-110", eventTone[tone])}>
+      <button
+        type="button"
+        className="grid w-full grid-cols-[8px_minmax(0,1fr)] items-start gap-x-2 text-left"
+        onClick={() => onOpen(meeting)}
+      >
+        <span className={cn("mt-1 size-2 rounded-full", eventDot[tone])} aria-hidden />
+        <span className="min-w-0">
+          <span className="block text-[11px] font-medium text-white/90">
+            {start} - {end}
+          </span>
+          <span className="mt-0.5 block truncate text-[12.5px] font-semibold text-white">
+            {meeting.leadName === googleAgendaContactName ? meeting.title || meeting.leadName : meeting.leadName || meeting.title}
+          </span>
         </span>
-        <span className="mt-0.5 block truncate text-[12.5px] font-semibold text-white">
-          {meeting.leadName === googleAgendaContactName ? meeting.title || meeting.leadName : meeting.leadName || meeting.title}
-        </span>
-      </span>
-    </button>
+      </button>
+      {canCall ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-2 h-7 w-full gap-1.5 border-white/25 bg-black/20 px-2 text-[11px] font-semibold text-white hover:bg-black/35 hover:text-white"
+          disabled={busy || Boolean(calling)}
+          onClick={() => onCall(meeting.leadId)}
+        >
+          <WhatsAppIcon />
+          {busy ? "Abrindo" : "Chamar"}
+        </Button>
+      ) : null}
+    </article>
   );
 }
 
@@ -577,11 +619,11 @@ export function CalendarMeetings() {
                     </header>
                     <div className="flex flex-1 flex-col gap-2 p-2.5">
                       {groups.morning.map((meeting) => (
-                        <MeetingBlock key={meeting.id} meeting={meeting} onOpen={setSelected} />
+                        <MeetingBlock key={meeting.id} meeting={meeting} calling={calling} onOpen={setSelected} onCall={(leadId) => void call(leadId)} />
                       ))}
                       {groups.gap ? <div className="h-[18px]" aria-hidden /> : null}
                       {groups.afternoon.map((meeting) => (
-                        <MeetingBlock key={meeting.id} meeting={meeting} onOpen={setSelected} />
+                        <MeetingBlock key={meeting.id} meeting={meeting} calling={calling} onOpen={setSelected} onCall={(leadId) => void call(leadId)} />
                       ))}
                     </div>
                   </section>
@@ -628,15 +670,16 @@ export function CalendarMeetings() {
                   </a>
                 </Button>
               ) : null}
+              {meetingHasChatContact(selected) ? (
+                <Button type="button" size="sm" variant="outline" disabled={calling === selected.leadId || Boolean(calling)} onClick={() => void call(selected.leadId)}>
+                  <WhatsAppIcon />
+                  {calling === selected.leadId ? "Abrindo..." : "Chamar"}
+                </Button>
+              ) : null}
               {selected.canManage && selected.status === "scheduled" ? (
-                <>
-                  <Button type="button" size="sm" variant="outline" disabled={calling === selected.leadId} onClick={() => void call(selected.leadId)}>
-                    {calling === selected.leadId ? "Abrindo..." : "Chamar no WhatsApp"}
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setEditing(selected)}>
-                    Reagendar
-                  </Button>
-                </>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditing(selected)}>
+                  Reagendar
+                </Button>
               ) : null}
               <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(null)}>
                 Fechar

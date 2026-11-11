@@ -182,6 +182,28 @@ export function pickLeadForImportedMeeting(input: {
   return input.fallbackLeadId;
 }
 
+/** Eventos órfãos (Agenda Google) que na verdade pertencem a um contato do inbox. */
+export function orphanMeetingBelongsToContact(input: {
+  title: string;
+  attendeeEmail: string;
+  attendees: string[];
+  contactName: string;
+  contactEmails: string[];
+}) {
+  const emails = new Set(input.contactEmails.map(cleanEmail).filter(Boolean));
+  for (const email of [input.attendeeEmail, ...input.attendees]) {
+    const clean = cleanEmail(email);
+    if (clean && emails.has(clean)) return true;
+  }
+  const name = input.contactName.trim().toLocaleLowerCase("pt-BR");
+  const title = input.title.trim().toLocaleLowerCase("pt-BR");
+  if (name.length < 3 || !title) return false;
+  if (title === name) return true;
+  if (name.includes(" ") && title.includes(name)) return true;
+  const tokens = title.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return name.length >= 4 && !name.includes(" ") && tokens.includes(name);
+}
+
 export function mergeGoogleEvents(left: GoogleEventShape[], right: GoogleEventShape[]) {
   const map = new Map<string, GoogleEventShape>();
   for (const event of [...left, ...right]) {

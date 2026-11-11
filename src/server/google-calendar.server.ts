@@ -27,6 +27,7 @@ import {
   lastMeetingFields,
   meetUrlFromEvent,
   mergeGoogleEvents,
+  orphanMeetingBelongsToContact,
   overlapsBusy,
   pickLeadForImportedMeeting,
   remoteMeetingPatch,
@@ -762,6 +763,22 @@ async function syncConnection(organizationId: string, connection: Row) {
     for (const event of page.events) {
       const local = event.id ? byEvent.get(event.id) : undefined;
       if (local) {
+        if (!fallbackLeadId) fallbackLeadId = await ensureGoogleAgendaLead(organizationId);
+        if (!maps) maps = await leadMapsForImport(organizationId);
+        const draft = importedMeetingDraft(event);
+        const rematchedLeadId = draft
+          ? pickLeadForImportedMeeting({
+              emails: draft.emails,
+              summary: draft.title,
+              byEmail: maps.byEmail,
+              byName: maps.byName,
+              fallbackLeadId,
+            })
+          : cell(local, "lead_id");
+        const nextLeadId =
+          cell(local, "lead_id") === fallbackLeadId && rematchedLeadId && rematchedLeadId !== fallbackLeadId
+            ? rematchedLeadId
+            : cell(local, "lead_id");
         const patch = remoteMeetingPatch({
           startAt: cell(local, "start_at"),
           endAt: cell(local, "end_at"),
@@ -769,13 +786,18 @@ async function syncConnection(organizationId: string, connection: Row) {
           meetUrl: cell(local, "meet_url"),
           calendarUrl: cell(local, "calendar_url"),
         }, event);
-        if (!patch) continue;
+        if (!patch && nextLeadId === cell(local, "lead_id")) continue;
         await from("lead_meetings").update({
-          status: patch.status,
-          start_at: patch.startAt,
-          end_at: patch.endAt,
-          meet_url: patch.meetUrl || null,
-          calendar_url: patch.calendarUrl || null,
+          ...(patch
+            ? {
+                status: patch.status,
+                start_at: patch.startAt,
+                end_at: patch.endAt,
+                meet_url: patch.meetUrl || null,
+                calendar_url: patch.calendarUrl || null,
+              }
+            : {}),
+          lead_id: nextLeadId,
           updated_at: new Date().toISOString(),
         }).eq("id", cell(local, "id")).eq("organization_id", organizationId);
         continue;
@@ -838,11 +860,63 @@ async function syncQuietly(organizationId: string, userId: string, manager: bool
   }
 }
 
+async function contactEmailsForLead(organizationId: string, leadId: string) {
+  const intake = await from("contracting_intakes")
+    .select("representative_email")
+    .eq("organization_id", organizationId)
+    .eq("contact_id", leadId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const email = cleanEmail(cell(intake.data ?? {}, "representative_email"));
+  return email ? [email] : [];
+}
+
+async function rematchOrphanMeetingsForLead(organizationId: string, leadId: string, contactName: string) {
+  const fallbackId = await ensureGoogleAgendaLead(organizationId);
+  if (!fallbackId || fallbackId === leadId) return;
+  const orphans = await rows(
+    from("lead_meetings")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .eq("lead_id", fallbackId)
+      .eq("status", "scheduled")
+      .limit(100),
+  );
+  if (!orphans.length) return;
+  const contactEmails = await contactEmailsForLead(organizationId, leadId);
+  for (const row of orphans) {
+    if (
+      !orphanMeetingBelongsToContact({
+        title: cell(row, "title"),
+        attendeeEmail: cell(row, "attendee_email"),
+        attendees: emailsOf(row.attendees),
+        contactName,
+        contactEmails,
+      })
+    ) {
+      continue;
+    }
+    await from("lead_meetings")
+      .update({ lead_id: leadId, updated_at: new Date().toISOString() })
+      .eq("id", cell(row, "id"))
+      .eq("organization_id", organizationId);
+  }
+}
+
 export async function listLeadMeetings(userId: string, leadId = "") {
   const gate = leadId ? await accessAny(userId, ["inbox", "schedules"]) : await access(userId, "schedules");
-  await requireMmsMaster(gate.organizationId, gate.roleNames);
-  if (leadId) await leadInOrg(gate.organizationId, leadId);
+  if (leadId) await requireMms(gate.organizationId);
+  else await requireMmsMaster(gate.organizationId, gate.roleNames);
+  let contactName = "";
+  if (leadId) {
+    const lead = await leadInOrg(gate.organizationId, leadId);
+    contactName = cell(lead, "name");
+  }
   await syncQuietly(gate.organizationId, userId, gate.manager);
+  if (leadId && contactName) {
+    await rematchOrphanMeetingsForLead(gate.organizationId, leadId, contactName).catch(() => null);
+  }
   let query = from("lead_meetings").select("*").eq("organization_id", gate.organizationId);
   if (leadId) query = query.eq("lead_id", leadId).eq("status", "scheduled").order("start_at", { ascending: false }).limit(20);
   else {

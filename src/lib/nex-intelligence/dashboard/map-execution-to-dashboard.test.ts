@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { MetaAiExecutionDetail } from "@/lib/meta-ai-calibration";
-import { mapExecutionToDashboard } from "@/lib/nex-intelligence/dashboard/map-execution-to-dashboard";
+import {
+  buildOptimizationSplitComparison,
+  mapExecutionToDashboard,
+} from "@/lib/nex-intelligence/dashboard/map-execution-to-dashboard";
+import type { DailySeriesPoint } from "@/lib/nex-intelligence/dashboard/types";
 
 function baseDetail(overrides?: Partial<MetaAiExecutionDetail>): MetaAiExecutionDetail {
   return {
@@ -173,5 +177,69 @@ describe("mapExecutionToDashboard", () => {
     const view = mapExecutionToDashboard(null);
     expect(view.executionId).toBeNull();
     expect(view.metrics.every((metric) => metric.value === null)).toBe(true);
+  });
+});
+
+describe("buildOptimizationSplitComparison", () => {
+  const series: DailySeriesPoint[] = [
+    {
+      date: "2026-11-07",
+      results: 10,
+      spend: 50,
+      clicks: 20,
+      impressions: 1000,
+      ctr: 2,
+      cpc: 2.5,
+      cpm: 50,
+      cost_per_result: 5,
+    },
+    {
+      date: "2026-11-08",
+      results: 10,
+      spend: 50,
+      clicks: 20,
+      impressions: 1000,
+      ctr: 2,
+      cpc: 2.5,
+      cpm: 50,
+      cost_per_result: 5,
+    },
+    {
+      date: "2026-11-09",
+      results: 30,
+      spend: 60,
+      clicks: 60,
+      impressions: 2000,
+      ctr: 3,
+      cpc: 1,
+      cpm: 30,
+      cost_per_result: 2,
+    },
+    {
+      date: "2026-11-10",
+      results: 30,
+      spend: 60,
+      clicks: 60,
+      impressions: 2000,
+      ctr: 3,
+      cpc: 1,
+      cpm: 30,
+      cost_per_result: 2,
+    },
+  ];
+
+  it("compara CTR agregado antes e depois do marco de otimização", () => {
+    const comparisons = buildOptimizationSplitComparison(series, "2026-11-09T16:48:00.000Z");
+    const ctr = comparisons.find((row) => row.metricKey === "ctr");
+    expect(ctr?.comparisonStatus).toBe("VALID");
+    // Antes 07–08: 40/2000 = 2%; Depois 09–10: 120/4000 = 3%
+    expect(ctr?.before?.value).toBeCloseTo(2, 5);
+    expect(ctr?.after?.value).toBeCloseTo(3, 5);
+    expect(ctr?.pointsDelta).toBeCloseTo(1, 5);
+  });
+
+  it("fica insuficiente sem dias dos dois lados do marco", () => {
+    const onlyAfter = series.filter((point) => point.date >= "2026-11-09");
+    expect(buildOptimizationSplitComparison(onlyAfter, "2026-11-09T16:48:00.000Z")).toEqual([]);
   });
 });

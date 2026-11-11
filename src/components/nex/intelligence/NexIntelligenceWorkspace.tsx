@@ -28,6 +28,7 @@ import {
 } from "@/lib/meta.functions";
 import type { MetaPeriod } from "@/lib/meta-access";
 import {
+  buildOptimizationSplitComparison,
   buildPeriodOverPeriodComparison,
   fillDailySeriesGaps,
   mapExecutionToDashboard,
@@ -257,6 +258,24 @@ export function NexIntelligenceWorkspace() {
     : periodComparisons.length > 0
       ? periodComparisons
       : dashboard.comparisons;
+
+  const latestOptimizationMarker = useMemo(() => {
+    if (!dashboard.markers.length) return null;
+    return [...dashboard.markers].sort(
+      (left, right) => Date.parse(right.effectiveAt) - Date.parse(left.effectiveAt),
+    )[0] ?? null;
+  }, [dashboard.markers]);
+
+  const optimizationComparisons = useMemo(
+    () =>
+      buildOptimizationSplitComparison(
+        dashboard.series,
+        latestOptimizationMarker?.effectiveAt,
+        dashboard.periodStart,
+        dashboard.periodEnd,
+      ),
+    [dashboard.series, dashboard.periodStart, dashboard.periodEnd, latestOptimizationMarker],
+  );
 
   const mapEventRows = useCallback((rows: Array<Record<string, unknown>>): OptimizationMarker[] => {
     return rows.map((row) => ({
@@ -1268,29 +1287,43 @@ export function NexIntelligenceWorkspace() {
             <div className={`${ni.card} p-4`}>
               <h3 className={ni.title}>Impacto no CTR</h3>
               {(() => {
-                const ctr = dashboard.comparisons.find((row) => row.metricKey === "ctr");
-                if (!ctr || ctr.comparisonStatus !== "VALID") {
+                const ctr = optimizationComparisons.find((row) => row.metricKey === "ctr");
+                if (!latestOptimizationMarker) {
                   return (
                     <p className={`mt-4 ${ni.muted}`}>
                       Sem janela antes/depois equivalente. Marcos ainda não persistidos.
                     </p>
                   );
                 }
+                if (!ctr || ctr.comparisonStatus !== "VALID") {
+                  return (
+                    <p className={`mt-4 ${ni.muted}`}>
+                      Sem dados suficientes antes e depois de{" "}
+                      {formatShortDate(latestOptimizationMarker.effectiveAt)}.
+                    </p>
+                  );
+                }
+                const badgeTone =
+                  ctr.assessment === "IMPROVED"
+                    ? ni.badgePos
+                    : ctr.assessment === "WORSENED"
+                      ? ni.badgeNeg
+                      : ni.badgeNeu;
                 return (
                   <div className="mt-4 space-y-3">
                     <p className={ni.muted}>
-                      Antes:{" "}
+                      Antes (antes de {formatShortDate(latestOptimizationMarker.effectiveAt)}):{" "}
                       <span className="text-white">
                         {ctr.before?.value?.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%
                       </span>
                     </p>
                     <p className={ni.muted}>
-                      Depois:{" "}
+                      Depois (a partir de {formatShortDate(latestOptimizationMarker.effectiveAt)}):{" "}
                       <span className="text-white">
                         {ctr.after?.value?.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%
                       </span>
                     </p>
-                    <span className={ni.badgePos}>
+                    <span className={badgeTone}>
                       {ctr.pointsDelta != null
                         ? `${ctr.pointsDelta > 0 ? "+" : ""}${ctr.pointsDelta.toLocaleString("pt-BR", {
                             maximumFractionDigits: 2,
@@ -1303,19 +1336,19 @@ export function NexIntelligenceWorkspace() {
             </div>
             <div className={`${ni.card} p-4`}>
               <h3 className={ni.title}>Detalhes da otimização</h3>
-              {dashboard.markers[0] ? (
+              {latestOptimizationMarker ? (
                 <dl className="mt-4 space-y-2 text-sm">
                   <div>
                     <dt className={ni.label}>Data</dt>
-                    <dd>{formatShortDate(dashboard.markers[0].effectiveAt)}</dd>
+                    <dd>{formatShortDate(latestOptimizationMarker.effectiveAt)}</dd>
                   </div>
                   <div>
                     <dt className={ni.label}>Tipo</dt>
-                    <dd>{dashboard.markers[0].type}</dd>
+                    <dd>{latestOptimizationMarker.type}</dd>
                   </div>
                   <div>
                     <dt className={ni.label}>Descrição</dt>
-                    <dd>{dashboard.markers[0].description}</dd>
+                    <dd>{latestOptimizationMarker.description}</dd>
                   </div>
                 </dl>
               ) : (

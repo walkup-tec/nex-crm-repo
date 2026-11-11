@@ -409,6 +409,53 @@ export function buildPeriodOverPeriodComparison(
   return buildPointComparison(beforePoint, afterPoint, periodStart, periodEnd, dataStatus);
 }
 
+function sumSeriesField(
+  points: DailySeriesPoint[],
+  key: "results" | "spend" | "clicks" | "impressions",
+) {
+  let total = 0;
+  for (const point of points) {
+    const value = point[key];
+    if (typeof value === "number" && Number.isFinite(value)) total += value;
+  }
+  return total;
+}
+
+export function totalsFromSeriesPoints(points: DailySeriesPoint[]): PeriodTotals {
+  return totalsFromCounts({
+    results: sumSeriesField(points, "results"),
+    spend: sumSeriesField(points, "spend"),
+    clicks: sumSeriesField(points, "clicks"),
+    impressions: sumSeriesField(points, "impressions"),
+  });
+}
+
+/**
+ * Antes = dias estritamente anteriores à data efetiva da otimização.
+ * Depois = dias a partir da data efetiva (inclusive).
+ */
+export function buildOptimizationSplitComparison(
+  series: DailySeriesPoint[],
+  markerEffectiveAt: string | null | undefined,
+  periodStart: string | null = null,
+  periodEnd: string | null = null,
+  dataStatus: string | null = null,
+): MetricComparison[] {
+  if (!markerEffectiveAt || series.length < 1) return [];
+  const markerDay = markerEffectiveAt.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(markerDay)) return [];
+  const beforePoints = series.filter((point) => point.date < markerDay);
+  const afterPoints = series.filter((point) => point.date >= markerDay);
+  if (!beforePoints.length || !afterPoints.length) return [];
+  return buildPeriodOverPeriodComparison(
+    totalsFromSeriesPoints(afterPoints),
+    totalsFromSeriesPoints(beforePoints),
+    periodStart,
+    periodEnd,
+    dataStatus,
+  );
+}
+
 export function totalsFromCounts(input: {
   results: number;
   spend: number;

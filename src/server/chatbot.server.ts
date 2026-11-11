@@ -1029,16 +1029,8 @@ export async function deleteChatbotConnection(userId: string, connectionId: stri
   if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
   const current = await ownedConnection(organizationId, connectionId);
   const instanceName = cell(current, "instance_name");
-  const siblings = await rows(
-    table("chatbot_connections")
-      .select("id")
-      .eq("organization_id", organizationId)
-      .neq("id", connectionId)
-      .order("created_at", { ascending: true }),
-  );
-  const targetConnectionId = cell(siblings[0], "id") || null;
-  // Preserva conversas/contatos/kanban/compras/agenda: só troca o canal (ou deixa órfão até reconectar).
-  await reassignConversationsFromConnection(organizationId, connectionId, targetConnectionId);
+  // Deixa órfãs (não move para outro canal). Ao reconectar, o create readota essas conversas.
+  await reassignConversationsFromConnection(organizationId, connectionId, null);
   await releaseTeamsFromChannel(organizationId, connectionId);
   await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
   // Evolution pode demorar; a UI não deve ficar presa no modal. Limpeza em background.

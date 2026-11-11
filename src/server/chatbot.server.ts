@@ -478,7 +478,7 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   const scopedConversations = conversationRows.filter((row) => {
     const connectionId = cell(row, "connection_id");
     if (allowedConnections) {
-      // Conversas órfãs (canal excluído) ficam visíveis só para admin sem restrição de equipe.
+      // Atendente: só canais da equipe. Órfãs ficam para o admin.
       if (!connectionId) return false;
       if (!allowedConnections.has(connectionId)) return false;
     }

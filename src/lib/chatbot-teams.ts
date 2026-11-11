@@ -7,10 +7,10 @@ export function teamNeedsChannel(channelIds: readonly string[]) {
 }
 
 /**
- * Quem tem equipe/canal configurado fica restrito a esses canais (ver e responder).
- * Admin sem equipe continua com visão total. Atendente sem equipe não vê canais.
+ * Admin (master/client_admin) sempre vê todos os canais.
+ * Atendente comum fica restrito aos canais das equipes em que está.
  */
 export function attendantChannelScope(input: { admin: boolean; teamConnectionIds: readonly string[] }): "all" | "restricted" {
-  if (input.teamConnectionIds.some(Boolean)) return "restricted";
-  return input.admin ? "all" : "restricted";
+  if (input.admin) return "all";
+  return "restricted";
 }

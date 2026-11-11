@@ -224,18 +224,37 @@ export function Connections() {
   async function create() {
     setPending(true);
     setMessage("");
-    const result = await createChatbotConnectionFn({ data: { name, phone } });
-    setPending(false);
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
+    try {
+      const result = await createChatbotConnectionFn({ data: { name, phone } });
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+      setName("");
+      setPhone("");
+      qrIssuedAt.current = Date.now();
+      setActive(result.data.id);
+      setRows((current) => {
+        if (current.some((row) => row.id === result.data.id)) return current;
+        return [
+          {
+            id: result.data.id,
+            name: name.trim(),
+            phone: attendancePhone(phone),
+            status: result.data.qrCode ? "qr" : "waiting",
+            error: "",
+          },
+          ...current,
+        ];
+      });
+      window.dispatchEvent(new Event("nex-channel-status"));
+      await presentQr(result.data.qrCode);
+      void reload();
+    } catch {
+      setMessage("Não foi possível conectar o número.");
+    } finally {
+      setPending(false);
     }
-    setName("");
-    setPhone("");
-    qrIssuedAt.current = Date.now();
-    setActive(result.data.id);
-    await presentQr(result.data.qrCode);
-    await reload();
   }
 
   async function showQr(connectionId: string) {
@@ -382,11 +401,12 @@ export function Connections() {
               onClick={() => {
                 if (!removing) return;
                 const connectionId = removing.id;
+                const snapshot = removing;
                 setDialogError("");
                 setDeleting(true);
-                void deleteChatbotConnectionFn({ data: { connectionId } })
-                  .then((result) => {
-                    setDeleting(false);
+                void (async () => {
+                  try {
+                    const result = await deleteChatbotConnectionFn({ data: { connectionId } });
                     if (!result.ok) {
                       setDialogError(result.message);
                       return;
@@ -396,12 +416,15 @@ export function Connections() {
                     setMessage("");
                     setDialogError("");
                     setRemoving(null);
+                    window.dispatchEvent(new Event("nex-channel-status"));
                     void reload();
-                  })
-                  .catch(() => {
-                    setDeleting(false);
+                  } catch {
+                    setRemoving(snapshot);
                     setDialogError("Não foi possível excluir o número.");
-                  });
+                  } finally {
+                    setDeleting(false);
+                  }
+                })();
               }}
             >
               {deleting ? "Excluindo" : "Excluir"}

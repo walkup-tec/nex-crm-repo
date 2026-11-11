@@ -673,11 +673,22 @@ export const listChatbotFlowsFn = createServerFn({ method: "POST" })
 
 export const saveChatbotFlowFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { id: string; name: string; active: boolean; launch?: string; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number; media?: { kind: string; name: string; mime: string; path: string } }[]; edges: { id: string; source: string; target: string }[] }) => ({
+  .validator((data: {
+    id: string;
+    name: string;
+    active: boolean;
+    launch?: string;
+    connectionIds?: string[];
+    nodes: { id: string; label: string; kind: string; content: string; x: number; y: number; media?: { kind: string; name: string; mime: string; path: string } }[];
+    edges: { id: string; source: string; target: string }[];
+  }) => ({
     id: typeof data.id === "string" ? data.id : "",
     name: data.name,
     active: data.active === true,
     launch: data.launch === "manual" ? "manual" : "auto",
+    connectionIds: Array.isArray(data.connectionIds)
+      ? data.connectionIds.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean).slice(0, 40)
+      : [],
     nodes: Array.isArray(data.nodes) ? data.nodes.slice(0, 80) : [],
     edges: Array.isArray(data.edges) ? data.edges.slice(0, 120) : [],
   }))

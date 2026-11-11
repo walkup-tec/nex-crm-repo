@@ -312,8 +312,8 @@ function halfHourTimes(hours: number[]) {
 export function meetingWindowStarts(date: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [] as string[];
   const weekday = new Date(`${date}T12:00:00-03:00`).getUTCDay();
-  if (weekday >= 1 && weekday <= 4) return halfHourTimes([9, 10, 11, 12, 13, 14, 15]);
-  if (weekday === 5) return halfHourTimes([9, 10, 11]);
+  // Seg–sex: 09:00–15:30 (horário de São Paulo), suporte e comercial.
+  if (weekday >= 1 && weekday <= 5) return halfHourTimes([9, 10, 11, 12, 13, 14, 15]);
   return [] as string[];
 }
 

@@ -12,9 +12,9 @@ import { isGhostButtonResponse, whatsappNumber } from "@/lib/low-balance";
 import type { Json } from "@/integrations/supabase/types";
 import { chatbotMenuAllowed, chatbotMenusFromStorage, explicitChatbotMenus, type ChatbotMenuKey, type ChatbotMenuMap } from "@/lib/chatbot-menus";
 import { chatbotProfilesFromStorage, type ChatbotProfiles } from "@/lib/chatbot-profiles";
-import { businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowLaunch, flowMedia,
-  flowMenuButtonText, flowMenuOptions, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, startInboundFlow, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
-import { teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
+import { autoFlowChannelConflict, businessHours, chooseFlow, defaultBusinessHours, fillFlowVariables, flowConnectionIds, flowLaunch, flowMatchesConnection, flowMedia,
+  flowMenuButtonText, flowMenuOptions, flowsForConnection, flowSourceHandle, inboundFlowRun, manualFlowNotice, outsideBusinessHours, previewFlowTurns, startInboundFlow, stepFlow, type BusinessHours, type CrmSaveField, type FlowAction, type FlowMedia, type FlowMenuOption, type FlowRun, type SavedFlow } from "@/lib/chatbot-flow";
+import { attendantChannelScope, teamChannelsAfterRemoval } from "@/lib/chatbot-teams";
 import {
   attendancePhone,
   chatbotInstanceName,
@@ -355,15 +355,20 @@ function scheduleWhatsappName(instanceName: string, name: string) {
 
 async function applyEvolutionStabilitySettings(instanceName: string) {
   if (!instanceName) return;
-  await evo(`/settings/set/${encodeURIComponent(instanceName)}`, "POST", {
-    rejectCall: true,
-    msgCall: "Não posso atender ligações neste número.",
-    groupsIgnore: false,
-    alwaysOnline: true,
-    readMessages: false,
-    syncFullHistory: false,
-    readStatus: false,
-  }).catch(() => null);
+  await evo(
+    `/settings/set/${encodeURIComponent(instanceName)}`,
+    "POST",
+    {
+      rejectCall: true,
+      msgCall: "Não posso atender ligações neste número.",
+      groupsIgnore: false,
+      alwaysOnline: true,
+      readMessages: false,
+      syncFullHistory: false,
+      readStatus: false,
+    },
+    8000,
+  ).catch(() => null);
 }
 
 function webhookUrl() {
@@ -381,7 +386,7 @@ function webhookBody() {
       // Include media bytes in MESSAGES_UPSERT so the inbox can show them without a late getBase64 round-trip.
       base64: true,
       headers: { apikey: key, authorization: `Bearer ${key}` },
-      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CONTACTS_UPDATE"],
+      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_REACTION", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CONTACTS_UPDATE"],
     },
   };
 }
@@ -407,7 +412,7 @@ function scheduleWebhookSync(connections: Record<string, unknown>[]) {
 }
 
 async function findEvolutionInstance(instanceName: string) {
-  const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
+  const listed = await evo("/instance/fetchInstances", "GET", undefined, 8000).catch(() => null);
   if (!Array.isArray(listed)) return null;
   const found = listed.find(
     (item) => item && typeof item === "object" && evolutionInstanceNameOf(item as Record<string, unknown>) === instanceName,
@@ -416,7 +421,7 @@ async function findEvolutionInstance(instanceName: string) {
 }
 
 async function whatsappAlreadyRegistered(phone: string) {
-  const listed = await evo("/instance/fetchInstances", "GET").catch(() => null);
+  const listed = await evo("/instance/fetchInstances", "GET", undefined, 8000).catch(() => null);
   return evolutionNumberInUse(listed, phone);
 }
 
@@ -469,12 +474,12 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
     rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(800)),
   ]);
-  const allowedConnections = admin ? null : await teamConnectionIds(userId, organizationId);
+  const allowedConnections = await connectionScope(userId, organizationId, admin);
   const scopedConversations = conversationRows.filter((row) => {
     const connectionId = cell(row, "connection_id");
     if (allowedConnections) {
-      // Conversas órfãs (canal excluído) ficam visíveis só para admin até reconectar.
-      if (!connectionId) return admin;
+      // Conversas órfãs (canal excluído) ficam visíveis só para admin sem restrição de equipe.
+      if (!connectionId) return false;
       if (!allowedConnections.has(connectionId)) return false;
     }
     return inboxVisible({ assigneeId: cell(row, "assignee_id"), userId, admin });
@@ -571,16 +576,21 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
         status: cell(row, "status") as ChatbotConnectionStatus,
         error: cell(row, "last_error"),
       })),
-    contacts: contactRows.map((row) => ({
-      id: cell(row, "id"),
-      name: cell(row, "name"),
-      phone: cell(row, "phone"),
-      avatarUrl: avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
-      botsDisabled: row["bots_disabled"] === true,
-      tags: tagsByContact.get(cell(row, "id")) ?? [],
-      products: productsByContact.get(cell(row, "id")) ?? [],
-      stage: cell(row, "stage_name"),
-    })),
+    contacts: contactRows
+      .filter((row) => {
+        if (!allowedConnections) return true;
+        return scopedConversations.some((conversation) => cell(conversation, "contact_id") === cell(row, "id"));
+      })
+      .map((row) => ({
+        id: cell(row, "id"),
+        name: cell(row, "name"),
+        phone: cell(row, "phone"),
+        avatarUrl: avatarCache.get(cell(row, "id")) ?? cell(row, "avatar_url"),
+        botsDisabled: row["bots_disabled"] === true,
+        tags: tagsByContact.get(cell(row, "id")) ?? [],
+        products: productsByContact.get(cell(row, "id")) ?? [],
+        stage: cell(row, "stage_name"),
+      })),
     catalogs,
     conversations: ordered.map(({ row, pinned, updatedAt }) => {
       const assigneeId = cell(row, "assignee_id");
@@ -630,17 +640,25 @@ export async function createChatbotConnection(userId: string, name: string, phon
     fail("Esse número já está na API WhatsApp. Use o card existente e leia o QR Code uma única vez.");
   }
   const instanceName = chatbotInstanceName(organizationId);
-  await evo("/instance/create", "POST", {
-    instanceName,
-    qrcode: true,
-    integration: "WHATSAPP-BAILEYS",
-    number,
-  });
-  await applyEvolutionStabilitySettings(instanceName);
-  const webhookReady = await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody())
-    .then(() => true)
-    .catch(() => false);
-  const qr = evolutionQrImage(await evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET"));
+  await evo(
+    "/instance/create",
+    "POST",
+    {
+      instanceName,
+      qrcode: true,
+      integration: "WHATSAPP-BAILEYS",
+      number,
+    },
+    15000,
+  );
+  const [, webhookReady, connectBody] = await Promise.all([
+    applyEvolutionStabilitySettings(instanceName),
+    evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody(), 8000)
+      .then(() => true)
+      .catch(() => false),
+    evo(`/instance/connect/${encodeURIComponent(instanceName)}`, "GET", undefined, 12000).catch(() => null),
+  ]);
+  const qr = evolutionQrImage(connectBody);
   const inserted = await table("chatbot_connections")
     .insert({
       organization_id: organizationId,
@@ -829,69 +847,76 @@ async function reassignConversationsFromConnection(
   toConnectionId: string | null,
 ) {
   if (fromConnectionId && toConnectionId && fromConnectionId === toConnectionId) return;
+  const now = new Date().toISOString();
 
-  let query = table("chatbot_conversations")
-    .select("id, contact_id, connection_id")
-    .eq("organization_id", organizationId);
-  query = fromConnectionId
-    ? query.eq("connection_id", fromConnectionId)
-    : query.is("connection_id", null);
-  const sourceRows = await rows(query);
+  // Sem destino: orphan em lote (ex.: excluir o único número).
+  if (fromConnectionId && !toConnectionId) {
+    await done(
+      table("chatbot_conversations")
+        .update({ connection_id: null, updated_at: now })
+        .eq("organization_id", organizationId)
+        .eq("connection_id", fromConnectionId),
+    );
+    return;
+  }
+
+  // Adotar órfãos em lote (ex.: conectar número novo — destino ainda sem conversas).
+  if (!fromConnectionId && toConnectionId) {
+    await done(
+      table("chatbot_conversations")
+        .update({ connection_id: toConnectionId, updated_at: now })
+        .eq("organization_id", organizationId)
+        .is("connection_id", null),
+    );
+    return;
+  }
+
+  if (!fromConnectionId || !toConnectionId) return;
+
+  const [sourceRows, targetRows] = await Promise.all([
+    rows(
+      table("chatbot_conversations")
+        .select("id, contact_id")
+        .eq("organization_id", organizationId)
+        .eq("connection_id", fromConnectionId),
+    ),
+    rows(
+      table("chatbot_conversations")
+        .select("id, contact_id")
+        .eq("organization_id", organizationId)
+        .eq("connection_id", toConnectionId),
+    ),
+  ]);
   if (!sourceRows.length) return;
 
+  const targetByContact = new Map(
+    targetRows.map((row) => [cell(row, "contact_id"), cell(row, "id")] as const).filter(([contactId, id]) => contactId && id),
+  );
+  const moveIds: string[] = [];
+  const merges: Array<{ sourceId: string; targetId: string }> = [];
   for (const source of sourceRows) {
     const conversationId = cell(source, "id");
     const contactId = cell(source, "contact_id");
     if (!conversationId || !contactId) continue;
-
-    if (!toConnectionId) {
-      const orphaned = await table("chatbot_conversations")
-        .update({ connection_id: null, updated_at: new Date().toISOString() })
-        .eq("id", conversationId)
-        .eq("organization_id", organizationId)
-        .select("id")
-        .maybeSingle();
-      if (orphaned.error) fail(schemaMessage(orphaned.error.message));
-      continue;
+    const existing = targetByContact.get(contactId) ?? "";
+    if (conversationReassignAction(Boolean(existing) && existing !== conversationId) === "merge") {
+      merges.push({ sourceId: conversationId, targetId: existing });
+    } else {
+      moveIds.push(conversationId);
     }
+  }
 
-    const existing = await table("chatbot_conversations")
-      .select("id")
-      .eq("organization_id", organizationId)
-      .eq("connection_id", toConnectionId)
-      .eq("contact_id", contactId)
-      .maybeSingle();
-    if (existing.error) fail(schemaMessage(existing.error.message));
-
-    const targetId = cell(existing.data, "id");
-    const action = conversationReassignAction(Boolean(targetId) && targetId !== conversationId);
-
-    if (action === "move" || !targetId) {
-      const moved = await table("chatbot_conversations")
-        .update({ connection_id: toConnectionId, updated_at: new Date().toISOString() })
-        .eq("id", conversationId)
+  for (let index = 0; index < moveIds.length; index += 100) {
+    const chunk = moveIds.slice(index, index + 100);
+    await done(
+      table("chatbot_conversations")
+        .update({ connection_id: toConnectionId, updated_at: now })
         .eq("organization_id", organizationId)
-        .select("id")
-        .maybeSingle();
-      if (moved.error) {
-        if (!duplicate(moved.error)) fail(schemaMessage(moved.error.message));
-        // Corrida: destino passou a existir — mescla abaixo.
-        const again = await table("chatbot_conversations")
-          .select("id")
-          .eq("organization_id", organizationId)
-          .eq("connection_id", toConnectionId)
-          .eq("contact_id", contactId)
-          .neq("id", conversationId)
-          .maybeSingle();
-        if (again.error) fail(schemaMessage(again.error.message));
-        const mergeInto = cell(again.data, "id");
-        if (!mergeInto) fail(schemaMessage(moved.error.message));
-        await mergeConversationInto(organizationId, conversationId, mergeInto);
-      }
-      continue;
-    }
-
-    await mergeConversationInto(organizationId, conversationId, targetId);
+        .in("id", chunk),
+    );
+  }
+  for (const item of merges) {
+    await mergeConversationInto(organizationId, item.sourceId, item.targetId);
   }
 }
 
@@ -1003,6 +1028,7 @@ export async function deleteChatbotConnection(userId: string, connectionId: stri
   const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
   const current = await ownedConnection(organizationId, connectionId);
+  const instanceName = cell(current, "instance_name");
   const siblings = await rows(
     table("chatbot_connections")
       .select("id")
@@ -1013,27 +1039,21 @@ export async function deleteChatbotConnection(userId: string, connectionId: stri
   const targetConnectionId = cell(siblings[0], "id") || null;
   // Preserva conversas/contatos/kanban/compras/agenda: só troca o canal (ou deixa órfão até reconectar).
   await reassignConversationsFromConnection(organizationId, connectionId, targetConnectionId);
-  await removeEvolutionInstance(cell(current, "instance_name"));
   await releaseTeamsFromChannel(organizationId, connectionId);
   await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
+  // Evolution pode demorar; a UI não deve ficar presa no modal. Limpeza em background.
+  void removeEvolutionInstance(instanceName).catch((error) => {
+    console.error("connection_evolution_delete", error instanceof Error ? error.message : "failed");
+  });
 }
 
 async function evolutionDeleteAccepted(instanceName: string) {
-  let accepted = false;
   try {
-    await evo(`/instance/delete/${encodeURIComponent(instanceName)}`, "DELETE");
-    accepted = true;
+    await evo(`/instance/delete/${encodeURIComponent(instanceName)}`, "DELETE", undefined, 8000);
   } catch {
-    if (!(await findEvolutionInstance(instanceName))) return true;
+    /* verify below */
   }
-  if (!(await findEvolutionInstance(instanceName))) return true;
-  try {
-    await evo(`/instance/delete/${encodeURIComponent(instanceName)}`, "DELETE");
-    accepted = true;
-  } catch {
-    return !(await findEvolutionInstance(instanceName));
-  }
-  return accepted || !(await findEvolutionInstance(instanceName));
+  return !(await findEvolutionInstance(instanceName));
 }
 
 async function removeEvolutionInstance(instanceName: string) {
@@ -1041,10 +1061,10 @@ async function removeEvolutionInstance(instanceName: string) {
   const current = await findEvolutionInstance(instanceName);
   if (!current) return;
   if (!evolutionInstanceClosed(current)) {
-    await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE").catch(() => null);
+    await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE", undefined, 8000).catch(() => null);
   }
   if (await evolutionDeleteAccepted(instanceName)) return;
-  await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE").catch(() => null);
+  await evo(`/instance/logout/${encodeURIComponent(instanceName)}`, "DELETE", undefined, 8000).catch(() => null);
   if (await evolutionDeleteAccepted(instanceName)) return;
   if (await findEvolutionInstance(instanceName)) fail("Não foi possível excluir o número na Evolution.");
 }
@@ -1151,10 +1171,7 @@ export async function sendChatbotMessage(
   const phone = whatsappGroupJid(storedPhone) || whatsappNumber(storedPhone) || "";
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   let quotedPayload: ReturnType<typeof whatsappQuotedTextPayload> | null = null;
   let replyToExternalId = "";
@@ -1305,10 +1322,7 @@ export async function sendChatbotMedia(userId: string, conversationId: string, i
   const phone = whatsappGroupJid(storedPhone) || whatsappNumber(storedPhone) || "";
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   const instanceName = cell(connection, "instance_name");
   const instance = encodeURIComponent(instanceName);
@@ -1384,10 +1398,7 @@ export async function sendChatbotCadastro(userId: string, conversationId: string
   const phone = whatsappNumber(storedPhone) ?? storedPhone;
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   const sent = await evo(
     `/message/sendButtons/${encodeURIComponent(cell(connection, "instance_name"))}`,
@@ -1463,10 +1474,7 @@ export async function sendChatbotArtes(userId: string, conversationId: string) {
   const phone = whatsappNumber(storedPhone) ?? storedPhone;
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   const dir = artesDirectory();
   const names = artesFileNames(readdirSync(dir));
@@ -1553,10 +1561,7 @@ export async function sendChatbotMinuta(userId: string, conversationId: string) 
   const phone = whatsappNumber(storedPhone) ?? storedPhone;
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   const pdf = minutaPdfBase64();
   const sent = await evo(
@@ -1642,10 +1647,7 @@ export async function sendChatbotProposta(userId: string, conversationId: string
   const phone = whatsappNumber(storedPhone) ?? storedPhone;
   if (!phone) fail("Esse contato não tem um telefone válido.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
   const instance = encodeURIComponent(cell(connection, "instance_name"));
   const pdf = assetPdfBase64("nex-apresentacao.pdf", "A proposta não está disponível no servidor.");
@@ -1757,10 +1759,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
   if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
   const contactId = cell(conversation.data, "contact_id");
   const contact = await ownedContact(organizationId, contactId);
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(conversation.data, "connection_id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(conversation.data, "connection_id"));
   if (assinaturaInFlight.has(contactId)) {
     fail("Já existe um envio de assinatura em andamento para este contato. Aguarde a conclusão.");
   }
@@ -1934,10 +1933,7 @@ async function requireVisibleConversation(userId: string, conversationId: string
   if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
   const assignee = cell(conversation.data, "assignee_id");
   if (!inboxVisible({ assigneeId: assignee, userId, admin })) fail("Essa conversa está com outro atendente.");
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(conversation.data, "connection_id"))) fail("Essa conversa não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(conversation.data, "connection_id"));
   return { organizationId, admin, conversation: conversation.data };
 }
 
@@ -2843,9 +2839,8 @@ async function ownedChatMessage(userId: string, messageId: string) {
   if (conversation.error) fail(schemaMessage(conversation.error.message));
   if (!conversation.data) fail("Essa conversa não pertence à sua empresa.");
   const connection = await ownedConnection(organizationId, cell(conversation.data, "connection_id"));
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"));
   if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
     const assignee = cell(conversation.data, "assignee_id");
     if (assignee && assignee !== userId) fail("Essa conversa está com outro atendente.");
   }
@@ -3035,6 +3030,18 @@ async function teamConnectionIds(userId: string, organizationId: string) {
       .filter((row) => mine.has(cell(row, "id")))
       .flatMap((row) => channelsOfTeam(cell(row, "id"), cell(row, "connection_id"), loaded.links)),
   );
+}
+
+/** null = todos os canais; Set = só esses (ver inbox e responder pelo mesmo canal). */
+async function connectionScope(userId: string, organizationId: string, admin: boolean) {
+  const teamChannels = await teamConnectionIds(userId, organizationId);
+  if (attendantChannelScope({ admin, teamConnectionIds: [...teamChannels] }) === "all") return null;
+  return teamChannels;
+}
+
+async function assertConnectionAccess(userId: string, organizationId: string, admin: boolean, connectionId: string, message = "Essa conversa não pertence a uma equipe sua.") {
+  const allowed = await connectionScope(userId, organizationId, admin);
+  if (allowed && !allowed.has(connectionId)) fail(message);
 }
 
 async function ownedTeams(organizationId: string, teamIds: string[]) {
@@ -4292,7 +4299,7 @@ export async function callChatbotContact(userId: string, contactId: string) {
       .eq("organization_id", organizationId)
       .eq("contact_id", contactId),
   );
-  const allowed = admin ? null : await teamConnectionIds(userId, organizationId);
+  const allowed = await connectionScope(userId, organizationId, admin);
   const visible = [...conversations]
     .filter((row) => !allowed || allowed.has(cell(row, "connection_id")))
     .sort((left, right) => cell(right, "updated_at").localeCompare(cell(left, "updated_at")));
@@ -4312,9 +4319,9 @@ export async function callChatbotContact(userId: string, contactId: string) {
     }
     return { conversationId: cell(current, "id") };
   }
-  const connectionId = admin
-    ? cell((await rows(table("chatbot_connections").select("id").eq("organization_id", organizationId).order("created_at", { ascending: true })))[0], "id")
-    : [...(allowed ?? [])][0] ?? "";
+  const connectionId = allowed
+    ? [...allowed][0] ?? ""
+    : cell((await rows(table("chatbot_connections").select("id").eq("organization_id", organizationId).order("created_at", { ascending: true })))[0], "id");
   if (!connectionId) fail("Conecte um canal de WhatsApp antes de chamar o contato.");
   const conversationInsert = {
     organization_id: organizationId,
@@ -4406,10 +4413,7 @@ export async function startChatbotConversation(userId: string, input: { name: st
   if (!phone) fail("Informe um WhatsApp com DDD.");
   const { organizationId, admin } = await membership(userId, "inbox");
   const connection = await ownedConnection(organizationId, input.connectionId);
-  if (!admin) {
-    const allowed = await teamConnectionIds(userId, organizationId);
-    if (!allowed.has(cell(connection, "id"))) fail("Esse canal não pertence a uma equipe sua.");
-  }
+  await assertConnectionAccess(userId, organizationId, admin, cell(connection, "id"), "Esse canal não pertence a uma equipe sua.");
   const ready = cell(connection, "status") === "connected" ? connection : await promoteOpenConnection(connection);
   if (cell(ready, "status") !== "connected") fail("Conecte o canal de WhatsApp antes de iniciar a conversa.");
   const contactId = await contactIdForMessage(organizationId, phone, name, false);
@@ -4705,6 +4709,7 @@ function editorGraph(value: unknown) {
       return [{ id: cell(row, "id") || `${source}-${target}`, source, target, ...(handle ? { sourceHandle: handle } : {}) }];
     }),
     launch: flowLaunch(record),
+    connectionIds: flowConnectionIds(record),
   };
 }
 
@@ -4743,7 +4748,13 @@ async function loadOrganizationFlows(organizationId: string, activeOnly: boolean
   if (loaded.missing) return [];
   return loaded.rows
     .filter((row) => !activeOnly || row["active"] === true)
-    .map((row) => ({ id: cell(row, "id"), name: cell(row, "name"), launch: flowLaunch(row["graph"]), graph: flowGraph(row["graph"]) }));
+    .map((row) => ({
+      id: cell(row, "id"),
+      name: cell(row, "name"),
+      launch: flowLaunch(row["graph"]),
+      connectionIds: flowConnectionIds(row["graph"]),
+      graph: flowGraph(row["graph"]),
+    }));
 }
 
 async function showBotPresence(instanceName: string, number: string, text: string, audio = false) {
@@ -5151,13 +5162,23 @@ async function savedFlowById(organizationId: string, flowId: string) {
     fail(schemaMessage(row.error.message));
   }
   if (!row.data) return null;
-  return { id: cell(row.data, "id"), name: cell(row.data, "name"), launch: flowLaunch(row.data["graph"]), graph: flowGraph(row.data["graph"]) };
+  return {
+    id: cell(row.data, "id"),
+    name: cell(row.data, "name"),
+    launch: flowLaunch(row.data["graph"]),
+    connectionIds: flowConnectionIds(row.data["graph"]),
+    graph: flowGraph(row.data["graph"]),
+  };
 }
 
 async function executeConversationFlowOnce(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
-  const active = await loadActiveFlows(organizationId);
-  const manualFlow = manualFlowId && !active.some((flow) => flow.id === manualFlowId) ? await savedFlowById(organizationId, manualFlowId) : null;
-  const flows = manualFlow ? [...active, manualFlow] : [...active];
+  const connectionId = cell(connection, "id");
+  const active = flowsForConnection(await loadActiveFlows(organizationId), connectionId);
+  const manualFlow = manualFlowId ? await savedFlowById(organizationId, manualFlowId) : null;
+  if (manualFlow && !flowMatchesConnection(manualFlow, connectionId)) {
+    return { sent: false, owned: false };
+  }
+  const flows = manualFlow && !active.some((flow) => flow.id === manualFlow.id) ? [...active, manualFlow] : [...active];
   const stored = await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer, updated_at").eq("conversation_id", conversationId).maybeSingle();
   const storedRow = stored.error && /updated_at/i.test(stored.error.message)
     ? await table("chatbot_flow_runs").select("flow_id, node_id, status, wait_until, last_answer").eq("conversation_id", conversationId).maybeSingle()
@@ -5187,12 +5208,7 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   let chosen = manual ? chooseFlow(flows, { text, outsideHours, run, manualFlowId }) : null;
   let step = chosen ? stepFlow(chosen, null, { text, at, outsideHours, manual: true }) : { actions: [], run: null };
   if (!manual) {
-    let started = startInboundFlow(flows, { text, outsideHours, run, at });
-    if (!started) {
-      const saved = await loadSavedFlows(organizationId);
-      const extras = saved.filter((flow) => !flows.some((item) => item.id === flow.id));
-      started = startInboundFlow(extras, { text, outsideHours, run: null, at });
-    }
+    const started = startInboundFlow(flows, { text, outsideHours, run, at });
     if (!started) return { sent: false, owned: false };
     chosen = started.flow;
     step = started.step;
@@ -5270,7 +5286,16 @@ export async function listChatbotFlows(userId: string) {
   );
   return loaded.map((row) => {
     const graph = editorGraph(row["graph"]);
-    return { id: cell(row, "id"), name: cell(row, "name"), active: row["active"] === true, launch: graph.launch, updatedAt: cell(row, "updated_at"), nodes: graph.nodes, edges: graph.edges };
+    return {
+      id: cell(row, "id"),
+      name: cell(row, "name"),
+      active: row["active"] === true,
+      launch: graph.launch,
+      connectionIds: graph.connectionIds,
+      updatedAt: cell(row, "updated_at"),
+      nodes: graph.nodes,
+      edges: graph.edges,
+    };
   });
 }
 
@@ -5296,27 +5321,58 @@ export async function saveChatbotFlowMedia(userId: string, input: { name: string
 
 export async function saveChatbotFlow(
   userId: string,
-  input: { id: string; name: string; active: boolean; launch?: string; nodes: { id: string; label: string; kind: string; content: string; x: number; y: number }[]; edges: { id: string; source: string; target: string }[] },
+  input: {
+    id: string;
+    name: string;
+    active: boolean;
+    launch?: string;
+    connectionIds?: string[];
+    nodes: { id: string; label: string; kind: string; content: string; x: number; y: number }[];
+    edges: { id: string; source: string; target: string }[];
+  },
 ) {
   const name = catalogName(input.name, 80);
   if (!name) fail("O bot precisa de um nome com 2 a 80 caracteres.");
-  const graph = editorGraph({ nodes: input.nodes, edges: input.edges, launch: input.launch });
-  if (input.active === true) assertRunnableFlow(graph);
+  const connectionIds = flowConnectionIds({ connectionIds: input.connectionIds ?? [] });
+  const graph = editorGraph({ nodes: input.nodes, edges: input.edges, launch: input.launch, connectionIds });
+  if (input.active === true) {
+    if (!connectionIds.length) fail("Selecione ao menos um canal para o bot.");
+    assertRunnableFlow(graph);
+  }
   const { organizationId } = await membership(userId, "settings");
-  const payload = { name, active: input.active === true, graph, updated_at: new Date().toISOString() };
+  if (connectionIds.length) {
+    const channels = await rows(table("chatbot_connections").select("id").eq("organization_id", organizationId));
+    const known = new Set(channels.map((row) => cell(row, "id")));
+    if (connectionIds.some((id) => !known.has(id))) fail("Selecione apenas canais desta empresa.");
+  }
   const id = input.id.trim();
+  if (input.active === true && graph.launch !== "manual") {
+    const existing = await rows(table("chatbot_flows").select("id, active, graph").eq("organization_id", organizationId));
+    const conflict = autoFlowChannelConflict({
+      flowId: id,
+      connectionIds,
+      others: existing.map((row) => ({
+        id: cell(row, "id"),
+        active: row["active"] === true,
+        launch: flowLaunch(row["graph"]),
+        connectionIds: flowConnectionIds(row["graph"]),
+      })),
+    });
+    if (conflict) fail(conflict);
+  }
+  const payload = { name, active: input.active === true, graph, updated_at: new Date().toISOString() };
   if (id) {
     const updated = await table("chatbot_flows").update(payload).eq("id", id).eq("organization_id", organizationId).select("id, active").maybeSingle();
     if (duplicate(updated.error)) fail("Já existe um bot com esse nome.");
     if (updated.error) fail(schemaMessage(updated.error.message));
     if (!updated.data) fail("Esse bot não pertence à sua empresa.");
-    return { id, active: updated.data["active"] === true, launch: graph.launch };
+    return { id, active: updated.data["active"] === true, launch: graph.launch, connectionIds: graph.connectionIds };
   }
   const inserted = await table("chatbot_flows").insert({ ...payload, organization_id: organizationId }).select("id, active").maybeSingle();
   if (duplicate(inserted.error)) fail("Já existe um bot com esse nome.");
   if (inserted.error) fail(schemaMessage(inserted.error.message));
   if (!inserted.data) fail("Não foi possível gravar o bot.");
-  return { id: cell(inserted.data, "id"), active: inserted.data["active"] === true, launch: graph.launch };
+  return { id: cell(inserted.data, "id"), active: inserted.data["active"] === true, launch: graph.launch, connectionIds: graph.connectionIds };
 }
 
 export async function validateChatbotFlow(userId: string, input: { name: string; nodes: unknown; edges: unknown }) {

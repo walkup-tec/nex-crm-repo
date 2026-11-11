@@ -121,7 +121,7 @@ assert.equal(slot?.end, "2026-10-26T16:30:00.000Z");
 assert.equal(slot?.duration, 30);
 assert.equal(meetingSlot({ date: "2026-10-26", time: "13:30" }, now)?.start, "2026-10-26T16:30:00.000Z");
 assert.equal(meetingSlot({ date: "2026-10-23", time: "11:00" }, now), null);
-assert.equal(meetingSlot({ date: "2026-10-23", time: "15:00" }, now), null);
+assert.equal(meetingSlot({ date: "2026-10-23", time: "15:00" }, now)?.start, "2026-10-23T18:00:00.000Z");
 assert.equal(meetingSlot({ date: "2026-10-24", time: "10:00" }, now), null);
 const weekdayHours = [
   "09:00",
@@ -139,7 +139,7 @@ const weekdayHours = [
   "15:00",
   "15:30",
 ];
-assert.deepEqual(meetingWindowStarts("2026-10-23"), ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30"]);
+assert.deepEqual(meetingWindowStarts("2026-10-23"), weekdayHours);
 assert.deepEqual(meetingWindowStarts("2026-10-26"), weekdayHours);
 assert.deepEqual(meetingWindowStarts("2026-10-27"), weekdayHours);
 assert.equal(meetingSlot({ date: "2026-10-26", time: "09:00" }, now)?.start, "2026-10-26T12:00:00.000Z");
@@ -152,8 +152,16 @@ assert.equal(meetingCalendar(now).every((day) => {
   const weekday = new Date(`${day.date}T12:00:00-03:00`).getUTCDay();
   return weekday >= 1 && weekday <= 5;
 }), true);
-assert.equal(meetingChoices(now)[0]?.date, "2026-10-26");
-assert.deepEqual(meetingChoices(now)[0]?.times, weekdayHours);
+assert.equal(meetingChoices(now)[0]?.date, "2026-10-23");
+assert.deepEqual(meetingChoices(now)[0]?.times, [
+  "12:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+]);
 const painted = markMeetingCalendar(meetingCalendar(now), [{ start: "2026-10-26T16:00:00.000Z", end: "2026-10-26T16:30:00.000Z", note: "Marcelo" }]);
 const mondayWindows = painted.find((day) => day.date === "2026-10-26")?.windows ?? [];
 assert.equal(mondayWindows.find((window) => window.time === "13:00")?.state, "occupied");

@@ -1210,7 +1210,7 @@ export function evolutionQuotedContext(data: unknown): { stanzaId: string; previ
   return { stanzaId, preview };
 }
 
-/** Reação em messages.upsert (reactionMessage) ou messages.update. */
+/** Reação em messages.upsert (reactionMessage), messages.reaction ou messages.update. */
 export function evolutionReactionPayload(data: unknown): { targetId: string; emoji: string; fromMe: boolean } | null {
   const root = isRecord(data) ? data : {};
   const outerKey = isRecord(root["key"]) ? root["key"] : {};
@@ -1228,6 +1228,16 @@ export function evolutionReactionPayload(data: unknown): { targetId: string; emo
     if (!targetId) return null;
     return { targetId, emoji, fromMe };
   }
+  // Baileys/Evolution messages.reaction: { key: targetMessageKey, reaction: { text, key: reactorKey } }
+  const directReaction = isRecord(root["reaction"]) ? root["reaction"] : null;
+  if (directReaction && !isRecord(root["update"]) && ("text" in directReaction || isRecord(directReaction["key"]))) {
+    const targetId = typeof outerKey["id"] === "string" ? outerKey["id"].trim() : "";
+    if (!targetId) return null;
+    const emoji = typeof directReaction["text"] === "string" ? directReaction["text"] : "";
+    const reactorKey = isRecord(directReaction["key"]) ? directReaction["key"] : {};
+    const reactorFromMe = "fromMe" in reactorKey ? reactorKey["fromMe"] === true : fromMe;
+    return { targetId, emoji, fromMe: reactorFromMe };
+  }
   const update = isRecord(root["update"]) ? root["update"] : null;
   if (!update || (!("reaction" in update) && !isRecord(update["reactions"]))) return null;
   const targetId = typeof outerKey["id"] === "string" ? outerKey["id"].trim() : "";
@@ -1235,9 +1245,11 @@ export function evolutionReactionPayload(data: unknown): { targetId: string; emo
   const emoji =
     typeof update["reaction"] === "string"
       ? update["reaction"]
-      : isRecord(update["reactions"]) && typeof update["reactions"]["text"] === "string"
-        ? String(update["reactions"]["text"])
-        : "";
+      : isRecord(update["reaction"]) && typeof update["reaction"]["text"] === "string"
+        ? String(update["reaction"]["text"])
+        : isRecord(update["reactions"]) && typeof update["reactions"]["text"] === "string"
+          ? String(update["reactions"]["text"])
+          : "";
   return { targetId, emoji, fromMe };
 }
 

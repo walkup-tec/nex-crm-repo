@@ -204,12 +204,52 @@ export type FlowAction =
   | { type: "stop" };
 export type FlowStep = { actions: FlowAction[]; run: FlowRun | null };
 export type FlowLaunch = "auto" | "manual";
-export type SavedFlow = { id: string; name: string; graph: FlowGraph; launch?: FlowLaunch };
+export type SavedFlow = { id: string; name: string; graph: FlowGraph; launch?: FlowLaunch; connectionIds?: string[] };
 
 export function flowLaunch(value: unknown): FlowLaunch {
   if (value === "manual") return "manual";
   if (!value || typeof value !== "object") return "auto";
   return (value as Record<string, unknown>)["launch"] === "manual" ? "manual" : "auto";
+}
+
+export function flowConnectionIds(value: unknown): string[] {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const list = Array.isArray(record["connectionIds"])
+    ? record["connectionIds"]
+    : Array.isArray(value)
+      ? value
+      : [];
+  const ids: string[] = [];
+  for (const item of list) {
+    const id = typeof item === "string" ? item.trim() : "";
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/** Bot automático/manual só interage nos canais atribuídos. Sem canal = não dispara. */
+export function flowMatchesConnection(flow: Pick<SavedFlow, "connectionIds">, connectionId: string) {
+  if (!connectionId) return false;
+  return (flow.connectionIds ?? []).includes(connectionId);
+}
+
+export function flowsForConnection(flows: SavedFlow[], connectionId: string) {
+  return flows.filter((flow) => flowMatchesConnection(flow, connectionId));
+}
+
+/** Impede dois bots automáticos ativos no mesmo canal. */
+export function autoFlowChannelConflict(input: {
+  flowId: string;
+  connectionIds: readonly string[];
+  others: readonly { id: string; active: boolean; launch?: FlowLaunch; connectionIds?: readonly string[] }[];
+}) {
+  if (!input.connectionIds.length) return "";
+  for (const other of input.others) {
+    if (!other.active || other.id === input.flowId || other.launch === "manual") continue;
+    const hit = (other.connectionIds ?? []).find((id) => input.connectionIds.includes(id));
+    if (hit) return "Já existe um bot automático ativo neste canal. Cada canal só pode ter um bot automático.";
+  }
+  return "";
 }
 
 const emptyStep: FlowStep = { actions: [], run: null };

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chooseFlow,
+  autoFlowChannelConflict, flowConnectionIds, flowMatchesConnection, flowsForConnection,
   inboundFlowRun, clientFlowVariableTokens, cloneFlowSelection, crmSaveField, fillFlowVariables, flowDropPosition, flowMedia, flowMediaLabel, flowMenuButtonText,
   flowMenuOptions, insertFlowVariable, businessHours, manualFlowNotice, outsideBusinessHours, previewFlowTurns, startInboundFlow, stepFlow, waitMilliseconds, waitSetting, type FlowGraph, type SavedFlow } from "./chatbot-flow";
 import { applyMask, documentDigits, rgDigits } from "./masks";
@@ -506,3 +507,42 @@ assert.equal(
 assert.equal(queueNotice.actions.some((action) => action.type === "queue"), true);
 const secondHello = startInboundFlow([repeatMenuFlow], { text: "segunda mensagem", outsideHours: false, run: { flowId: "menu", nodeId: "ask", status: "done", waitUntil: 0, lastAnswer: "Ana" }, at: noon + 3000 });
 assert.equal(secondHello?.step.actions.filter((action) => action.type === "menu").length, 1);
+assert.deepEqual(flowConnectionIds({ connectionIds: [" canal-a ", "canal-b", "canal-a", ""] }), ["canal-a", "canal-b"]);
+assert.equal(flowMatchesConnection({ connectionIds: ["canal-a"] }, "canal-a"), true);
+assert.equal(flowMatchesConnection({ connectionIds: ["canal-a"] }, "canal-b"), false);
+assert.equal(flowMatchesConnection({ connectionIds: [] }, "canal-a"), false);
+assert.deepEqual(
+  flowsForConnection(
+    [
+      { id: "a", name: "A", graph, connectionIds: ["c1"] },
+      { id: "b", name: "B", graph, connectionIds: ["c2"] },
+      { id: "c", name: "C", graph, connectionIds: [] },
+    ],
+    "c1",
+  ).map((item) => item.id),
+  ["a"],
+);
+assert.equal(
+  autoFlowChannelConflict({
+    flowId: "novo",
+    connectionIds: ["c1"],
+    others: [{ id: "velho", active: true, launch: "auto", connectionIds: ["c1", "c2"] }],
+  }).length > 0,
+  true,
+);
+assert.equal(
+  autoFlowChannelConflict({
+    flowId: "novo",
+    connectionIds: ["c1"],
+    others: [{ id: "manual", active: true, launch: "manual", connectionIds: ["c1"] }],
+  }),
+  "",
+);
+assert.equal(
+  autoFlowChannelConflict({
+    flowId: "velho",
+    connectionIds: ["c1"],
+    others: [{ id: "velho", active: true, launch: "auto", connectionIds: ["c1"] }],
+  }),
+  "",
+);

@@ -1209,6 +1209,20 @@ assert.deepEqual(
   }),
   { targetId: "target-msg", emoji: "", fromMe: true },
 );
+assert.deepEqual(
+  evolutionReactionPayload({
+    key: { id: "target-msg", fromMe: false },
+    reaction: { text: "😂", key: { id: "react2", fromMe: false } },
+  }),
+  { targetId: "target-msg", emoji: "😂", fromMe: false },
+);
+assert.deepEqual(
+  evolutionReactionPayload({
+    key: { id: "target-msg", fromMe: true },
+    update: { reaction: { text: "🔥" } },
+  }),
+  { targetId: "target-msg", emoji: "🔥", fromMe: true },
+);
 assert.equal(evolutionReactionPayload({ key: { id: "x" }, update: { status: 3 } }), null);
 assert.deepEqual(applyMessageReaction([{ emoji: "👍", fromMe: false }], { emoji: "❤️", fromMe: false }), [{ emoji: "❤️", fromMe: false }]);
 assert.deepEqual(applyMessageReaction([{ emoji: "👍", fromMe: false }], { emoji: "", fromMe: false }), []);

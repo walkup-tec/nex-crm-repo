@@ -43,7 +43,16 @@ export type ChatbotSnapshot = {
     mediaMime: string;
     saved: boolean;
     internal: boolean;
+    replyToExternalId: string;
+    replyPreview: string;
+    reactions: ChatbotMessageReaction[];
+    externalId: string;
   }[];
+};
+
+export type ChatbotMessageReaction = {
+  emoji: string;
+  fromMe: boolean;
 };
 
 export function internalNote(value: string) {
@@ -279,8 +288,39 @@ export function shouldSyncEvolution(lastStartedAt: number, now: number) {
 
 const queuedLanes = new Map<string, Promise<void>>();
 
+export function normalizeEvolutionEvent(event: string) {
+  return event.trim().toLowerCase().replace(/_/g, ".");
+}
+
 export function acceptsInboundMessageEvent(event: string) {
-  return event.trim().toLowerCase().replace(/_/g, ".") === "messages.upsert";
+  return normalizeEvolutionEvent(event) === "messages.upsert";
+}
+
+export function acceptsInboundReactionEvent(event: string) {
+  const normalized = normalizeEvolutionEvent(event);
+  return normalized === "messages.update" || normalized === "messages.reaction";
+}
+
+export function applyMessageReaction(
+  current: ChatbotMessageReaction[],
+  next: { emoji: string; fromMe: boolean },
+): ChatbotMessageReaction[] {
+  const without = current.filter((item) => item.fromMe !== next.fromMe);
+  const emoji = next.emoji.trim();
+  if (!emoji) return without;
+  return [...without, { emoji, fromMe: next.fromMe }];
+}
+
+export function messageReactionsFromStorage(value: unknown): ChatbotMessageReaction[] {
+  if (!Array.isArray(value)) return [];
+  const list: ChatbotMessageReaction[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const emoji = typeof item.emoji === "string" ? item.emoji.trim() : "";
+    if (!emoji) continue;
+    list.push({ emoji, fromMe: item.fromMe === true });
+  }
+  return list;
 }
 
 export function inboundStartsBot(input: { fromMe: boolean; event: string }) {
@@ -598,6 +638,35 @@ export function attendancePhone(value: string) {
 
 export function whatsappTextPayload(phone: string, text: string) {
   return { number: phone, text, linkPreview: false };
+}
+
+export function whatsappQuotedTextPayload(
+  phone: string,
+  text: string,
+  quoted: { remoteJid: string; fromMe: boolean; id: string; preview: string },
+) {
+  return {
+    ...whatsappTextPayload(phone, text),
+    quoted: {
+      key: {
+        remoteJid: quoted.remoteJid,
+        fromMe: quoted.fromMe,
+        id: quoted.id,
+      },
+      message: {
+        conversation: quoted.preview.slice(0, 500) || " ",
+      },
+    },
+  };
+}
+
+export function whatsappRemoteJid(phone: string) {
+  const group = whatsappGroupJid(phone);
+  if (group) return group;
+  if (phone.includes("@")) return phone.trim();
+  const number = phone.replace(/\D/g, "");
+  if (!number) return "";
+  return `${number}@s.whatsapp.net`;
 }
 
 export function whatsappFlowTextPayload(phone: string, text: string, delay = 0) {
@@ -1098,6 +1167,78 @@ export function evolutionIncomingMessages(data: unknown): Record<string, unknown
   }
   if (data["key"] || data["message"]) return [data];
   return [];
+}
+
+function quotedPreviewFromMessage(quoted: Record<string, unknown>) {
+  if (typeof quoted["conversation"] === "string" && quoted["conversation"].trim()) return quoted["conversation"].trim().slice(0, 280);
+  if (isRecord(quoted["extendedTextMessage"]) && typeof quoted["extendedTextMessage"]["text"] === "string") {
+    return String(quoted["extendedTextMessage"]["text"]).trim().slice(0, 280);
+  }
+  for (const key of ["imageMessage", "videoMessage", "documentMessage", "audioMessage"] as const) {
+    const node = quoted[key];
+    if (!isRecord(node)) continue;
+    const caption = typeof node["caption"] === "string" ? node["caption"].trim() : "";
+    if (caption) return caption.slice(0, 280);
+    if (key === "imageMessage") return "[imagem]";
+    if (key === "videoMessage") return "[vídeo]";
+    if (key === "audioMessage") return "[áudio]";
+    if (key === "documentMessage") return typeof node["fileName"] === "string" && node["fileName"] ? String(node["fileName"]).slice(0, 280) : "[documento]";
+  }
+  return "";
+}
+
+function evolutionContextInfo(message: Record<string, unknown>) {
+  if (isRecord(message["contextInfo"])) return message["contextInfo"];
+  for (const key of ["extendedTextMessage", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "buttonsResponseMessage", "listResponseMessage", "templateButtonReplyMessage"]) {
+    const node = message[key];
+    if (isRecord(node) && isRecord(node["contextInfo"])) return node["contextInfo"];
+  }
+  return null;
+}
+
+/** Citação/resposta embutida em messages.upsert. */
+export function evolutionQuotedContext(data: unknown): { stanzaId: string; preview: string } | null {
+  const root = isRecord(data) ? data : {};
+  const source = isRecord(root["message"]) ? root["message"] : root;
+  const message = unwrapEvolutionMessage(source);
+  const context = evolutionContextInfo(message);
+  if (!context) return null;
+  const stanzaId = typeof context["stanzaId"] === "string" ? context["stanzaId"].trim() : "";
+  if (!stanzaId) return null;
+  const quoted = isRecord(context["quotedMessage"]) ? context["quotedMessage"] : {};
+  const preview = quotedPreviewFromMessage(quoted) || "Mensagem";
+  return { stanzaId, preview };
+}
+
+/** Reação em messages.upsert (reactionMessage) ou messages.update. */
+export function evolutionReactionPayload(data: unknown): { targetId: string; emoji: string; fromMe: boolean } | null {
+  const root = isRecord(data) ? data : {};
+  const outerKey = isRecord(root["key"]) ? root["key"] : {};
+  const fromMe = outerKey["fromMe"] === true;
+  const message = isRecord(root["message"]) ? root["message"] : {};
+  const reactionNode = isRecord(message["reactionMessage"])
+    ? message["reactionMessage"]
+    : isRecord(root["reactionMessage"])
+      ? root["reactionMessage"]
+      : null;
+  if (reactionNode) {
+    const targetKey = isRecord(reactionNode["key"]) ? reactionNode["key"] : {};
+    const targetId = typeof targetKey["id"] === "string" ? targetKey["id"].trim() : "";
+    const emoji = typeof reactionNode["text"] === "string" ? reactionNode["text"] : "";
+    if (!targetId) return null;
+    return { targetId, emoji, fromMe };
+  }
+  const update = isRecord(root["update"]) ? root["update"] : null;
+  if (!update || (!("reaction" in update) && !isRecord(update["reactions"]))) return null;
+  const targetId = typeof outerKey["id"] === "string" ? outerKey["id"].trim() : "";
+  if (!targetId) return null;
+  const emoji =
+    typeof update["reaction"] === "string"
+      ? update["reaction"]
+      : isRecord(update["reactions"]) && typeof update["reactions"]["text"] === "string"
+        ? String(update["reactions"]["text"])
+        : "";
+  return { targetId, emoji, fromMe };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

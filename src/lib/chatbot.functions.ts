@@ -102,10 +102,14 @@ export const chatbotMessageMediaFn = createServerFn({ method: "POST" })
 
 export const sendChatbotMessageFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { conversationId: string; text: string }) => data)
+  .validator((data: { conversationId: string; text: string; replyToMessageId?: string }) => ({
+    conversationId: data.conversationId,
+    text: data.text,
+    replyToMessageId: typeof data.replyToMessageId === "string" ? data.replyToMessageId : "",
+  }))
   .handler(async ({ context, data }) => {
     const { sendChatbotMessage } = await import("@/server/chatbot.server");
-    return guard(() => sendChatbotMessage(context.userId, data.conversationId, data.text));
+    return guard(() => sendChatbotMessage(context.userId, data.conversationId, data.text, data.replyToMessageId));
   });
 
 export const sendChatbotMediaFn = createServerFn({ method: "POST" })

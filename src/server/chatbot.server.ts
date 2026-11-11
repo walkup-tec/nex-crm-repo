@@ -28,6 +28,13 @@ import {
   shouldSyncEvolution,
   queueByKey,
   acceptsInboundMessageEvent,
+  acceptsInboundReactionEvent,
+  applyMessageReaction,
+  evolutionQuotedContext,
+  evolutionReactionPayload,
+  messageReactionsFromStorage,
+  whatsappQuotedTextPayload,
+  whatsappRemoteJid,
   inboundBotAction,
   flowClaimAllowsSend,
   freshRunBlocksResend,
@@ -374,7 +381,7 @@ function webhookBody() {
       // Include media bytes in MESSAGES_UPSERT so the inbox can show them without a late getBase64 round-trip.
       base64: true,
       headers: { apikey: key, authorization: `Bearer ${key}` },
-      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CONTACTS_UPDATE"],
+      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CONTACTS_UPDATE"],
     },
   };
 }
@@ -602,6 +609,10 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
       mediaMime: cell(row, "media_mime"),
       saved: savedMedia.has(cell(row, "id")),
       internal: row["internal"] === true,
+      replyToExternalId: cell(row, "reply_to_external_id"),
+      replyPreview: cell(row, "reply_preview"),
+      reactions: messageReactionsFromStorage(row["reactions"]),
+      externalId: cell(row, "external_id"),
     })),
   };
 }
@@ -1112,7 +1123,12 @@ export async function disconnectChatbotConnection(userId: string, connectionId: 
   if (updated.error) fail(schemaMessage(updated.error.message));
 }
 
-export async function sendChatbotMessage(userId: string, conversationId: string, text: string) {
+export async function sendChatbotMessage(
+  userId: string,
+  conversationId: string,
+  text: string,
+  replyToMessageId = "",
+) {
   const clean = text.trim();
   if (!clean) fail("Escreva a mensagem.");
   const { organizationId, admin } = await membership(userId, "inbox");
@@ -1140,20 +1156,74 @@ export async function sendChatbotMessage(userId: string, conversationId: string,
     if (!allowed.has(cell(connection, "id"))) fail("Essa conversa não pertence a uma equipe sua.");
   }
   if (cell(connection, "status") !== "connected") fail("O WhatsApp dessa conversa não está conectado.");
-  const sent = await evo(`/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`, "POST", whatsappTextPayload(phone, clean));
+  let quotedPayload: ReturnType<typeof whatsappQuotedTextPayload> | null = null;
+  let replyToExternalId = "";
+  let replyPreview = "";
+  if (replyToMessageId) {
+    const quoted = await table("chatbot_messages")
+      .select("id, text, direction, external_id, media_kind")
+      .eq("id", replyToMessageId)
+      .eq("conversation_id", conversationId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (quoted.error) fail(schemaMessage(quoted.error.message));
+    if (!quoted.data) fail("A mensagem citada não está nesta conversa.");
+    replyToExternalId = cell(quoted.data, "external_id");
+    if (!replyToExternalId) fail("Essa mensagem ainda não pode ser respondida pelo WhatsApp.");
+    const mediaKind = cell(quoted.data, "media_kind");
+    replyPreview =
+      cell(quoted.data, "text").trim() ||
+      (mediaKind === "image"
+        ? "[imagem]"
+        : mediaKind === "video"
+          ? "[vídeo]"
+          : mediaKind === "audio"
+            ? "[áudio]"
+            : mediaKind === "document"
+              ? "[documento]"
+              : "Mensagem");
+    quotedPayload = whatsappQuotedTextPayload(phone, clean, {
+      remoteJid: whatsappRemoteJid(phone),
+      fromMe: cell(quoted.data, "direction") === "out",
+      id: replyToExternalId,
+      preview: replyPreview,
+    });
+  }
+  const sent = await evo(
+    `/message/sendText/${encodeURIComponent(cell(connection, "instance_name"))}`,
+    "POST",
+    quotedPayload ?? whatsappTextPayload(phone, clean),
+  );
   const externalId = readMessageId(sent);
-  const saved = await table("chatbot_messages")
-    .insert({
-      organization_id: organizationId,
-      conversation_id: conversationId,
-      text: clean,
-      direction: "out",
-      status: "sent",
-      external_id: externalId || null,
-    })
-    .select("id")
-    .maybeSingle();
-  if (saved.error) fail(schemaMessage(saved.error.message));
+  const row: Record<string, unknown> = {
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    text: clean,
+    direction: "out",
+    status: "sent",
+    external_id: externalId || null,
+  };
+  if (replyToExternalId) {
+    row.reply_to_external_id = replyToExternalId;
+    row.reply_preview = replyPreview.slice(0, 280);
+  }
+  const saved = await table("chatbot_messages").insert(row).select("id").maybeSingle();
+  if (saved.error && /reply_to_external_id|reply_preview|reactions/i.test(saved.error.message)) {
+    const plain = await table("chatbot_messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        text: clean,
+        direction: "out",
+        status: "sent",
+        external_id: externalId || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (plain.error) fail(schemaMessage(plain.error.message));
+  } else if (saved.error) {
+    fail(schemaMessage(saved.error.message));
+  }
   const startingAttendance = !assignee || assignee !== userId || cell(conversation.data, "status") !== "active";
   const assigned = await assignConversation(conversationId, organizationId, userId, {
     status: "active",
@@ -2121,8 +2191,20 @@ export async function ingestEvolutionWebhook(request: Request) {
     const items = evolutionIncomingMessages(payload["data"]);
     const knownLids = rememberLidPhones(items);
     for (const item of items) {
+      if (evolutionReactionPayload(item)) {
+        await storeIncomingReaction(found.data, item);
+        continue;
+      }
       await storeIncoming(found.data, item, knownLids, "webhook");
       void refreshMessageAvatar(found.data, item, knownLids).catch(() => null);
+    }
+  }
+  if (acceptsInboundReactionEvent(event)) {
+    const data = payload["data"];
+    const items = Array.isArray(data) ? data : data ? [data] : [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      await storeIncomingReaction(found.data, item);
     }
   }
   if (event.includes("contacts")) {
@@ -2373,10 +2455,42 @@ async function resolveLidPhone(instanceName: string, lid: string) {
   return evolutionResolvedPhone(profile);
 }
 
+async function storeIncomingReaction(connection: Record<string, unknown>, data: unknown) {
+  const reaction = evolutionReactionPayload(data);
+  if (!reaction) return;
+  const organizationId = cell(connection, "organization_id");
+  const target = await table("chatbot_messages")
+    .select("id, conversation_id, reactions")
+    .eq("organization_id", organizationId)
+    .eq("external_id", reaction.targetId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (target.error || !target.data) return;
+  const next = applyMessageReaction(messageReactionsFromStorage(target.data["reactions"]), {
+    emoji: reaction.emoji,
+    fromMe: reaction.fromMe,
+  });
+  const saved = await table("chatbot_messages")
+    .update({ reactions: next })
+    .eq("id", cell(target.data, "id"))
+    .eq("organization_id", organizationId);
+  if (saved.error && /reactions/i.test(saved.error.message)) return;
+  if (saved.error) console.error("message_reaction", saved.error.message);
+  await table("chatbot_conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", cell(target.data, "conversation_id"))
+    .eq("organization_id", organizationId);
+}
+
 async function storeIncoming(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}, source: "webhook" | "import" = "webhook") {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
   const key = (rawKey && typeof rawKey === "object" ? rawKey : {}) as Record<string, unknown>;
+  if (evolutionReactionPayload(record)) {
+    await storeIncomingReaction(connection, record);
+    return;
+  }
   if (key["fromMe"] === true) return;
   const mergedKey = evolutionMessageKey(record, key);
   let phone = incomingPhone(mergedKey, knownLids);
@@ -2446,7 +2560,8 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     }
   }
   const createdAt = incomingMessageInstant(record["messageTimestamp"]);
-  const messageRow = {
+  const quoted = evolutionQuotedContext(record);
+  const messageRow: Record<string, unknown> = {
     organization_id: organizationId,
     conversation_id: conversationId,
     text: storedText,
@@ -2455,17 +2570,33 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     external_id: externalId,
     ...(createdAt ? { created_at: createdAt } : {}),
   };
-  const saved = await table("chatbot_messages")
-    .insert(content.mediaKind ? { ...messageRow, media_kind: content.mediaKind, media_mime: content.mediaMime } : messageRow)
-    .select("id")
-    .maybeSingle();
+  if (quoted) {
+    messageRow.reply_to_external_id = quoted.stanzaId;
+    messageRow.reply_preview = quoted.preview.slice(0, 280);
+  }
+  const insertRow = content.mediaKind
+    ? { ...messageRow, media_kind: content.mediaKind, media_mime: content.mediaMime }
+    : messageRow;
+  let saved = await table("chatbot_messages").insert(insertRow).select("id").maybeSingle();
+  if (saved.error && quoted && /reply_to_external_id|reply_preview|reactions/i.test(saved.error.message)) {
+    const withoutReply = { ...insertRow };
+    delete withoutReply.reply_to_external_id;
+    delete withoutReply.reply_preview;
+    saved = await table("chatbot_messages").insert(withoutReply).select("id").maybeSingle();
+  }
   let inserted = !saved.error;
   if (saved.error && duplicate(saved.error)) {
-    if (content.mediaKind) {
-      await table("chatbot_messages")
-        .update({ media_kind: content.mediaKind, media_mime: content.mediaMime, text: storedText })
-        .eq("conversation_id", conversationId)
-        .eq("external_id", externalId);
+    if (content.mediaKind || quoted) {
+      const patch: Record<string, unknown> = { text: storedText };
+      if (content.mediaKind) {
+        patch.media_kind = content.mediaKind;
+        patch.media_mime = content.mediaMime;
+      }
+      if (quoted) {
+        patch.reply_to_external_id = quoted.stanzaId;
+        patch.reply_preview = quoted.preview.slice(0, 280);
+      }
+      await table("chatbot_messages").update(patch).eq("conversation_id", conversationId).eq("external_id", externalId);
     }
   } else if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
     const retry = await table("chatbot_messages")

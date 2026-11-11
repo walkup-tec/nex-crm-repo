@@ -268,6 +268,12 @@ function ChatMedia({
   const documentName = file.kind === "document" ? (item.text.toLowerCase().endsWith(".pdf") ? item.text : "PDF") : "";
   return (
     <div className={`message-bubble media ${item.direction}`}>
+      {item.replyPreview ? (
+        <div className="message-quote">
+          <span>Respondendo</span>
+          <p>{item.replyPreview}</p>
+        </div>
+      ) : null}
       {file.kind === "document" ? (
         <span className="message-text">{documentName}</span>
       ) : file.kind === "video" ? (
@@ -418,6 +424,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [returnFlows, setReturnFlows] = useState<{ id: string; name: string }[]>([]);
   const [returnNote, setReturnNote] = useState("");
   const [returnSaving, setReturnSaving] = useState(false);
+  const [replyTo, setReplyTo] = useState<InboxMessage | null>(null);
   const selectedRef = useRef("");
   const pendingOpen = useRef("");
   const snapshotRequest = useRef(0);
@@ -604,10 +611,17 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         mediaMime: "",
         saved: false,
         internal: false,
+        replyToExternalId: "",
+        replyPreview: "",
+        reactions: [] as InboxMessage["reactions"],
+        externalId: "",
       })),
   ];
 
   const composerOpen = Boolean(conversation && (conversation.open || conversation.mine));
+  useEffect(() => {
+    setReplyTo(null);
+  }, [selected]);
   useEffect(() => {
     if (!composerOpen && recordingRef.current) finishRecordingRef.current(false);
   }, [composerOpen]);
@@ -1174,6 +1188,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   async function send(text = draft) {
     const clean = text.trim();
     if (!selected || !clean || sending.current) return false;
+    const quoting = replyTo && replyTo.conversationId === selected ? replyTo : null;
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
       conversationId: selected,
@@ -1184,14 +1199,18 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     lastSent.current = clean;
     setOutgoing((current) => [...current, preview]);
     setDraft("");
+    setReplyTo(null);
     setPending(true);
     if (composerRef.current) composerRef.current.value = "";
     composerRef.current?.focus();
     try {
-      const result = await sendChatbotMessageFn({ data: { conversationId: selected, text: clean } });
+      const result = await sendChatbotMessageFn({
+        data: { conversationId: selected, text: clean, replyToMessageId: quoting?.id ?? "" },
+      });
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
         restoreUnsent(clean);
+        if (quoting) setReplyTo(quoting);
         setMessage(result.message);
         return false;
       }
@@ -1757,17 +1776,45 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       <p>{item.text}</p>
                       <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
                     </div>
-                  ) : expectsMedia(item) ? (
-                    <ChatMedia
-                      item={item}
-                      key={item.id}
-                      onSaved={() => setSavedMedia((value) => value + 1)}
-                      onLayout={settleHistoryAfterMedia}
-                    />
                   ) : (
-                    <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`} key={item.id}>
-                      <span className="message-text">{item.text}</span>
-                      <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
+                    <div className={`message-stack ${item.direction}`} key={item.id}>
+                      {expectsMedia(item) ? (
+                        <ChatMedia
+                          item={item}
+                          onSaved={() => setSavedMedia((value) => value + 1)}
+                          onLayout={settleHistoryAfterMedia}
+                        />
+                      ) : (
+                        <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`}>
+                          {item.replyPreview ? (
+                            <div className="message-quote">
+                              <span>Respondendo</span>
+                              <p>{item.replyPreview}</p>
+                            </div>
+                          ) : null}
+                          <span className="message-text">{item.text}</span>
+                          <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
+                        </div>
+                      )}
+                      {item.reactions?.length ? (
+                        <div className={`message-reactions ${item.direction}`} aria-label="Reações">
+                          {item.reactions.map((reaction) => (
+                            <span key={`${reaction.emoji}-${reaction.fromMe ? "me" : "them"}`}>{reaction.emoji}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {composerOpen && item.externalId ? (
+                        <button
+                          type="button"
+                          className={`message-reply-btn ${item.direction}`}
+                          onClick={() => {
+                            setReplyTo(item);
+                            composerRef.current?.focus();
+                          }}
+                        >
+                          Responder
+                        </button>
+                      ) : null}
                     </div>
                   ),
                 )}
@@ -1786,6 +1833,17 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                   void send();
                 }}
               >
+                {replyTo ? (
+                  <div className="composer-reply" role="status">
+                    <div>
+                      <strong>Respondendo</strong>
+                      <p>{replyTo.replyPreview || replyTo.text || (replyTo.mediaKind ? `[${replyTo.mediaKind}]` : "Mensagem")}</p>
+                    </div>
+                    <button type="button" aria-label="Cancelar resposta" onClick={() => setReplyTo(null)}>
+                      ×
+                    </button>
+                  </div>
+                ) : null}
                 <textarea
                   ref={composerRef}
                   value={draft}

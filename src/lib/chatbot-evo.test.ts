@@ -26,6 +26,13 @@ import {
   shouldSyncEvolution,
   queueByKey,
   acceptsInboundMessageEvent,
+  acceptsInboundReactionEvent,
+  applyMessageReaction,
+  evolutionQuotedContext,
+  evolutionReactionPayload,
+  messageReactionsFromStorage,
+  whatsappQuotedTextPayload,
+  whatsappRemoteJid,
   inboundStartsBot,
   inboundBotAction,
   sameInboundMessage,
@@ -1185,6 +1192,40 @@ assert.equal(
 );
 assert.equal(acceptsInboundMessageEvent("MESSAGES_UPSERT"), true);
 assert.equal(acceptsInboundMessageEvent("messages.update"), false);
+assert.equal(acceptsInboundReactionEvent("MESSAGES_UPDATE"), true);
+assert.equal(acceptsInboundReactionEvent("messages.reaction"), true);
+assert.equal(acceptsInboundReactionEvent("MESSAGES_UPSERT"), false);
+assert.deepEqual(
+  evolutionReactionPayload({
+    key: { id: "react1", fromMe: false },
+    message: { reactionMessage: { key: { id: "target-msg" }, text: "👍" } },
+  }),
+  { targetId: "target-msg", emoji: "👍", fromMe: false },
+);
+assert.deepEqual(
+  evolutionReactionPayload({
+    key: { id: "target-msg", fromMe: true },
+    update: { reaction: "" },
+  }),
+  { targetId: "target-msg", emoji: "", fromMe: true },
+);
+assert.equal(evolutionReactionPayload({ key: { id: "x" }, update: { status: 3 } }), null);
+assert.deepEqual(applyMessageReaction([{ emoji: "👍", fromMe: false }], { emoji: "❤️", fromMe: false }), [{ emoji: "❤️", fromMe: false }]);
+assert.deepEqual(applyMessageReaction([{ emoji: "👍", fromMe: false }], { emoji: "", fromMe: false }), []);
+assert.deepEqual(messageReactionsFromStorage([{ emoji: "😂", fromMe: true }, { emoji: "", fromMe: false }]), [{ emoji: "😂", fromMe: true }]);
+assert.deepEqual(
+  evolutionQuotedContext({
+    message: {
+      extendedTextMessage: {
+        text: "ok",
+        contextInfo: { stanzaId: "ABC123", quotedMessage: { conversation: "mensagem original" } },
+      },
+    },
+  }),
+  { stanzaId: "ABC123", preview: "mensagem original" },
+);
+assert.equal(whatsappRemoteJid("5511999999999"), "5511999999999@s.whatsapp.net");
+assert.equal(whatsappQuotedTextPayload("5511999999999", "resposta", { remoteJid: "5511999999999@s.whatsapp.net", fromMe: false, id: "ABC123", preview: "mensagem original" }).quoted.key.id, "ABC123");
 assert.equal(inboundStartsBot({ fromMe: false, event: "messages.upsert" }), true);
 assert.equal(inboundStartsBot({ fromMe: true, event: "messages.upsert" }), false);
 assert.equal(inboundBotAction({ inserted: true, source: "webhook" }), "run");

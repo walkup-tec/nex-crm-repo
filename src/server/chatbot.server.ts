@@ -636,6 +636,24 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   };
 }
 
+async function purgeClosedEvolutionNumber(phone: string) {
+  const listed = await evo("/instance/fetchInstances", "GET", undefined, 8000).catch(() => null);
+  if (!Array.isArray(listed)) return;
+  for (const item of listed) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const number = typeof record["number"] === "string" ? record["number"] : "";
+    const owner = typeof record["ownerJid"] === "string" ? record["ownerJid"] : "";
+    if (!sameWhatsappAccount(phone, number) && !sameWhatsappAccount(phone, owner)) continue;
+    if (!evolutionInstanceClosed(record)) continue;
+    const instanceName = evolutionInstanceNameOf(record);
+    if (!instanceName) continue;
+    await removeEvolutionInstance(instanceName).catch((error) => {
+      console.error("purge_closed_evolution", instanceName, error instanceof Error ? error.message : "failed");
+    });
+  }
+}
+
 export async function createChatbotConnection(userId: string, name: string, phone: string) {
   const clean = name.trim();
   if (clean.length < 2) fail("Informe o nome de atendimento.");
@@ -644,9 +662,38 @@ export async function createChatbotConnection(userId: string, name: string, phon
   if (!number) fail("Informe o número com DDD.");
   const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode conectar um WhatsApp.");
-  const savedNumbers = await rows(table("chatbot_connections").select("phone").eq("organization_id", organizationId));
-  if (savedNumbers.some((row) => sameWhatsappAccount(cell(row, "phone"), number)) || (await whatsappAlreadyRegistered(number))) {
-    fail("Esse número já está na API WhatsApp. Use o card existente e leia o QR Code uma única vez.");
+  const saved = await rows(
+    table("chatbot_connections")
+      .select("id, phone, status, instance_name, display_name")
+      .eq("organization_id", organizationId),
+  );
+  const existing = saved.find((row) => sameWhatsappAccount(cell(row, "phone"), number));
+  // Card já existe (ex.: desconectado/QR): reabre o QR no mesmo registro em vez de bloquear.
+  if (existing) {
+    const connectionId = cell(existing, "id");
+    const instanceName = cell(existing, "instance_name");
+    if (clean !== cell(existing, "display_name")) {
+      await table("chatbot_connections")
+        .update({ display_name: clean, updated_at: new Date().toISOString() })
+        .eq("id", connectionId)
+        .eq("organization_id", organizationId);
+    }
+    // Instância close órfã com o mesmo número impede o connect; limpa antes do QR.
+    await purgeClosedEvolutionNumber(number);
+    const qr = await openConnectionQr(instanceName, number);
+    if (!qr) fail("A API do WhatsApp não entregou o QR Code. Tente de novo no card existente.");
+    await table("chatbot_connections")
+      .update({ status: "qr", last_error: "", updated_at: new Date().toISOString() })
+      .eq("id", connectionId)
+      .eq("organization_id", organizationId);
+    return { id: connectionId, qrCode: qr };
+  }
+  // Instância fechada órfã na Evolution (delete anterior não limpou) não pode impedir reconectar.
+  if (await whatsappAlreadyRegistered(number)) {
+    await purgeClosedEvolutionNumber(number);
+  }
+  if (await whatsappAlreadyRegistered(number)) {
+    fail("Esse número ainda está ativo em outra instância da API WhatsApp. Desconecte lá antes de conectar aqui.");
   }
   const instanceName = chatbotInstanceName(organizationId);
   await evo(
@@ -1061,11 +1108,14 @@ export async function deleteChatbotConnection(userId: string, connectionId: stri
   await reassignConversationsFromConnection(organizationId, connectionId, null);
   await releaseTeamsFromChannel(organizationId, connectionId);
   await stripConnectionFromFlows(organizationId, connectionId);
-  await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
-  // Evolution pode demorar; a UI não deve ficar presa no modal. Limpeza em background.
-  void removeEvolutionInstance(instanceName).catch((error) => {
+  // Limpa Evolution antes do delete no banco para não deixar número “fantasma” bloqueando reconectar.
+  try {
+    await removeEvolutionInstance(instanceName);
+  } catch (error) {
     console.error("connection_evolution_delete", error instanceof Error ? error.message : "failed");
-  });
+    // Ainda remove o card; create/purgeClosedEvolutionNumber cobre órfão fechado.
+  }
+  await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
 }
 
 async function evolutionDeleteAccepted(instanceName: string) {

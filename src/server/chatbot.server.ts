@@ -1025,6 +1025,25 @@ async function ignoreMissingTable(query: Query) {
   fail(schemaMessage(result.error.message));
 }
 
+async function stripConnectionFromFlows(organizationId: string, connectionId: string) {
+  const loaded = await rowsOrMissing(table("chatbot_flows").select("id, graph, active").eq("organization_id", organizationId));
+  if (loaded.missing) return;
+  for (const row of loaded.rows) {
+    const raw = row["graph"] && typeof row["graph"] === "object" ? { ...(row["graph"] as Record<string, unknown>) } : {};
+    const ids = flowConnectionIds(raw);
+    if (!ids.includes(connectionId)) continue;
+    const nextIds = ids.filter((id) => id !== connectionId);
+    const nextGraph = { ...raw, connectionIds: nextIds };
+    const patch: Record<string, unknown> = {
+      graph: nextGraph,
+      updated_at: new Date().toISOString(),
+    };
+    // Ativo sem canal fica mudo; desativa para forçar reatribuição no editor.
+    if (!nextIds.length && row["active"] === true) patch.active = false;
+    await done(table("chatbot_flows").update(patch).eq("id", cell(row, "id")).eq("organization_id", organizationId));
+  }
+}
+
 export async function deleteChatbotConnection(userId: string, connectionId: string) {
   const { organizationId, admin } = await membership(userId, "connection");
   if (!admin) fail("Somente o administrador da empresa pode excluir um WhatsApp.");
@@ -1033,6 +1052,7 @@ export async function deleteChatbotConnection(userId: string, connectionId: stri
   // Deixa órfãs (não move para outro canal). Ao reconectar, o create readota essas conversas.
   await reassignConversationsFromConnection(organizationId, connectionId, null);
   await releaseTeamsFromChannel(organizationId, connectionId);
+  await stripConnectionFromFlows(organizationId, connectionId);
   await done(table("chatbot_connections").delete().eq("id", connectionId).eq("organization_id", organizationId));
   // Evolution pode demorar; a UI não deve ficar presa no modal. Limpeza em background.
   void removeEvolutionInstance(instanceName).catch((error) => {
@@ -5292,7 +5312,17 @@ async function savedFlowById(organizationId: string, flowId: string) {
 
 async function executeConversationFlowOnce(connection: Record<string, unknown>, organizationId: string, conversationId: string, contactId: string, text: string, manualFlowId = "") {
   const connectionId = cell(connection, "id");
-  const active = flowsForConnection(await loadActiveFlows(organizationId), connectionId);
+  const allActive = await loadActiveFlows(organizationId);
+  const active = flowsForConnection(allActive, connectionId);
+  if (!active.length && allActive.length) {
+    console.info("nex.chatbot.flow_skip", {
+      organizationId,
+      connectionId,
+      activeFlows: allActive.length,
+      matchedFlows: 0,
+      reason: "no_flow_for_connection",
+    });
+  }
   const manualFlow = manualFlowId ? await savedFlowById(organizationId, manualFlowId) : null;
   if (manualFlow && !flowMatchesConnection(manualFlow, connectionId)) {
     return { sent: false, owned: false };
@@ -5328,7 +5358,16 @@ async function executeConversationFlowOnce(connection: Record<string, unknown>, 
   let step = chosen ? stepFlow(chosen, null, { text, at, outsideHours, manual: true }) : { actions: [], run: null };
   if (!manual) {
     const started = startInboundFlow(flows, { text, outsideHours, run, at });
-    if (!started) return { sent: false, owned: false };
+    if (!started) {
+      console.info("nex.chatbot.flow_skip", {
+        organizationId,
+        connectionId,
+        matchedFlows: flows.length,
+        reason: "no_trigger_match",
+        textPreview: text.slice(0, 80),
+      });
+      return { sent: false, owned: false };
+    }
     chosen = started.flow;
     step = started.step;
     if (started.restart) seen = null;

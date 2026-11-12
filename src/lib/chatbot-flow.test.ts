@@ -510,7 +510,7 @@ assert.equal(secondHello?.step.actions.filter((action) => action.type === "menu"
 assert.deepEqual(flowConnectionIds({ connectionIds: [" canal-a ", "canal-b", "canal-a", ""] }), ["canal-a", "canal-b"]);
 assert.equal(flowMatchesConnection({ connectionIds: ["canal-a"] }, "canal-a"), true);
 assert.equal(flowMatchesConnection({ connectionIds: ["canal-a"] }, "canal-b"), false);
-assert.equal(flowMatchesConnection({ connectionIds: [] }, "canal-a"), false);
+assert.equal(flowMatchesConnection({ connectionIds: [] }, "canal-a"), true);
 assert.deepEqual(
   flowsForConnection(
     [
@@ -521,6 +521,24 @@ assert.deepEqual(
     "c1",
   ).map((item) => item.id),
   ["a"],
+);
+assert.deepEqual(
+  flowsForConnection(
+    [
+      { id: "b", name: "B", graph, connectionIds: ["c2"] },
+      { id: "c", name: "C", graph, connectionIds: [] },
+    ],
+    "c1",
+  ).map((item) => item.id),
+  ["c"],
+);
+assert.equal(
+  autoFlowChannelConflict({
+    flowId: "novo",
+    connectionIds: ["c1"],
+    others: [{ id: "legado", active: true, launch: "auto", connectionIds: [] }],
+  }).length > 0,
+  true,
 );
 assert.equal(
   autoFlowChannelConflict({

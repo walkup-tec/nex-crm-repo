@@ -1,5 +1,11 @@
 # Problemas conhecidos
 
+## Bots sem canal após bind (d32b961) — corrigido no código
+
+Comportamento: após o bind bot↔canal, fluxos ativos salvos antes da mudança (sem `graph.connectionIds`) deixavam de disparar em qualquer WhatsApp — inclusive MMS Master. Fluxos só com “Palavra-chave” também não respondem a texto de teste que não contenha o gatilho exato (ex.: `#CG` ≠ `#CG01`).
+
+Correção: legado sem `connectionIds` volta a responder em qualquer canal da empresa; canal explícito tem prioridade; ao excluir canal o id é removido do fluxo (e o bot desativa se ficar sem canal). Ainda depende de deploy.
+
 ## Cada Implantar devolve 502
 
 Comportamento: depois de Implantar ou redeploy no EasyPanel, `https://app.nexmeta.com.br` e `https://nexmeta.com.br` respondem Bad Gateway.

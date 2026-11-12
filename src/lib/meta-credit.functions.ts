@@ -56,3 +56,10 @@ export const registerMetaCreditTopupFn = createServerFn({ method: "POST" })
       return registerMetaCreditTopup(context.userId, cents);
     });
   });
+
+export const refreshMasterMetaCreditsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { refreshMasterMetaCredits } = await import("@/server/meta-credit.server");
+    return guard(() => refreshMasterMetaCredits(context.userId));
+  });

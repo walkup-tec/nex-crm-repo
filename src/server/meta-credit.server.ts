@@ -533,3 +533,88 @@ async function alertPhone(
     (people.data ?? []).find((row) => row.whatsapp && whatsappNumber(row.whatsapp))?.whatsapp ?? ""
   );
 }
+
+type MasterCreditAccountRow = {
+  id: string;
+  organization_id: string;
+  external_account_id: string;
+  prepaid_ledger: unknown;
+  sync_status: string | null;
+  selected: boolean | null;
+};
+
+/** Master MMS: recalcula saldo disponível de cada conta sem depender do login do cliente. */
+export async function refreshMasterMetaCredits(userId: string) {
+  const actor = await actorOf(userId);
+  if (!(await mmsMaster(actor.organizationId, actor.role))) {
+    fail("Apenas o Master da MMS pode atualizar os créditos de todas as contas.");
+  }
+
+  const columns = "id, organization_id, external_account_id, prepaid_ledger, sync_status, selected";
+  let rows: Array<Record<string, unknown>> = [];
+  const withLedger = await supabaseAdmin.from("meta_accounts").select(columns);
+  if (withLedger.error && /prepaid_ledger/i.test(withLedger.error.message)) {
+    const plain = await supabaseAdmin
+      .from("meta_accounts")
+      .select("id, organization_id, external_account_id, sync_status, selected");
+    if (plain.error) fail("Não foi possível listar as contas de anúncio.");
+    rows = (plain.data ?? []) as Array<Record<string, unknown>>;
+  } else if (withLedger.error) {
+    fail("Não foi possível listar as contas de anúncio.");
+  } else {
+    rows = (withLedger.data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  const accounts: MasterCreditAccountRow[] = rows.map((row) => ({
+    id: String(row.id ?? ""),
+    organization_id: String(row.organization_id ?? ""),
+    external_account_id: String(row.external_account_id ?? ""),
+    prepaid_ledger: "prepaid_ledger" in row ? row.prepaid_ledger : null,
+    sync_status: typeof row.sync_status === "string" ? row.sync_status : null,
+    selected: row.selected === true,
+  }));
+
+  let synced = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const account of accounts) {
+    if (!account.id || !account.organization_id || !account.external_account_id) {
+      skipped += 1;
+      continue;
+    }
+    const topup = resolveCreditTopup(account.prepaid_ledger, account.sync_status);
+    if (!topup) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const spentCents = await spentSinceTopup(
+        account.organization_id,
+        account.external_account_id,
+        topup.at,
+      );
+      const availableCents = availableFromRegisteredCredit(topup.cents, spentCents);
+      await rememberBalance(
+        account.id,
+        availableCents,
+        creditTopupLedger(topup.cents, topup.at),
+      );
+      synced += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(
+        "meta_master_credit_refresh",
+        account.external_account_id,
+        error instanceof Error ? error.name : "error",
+      );
+    }
+  }
+
+  return {
+    synced,
+    skipped,
+    failed,
+    total: accounts.length,
+  };
+}

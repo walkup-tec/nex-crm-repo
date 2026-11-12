@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Ban,
@@ -6,6 +6,7 @@ import {
   Coins,
   Copy,
   CreditCard,
+  RefreshCw,
   Search,
 } from "lucide-react";
 import { DashboardKpiCard } from "@/components/nex/DashboardKpiCard";
@@ -29,6 +30,7 @@ import {
 import { listClientsFn } from "@/lib/clients.functions";
 import { isLowMetaBalance, lowBalanceLimitCents } from "@/lib/low-balance";
 import type { MetaPeriod } from "@/lib/meta-access";
+import { refreshMasterMetaCreditsFn } from "@/lib/meta-credit.functions";
 import { cn } from "@/lib/utils";
 
 type CreditStatus = "ok" | "low" | "empty" | "unknown";
@@ -115,38 +117,65 @@ export function MasterMetaCredits() {
   const [period, setPeriod] = useState<MetaPeriod>({ mode: "total" });
   const [clients, setClients] = useState<ListedClient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
   const [copiedId, setCopiedId] = useState("");
 
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const result = await listClientsFn();
-        if (!alive) return;
-        if (!result.ok) {
-          setError(result.message);
-          setClients([]);
-          return;
-        }
-        setClients(result.data);
-      } catch (err) {
-        if (!alive) return;
-        setError(err instanceof Error ? err.message : "Não foi possível carregar os créditos.");
+  const loadClients = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await listClientsFn();
+      if (!result.ok) {
+        setError(result.message);
         setClients([]);
-      } finally {
-        if (alive) setLoading(false);
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
+      setClients(result.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar os créditos.");
+      setClients([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadClients();
+  }, [loadClients]);
+
+  async function refreshBalances() {
+    if (refreshing) return;
+    setRefreshing(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await refreshMasterMetaCreditsFn();
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      await loadClients();
+      const { synced, skipped, failed, total } = result.data;
+      if (failed > 0) {
+        setNotice(
+          `Atualização parcial: ${synced} conta(s) sincronizada(s), ${failed} falha(s), ${skipped} sem recarga registrada (${total} no total).`,
+        );
+      } else {
+        setNotice(
+          `Saldos atualizados: ${synced} conta(s) sincronizada(s)${skipped ? `, ${skipped} sem recarga registrada` : ""}.`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar os saldos.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const rows = useMemo(() => toRows(Array.isArray(clients) ? clients : []), [clients]);
 
@@ -187,11 +216,11 @@ export function MasterMetaCredits() {
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
         <PeriodPicker
           value={period}
-          disabled={loading}
+          disabled={loading || refreshing}
           onApply={(next) => setPeriod(next)}
           totalHint="Todo o histórico sincronizado"
         />
-        <Select value={accountFilter} onValueChange={setAccountFilter} disabled={loading}>
+        <Select value={accountFilter} onValueChange={setAccountFilter} disabled={loading || refreshing}>
           <SelectTrigger className="w-full sm:w-56" aria-label="Conta de anúncio">
             <SelectValue placeholder="Todas as contas" />
           </SelectTrigger>
@@ -204,11 +233,25 @@ export function MasterMetaCredits() {
             ))}
           </SelectContent>
         </Select>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={loading || refreshing}
+          onClick={() => void refreshBalances()}
+        >
+          <RefreshCw className={cn("size-4", refreshing ? "animate-spin" : "")} />
+          {refreshing ? "Atualizando" : "Atualizar"}
+        </Button>
       </div>
 
       {error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+          {notice}
         </p>
       ) : null}
 

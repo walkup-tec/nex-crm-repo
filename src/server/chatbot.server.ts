@@ -73,6 +73,7 @@ import {
   sameWhatsappAccount,
   whatsappDeviceRemoved,
   whatsappDeviceRemovedMessage,
+  evolutionWebhookEvents,
   evolutionWebhookPathUrl,
   whatsappJidPhone,
   artesFileNames,
@@ -387,7 +388,7 @@ function webhookBody() {
       // Include media bytes in MESSAGES_UPSERT so the inbox can show them without a late getBase64 round-trip.
       base64: true,
       headers: { apikey: key, authorization: `Bearer ${key}` },
-      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_REACTION", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CONTACTS_UPDATE"],
+      events: [...evolutionWebhookEvents],
     },
   };
 }
@@ -398,9 +399,16 @@ async function ensureWebhook(instanceName: string, force = false) {
   if (!instanceName) return;
   if (!force && webhookSynced.has(instanceName)) return;
   webhookSynced.add(instanceName);
-  await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody()).catch(() => {
+  try {
+    await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody());
+  } catch (error) {
     webhookSynced.delete(instanceName);
-  });
+    console.error(
+      "nex.chatbot.webhook_set_failed",
+      instanceName,
+      error instanceof Error ? error.message : "failed",
+    );
+  }
 }
 
 function scheduleWebhookSync(connections: Record<string, unknown>[]) {

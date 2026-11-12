@@ -122,6 +122,7 @@ import {
   evolutionNumberInUse,
   whatsappDeviceRemoved,
   evolutionWebhookBaseUrl,
+  evolutionWebhookEvents,
   evolutionWebhookPathUrl,
   whatsappJidPhone,
   whatsappGroupJid,
@@ -192,6 +193,14 @@ assert.equal(
   evolutionWebhookPathUrl("secret", { EVO_WEBHOOK_BASE_URL: "http://172.17.0.1:30320" }),
   "http://172.17.0.1:30320/api/chatbot/evo?token=secret",
 );
+assert.equal(evolutionWebhookEvents.includes("MESSAGES_REACTION" as (typeof evolutionWebhookEvents)[number]), false);
+assert.deepEqual([...evolutionWebhookEvents], [
+  "MESSAGES_UPSERT",
+  "MESSAGES_UPDATE",
+  "CONNECTION_UPDATE",
+  "QRCODE_UPDATED",
+  "CONTACTS_UPDATE",
+]);
 assert.equal(headerAttendant("  Marina Costa  "), "Marina Costa");
 assert.equal(headerAttendant("   "), "Fila");
 assert.equal(finishAttendanceGate({ status: "queue", assigneeId: "", userId: "ana", admin: false }), "ok");

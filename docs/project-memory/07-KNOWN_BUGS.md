@@ -1,10 +1,16 @@
 # Problemas conhecidos
 
+## Webhook Evolution com MESSAGES_REACTION — corrigido
+
+Comportamento: `webhook/set` falhava com 400 porque `MESSAGES_REACTION` não existe no enum da Evolution. A instância ficava sem webhook (`find` = null). A caixa enchia via import (sem acionar bot): dezenas de mensagens `in` e zero `out`. Confirmado na Keilla (org `eb004e0d…`, instância `nexeb004e0da25emwc97fco`) em 2026-11-12.
+
+Correção: remover `MESSAGES_REACTION` dos eventos; reaplicar webhook nas instâncias `nex*`. Após o set manual, o bot voltou a enviar (fora do expediente / menu).
+
 ## Bots sem canal após bind (d32b961) — corrigido no código
 
 Comportamento: após o bind bot↔canal, fluxos ativos salvos antes da mudança (sem `graph.connectionIds`) deixavam de disparar em qualquer WhatsApp — inclusive MMS Master. Fluxos só com “Palavra-chave” também não respondem a texto de teste que não contenha o gatilho exato (ex.: `#CG` ≠ `#CG01`).
 
-Correção: legado sem `connectionIds` volta a responder em qualquer canal da empresa; canal explícito tem prioridade; ao excluir canal o id é removido do fluxo (e o bot desativa se ficar sem canal). Ainda depende de deploy.
+Correção: legado sem `connectionIds` volta a responder em qualquer canal da empresa; canal explícito tem prioridade; ao excluir canal o id é removido do fluxo (e o bot desativa se ficar sem canal).
 
 ## Cada Implantar devolve 502
 

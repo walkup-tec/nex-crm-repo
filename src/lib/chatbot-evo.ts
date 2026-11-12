@@ -616,6 +616,19 @@ export function evolutionWebhookPathUrl(
   return `${base}/api/chatbot/evo?token=${encodeURIComponent(token)}`;
 }
 
+/**
+ * Eventos aceitos pela Evolution em uso. Não incluir MESSAGES_REACTION:
+ * o enum rejeita e o webhook/set retorna 400 — a instância fica sem webhook
+ * e o bot para de responder (mensagens só entram via import).
+ */
+export const evolutionWebhookEvents = [
+  "MESSAGES_UPSERT",
+  "MESSAGES_UPDATE",
+  "CONNECTION_UPDATE",
+  "QRCODE_UPDATED",
+  "CONTACTS_UPDATE",
+] as const;
+
 export function sameWhatsappAccount(left: string, right: string) {
   const compact = (value: string) => {
     const digits = value.replace(/\D/g, "");

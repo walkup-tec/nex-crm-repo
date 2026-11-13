@@ -1381,9 +1381,31 @@ const mediaFileInflight = new Map<
   string,
   Promise<{ at: number; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" } | null>
 >();
+/** Raw WhatsApp/Evolution message kept briefly so getBase64 can use mediaKey/url after webhook. */
+const mediaRawCache = new Map<string, { at: number; raw: unknown }>();
 
 function mediaCacheKey(instanceName: string, externalId: string, kind: "image" | "video" | "audio" | "document") {
   return `${instanceName}:${externalId}:${kind}`;
+}
+
+function mediaRawKey(instanceName: string, externalId: string) {
+  return `${instanceName}:${externalId}`;
+}
+
+function rememberMediaRaw(instanceName: string, externalId: string, raw: unknown) {
+  if (!instanceName || !externalId || !raw || typeof raw !== "object") return;
+  mediaRawCache.set(mediaRawKey(instanceName, externalId), { at: Date.now(), raw });
+}
+
+function rememberedMediaRaw(instanceName: string, externalId: string) {
+  if (!instanceName || !externalId) return undefined;
+  const cached = mediaRawCache.get(mediaRawKey(instanceName, externalId));
+  if (!cached) return undefined;
+  if (Date.now() - cached.at > 60 * 60 * 1000) {
+    mediaRawCache.delete(mediaRawKey(instanceName, externalId));
+    return undefined;
+  }
+  return cached.raw;
 }
 
 function rememberMediaFile(
@@ -1400,7 +1422,7 @@ function rememberMediaFile(
   });
 }
 
-function warmIncomingMedia(
+async function warmIncomingMedia(
   instanceName: string,
   externalId: string,
   kind: "image" | "video" | "audio" | "document",
@@ -1408,6 +1430,7 @@ function warmIncomingMedia(
   persist?: { organizationId: string; contactId: string; messageId: string; remoteJid?: string; fromMe?: boolean },
 ) {
   if (!instanceName || !externalId) return;
+  rememberMediaRaw(instanceName, externalId, record);
   const root = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
   const fromRoot = evolutionMediaFile(root, kind);
   const fromMessage = evolutionMediaFile(root["message"], kind);
@@ -1419,7 +1442,7 @@ function warmIncomingMedia(
       kind: immediate.kind,
     });
     if (persist?.messageId) {
-      void persistMessageMedia(persist.organizationId, persist.contactId, persist.messageId, {
+      await persistMessageMedia(persist.organizationId, persist.contactId, persist.messageId, {
         mime: immediate.mime,
         base64: immediate.base64,
         kind: immediate.kind,
@@ -1427,16 +1450,13 @@ function warmIncomingMedia(
     }
     return;
   }
-  void fetchEvolutionMedia(instanceName, externalId, kind, {
+  const file = await fetchEvolutionMedia(instanceName, externalId, kind, {
     raw: record,
     remoteJid: persist?.remoteJid,
     fromMe: persist?.fromMe,
-  })
-    .then((file) => {
-      if (!file || !persist?.messageId) return;
-      return persistMessageMedia(persist.organizationId, persist.contactId, persist.messageId, file);
-    })
-    .catch(() => null);
+  }).catch(() => null);
+  if (!file || !persist?.messageId) return;
+  await persistMessageMedia(persist.organizationId, persist.contactId, persist.messageId, file).catch(() => null);
 }
 
 export async function sendChatbotMedia(userId: string, conversationId: string, input: { kind: string; name: string; mime: string; base64: string }) {
@@ -2331,7 +2351,18 @@ export async function ingestEvolutionWebhook(request: Request) {
       .eq("id", cell(found.data, "id"));
   }
   if (acceptsInboundMessageEvent(event)) {
-    const items = evolutionIncomingMessages(payload["data"]);
+    const data = payload["data"];
+    const items = evolutionIncomingMessages(data);
+    // Some Evolution builds put base64 on the envelope, not on each message item.
+    if (data && typeof data === "object" && !Array.isArray(data) && items.length === 1) {
+      const envelope = data as Record<string, unknown>;
+      if (typeof envelope["base64"] === "string" && typeof items[0]["base64"] !== "string") {
+        items[0]["base64"] = envelope["base64"];
+      }
+      if (typeof envelope["mimetype"] === "string" && typeof items[0]["mimetype"] !== "string") {
+        items[0]["mimetype"] = envelope["mimetype"];
+      }
+    }
     const knownLids = rememberLidPhones(items);
     for (const item of items) {
       if (evolutionReactionPayload(item)) {
@@ -2772,7 +2803,13 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
         .maybeSingle();
       messageId = cell(existingMedia.data, "id");
     }
-    warmIncomingMedia(cell(connection, "instance_name"), externalId, content.mediaKind, record, messageId
+    const instanceName = cell(connection, "instance_name");
+    const hasInlineBytes = Boolean(evolutionMediaFile(record, content.mediaKind).kind || evolutionMediaFile(record["message"], content.mediaKind).kind);
+    if (!hasInlineBytes && source === "webhook") {
+      // Re-apply webhook with base64:true when Evolution delivered media metadata without bytes.
+      void ensureWebhook(instanceName, true);
+    }
+    const warm = warmIncomingMedia(instanceName, externalId, content.mediaKind, record, messageId
       ? {
           organizationId,
           contactId,
@@ -2781,6 +2818,8 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
           fromMe: false,
         }
       : undefined);
+    // Persist ASAP so the inbox does not sit on "Carregando" waiting for a late getBase64.
+    await Promise.race([warm, new Promise<void>((resolve) => setTimeout(resolve, 8_000))]);
   }
   const action = inboundBotAction({ inserted, source });
   console.log(JSON.stringify({ source: "nex.chatbot", ingest: source, instance: cell(connection, "instance_name"), externalId, conversationId, direction: "in", action }));
@@ -3025,33 +3064,44 @@ async function fetchEvolutionMedia(
   if (pending) return pending;
 
   const work = (async () => {
-    const messagePayload = evolutionMediaFetchMessage({
-      externalId,
-      remoteJid: options?.remoteJid,
-      fromMe: options?.fromMe,
-      raw: options?.raw,
-    });
-    const payload = await evo(
-      `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
-      "POST",
-      { message: messagePayload, convertToMp4: false },
-      25000,
-    );
-    let file = evolutionMediaFile(payload, kind === "image" ? "" : kind);
-    if (kind === "video" && file.kind === "video" && file.mime && file.mime !== "video/mp4" && file.mime !== "video/webm") {
-      const converted = await evo(
-        `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
-        "POST",
-        { message: messagePayload, convertToMp4: true },
-        45000,
-      );
-      const next = evolutionMediaFile(converted, "video");
-      if (next.kind) file = next;
+    const raw = options?.raw ?? rememberedMediaRaw(instanceName, externalId);
+    if (raw) rememberMediaRaw(instanceName, externalId, raw);
+    const delays = [0, 1200, 2800];
+    for (let attempt = 0; attempt < delays.length; attempt += 1) {
+      if (delays[attempt]) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      try {
+        const messagePayload = evolutionMediaFetchMessage({
+          externalId,
+          remoteJid: options?.remoteJid,
+          fromMe: options?.fromMe,
+          raw,
+        });
+        const payload = await evo(
+          `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+          "POST",
+          { message: messagePayload, convertToMp4: false },
+          kind === "audio" ? 35000 : 25000,
+        );
+        let file = evolutionMediaFile(payload, kind === "image" ? "" : kind);
+        if (kind === "video" && file.kind === "video" && file.mime && file.mime !== "video/mp4" && file.mime !== "video/webm") {
+          const converted = await evo(
+            `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+            "POST",
+            { message: messagePayload, convertToMp4: true },
+            45000,
+          );
+          const next = evolutionMediaFile(converted, "video");
+          if (next.kind) file = next;
+        }
+        if (!file.kind) continue;
+        const stored = { at: Date.now(), mime: file.mime, base64: file.base64, kind: file.kind };
+        mediaFileCache.set(cacheKey, stored);
+        return stored;
+      } catch {
+        // Evolution often needs a short delay before media bytes are downloadable.
+      }
     }
-    if (!file.kind) return null;
-    const stored = { at: Date.now(), mime: file.mime, base64: file.base64, kind: file.kind };
-    mediaFileCache.set(cacheKey, stored);
-    return stored;
+    return null;
   })();
 
   mediaFileInflight.set(cacheKey, work);
@@ -3189,6 +3239,7 @@ export async function chatbotMessageMedia(userId: string, messageId: string) {
     const fromMe = cell(owned.message, "direction") === "out";
     try {
       file = await fetchEvolutionMedia(instanceName, externalId, hinted || "image", {
+        raw: rememberedMediaRaw(instanceName, externalId),
         remoteJid: remoteJid || undefined,
         fromMe,
       });
@@ -3200,7 +3251,8 @@ export async function chatbotMessageMedia(userId: string, messageId: string) {
     }
   }
   if (!file) {
-    if (!hinted && mediaPlaceholder(text)) return { kind: "" as const, mime: "", base64: "" };
+    // Keep the client retrying instead of a hard fail while Evolution finishes downloading bytes.
+    if (hinted || mediaPlaceholder(text)) return { kind: "" as const, mime: "", base64: "" };
     fail("Não foi possível abrir essa mídia.");
   }
   return { kind: file.kind, mime: file.mime, base64: file.base64 };

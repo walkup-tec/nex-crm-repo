@@ -201,18 +201,14 @@ function VoiceNote({ file, sentAt, outgoing }: { file: LoadedMedia; sentAt: stri
 
 function ChatMedia({
   item,
-  scrollRoot,
   onSaved,
   onLayout,
 }: {
   item: InboxMessage;
-  scrollRoot?: HTMLElement | null;
   onSaved?: () => void;
   onLayout?: () => void;
 }) {
-  const hostRef = useRef<HTMLDivElement>(null);
   const cached = loadedMedia.get(item.id);
-  const [visible, setVisible] = useState(Boolean(cached && !("none" in cached)));
   const [file, setFile] = useState<LoadedMedia | null>(cached && !("none" in cached) ? cached : null);
   const [missing, setMissing] = useState(Boolean(cached && "none" in cached));
   const [open, setOpen] = useState(false);
@@ -222,71 +218,64 @@ function ChatMedia({
   useEffect(() => setSaved(item.saved), [item.saved]);
 
   useEffect(() => {
-    const node = hostRef.current;
-    if (!node || visible) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
-      },
-      { root: scrollRoot ?? null, rootMargin: "120px 0px", threshold: 0.01 },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [scrollRoot, visible, item.id]);
-
-  useEffect(() => {
-    if (!visible) return;
     const current = loadedMedia.get(item.id);
     if (current) {
-      if ("none" in current) setMissing(true);
-      else setFile(current);
-      return;
+      if ("none" in current) {
+        // Cache negativo antigo: tenta de novo (áudio/mídia podem chegar atrasados na Evolution).
+        loadedMedia.delete(item.id);
+        setMissing(false);
+      } else {
+        setFile(current);
+        return;
+      }
     }
     let active = true;
     let retryTimer = 0;
+    const maxAttempts = 8;
     const loadMedia = (attempt: number) => {
-      void chatbotMessageMediaFn({ data: { messageId: item.id } }).then((result) => {
-        if (!active) return;
-        if (!result.ok) {
-          if (attempt < 2) {
-            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 800 + attempt * 1200);
+      void chatbotMessageMediaFn({ data: { messageId: item.id } })
+        .then((result) => {
+          if (!active) return;
+          if (!result.ok || !result.data.kind || !result.data.base64) {
+            if (attempt < maxAttempts) {
+              retryTimer = window.setTimeout(() => loadMedia(attempt + 1), Math.min(12_000, 900 + attempt * 1_400));
+              return;
+            }
+            // Não marca none permanente: reagenda em 15s (mídia inbound às vezes demora na Evolution).
+            retryTimer = window.setTimeout(() => loadMedia(0), 15_000);
             return;
           }
-          loadedMedia.set(item.id, { none: true });
-          setMissing(true);
-          return;
-        }
-        if (!result.data.kind) {
-          if (attempt < 2) {
-            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 800 + attempt * 1200);
+          const next = {
+            url: `data:${result.data.mime};base64,${result.data.base64}`,
+            mime: result.data.mime,
+            base64: result.data.base64,
+            kind: result.data.kind,
+          };
+          loadedMedia.set(item.id, next);
+          setMissing(false);
+          setFile(next);
+        })
+        .catch(() => {
+          if (!active) return;
+          if (attempt < maxAttempts) {
+            retryTimer = window.setTimeout(() => loadMedia(attempt + 1), Math.min(12_000, 900 + attempt * 1_400));
             return;
           }
-          loadedMedia.set(item.id, { none: true });
-          setMissing(true);
-          return;
-        }
-        const next = {
-          url: `data:${result.data.mime};base64,${result.data.base64}`,
-          mime: result.data.mime,
-          base64: result.data.base64,
-          kind: result.data.kind,
-        };
-        loadedMedia.set(item.id, next);
-        setFile(next);
-      });
+          retryTimer = window.setTimeout(() => loadMedia(0), 15_000);
+        });
     };
     loadMedia(0);
     return () => {
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [visible, item.id]);
+  }, [item.id]);
 
   if (missing) return null;
   if (!file) {
     return (
-      <div ref={hostRef} className={`message-bubble media loading ${item.direction === "in" ? "in" : "out"}`}>
-        Carregando
+      <div className={`message-bubble media loading ${item.direction === "in" ? "in" : "out"}`}>
+        Carregando mídia
       </div>
     );
   }
@@ -440,7 +429,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [threadMessages, setThreadMessages] = useState<InboxMessage[]>([]);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyRoot, setHistoryRoot] = useState<HTMLDivElement | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [dropActive, setDropActive] = useState(false);
   const [savedMedia, setSavedMedia] = useState(0);
@@ -473,7 +461,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const appliedSnapshot = useRef(0);
   const inFlight = useRef(false);
   const loadAgain = useRef(false);
-  const historyRef = useRef<HTMLDivElement | null>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -1964,10 +1952,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
             <>
               <div
                 className="message-history"
-                ref={(node) => {
-                  historyRef.current = node;
-                  if (node !== historyRoot) setHistoryRoot(node);
-                }}
+                ref={historyRef}
                 onScroll={(event) => {
                   const box = event.currentTarget;
                   stickToBottom.current = stickToLatestMessage(box.scrollHeight - box.scrollTop - box.clientHeight);
@@ -1991,7 +1976,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       {expectsMedia(item) ? (
                         <ChatMedia
                           item={item}
-                          scrollRoot={historyRoot}
                           onSaved={() => setSavedMedia((value) => value + 1)}
                           onLayout={settleHistoryAfterMedia}
                         />

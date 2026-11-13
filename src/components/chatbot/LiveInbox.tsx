@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   chatbotMessageMediaFn,
   chatbotSnapshotFn,
+  listChatbotConversationMessagesFn,
   chatbotTransferTargetsFn,
   finishChatbotConversationFn,
   assumeChatbotConversationFn,
@@ -30,9 +31,7 @@ import { ContactRecord } from "@/components/chatbot/ContactRecord";
 import { WhatsAppChannelStatus } from "@/components/nex/WhatsAppChannelStatus";
 import { MeetingDialog } from "@/components/chatbot/MeetingDialog";
 import { contractingButtonText, contractingFormUrl } from "@/lib/contracting";
-import {   acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxFiltersActive, inboxLaneAfterOpen, inboxList, inboxOrder, inboxPollNotice, inboxTabCounts, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
-
-const INBOX_POLL_MS = 5000;
+import {   absorbInboxThreadUpdates, acceptSnapshot, addedLeadTag, attendanceLabel, attendanceMark, attendancePhone, audioDurationLabel, audioWaveBars, clientPhoneLabel, composerAttachmentMax, composerDraftAfterSend, composerDraftChange, composerMediaChoices, composerMediaFile, composerSendsOnEnter, inferComposerMediaKind, voiceNoteName, voiceRecorderMime, defaultReturnSlot, headerAttendant, inboxContactLane, inboxDocumentTitle, inboxFiltersActive, inboxHistoryInitial, inboxHistoryPage, inboxLaneAfterOpen, inboxList, inboxOrder, inboxPollIntervalMs, inboxPollNotice, inboxTabCounts, mergeInboxThreadMessages, messageClock, messageHistoryScrollTop, minutaFileName, pendingOutgoing, propostaFileName, propostaMessages, returnInstant, returnMonthCells, saoPauloToday, stickToLatestMessage, tagInk, waitingForHuman, whatsappMask, type ChatbotQuickReply, type ChatbotSnapshot, type ComposerMediaKind, type InboxTab, type InboxListFilters } from "@/lib/chatbot-evo";
 
 function startChannels(rows: ChatbotSnapshot["connections"] | undefined) {
   const all = rows ?? [];
@@ -46,6 +45,13 @@ type OutgoingPreview = {
   text: string;
   createdAt: string;
   mediaKind?: "" | "image" | "video" | "audio" | "document";
+  sendStatus?: "uploading" | "sent" | "error";
+};
+type ComposerAttachment = {
+  id: string;
+  file: File;
+  kind: ComposerMediaKind;
+  previewUrl: string;
 };
 type LoadedMedia = { url: string; mime: string; base64: string; kind: "image" | "video" | "audio" | "document" };
 const loadedMedia = new Map<string, LoadedMedia | { none: true }>();
@@ -92,6 +98,15 @@ function expectsMedia(item: InboxMessage) {
 }
 
 function downloadMedia(file: LoadedMedia, name = "") {
+  if (!file.base64) {
+    if (file.url.startsWith("blob:")) {
+      const link = document.createElement("a");
+      link.href = file.url;
+      link.download = file.kind === "document" ? (name.toLowerCase().endsWith(".pdf") ? name : "arquivo.pdf") : file.kind === "video" ? "video.mp4" : file.kind === "audio" ? "audio.ogg" : "imagem.jpg";
+      link.click();
+    }
+    return;
+  }
   const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: file.mime }));
   const link = document.createElement("a");
@@ -99,6 +114,15 @@ function downloadMedia(file: LoadedMedia, name = "") {
   link.download = file.kind === "document" ? (name.toLowerCase().endsWith(".pdf") ? name : "arquivo.pdf") : file.kind === "video" ? "video.mp4" : file.kind === "audio" ? "audio.ogg" : "imagem.jpg";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function seedOutgoingBlob(messageId: string, file: File, kind: LoadedMedia["kind"]) {
+  const previous = loadedMedia.get(messageId);
+  if (previous && "url" in previous && previous.url.startsWith("blob:")) URL.revokeObjectURL(previous.url);
+  const url = URL.createObjectURL(file);
+  const next: LoadedMedia = { url, mime: file.type || "application/octet-stream", base64: "", kind };
+  loadedMedia.set(messageId, next);
+  return next;
 }
 
 function VoiceNote({ file, sentAt, outgoing }: { file: LoadedMedia; sentAt: string; outgoing: boolean }) {
@@ -177,17 +201,20 @@ function VoiceNote({ file, sentAt, outgoing }: { file: LoadedMedia; sentAt: stri
 
 function ChatMedia({
   item,
+  scrollRoot,
   onSaved,
   onLayout,
 }: {
   item: InboxMessage;
+  scrollRoot?: HTMLElement | null;
   onSaved?: () => void;
   onLayout?: () => void;
 }) {
+  const hostRef = useRef<HTMLDivElement>(null);
   const cached = loadedMedia.get(item.id);
+  const [visible, setVisible] = useState(Boolean(cached && !("none" in cached)));
   const [file, setFile] = useState<LoadedMedia | null>(cached && !("none" in cached) ? cached : null);
   const [missing, setMissing] = useState(Boolean(cached && "none" in cached));
-  const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(item.saved);
@@ -195,6 +222,20 @@ function ChatMedia({
   useEffect(() => setSaved(item.saved), [item.saved]);
 
   useEffect(() => {
+    const node = hostRef.current;
+    if (!node || visible) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
+      },
+      { root: scrollRoot ?? null, rootMargin: "120px 0px", threshold: 0.01 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [scrollRoot, visible, item.id]);
+
+  useEffect(() => {
+    if (!visible) return;
     const current = loadedMedia.get(item.id);
     if (current) {
       if ("none" in current) setMissing(true);
@@ -211,7 +252,8 @@ function ChatMedia({
             retryTimer = window.setTimeout(() => loadMedia(attempt + 1), 800 + attempt * 1200);
             return;
           }
-          setError(result.message);
+          loadedMedia.set(item.id, { none: true });
+          setMissing(true);
           return;
         }
         if (!result.data.kind) {
@@ -231,7 +273,6 @@ function ChatMedia({
         };
         loadedMedia.set(item.id, next);
         setFile(next);
-        setError("");
       });
     };
     loadMedia(0);
@@ -239,28 +280,27 @@ function ChatMedia({
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [item.id]);
+  }, [visible, item.id]);
 
-  if (missing) {
-    return (
-      <div className={`message-bubble ${item.direction === "in" ? "in" : "out"}`}>
-        <span className="message-text">{item.text === "[áudio]" ? "Áudio indisponível" : item.text}</span>
-        <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
-      </div>
-    );
-  }
+  if (missing) return null;
   if (!file) {
     return (
-      <div className={`message-bubble media loading ${item.direction === "in" ? "in" : "out"}`}>
-        {error || "Carregando mídia"}
+      <div ref={hostRef} className={`message-bubble media loading ${item.direction === "in" ? "in" : "out"}`}>
+        Carregando
       </div>
     );
   }
   if (file.kind === "audio") {
+    if (!file.base64) {
+      return (
+        <div className={`message-bubble media loading ${item.direction}`}>
+          Enviando áudio
+        </div>
+      );
+    }
     return (
       <div className={`message-bubble media voice ${item.direction}`}>
         <VoiceNote file={file} sentAt={item.createdAt} outgoing={item.direction === "out"} />
-        {error ? <p>{error}</p> : null}
       </div>
     );
   }
@@ -297,12 +337,8 @@ function ChatMedia({
             setSaving(true);
             void saveChatbotContactMediaFn({ data: { messageId: item.id } }).then((result) => {
               setSaving(false);
-              if (!result.ok) {
-                setError(result.message);
-                return;
-              }
+              if (!result.ok) return;
               setSaved(true);
-              setError("");
               onSaved?.();
             });
           }}
@@ -313,7 +349,6 @@ function ChatMedia({
           Baixar
         </Button>
       </div>
-      {error ? <p>{error}</p> : null}
       <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
       {file.kind === "document" ? null : (
       <Dialog open={open} onOpenChange={setOpen}>
@@ -402,7 +437,14 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [note, setNote] = useState("");
   const [transferring, setTransferring] = useState(false);
   const [outgoing, setOutgoing] = useState<OutgoingPreview[]>([]);
+  const [threadMessages, setThreadMessages] = useState<InboxMessage[]>([]);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRoot, setHistoryRoot] = useState<HTMLDivElement | null>(null);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [dropActive, setDropActive] = useState(false);
   const [savedMedia, setSavedMedia] = useState(0);
+  const historyLoadingRef = useRef(false);
   const [lane, setLane] = useState<InboxTab>("atendimento");
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -431,7 +473,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const appliedSnapshot = useRef(0);
   const inFlight = useRef(false);
   const loadAgain = useRef(false);
-  const historyRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -527,27 +569,38 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       sessionStorage.removeItem("nex-kanban-conversation");
       setSelected(pendingOpen.current);
     }
+    let timer = 0;
+    function schedulePoll() {
+      window.clearInterval(timer);
+      timer = window.setInterval(() => {
+        void load();
+      }, inboxPollIntervalMs(document.hidden));
+    }
     void load();
-    const timer = window.setInterval(() => {
-      if (document.hidden) return;
-      void load();
-    }, INBOX_POLL_MS);
+    schedulePoll();
     function openStored() {
       const id = sessionStorage.getItem("nex-kanban-conversation") ?? "";
       if (!id) return;
       pendingOpen.current = id;
       setSelected(id);
     }
-    function onVisible() {
-      if (document.hidden) return;
+    function refreshNow() {
       void load();
     }
+    function onVisibility() {
+      schedulePoll();
+      if (!document.hidden) refreshNow();
+    }
     window.addEventListener("nex-open-conversation", openStored);
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", refreshNow);
+    window.addEventListener("pageshow", refreshNow);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("nex-open-conversation", openStored);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", refreshNow);
+      window.removeEventListener("pageshow", refreshNow);
     };
   }, []);
 
@@ -559,6 +612,15 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setMediaOpen(false);
     return () => finishRecordingRef.current(false);
   }, [selected]);
+
+  useEffect(() => {
+    const unread = (data?.conversations ?? []).reduce((total, item) => total + (item.unreadCount || 0), 0);
+    const previous = document.title;
+    document.title = inboxDocumentTitle(unread);
+    return () => {
+      document.title = previous.startsWith("(") ? "NEX Ads" : previous;
+    };
+  }, [data?.conversations]);
 
   useLayoutEffect(() => {
     if (!filtersOpen) return;
@@ -595,33 +657,96 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const conversation = data?.conversations.find((item) => item.id === selected);
   const contact = data?.contacts.find((item) => item.id === conversation?.contactId);
   const channel = data?.connections.find((item) => item.id === conversation?.connectionId)?.name ?? "";
-  const storedMessages = data?.messages.filter((item) => item.conversationId === selected) ?? [];
-  const messages: InboxMessage[] = [
-    ...storedMessages,
-    ...pendingOutgoing(data?.messages ?? [], outgoing)
-      .filter((item) => item.conversationId === selected)
-      .map((item) => ({
-        id: item.id,
-        conversationId: item.conversationId,
-        text: item.text,
-        direction: "out" as const,
-        status: "pending" as const,
-        createdAt: item.createdAt,
-        mediaKind: item.mediaKind ?? ("" as const),
-        mediaMime: "",
-        saved: false,
-        internal: false,
-        replyToExternalId: "",
-        replyPreview: "",
-        reactions: [] as InboxMessage["reactions"],
-        externalId: "",
-      })),
+  const pendingPreviews = pendingOutgoing(data?.messages ?? [], outgoing).filter((item) => item.conversationId === selected);
+  const messages: (InboxMessage & { sendStatus?: OutgoingPreview["sendStatus"] })[] = [
+    ...threadMessages,
+    ...pendingPreviews.map((item) => ({
+      id: item.id,
+      conversationId: item.conversationId,
+      text: item.text,
+      direction: "out" as const,
+      status: "pending" as const,
+      createdAt: item.createdAt,
+      mediaKind: item.mediaKind ?? ("" as const),
+      mediaMime: "",
+      saved: false,
+      internal: false,
+      replyToExternalId: "",
+      replyPreview: "",
+      reactions: [] as InboxMessage["reactions"],
+      externalId: "",
+      sendStatus: item.sendStatus,
+    })),
   ];
 
   const composerOpen = Boolean(conversation && (conversation.open || conversation.mine));
   useEffect(() => {
     setReplyTo(null);
+    setAttachments((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
+    setDropActive(false);
+    setThreadMessages([]);
+    setHistoryHasMore(false);
+    setHistoryLoading(false);
+    historyLoadingRef.current = false;
+    if (!selected) return;
+    let cancelled = false;
+    stickToBottom.current = true;
+    setHistoryLoading(true);
+    historyLoadingRef.current = true;
+    void listChatbotConversationMessagesFn({
+      data: { conversationId: selected, limit: inboxHistoryInitial },
+    }).then((result) => {
+      if (cancelled) return;
+      historyLoadingRef.current = false;
+      setHistoryLoading(false);
+      if (!result.ok) {
+        setThreadMessages([]);
+        setHistoryHasMore(false);
+        return;
+      }
+      setThreadMessages(result.data.messages);
+      setHistoryHasMore(result.data.hasMore);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
+
+  useEffect(() => {
+    if (!selected || !data?.messages) return;
+    const fresh = data.messages.filter((item) => item.conversationId === selected);
+    if (!fresh.length) return;
+    setThreadMessages((current) => absorbInboxThreadUpdates(current, fresh));
+  }, [data?.messages, selected]);
+
+  async function loadOlderHistory() {
+    if (!selected || historyLoadingRef.current || !historyHasMore || !threadMessages.length) return;
+    const box = historyRef.current;
+    const previousHeight = box?.scrollHeight ?? 0;
+    const previousTop = box?.scrollTop ?? 0;
+    historyLoadingRef.current = true;
+    setHistoryLoading(true);
+    const beforeCreatedAt = threadMessages[0]?.createdAt ?? "";
+    const result = await listChatbotConversationMessagesFn({
+      data: { conversationId: selected, beforeCreatedAt, limit: inboxHistoryPage },
+    });
+    historyLoadingRef.current = false;
+    setHistoryLoading(false);
+    if (!result.ok) {
+      setHistoryHasMore(false);
+      return;
+    }
+    setHistoryHasMore(result.data.hasMore);
+    setThreadMessages((current) => mergeInboxThreadMessages(result.data.messages, current));
+    requestAnimationFrame(() => {
+      const next = historyRef.current;
+      if (!next) return;
+      next.scrollTop = next.scrollHeight - previousHeight + previousTop;
+    });
+  }
   useEffect(() => {
     if (!composerOpen && recordingRef.current) finishRecordingRef.current(false);
   }, [composerOpen]);
@@ -1211,7 +1336,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
         setOutgoing((current) => current.filter((item) => item.id !== preview.id));
         restoreUnsent(clean);
         if (quoting) setReplyTo(quoting);
-        setMessage(result.message);
         return false;
       }
       lastSent.current = clean;
@@ -1223,7 +1347,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     } catch {
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
       restoreUnsent(clean);
-      setMessage("Não foi possível enviar a mensagem.");
       return false;
     } finally {
       sending.current = false;
@@ -1254,28 +1377,71 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     setQuickOpen(false);
     setBotsOpen(false);
     input.accept = choice.accept;
+    input.multiple = true;
     input.value = "";
     input.click();
   }
 
-  async function sendMedia(file: File) {
-    const kind = mediaKind.current;
-    if (!selected || !kind || sending.current) return;
+  function queueComposerFiles(fileList: ArrayLike<File>, kindHint?: ComposerMediaKind | "") {
+    const incoming = Array.from(fileList);
+    if (!incoming.length) return [] as ComposerAttachment[];
+    let accepted: ComposerAttachment[] = [];
+    setAttachments((current) => {
+      const room = Math.max(0, composerAttachmentMax - current.length);
+      if (!room) return current;
+      const next: ComposerAttachment[] = [];
+      for (const file of incoming) {
+        if (next.length >= room) break;
+        const kind = kindHint || inferComposerMediaKind({ name: file.name, mime: file.type });
+        const checked = composerMediaFile({ name: file.name, mime: file.type, size: file.size, kind });
+        if (!checked.ok) continue;
+        next.push({
+          id: `attach-${Date.now()}-${next.length}-${Math.random().toString(36).slice(2, 8)}`,
+          file,
+          kind: checked.kind,
+          previewUrl: URL.createObjectURL(file),
+        });
+      }
+      accepted = next;
+      return next.length ? [...current, ...next] : current;
+    });
+    return accepted;
+  }
+
+  function collectPickerFiles(fileList: ArrayLike<File>, kind: ComposerMediaKind) {
+    const batch: { file: File; kind: ComposerMediaKind }[] = [];
+    for (const file of Array.from(fileList)) {
+      if (batch.length >= composerAttachmentMax) break;
+      const checked = composerMediaFile({ name: file.name, mime: file.type, size: file.size, kind });
+      if (!checked.ok) continue;
+      batch.push({ file, kind: checked.kind });
+    }
+    return batch;
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((current) => {
+      const target = current.find((item) => item.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((item) => item.id !== id);
+    });
+  }
+
+  function clearAttachments() {
+    setAttachments((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
+  }
+
+  async function sendMedia(file: File, kindOverride?: ComposerMediaKind | "") {
+    const kind = kindOverride || mediaKind.current;
+    if (!selected || !kind) return false;
+    while (sending.current) await new Promise((resolve) => window.setTimeout(resolve, 40));
     const checked = composerMediaFile({ name: file.name, mime: file.type, size: file.size, kind });
-    if (!checked.ok) {
-      setMessage(checked.message);
-      return;
-    }
-    let base64 = "";
-    try {
-      base64 = await readFileBase64(file);
-    } catch {
-      setMessage("Não foi possível ler o arquivo.");
-      return;
-    }
-    if (!selected || sending.current) return;
+    if (!checked.ok) return false;
     const conversationId = selected;
-    const localId = `local-media-${Date.now()}`;
+    const localId = `local-media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const text =
       checked.kind === "audio"
         ? "[áudio]"
@@ -1290,35 +1456,70 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       text,
       createdAt: new Date().toISOString(),
       mediaKind: checked.kind,
+      sendStatus: "uploading",
     };
-    cacheLoadedMedia(localId, { mime: checked.mime, base64, kind: checked.kind });
+    seedOutgoingBlob(localId, file, checked.kind);
     sending.current = true;
     setOutgoing((current) => [...current, preview]);
     setPending(true);
     setMediaOpen(false);
-    setMessage("");
     try {
+      const base64 = await readFileBase64(file);
+      if (!selected || selected !== conversationId) {
+        setOutgoing((current) => current.filter((item) => item.id !== localId));
+        const cached = loadedMedia.get(localId);
+        if (cached && "url" in cached && cached.url.startsWith("blob:")) URL.revokeObjectURL(cached.url);
+        loadedMedia.delete(localId);
+        return false;
+      }
+      cacheLoadedMedia(localId, { mime: checked.mime, base64, kind: checked.kind });
       const result = await sendChatbotMediaFn({
         data: { conversationId, kind: checked.kind, name: checked.name, mime: checked.mime, base64 },
       });
       if (!result.ok) {
         setOutgoing((current) => current.filter((item) => item.id !== localId));
         loadedMedia.delete(localId);
-        setMessage(result.message);
-        return;
+        return false;
       }
+      setOutgoing((current) =>
+        current.map((item) => (item.id === localId ? { ...item, sendStatus: "sent" as const } : item)),
+      );
       const messageId = result.data?.messageId?.trim();
       if (messageId) cacheLoadedMedia(messageId, { mime: checked.mime, base64, kind: checked.kind });
-      // Keep local preview until snapshot absorbs it (pendingOutgoing), so the bubble never blanks.
       void load();
+      return true;
     } catch {
       setOutgoing((current) => current.filter((item) => item.id !== localId));
+      const cached = loadedMedia.get(localId);
+      if (cached && "url" in cached && cached.url.startsWith("blob:")) URL.revokeObjectURL(cached.url);
       loadedMedia.delete(localId);
-      setMessage("Não foi possível enviar o arquivo.");
+      return false;
     } finally {
       sending.current = false;
       setPending(false);
     }
+  }
+
+  async function sendMediaQueue(items: { file: File; kind: ComposerMediaKind }[]) {
+    if (!items.length || !selected) return;
+    for (const item of items) {
+      const ok = await sendMedia(item.file, item.kind);
+      if (!ok) break;
+    }
+  }
+
+  async function sendComposer() {
+    const staged = attachments;
+    const text = draft.trim();
+    if (!selected || pending || recording) return;
+    if (!text && !staged.length) return;
+    if (text) {
+      const ok = await send(text);
+      if (!ok) return;
+    }
+    if (!staged.length) return;
+    clearAttachments();
+    await sendMediaQueue(staged.map((item) => ({ file: item.file, kind: item.kind })));
   }
 
   function releaseRecorderStream() {
@@ -1763,12 +1964,21 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
             <>
               <div
                 className="message-history"
-                ref={historyRef}
+                ref={(node) => {
+                  historyRef.current = node;
+                  if (node !== historyRoot) setHistoryRoot(node);
+                }}
                 onScroll={(event) => {
                   const box = event.currentTarget;
                   stickToBottom.current = stickToLatestMessage(box.scrollHeight - box.scrollTop - box.clientHeight);
+                  if (box.scrollTop < 80) void loadOlderHistory();
                 }}
               >
+                {historyLoading ? (
+                  <p className="message-history-loading" role="status">
+                    Carregando...
+                  </p>
+                ) : null}
                 {messages.map((item) =>
                   item.internal ? (
                     <div className="internal-note" key={item.id}>
@@ -1781,6 +1991,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       {expectsMedia(item) ? (
                         <ChatMedia
                           item={item}
+                          scrollRoot={historyRoot}
                           onSaved={() => setSavedMedia((value) => value + 1)}
                           onLayout={settleHistoryAfterMedia}
                         />
@@ -1796,6 +2007,14 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                           <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time>
                         </div>
                       )}
+                      {item.direction === "out" && (item.sendStatus === "uploading" || item.sendStatus === "sent") ? (
+                        <p
+                          className={`message-send-status${item.sendStatus === "uploading" ? " loading" : " sent"}`}
+                          role="status"
+                        >
+                          {item.sendStatus === "uploading" ? "Carregando" : "Enviado"}
+                        </p>
+                      ) : null}
                       {item.reactions?.length ? (
                         <div className={`message-reactions ${item.direction}`} aria-label="Reações">
                           {item.reactions.map((reaction) => (
@@ -1827,10 +2046,31 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
               </div>
               {conversation.open || conversation.mine ? (
               <form
-                className="composer"
+                className={`composer${dropActive ? " drop-active" : ""}`}
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void send();
+                  void sendComposer();
+                }}
+                onDragEnter={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  setDropActive(true);
+                }}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  setDropActive(true);
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  setDropActive(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDropActive(false);
+                  if (pending || recording) return;
+                  queueComposerFiles(event.dataTransfer.files);
                 }}
               >
                 {replyTo ? (
@@ -1844,6 +2084,27 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                     </button>
                   </div>
                 ) : null}
+                {attachments.length ? (
+                  <div className="composer-attachments" aria-label="Arquivos para enviar">
+                    {attachments.map((item) => (
+                      <div className="composer-attachment" key={item.id}>
+                        {item.kind === "image" ? (
+                          <img src={item.previewUrl} alt="" />
+                        ) : (
+                          <span className="composer-attachment-kind">
+                            {item.kind === "video" ? "Vídeo" : item.kind === "audio" ? "Áudio" : "PDF"}
+                          </span>
+                        )}
+                        <span className="composer-attachment-name" title={item.file.name}>
+                          {item.file.name}
+                        </span>
+                        <button type="button" aria-label={`Remover ${item.file.name}`} onClick={() => removeAttachment(item.id)}>
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <textarea
                   ref={composerRef}
                   value={draft}
@@ -1854,11 +2115,23 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                     if (sent && next.trim() !== sent.trim()) lastSent.current = "";
                     setDraft(next);
                   }}
+                  onPaste={(event) => {
+                    const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+                    if (!files.length) return;
+                    event.preventDefault();
+                    queueComposerFiles(files, "image");
+                  }}
                   onKeyDown={(event) => {
                     if (recording || event.nativeEvent.isComposing) return;
+                    const enter = event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter";
+                    if (enter && !event.shiftKey && !pending && attachments.length && !event.currentTarget.value.trim()) {
+                      event.preventDefault();
+                      void sendComposer();
+                      return;
+                    }
                     if (!composerSendsOnEnter({ key: event.key, code: event.code, shiftKey: event.shiftKey, pending, text: event.currentTarget.value })) return;
                     event.preventDefault();
-                    void send(event.currentTarget.value);
+                    void sendComposer();
                   }}
                   placeholder="Escreva a resposta para este contato..."
                   aria-label="Resposta"
@@ -1935,11 +2208,14 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                     <input
                       ref={mediaInputRef}
                       type="file"
+                      multiple
                       hidden
                       onChange={(event) => {
-                        const file = event.target.files?.[0];
+                        const files = event.target.files;
+                        const kind = mediaKind.current;
                         event.target.value = "";
-                        if (file) void sendMedia(file);
+                        if (!files?.length || !kind) return;
+                        void sendMediaQueue(collectPickerFiles(files, kind));
                       }}
                     />
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>
@@ -1991,7 +2267,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                     >
                       {recording ? <Square /> : <Mic />}
                     </Button>
-                    <Button type="submit" disabled={pending || recording || !draft.trim()}>
+                    <Button type="submit" disabled={pending || recording || (!draft.trim() && !attachments.length)}>
                       <Send />
                       Enviar
                     </Button>

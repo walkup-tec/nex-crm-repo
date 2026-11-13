@@ -18,6 +18,7 @@ import {
   composerDraftAfterSend,
   composerDraftChange,
   composerMediaFile,
+  inferComposerMediaKind,
   voiceNoteName,
   voiceRecorderMime,
   composerSendsOnEnter,
@@ -901,6 +902,10 @@ assert.equal(composerDraftAfterSend("Podemos agendar amanhã", "Podemos agendar"
 assert.equal(composerDraftAfterSend("", "Podemos agendar"), "");
 assert.equal(composerDraftChange("Podemos agendar", "Podemos agendar"), "");
 assert.equal(composerDraftChange("Nova mensagem", "Podemos agendar"), "Nova mensagem");
+assert.equal(inferComposerMediaKind({ name: "foto.jpg", mime: "image/jpeg" }), "image");
+assert.equal(inferComposerMediaKind({ name: "contrato.pdf", mime: "" }), "document");
+assert.equal(inferComposerMediaKind({ name: "clipe.mp4", mime: "video/mp4" }), "video");
+assert.equal(inferComposerMediaKind({ name: "x.bin", mime: "application/octet-stream" }), "");
 assert.equal(composerMediaFile({ name: "foto.jpg", mime: "image/jpeg", size: 1200, kind: "image" }).ok, true);
 assert.equal(composerMediaFile({ name: "contrato.pdf", mime: "", size: 1200, kind: "document" }).ok, true);
 assert.equal(composerMediaFile({ name: "fala.mp3", mime: "audio/mpeg", size: 1200, kind: "audio" }).ok, true);

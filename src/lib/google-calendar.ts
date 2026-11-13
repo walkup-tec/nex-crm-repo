@@ -182,6 +182,26 @@ export function pickLeadForImportedMeeting(input: {
   return input.fallbackLeadId;
 }
 
+function foldContactToken(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+/** wellerson@empresa.com ↔ "José Wellerson" */
+export function meetingEmailMatchesContact(email: string, contactName: string) {
+  const local = foldContactToken(cleanEmail(email).split("@")[0] ?? "").replace(/[0-9]+/g, " ").replace(/[._-]+/g, " ");
+  const nameParts = foldContactToken(contactName)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((part) => part.length >= 4);
+  if (!local.trim() || !nameParts.length) return false;
+  const localParts = local.split(/\s+/).filter((part) => part.length >= 4);
+  const haystack = localParts.length ? localParts : [local.replace(/\s+/g, "")];
+  return nameParts.some((part) => haystack.some((token) => token.includes(part) || part.includes(token)));
+}
+
 /** Eventos órfãos (Agenda Google) que na verdade pertencem a um contato do inbox. */
 export function orphanMeetingBelongsToContact(input: {
   title: string;
@@ -194,6 +214,7 @@ export function orphanMeetingBelongsToContact(input: {
   for (const email of [input.attendeeEmail, ...input.attendees]) {
     const clean = cleanEmail(email);
     if (clean && emails.has(clean)) return true;
+    if (clean && meetingEmailMatchesContact(clean, input.contactName)) return true;
   }
   const name = input.contactName.trim().toLocaleLowerCase("pt-BR");
   const title = input.title.trim().toLocaleLowerCase("pt-BR");

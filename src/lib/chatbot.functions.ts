@@ -40,6 +40,20 @@ export const chatbotSnapshotFn = createServerFn({ method: "POST" })
     return guard(() => chatbotSnapshot(context.userId));
   });
 
+export const listChatbotConversationMessagesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { conversationId: string; beforeCreatedAt?: string; limit?: number }) => ({
+    conversationId: typeof data.conversationId === "string" ? data.conversationId.trim() : "",
+    beforeCreatedAt: typeof data.beforeCreatedAt === "string" ? data.beforeCreatedAt.trim() : "",
+    limit: typeof data.limit === "number" ? data.limit : 20,
+  }))
+  .handler(async ({ context, data }) => {
+    const { listChatbotConversationMessages } = await import("@/server/chatbot.server");
+    return guard(() =>
+      listChatbotConversationMessages(context.userId, data.conversationId, data.beforeCreatedAt, data.limit),
+    );
+  });
+
 export const createChatbotConnectionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { name: string; phone: string }) => data)

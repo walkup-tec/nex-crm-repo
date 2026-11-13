@@ -27,6 +27,7 @@ import {
   mergeGoogleEvents,
   pickLeadForImportedMeeting,
   orphanMeetingBelongsToContact,
+  meetingEmailMatchesContact,
   googleAgendaContactName,
   googleEventEmails,
   standardMeetingDescription,
@@ -263,6 +264,18 @@ assert.equal(
   }),
   true,
 );
+assert.equal(meetingEmailMatchesContact("wellerson@altusc.com.br", "José Wellerson"), true);
+assert.equal(
+  orphanMeetingBelongsToContact({
+    title: "Apresentação NEX Mkt Digital",
+    attendeeEmail: "wellerson@altusc.com.br",
+    attendees: [],
+    contactName: "José Wellerson",
+    contactEmails: [],
+  }),
+  true,
+);
+assert.equal(meetingEmailMatchesContact("flavia@empresa.com", "José Wellerson"), false);
 const contactNow = Date.parse("2026-11-04T12:00:00-03:00");
 assert.equal(meetingOnContactCard("scheduled", "2026-11-03T12:00:00.000Z", contactNow), false);
 assert.equal(meetingOnContactCard("scheduled", "2026-11-04T12:00:00.000Z", contactNow), true);

@@ -481,7 +481,8 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
   const [contactRows, conversationRows, messageRows] = await Promise.all([
     rows(table("chatbot_contacts").select("*").eq("organization_id", organizationId).order("name", { ascending: true })),
     rows(table("chatbot_conversations").select("*").eq("organization_id", organizationId).order("updated_at", { ascending: false })),
-    rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(800)),
+    // Snapshot leve: histórico completo do chat aberto vem de listChatbotConversationMessages.
+    rows(table("chatbot_messages").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200)),
   ]);
   const allowedConnections = await connectionScope(userId, organizationId, admin);
   const scopedConversations = conversationRows.filter((row) => {
@@ -617,22 +618,75 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
         open: !assigneeId,
       };
     }),
-    messages: scopedMessages.map((row) => ({
-      id: cell(row, "id"),
-      conversationId: cell(row, "conversation_id"),
-      text: cell(row, "text"),
-      direction: cell(row, "direction") as "in" | "out",
-      status: cell(row, "status") as "pending" | "sent" | "failed",
-      createdAt: cell(row, "created_at"),
-      mediaKind: cell(row, "media_kind") === "video" ? "video" as const : cell(row, "media_kind") === "image" ? "image" as const : cell(row, "media_kind") === "audio" ? "audio" as const : cell(row, "media_kind") === "document" ? "document" as const : "" as const,
-      mediaMime: cell(row, "media_mime"),
-      saved: savedMedia.has(cell(row, "id")),
-      internal: row["internal"] === true,
-      replyToExternalId: cell(row, "reply_to_external_id"),
-      replyPreview: cell(row, "reply_preview"),
-      reactions: messageReactionsFromStorage(row["reactions"]),
-      externalId: cell(row, "external_id"),
-    })),
+    messages: scopedMessages.map((row) => mapInboxMessage(row, savedMedia)),
+  };
+}
+
+function mapInboxMessage(row: Record<string, unknown>, savedMedia: Set<string>) {
+  return {
+    id: cell(row, "id"),
+    conversationId: cell(row, "conversation_id"),
+    text: cell(row, "text"),
+    direction: cell(row, "direction") as "in" | "out",
+    status: cell(row, "status") as "pending" | "sent" | "failed",
+    createdAt: cell(row, "created_at"),
+    mediaKind:
+      cell(row, "media_kind") === "video"
+        ? ("video" as const)
+        : cell(row, "media_kind") === "image"
+          ? ("image" as const)
+          : cell(row, "media_kind") === "audio"
+            ? ("audio" as const)
+            : cell(row, "media_kind") === "document"
+              ? ("document" as const)
+              : ("" as const),
+    mediaMime: cell(row, "media_mime"),
+    saved: savedMedia.has(cell(row, "id")),
+    internal: row["internal"] === true,
+    replyToExternalId: cell(row, "reply_to_external_id"),
+    replyPreview: cell(row, "reply_preview"),
+    reactions: messageReactionsFromStorage(row["reactions"]),
+    externalId: cell(row, "external_id"),
+  };
+}
+
+export async function listChatbotConversationMessages(
+  userId: string,
+  conversationId: string,
+  beforeCreatedAt = "",
+  limit = 20,
+) {
+  const cleanId = conversationId.trim();
+  if (!cleanId) fail("Conversa inválida.");
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(Number(limit) || 20)));
+  const { organizationId, admin } = await membership(userId, "inbox");
+  const conversation = await table("chatbot_conversations")
+    .select("id, connection_id, assignee_id")
+    .eq("id", cleanId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (conversation.error || !conversation.data) fail("Conversa não encontrada.");
+  const connectionId = cell(conversation.data, "connection_id");
+  const allowedConnections = await connectionScope(userId, organizationId, admin);
+  if (allowedConnections) {
+    if (!connectionId || !allowedConnections.has(connectionId)) fail("Conversa não encontrada.");
+  }
+  if (!inboxVisible({ assigneeId: cell(conversation.data, "assignee_id"), userId, admin })) fail("Conversa não encontrada.");
+  let query = table("chatbot_messages")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("conversation_id", cleanId)
+    .order("created_at", { ascending: false })
+    .limit(pageSize + 1);
+  const before = beforeCreatedAt.trim();
+  if (before) query = query.lt("created_at", before);
+  const messageRows = await rows(query);
+  const hasMore = messageRows.length > pageSize;
+  const page = messageRows.slice(0, pageSize);
+  const savedMedia = await savedMessageIds(organizationId);
+  return {
+    messages: [...page].reverse().map((row) => mapInboxMessage(row, savedMedia)),
+    hasMore,
   };
 }
 
@@ -3718,15 +3772,23 @@ export async function chatbotContactProfile(userId: string, contactId: string): 
       console.error("contract_signed_sync", error instanceof Error ? error.message : "fail");
     }
   })();
-  const [contact, tags, products, tagLinks, productLinks, files, stages, org, intake, agenda, origin] = await Promise.all([
-    contactCardRow(organizationId, contactId),
+  const contact = await contactCardRow(organizationId, contactId);
+  const org = await organizationCard(organizationId);
+  if (org.contractingLink) {
+    try {
+      const { rematchMeetingsForLead } = await import("@/server/google-calendar.server");
+      await rematchMeetingsForLead(organizationId, contactId, contact.name);
+    } catch (error) {
+      console.error("rematch_meetings_contact", error instanceof Error ? error.message : "fail");
+    }
+  }
+  const [tags, products, tagLinks, productLinks, files, stages, intake, agenda, origin] = await Promise.all([
     rowsOrMissing(table("chatbot_tags").select("id, name, color").eq("organization_id", organizationId).order("name", { ascending: true })),
     rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId).order("name", { ascending: true })),
     rowsOrMissing(table("chatbot_contact_tags").select("tag_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
     rowsOrMissing(table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId)),
     rows(table("chatbot_contact_files").select("id, name, mime_type, storage_path, created_at").eq("contact_id", contactId).eq("organization_id", organizationId).order("created_at", { ascending: false })),
     rowsOrMissing(table("chatbot_stages").select("name, position").eq("organization_id", organizationId).order("position", { ascending: true })),
-    organizationCard(organizationId),
     latestContracting(organizationId, contactId),
     rowsOrMissing(table("lead_meetings").select("attendee_email, attendees").eq("organization_id", organizationId).eq("lead_id", contactId).order("created_at", { ascending: false }).limit(100)),
     contactOrigin(organizationId, contactId),

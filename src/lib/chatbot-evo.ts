@@ -448,6 +448,7 @@ export function composerDraftChange(next: string, sent: string) {
 export type ComposerMediaKind = "image" | "video" | "audio" | "document";
 
 export const composerMediaMaxBytes = 16 * 1024 * 1024;
+export const composerAttachmentMax = 10;
 
 export const composerMediaChoices: { kind: ComposerMediaKind; label: string; accept: string }[] = [
   { kind: "image", label: "Imagem", accept: "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" },
@@ -455,6 +456,18 @@ export const composerMediaChoices: { kind: ComposerMediaKind; label: string; acc
   { kind: "audio", label: "Áudio", accept: "audio/ogg,audio/mpeg,audio/mp4,audio/webm,audio/aac,audio/wav,audio/opus,.ogg,.mp3,.m4a,.aac,.wav,.opus,.webm" },
   { kind: "document", label: "PDF", accept: "application/pdf,.pdf" },
 ];
+
+/** Infere o tipo do compositor a partir de MIME/extensão (drop/colar). */
+export function inferComposerMediaKind(file: { name: string; mime: string }): ComposerMediaKind | "" {
+  const mime = file.mime.split(";")[0]?.trim().toLowerCase() ?? "";
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (mime === "application/pdf" || extension === "pdf") return "document";
+  if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
+  if (mime.startsWith("video/") || ["mp4", "webm", "mov", "3gp"].includes(extension)) return "video";
+  if (mime.startsWith("audio/") || ["ogg", "mp3", "m4a", "aac", "wav", "opus"].includes(extension)) return "audio";
+  if (extension === "webm") return "video";
+  return "";
+}
 
 const composerMediaMimes: Record<ComposerMediaKind, readonly string[]> = {
   image: ["image/jpeg", "image/png", "image/webp", "image/gif"],
@@ -527,6 +540,35 @@ export function inboxPollNotice(message: string, hasData: boolean) {
   if (!transient) return clean;
   if (hasData) return "";
   return "Não foi possível atualizar as conversas.";
+}
+
+/** Poll continua com aba oculta (mais espaçado); ativo a cada 5s. */
+export function inboxPollIntervalMs(hidden: boolean) {
+  return hidden ? 15_000 : 5_000;
+}
+
+export function inboxDocumentTitle(unread: number, base = "NEX Ads") {
+  const total = Number.isFinite(unread) ? Math.max(0, Math.trunc(unread)) : 0;
+  return total > 0 ? `(${total}) ${base}` : base;
+}
+
+export const inboxHistoryInitial = 20;
+export const inboxHistoryPage = 20;
+
+export function mergeInboxThreadMessages<T extends { id: string; createdAt: string }>(current: T[], incoming: T[]) {
+  if (!incoming.length) return current;
+  const byId = new Map(current.map((item) => [item.id, item]));
+  for (const item of incoming) byId.set(item.id, item);
+  return [...byId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+/** Atualiza o fio aberto com mensagens novas/alteradas do poll, sem puxar histórico antigo. */
+export function absorbInboxThreadUpdates<T extends { id: string; createdAt: string }>(current: T[], incoming: T[]) {
+  if (!current.length || !incoming.length) return current;
+  const newest = current[current.length - 1]?.createdAt ?? "";
+  const known = new Set(current.map((item) => item.id));
+  const relevant = incoming.filter((item) => known.has(item.id) || item.createdAt >= newest);
+  return mergeInboxThreadMessages(current, relevant);
 }
 
 export function stickToLatestMessage(distanceFromBottom: number) {

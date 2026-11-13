@@ -27,6 +27,7 @@ import {
   lastMeetingFields,
   meetUrlFromEvent,
   mergeGoogleEvents,
+  meetingEmailMatchesContact,
   orphanMeetingBelongsToContact,
   overlapsBusy,
   pickLeadForImportedMeeting,
@@ -861,42 +862,71 @@ async function syncQuietly(organizationId: string, userId: string, manager: bool
 }
 
 async function contactEmailsForLead(organizationId: string, leadId: string) {
+  const emails = new Set<string>();
   const intake = await from("contracting_intakes")
     .select("representative_email")
     .eq("organization_id", organizationId)
     .eq("contact_id", leadId)
     .order("created_at", { ascending: false })
-    .limit(1)
+    .limit(3)
     .maybeSingle();
-  const email = cleanEmail(cell(intake.data ?? {}, "representative_email"));
-  return email ? [email] : [];
+  const intakeEmail = cleanEmail(cell(intake.data ?? {}, "representative_email"));
+  if (intakeEmail) emails.add(intakeEmail);
+  const linked = await rows(
+    from("lead_meetings")
+      .select("attendee_email, attendees")
+      .eq("organization_id", organizationId)
+      .eq("lead_id", leadId)
+      .limit(50),
+  );
+  for (const row of linked) {
+    const email = cleanEmail(cell(row, "attendee_email"));
+    if (email) emails.add(email);
+    for (const item of emailsOf(row.attendees)) {
+      const guest = cleanEmail(item);
+      if (guest) emails.add(guest);
+    }
+  }
+  return [...emails];
 }
 
-async function rematchOrphanMeetingsForLead(organizationId: string, leadId: string, contactName: string) {
+export async function rematchMeetingsForLead(organizationId: string, leadId: string, contactName: string) {
   const fallbackId = await ensureGoogleAgendaLead(organizationId);
-  if (!fallbackId || fallbackId === leadId) return;
-  const orphans = await rows(
-    from("lead_meetings")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .eq("lead_id", fallbackId)
-      .eq("status", "scheduled")
-      .limit(100),
-  );
-  if (!orphans.length) return;
+  if (!leadId || leadId === fallbackId) return;
   const contactEmails = await contactEmailsForLead(organizationId, leadId);
-  for (const row of orphans) {
-    if (
-      !orphanMeetingBelongsToContact({
-        title: cell(row, "title"),
-        attendeeEmail: cell(row, "attendee_email"),
-        attendees: emailsOf(row.attendees),
-        contactName,
-        contactEmails,
-      })
-    ) {
-      continue;
-    }
+  const candidates = await rows(
+    from("lead_meetings")
+      .select("id, lead_id, title, attendee_email, attendees, status")
+      .eq("organization_id", organizationId)
+      .eq("status", "scheduled")
+      .order("start_at", { ascending: false })
+      .limit(200),
+  );
+  const leadIds = [...new Set(candidates.map((row) => cell(row, "lead_id")).filter((id) => id && id !== leadId))];
+  const leadRows = leadIds.length
+    ? await rows(from("chatbot_contacts").select("id, phone, name").eq("organization_id", organizationId).in("id", leadIds))
+    : [];
+  const leadMeta = new Map(leadRows.map((row) => [cell(row, "id"), { phone: cell(row, "phone"), name: cell(row, "name") }]));
+  for (const row of candidates) {
+    const currentLeadId = cell(row, "lead_id");
+    if (!currentLeadId || currentLeadId === leadId) continue;
+    const meta = leadMeta.get(currentLeadId);
+    const fromFallback = currentLeadId === fallbackId || meta?.phone === googleAgendaContactPhone;
+    const attendeeEmail = cleanEmail(cell(row, "attendee_email"));
+    const guestEmails = emailsOf(row.attendees).map(cleanEmail).filter(Boolean);
+    const belongs = orphanMeetingBelongsToContact({
+      title: cell(row, "title"),
+      attendeeEmail: cell(row, "attendee_email"),
+      attendees: emailsOf(row.attendees),
+      contactName,
+      contactEmails,
+    });
+    if (!belongs) continue;
+    const emailHit =
+      (attendeeEmail && (contactEmails.includes(attendeeEmail) || meetingEmailMatchesContact(attendeeEmail, contactName))) ||
+      guestEmails.some((email) => contactEmails.includes(email) || meetingEmailMatchesContact(email, contactName));
+    // Só tira de outro lead real quando o e-mail do evento casa com este contato.
+    if (!fromFallback && !emailHit) continue;
     await from("lead_meetings")
       .update({ lead_id: leadId, updated_at: new Date().toISOString() })
       .eq("id", cell(row, "id"))
@@ -915,7 +945,7 @@ export async function listLeadMeetings(userId: string, leadId = "") {
   }
   await syncQuietly(gate.organizationId, userId, gate.manager);
   if (leadId && contactName) {
-    await rematchOrphanMeetingsForLead(gate.organizationId, leadId, contactName).catch(() => null);
+    await rematchMeetingsForLead(gate.organizationId, leadId, contactName).catch(() => null);
   }
   let query = from("lead_meetings").select("*").eq("organization_id", gate.organizationId);
   if (leadId) query = query.eq("lead_id", leadId).eq("status", "scheduled").order("start_at", { ascending: false }).limit(20);

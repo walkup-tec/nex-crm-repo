@@ -3240,8 +3240,11 @@ async function persistMessageMedia(
   contactId: string,
   messageId: string,
   file: { mime: string; base64: string; kind: "image" | "video" | "audio" | "document" },
+  options?: { includeAudio?: boolean },
 ) {
   if (!organizationId || !contactId || !messageId || !file.base64 || !file.kind) return;
+  // Áudio toca no inbox via Evolution/cache; não polui "mídias salvas" do contato automaticamente.
+  if (file.kind === "audio" && !options?.includeAudio) return;
   const existing = await table("chatbot_contact_files").select("id").eq("organization_id", organizationId).eq("message_id", messageId).maybeSingle();
   if (!existing.error && existing.data) return;
   await ensureMediaBucket();
@@ -3367,7 +3370,7 @@ export async function saveChatbotContactMedia(userId: string, messageId: string)
     },
   );
   if (!file) fail("Não foi possível salvar essa mídia.");
-  await persistMessageMedia(owned.organizationId, contactId, messageId, file);
+  await persistMessageMedia(owned.organizationId, contactId, messageId, file, { includeAudio: true });
   const savedRow = await table("chatbot_contact_files").select("id").eq("organization_id", owned.organizationId).eq("message_id", messageId).maybeSingle();
   if (savedRow.error || !savedRow.data) fail("Não foi possível salvar a mídia no contato.");
   return { saved: true as const };

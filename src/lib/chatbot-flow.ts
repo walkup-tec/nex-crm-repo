@@ -310,6 +310,14 @@ function includesTerm(text: string, content: string) {
   return needles.some((needle) => haystack.includes(needle));
 }
 
+/** Palavra-chave: igualdade exata com um dos termos (sem substring). */
+function matchesKeywordTerm(text: string, content: string) {
+  const haystack = text.trim().toLocaleLowerCase("pt-BR");
+  const needles = terms(content);
+  if (!haystack || !needles.length) return false;
+  return needles.some((needle) => haystack === needle);
+}
+
 export type WaitUnit = "segundos" | "minutos" | "horas";
 const waitLimits: Record<WaitUnit, number> = { segundos: 86400, minutos: 1440, horas: 24 };
 
@@ -368,9 +376,9 @@ export function chooseFlow(flows: SavedFlow[], input: { text: string; outsideHou
   }
   const automatic = flows.filter((flow) => flow.launch !== "manual");
   const keyword = automatic.find((flow) =>
-    triggers(flow.graph).some((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content)),
+    triggers(flow.graph).some((node) => node.label === "Palavra-chave" && matchesKeywordTerm(input.text, node.content)),
   );
-  if (keyword && (!input.run || input.run.status === "done" || includesTerm(input.text, triggers(keyword.graph).find((node) => node.label === "Palavra-chave")?.content ?? ""))) return keyword;
+  if (keyword && (!input.run || input.run.status === "done" || matchesKeywordTerm(input.text, triggers(keyword.graph).find((node) => node.label === "Palavra-chave")?.content ?? ""))) return keyword;
   const received = automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Mensagem recebida"));
   if (received) return received;
   return automatic.find((flow) => triggers(flow.graph).some((node) => node.label === "Fora do expediente")) ?? null;
@@ -412,6 +420,10 @@ export function startInboundFlow(
   if (current && input.run) {
     const step = stepFlow(current, input.run, { text: input.text, at: input.at, outsideHours: input.outsideHours });
     if (step.actions.length) return { flow: current, step, restart: false };
+    // Já waiting (ex.: Menu): não reinicia outro gatilho por anúncio/lixo — evita spam.
+    if (input.run.status === "waiting" && step.run?.status === "waiting" && step.run.nodeId === input.run.nodeId) {
+      return { flow: current, step, restart: false };
+    }
   }
   const flow = pickAutomaticFlow(flows, input);
   if (!flow) return null;
@@ -423,7 +435,7 @@ export function startInboundFlow(
 function startNode(graph: FlowGraph, input: { text: string; manual: boolean }) {
   const roots = triggers(graph);
   if (input.manual) return roots[0];
-  const keyword = roots.find((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content));
+  const keyword = roots.find((node) => node.label === "Palavra-chave" && matchesKeywordTerm(input.text, node.content));
   if (keyword) return keyword;
   return roots.find((node) => node.label === "Mensagem recebida") ?? roots.find((node) => node.label === "Fora do expediente") ?? roots.find((node) => hasHoursEdges(graph, node.id));
 }
@@ -438,14 +450,19 @@ export function stepFlow(flow: SavedFlow, run: FlowRun | null, input: { text: st
     const waiting = nodeById(flow.graph, run.nodeId);
     if (waiting?.label === "Menu") {
       const target = menuTarget(flow.graph, waiting, input.text);
-      if (!target) return menuReprompt(flow, waiting, run.lastAnswer);
+      if (!target) {
+        return {
+          actions: [],
+          run: { flowId: flow.id, nodeId: waiting.id, status: "waiting", waitUntil: 0, lastAnswer: run.lastAnswer },
+        };
+      }
       return walk(flow, [target], input.text.trim(), input);
     }
     if (waiting?.label === "Fazer pergunta" && !input.text.trim()) return { actions: [], run };
     return walk(flow, outgoing(flow.graph, run.nodeId), input.text.trim(), input);
   }
   if (run?.status === "done" && !manual) {
-    const keyword = triggers(flow.graph).find((node) => node.label === "Palavra-chave" && includesTerm(input.text, node.content));
+    const keyword = triggers(flow.graph).find((node) => node.label === "Palavra-chave" && matchesKeywordTerm(input.text, node.content));
     if (!keyword) return { actions: [], run };
     return walk(flow, outgoing(flow.graph, keyword.id), input.text.trim() || run.lastAnswer, input);
   }
@@ -465,21 +482,6 @@ function foldMenuAnswer(value: string) {
     .toLocaleLowerCase("pt-BR")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function menuReprompt(flow: SavedFlow, node: FlowNode, lastAnswer: string): FlowStep {
-  const options = flowMenuOptions(node.options);
-  const content = node.content.trim();
-  if (!content || !options.length) {
-    return {
-      actions: [],
-      run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer },
-    };
-  }
-  return {
-    actions: [{ type: "menu", text: content, options }],
-    run: { flowId: flow.id, nodeId: node.id, status: "waiting", waitUntil: 0, lastAnswer },
-  };
 }
 
 function menuTarget(graph: FlowGraph, node: FlowNode, text: string) {

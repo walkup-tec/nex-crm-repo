@@ -125,9 +125,10 @@ const keyword: SavedFlow = {
     edges: [{ source: "k", target: "s" }],
   },
 };
-assert.equal(chooseFlow([flow, keyword], { text: "qual o preço?", outsideHours: false, run: null })?.id, "key");
+assert.equal(chooseFlow([flow, keyword], { text: "preço", outsideHours: false, run: null })?.id, "key");
+assert.equal(chooseFlow([flow, keyword], { text: "qual o preço?", outsideHours: false, run: null })?.id, "flow");
 const manual: SavedFlow = { ...keyword, id: "manual", name: "Envio", launch: "manual" };
-assert.equal(chooseFlow([manual], { text: "qual o preço?", outsideHours: false, run: null }), null);
+assert.equal(chooseFlow([manual], { text: "preço", outsideHours: false, run: null }), null);
 assert.equal(chooseFlow([manual], { text: "", outsideHours: false, run: null, manualFlowId: "manual" })?.id, "manual");
 assert.equal(chooseFlow([manual], { text: "ok", outsideHours: false, run: { flowId: "manual", nodeId: "s", status: "waiting", waitUntil: 0, lastAnswer: "" } })?.id, "manual");
 const queued = previewFlowTurns({ nodes: [{ id: "t", label: "Mensagem recebida", kind: "Gatilho", content: "" }, { id: "q", label: "Encaminhar à fila", kind: "Ação", content: "" }], edges: [{ source: "t", target: "q" }] }, ["oi"], false, noon);
@@ -139,8 +140,10 @@ assert.equal(
   queued.turns.some((turn) => turn.from === "bot" && turn.text.includes("fila de atendimento")),
   true,
 );
-const priced = stepFlow(keyword, null, { text: "qual o preço?", at: noon, outsideHours: false });
+const priced = stepFlow(keyword, null, { text: "preço", at: noon, outsideHours: false });
 assert.equal(priced.actions[0]?.type, "send");
+const pricedPartial = stepFlow(keyword, null, { text: "qual o preço?", at: noon, outsideHours: false });
+assert.equal(pricedPartial.actions.length, 0);
 
 const hoursFlow: SavedFlow = {
   id: "hours",
@@ -247,8 +250,9 @@ assert.equal(numbered.actions[0]?.type === "send" ? numbered.actions[0].text : "
 const menuWaiting = menuStep.run;
 const ignoredMenu = startInboundFlow([menuFlow], { text: "Oi", outsideHours: false, run: menuWaiting, at: noon });
 assert.equal(ignoredMenu?.restart, false);
-assert.equal(ignoredMenu?.step.actions[0]?.type, "menu");
+assert.equal(ignoredMenu?.step.actions.length, 0);
 assert.equal(ignoredMenu?.step.run?.nodeId, "menu");
+assert.equal(ignoredMenu?.step.run?.status, "waiting");
 const tappedMenu = startInboundFlow([menuFlow], { text: "Suporte", outsideHours: false, run: menuWaiting, at: noon });
 assert.equal(tappedMenu?.restart, false);
 assert.equal(tappedMenu?.step.actions[0]?.type === "send" ? tappedMenu.step.actions[0].text : "", "Time de suporte.");
@@ -296,7 +300,8 @@ assert.equal(duringWait?.restart, true);
 assert.equal(duringWait?.step.actions[0]?.type === "send" ? duringWait.step.actions[0].text : "", "Estamos abertos.");
 const ignored = stepFlow(menuFlow, menuStep.run, { text: "outra", at: noon, outsideHours: false });
 assert.equal(ignored.run?.nodeId, "menu");
-assert.equal(ignored.actions.filter((action) => action.type === "menu").length, 1);
+assert.equal(ignored.actions.length, 0);
+assert.equal(ignored.run?.status, "waiting");
 const duplicated = cloneFlowSelection(
   [{ id: "a", x: 10, y: 20 }, { id: "b", x: 40, y: 20 }, { id: "c", x: 80, y: 20 }],
   [{ id: "ab", source: "a", target: "b", sourceHandle: "1" as const }, { id: "bc", source: "b", target: "c" }],
@@ -453,9 +458,53 @@ const repeated = stepFlow(repeatMenuFlow, chosen.run, { text: "Não sou cliente"
 assert.equal(repeated.actions.some((action) => action.type === "menu"), false);
 assert.equal(repeated.actions.some((action) => action.type === "send" && action.text === "Qual seu nome?"), false);
 const unmatched = stepFlow(repeatMenuFlow, waitingMenu, { text: "talvez", at: noon + 2500, outsideHours: false });
-assert.equal(unmatched.actions.filter((action) => action.type === "menu").length, 1);
+assert.equal(unmatched.actions.length, 0);
 assert.equal(unmatched.run?.status, "waiting");
 assert.equal(unmatched.run?.nodeId, "menu");
+const keillaTriggers: SavedFlow = {
+  id: "keilla",
+  name: "Fluxo Gatilhos",
+  graph: {
+    nodes: [
+      { id: "cg", label: "Palavra-chave", kind: "Gatilho", content: "#CG" },
+      { id: "cg01", label: "Palavra-chave", kind: "Gatilho", content: "#CG01" },
+      { id: "cg02", label: "Palavra-chave", kind: "Gatilho", content: "#CG02" },
+      {
+        id: "menu",
+        label: "Menu",
+        kind: "Ação",
+        content: "Qual enquadramento do seu CNPJ?",
+        options: [
+          { id: "1", label: "MEI" },
+          { id: "2", label: "SIMPLES" },
+          { id: "3", label: "LTDA" },
+        ],
+      },
+      { id: "mei", label: "Enviar mensagem", kind: "Ação", content: "Ok MEI" },
+    ],
+    edges: [
+      { source: "cg", target: "menu" },
+      { source: "cg01", target: "menu" },
+      { source: "cg02", target: "menu" },
+      { source: "menu", target: "mei", sourceHandle: "1" },
+    ],
+  },
+};
+assert.equal(stepFlow(keillaTriggers, null, { text: "#CG01", at: noon, outsideHours: false }).actions[0]?.type, "menu");
+assert.equal(stepFlow(keillaTriggers, null, { text: "#CG01 - Quero saber", at: noon, outsideHours: false }).actions.length, 0);
+assert.equal(stepFlow(keillaTriggers, null, { text: "#CG", at: noon, outsideHours: false }).actions[0]?.type, "menu");
+const keillaOpened = stepFlow(keillaTriggers, null, { text: "#CG01", at: noon, outsideHours: false });
+const keillaSpam = startInboundFlow([keillaTriggers], {
+  text: "#CG02",
+  outsideHours: false,
+  run: keillaOpened.run,
+  at: noon + 1000,
+});
+assert.equal(keillaSpam?.restart, false);
+assert.equal(keillaSpam?.step.actions.length, 0);
+assert.equal(keillaSpam?.step.run?.nodeId, "menu");
+const keillaMei = stepFlow(keillaTriggers, keillaOpened.run, { text: "MEI", at: noon + 2000, outsideHours: false });
+assert.equal(keillaMei.actions[0]?.type === "send" ? keillaMei.actions[0].text : "", "Ok MEI");
 const danglingMenuFlow: SavedFlow = {
   id: "dangling",
   name: "Anuncio",
@@ -479,7 +528,8 @@ const danglingMenuFlow: SavedFlow = {
 };
 const danglingOpen = stepFlow(danglingMenuFlow, null, { text: "oi", at: noon, outsideHours: false });
 const danglingSim = stepFlow(danglingMenuFlow, danglingOpen.run, { text: "Sim", at: noon + 1000, outsideHours: false });
-assert.equal(danglingSim.actions.filter((action) => action.type === "menu").length, 1);
+assert.equal(danglingSim.actions.length, 0);
+assert.equal(danglingSim.run?.status, "waiting");
 assert.equal(danglingSim.run?.nodeId, "menu");
 const queueNotice = stepFlow(
   {

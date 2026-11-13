@@ -1407,17 +1407,6 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     return accepted;
   }
 
-  function collectPickerFiles(fileList: ArrayLike<File>, kind: ComposerMediaKind) {
-    const batch: { file: File; kind: ComposerMediaKind }[] = [];
-    for (const file of Array.from(fileList)) {
-      if (batch.length >= composerAttachmentMax) break;
-      const checked = composerMediaFile({ name: file.name, mime: file.type, size: file.size, kind });
-      if (!checked.ok) continue;
-      batch.push({ file, kind: checked.kind });
-    }
-    return batch;
-  }
-
   function removeAttachment(id: string) {
     setAttachments((current) => {
       const target = current.find((item) => item.id === id);
@@ -2206,11 +2195,12 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       multiple
                       hidden
                       onChange={(event) => {
-                        const files = event.target.files;
                         const kind = mediaKind.current;
+                        // Copiar antes de limpar: FileList é live e value="" esvazia a seleção no Chrome/Edge.
+                        const picked = Array.from(event.target.files ?? []);
                         event.target.value = "";
-                        if (!files?.length || !kind) return;
-                        void sendMediaQueue(collectPickerFiles(files, kind));
+                        if (!picked.length || !kind || pending || recording) return;
+                        queueComposerFiles(picked, kind);
                       }}
                     />
                     <Button type="button" variant="outline" size="sm" disabled={pending} aria-expanded={quickOpen} onClick={() => void openQuickReplies()}>

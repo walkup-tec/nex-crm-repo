@@ -266,17 +266,35 @@ function ChatMedia({
 
   if (missing) return null;
   if (!file) {
+    const kind = item.mediaKind || (item.text === "[áudio]" ? "audio" : item.text === "[vídeo]" ? "video" : item.text === "[documento]" ? "document" : item.text === "[imagem]" ? "image" : "");
+    const label =
+      kind === "audio"
+        ? "Carregando áudio"
+        : kind === "video"
+          ? "Carregando vídeo"
+          : kind === "document"
+            ? "Carregando documento"
+            : kind === "image"
+              ? "Carregando imagem"
+              : "Carregando mídia";
     return (
-      <div className={`message-bubble media loading ${item.direction === "in" ? "in" : "out"}`}>
-        Carregando mídia
+      <div className={`message-bubble media media-pending ${kind === "audio" ? "voice" : ""} ${item.direction === "in" ? "in" : "out"}`}>
+        <div className="media-pending-row" role="status" aria-live="polite">
+          <span className="media-pending-spin" aria-hidden />
+          <span className="media-pending-label">{label}</span>
+          {item.createdAt ? <time className="message-when" dateTime={item.createdAt}>{messageClock(item.createdAt)}</time> : null}
+        </div>
       </div>
     );
   }
   if (file.kind === "audio") {
     if (!file.base64) {
       return (
-        <div className={`message-bubble media loading ${item.direction}`}>
-          Enviando áudio
+        <div className={`message-bubble media media-pending voice ${item.direction}`}>
+          <div className="media-pending-row" role="status" aria-live="polite">
+            <span className="media-pending-spin" aria-hidden />
+            <span className="media-pending-label">Enviando áudio</span>
+          </div>
         </div>
       );
     }

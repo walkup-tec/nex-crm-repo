@@ -293,7 +293,12 @@ export function normalizeEvolutionEvent(event: string) {
 }
 
 export function acceptsInboundMessageEvent(event: string) {
-  return normalizeEvolutionEvent(event) === "messages.upsert";
+  const normalized = normalizeEvolutionEvent(event);
+  return normalized === "messages.upsert";
+}
+
+export function acceptsInboundEditedEvent(event: string) {
+  return normalizeEvolutionEvent(event) === "messages.edited";
 }
 
 export function acceptsInboundReactionEvent(event: string) {
@@ -662,10 +667,12 @@ export function evolutionWebhookPathUrl(
  * Eventos aceitos pela Evolution em uso. Não incluir MESSAGES_REACTION:
  * o enum rejeita e o webhook/set retorna 400 — a instância fica sem webhook
  * e o bot para de responder (mensagens só entram via import).
+ * MESSAGES_EDITED: edição de texto (além de protocolMessage em UPSERT).
  */
 export const evolutionWebhookEvents = [
   "MESSAGES_UPSERT",
   "MESSAGES_UPDATE",
+  "MESSAGES_EDITED",
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
   "CONTACTS_UPDATE",
@@ -1265,6 +1272,90 @@ export function evolutionQuotedContext(data: unknown): { stanzaId: string; previ
   return { stanzaId, preview };
 }
 
+function editedMessageBody(value: unknown): {
+  text: string;
+  mediaKind: "" | "image" | "video" | "audio" | "document";
+  mediaMime: string;
+} {
+  if (!value) return { text: "", mediaKind: "", mediaMime: "" };
+  if (typeof value === "string") return { text: value.trim(), mediaKind: "", mediaMime: "" };
+  if (!isRecord(value)) return { text: "", mediaKind: "", mediaMime: "" };
+  // messages.edited: { conversation } | { extendedTextMessage } | { message: {...} }
+  const nested = isRecord(value["message"]) ? value["message"] : value;
+  const content = evolutionMessageContent({ message: nested });
+  if (content.text || content.mediaKind) return content;
+  const text = evolutionMessageText(nested);
+  return { text, mediaKind: "", mediaMime: "" };
+}
+
+/**
+ * Edição WhatsApp via Evolution:
+ * - messages.edited: { key.id, type: MESSAGE_EDIT, editedMessage }
+ * - messages.upsert: message.protocolMessage.editedMessage (key = id original)
+ * - messages.update: update.message.editedMessage
+ */
+export function evolutionEditedMessage(data: unknown): {
+  targetId: string;
+  text: string;
+  mediaKind: "" | "image" | "video" | "audio" | "document";
+  mediaMime: string;
+  fromMe: boolean;
+} | null {
+  const root = isRecord(data) ? data : {};
+  const outerKey = isRecord(root["key"]) ? root["key"] : {};
+  const fromMe = outerKey["fromMe"] === true;
+
+  // Envelope messages.edited
+  if (root["type"] === "MESSAGE_EDIT" || (isRecord(root["editedMessage"]) && !isRecord(root["message"]))) {
+    const targetId = typeof outerKey["id"] === "string" ? outerKey["id"].trim() : "";
+    if (!targetId) return null;
+    const body = editedMessageBody(root["editedMessage"]);
+    if (!body.text && !body.mediaKind) return null;
+    return { targetId, text: body.text, mediaKind: body.mediaKind, mediaMime: body.mediaMime, fromMe };
+  }
+
+  const source = isRecord(root["message"]) ? root["message"] : isRecord(root["update"]) && isRecord(root["update"]["message"]) ? root["update"]["message"] : null;
+  if (!source) return null;
+
+  const protocol = isRecord(source["protocolMessage"])
+    ? source["protocolMessage"]
+    : isRecord(source["editedMessage"]) && isRecord(source["editedMessage"]["message"]) && isRecord(source["editedMessage"]["message"]["protocolMessage"])
+      ? (source["editedMessage"]["message"]["protocolMessage"] as Record<string, unknown>)
+      : null;
+
+  if (protocol) {
+    const targetKey = isRecord(protocol["key"]) ? protocol["key"] : {};
+    const targetId = typeof targetKey["id"] === "string" ? targetKey["id"].trim() : "";
+    const edited = protocol["editedMessage"];
+    const body = editedMessageBody(edited);
+    // type 14 = MESSAGE_EDIT in Baileys; also accept when editedMessage body exists
+    const isEdit = Boolean(edited) || protocol["type"] === 14 || protocol["type"] === "MESSAGE_EDIT";
+    if (!targetId || !isEdit || (!body.text && !body.mediaKind)) return null;
+    return { targetId, text: body.text, mediaKind: body.mediaKind, mediaMime: body.mediaMime, fromMe };
+  }
+
+  // editedMessage wrapper with same outer key (replacement upsert)
+  if (isRecord(source["editedMessage"])) {
+    const targetId = typeof outerKey["id"] === "string" ? outerKey["id"].trim() : "";
+    const body = editedMessageBody(source["editedMessage"]);
+    if (!targetId || (!body.text && !body.mediaKind)) return null;
+    return { targetId, text: body.text, mediaKind: body.mediaKind, mediaMime: body.mediaMime, fromMe };
+  }
+
+  return null;
+}
+
+/** protocolMessage sem texto útil (revoke/edit envelope) — não deve virar bolha nova. */
+export function evolutionProtocolOnlyMessage(data: unknown) {
+  const root = isRecord(data) ? data : {};
+  const source = isRecord(root["message"]) ? root["message"] : root;
+  if (!isRecord(source["protocolMessage"])) return false;
+  if (source["conversation"] || source["extendedTextMessage"] || source["imageMessage"] || source["videoMessage"] || source["audioMessage"] || source["documentMessage"] || source["buttonsResponseMessage"] || source["listResponseMessage"]) {
+    return false;
+  }
+  return true;
+}
+
 /** Reação em messages.upsert (reactionMessage), messages.reaction ou messages.update. */
 export function evolutionReactionPayload(data: unknown): { targetId: string; emoji: string; fromMe: boolean } | null {
   const root = isRecord(data) ? data : {};
@@ -1478,10 +1569,18 @@ export function evolutionMessageText(message: unknown): string {
   if (extended && typeof extended === "object" && typeof (extended as Record<string, unknown>)["text"] === "string") {
     return (extended as Record<string, unknown>)["text"] as string;
   }
+  const protocol = record["protocolMessage"];
+  if (protocol && typeof protocol === "object") {
+    const edited = (protocol as Record<string, unknown>)["editedMessage"];
+    const editedText = evolutionMessageText(edited);
+    if (editedText) return editedText;
+    // Revoke/edit envelopes are not displayable messages.
+    return "";
+  }
   for (const wrapper of ["ephemeralMessage", "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension", "documentWithCaptionMessage", "editedMessage"]) {
     const nested = record[wrapper];
     if (nested && typeof nested === "object") {
-      const inner = (nested as Record<string, unknown>)["message"];
+      const inner = (nested as Record<string, unknown>)["message"] ?? nested;
       const text = evolutionMessageText(inner);
       if (text) return text;
     }
@@ -1492,7 +1591,8 @@ export function evolutionMessageText(message: unknown): string {
   if (record["documentMessage"]) return "[documento]";
   if (record["locationMessage"]) return "[localização]";
   if (record["contactMessage"]) return "[contato]";
-  return record["conversation"] === undefined && Object.keys(record).length ? "[mensagem]" : "";
+  // Unknown structured payloads must not become a fake media placeholder.
+  return "";
 }
 
 export const wonKanbanStage = "Sucesso";

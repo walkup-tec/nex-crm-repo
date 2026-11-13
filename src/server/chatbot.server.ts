@@ -58,10 +58,13 @@ import {
   whatsappGroupJid,
   whatsappGroupLabel,
   evolutionIncomingMessages,
+  evolutionEditedMessage,
+  evolutionProtocolOnlyMessage,
   evolutionMediaFetchMessage,
   evolutionMediaFile,
   evolutionMessageContent,
   evolutionMessageText,
+  acceptsInboundEditedEvent,
   evolutionProfileNumber,
   evolutionProfilePictureUrl,
   evolutionQrImage,
@@ -402,12 +405,19 @@ async function ensureWebhook(instanceName: string, force = false) {
   try {
     await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", webhookBody());
   } catch (error) {
-    webhookSynced.delete(instanceName);
-    console.error(
-      "nex.chatbot.webhook_set_failed",
-      instanceName,
-      error instanceof Error ? error.message : "failed",
-    );
+    // Older Evolution builds reject MESSAGES_EDITED — retry without it so the inbox keeps receiving upserts.
+    try {
+      const body = webhookBody();
+      body.webhook.events = evolutionWebhookEvents.filter((event) => event !== "MESSAGES_EDITED");
+      await evo(`/webhook/set/${encodeURIComponent(instanceName)}`, "POST", body);
+    } catch (retryError) {
+      webhookSynced.delete(instanceName);
+      console.error(
+        "nex.chatbot.webhook_set_failed",
+        instanceName,
+        retryError instanceof Error ? retryError.message : error instanceof Error ? error.message : "failed",
+      );
+    }
   }
 }
 
@@ -618,29 +628,38 @@ export async function chatbotSnapshot(userId: string): Promise<ChatbotSnapshot> 
         open: !assigneeId,
       };
     }),
-    messages: scopedMessages.map((row) => mapInboxMessage(row, savedMedia)),
+    messages: scopedMessages.filter(inboxMessageVisible).map((row) => mapInboxMessage(row, savedMedia)),
   };
 }
 
+function inboxMessageVisible(row: Record<string, unknown>) {
+  // Drop legacy edit envelopes that were stored as fake media placeholders.
+  return cell(row, "text") !== "[mensagem]";
+}
+
 function mapInboxMessage(row: Record<string, unknown>, savedMedia: Set<string>) {
+  const text = cell(row, "text");
+  // Legacy protocolMessage edits were stored as "[mensagem]" + fake image — hide as empty text bubble noise.
+  const bogusEditPlaceholder = text === "[mensagem]";
+  const rawKind = bogusEditPlaceholder ? "" : cell(row, "media_kind");
   return {
     id: cell(row, "id"),
     conversationId: cell(row, "conversation_id"),
-    text: cell(row, "text"),
+    text: bogusEditPlaceholder ? "" : text,
     direction: cell(row, "direction") as "in" | "out",
     status: cell(row, "status") as "pending" | "sent" | "failed",
     createdAt: cell(row, "created_at"),
     mediaKind:
-      cell(row, "media_kind") === "video"
+      rawKind === "video"
         ? ("video" as const)
-        : cell(row, "media_kind") === "image"
+        : rawKind === "image"
           ? ("image" as const)
-          : cell(row, "media_kind") === "audio"
+          : rawKind === "audio"
             ? ("audio" as const)
-            : cell(row, "media_kind") === "document"
+            : rawKind === "document"
               ? ("document" as const)
               : ("" as const),
-    mediaMime: cell(row, "media_mime"),
+    mediaMime: bogusEditPlaceholder ? "" : cell(row, "media_mime"),
     saved: savedMedia.has(cell(row, "id")),
     internal: row["internal"] === true,
     replyToExternalId: cell(row, "reply_to_external_id"),
@@ -685,7 +704,7 @@ export async function listChatbotConversationMessages(
   const page = messageRows.slice(0, pageSize);
   const savedMedia = await savedMessageIds(organizationId);
   return {
-    messages: [...page].reverse().map((row) => mapInboxMessage(row, savedMedia)),
+    messages: [...page].reverse().filter(inboxMessageVisible).map((row) => mapInboxMessage(row, savedMedia)),
     hasMore,
   };
 }
@@ -2369,8 +2388,20 @@ export async function ingestEvolutionWebhook(request: Request) {
         await storeIncomingReaction(found.data, item);
         continue;
       }
+      if (evolutionEditedMessage(item)) {
+        await storeIncomingEditedMessage(found.data, item);
+        continue;
+      }
       await storeIncoming(found.data, item, knownLids, "webhook");
       void refreshMessageAvatar(found.data, item, knownLids).catch(() => null);
+    }
+  }
+  if (acceptsInboundEditedEvent(event)) {
+    const data = payload["data"];
+    const items = Array.isArray(data) ? data : data ? [data] : [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      await storeIncomingEditedMessage(found.data, item);
     }
   }
   if (acceptsInboundReactionEvent(event)) {
@@ -2378,6 +2409,10 @@ export async function ingestEvolutionWebhook(request: Request) {
     const items = Array.isArray(data) ? data : data ? [data] : [];
     for (const item of items) {
       if (!item || typeof item !== "object") continue;
+      if (evolutionEditedMessage(item)) {
+        await storeIncomingEditedMessage(found.data, item);
+        continue;
+      }
       await storeIncomingReaction(found.data, item);
     }
   }
@@ -2657,6 +2692,48 @@ async function storeIncomingReaction(connection: Record<string, unknown>, data: 
     .eq("organization_id", organizationId);
 }
 
+async function storeIncomingEditedMessage(connection: Record<string, unknown>, data: unknown) {
+  const edited = evolutionEditedMessage(data);
+  if (!edited || edited.fromMe) return;
+  const organizationId = cell(connection, "organization_id");
+  const target = await table("chatbot_messages")
+    .select("id, conversation_id, text, media_kind")
+    .eq("organization_id", organizationId)
+    .eq("external_id", edited.targetId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (target.error || !target.data) return;
+  const previousText = cell(target.data, "text");
+  const group = previousText.includes(": ");
+  const nextText = group && edited.text && !edited.text.includes(": ")
+    ? `${previousText.slice(0, previousText.indexOf(": ") + 2)}${edited.text}`
+    : edited.text || previousText;
+  const patch: Record<string, unknown> = { text: nextText };
+  if (edited.mediaKind) {
+    patch.media_kind = edited.mediaKind;
+    patch.media_mime = edited.mediaMime;
+  } else if (previousText === "[mensagem]") {
+    patch.media_kind = "";
+    patch.media_mime = "";
+  }
+  let saved = await table("chatbot_messages").update(patch).eq("id", cell(target.data, "id")).eq("organization_id", organizationId);
+  if (saved.error && /media_kind|media_mime/i.test(saved.error.message)) {
+    saved = await table("chatbot_messages")
+      .update({ text: nextText })
+      .eq("id", cell(target.data, "id"))
+      .eq("organization_id", organizationId);
+  }
+  if (saved.error) {
+    console.error("message_edit", saved.error.message);
+    return;
+  }
+  await table("chatbot_conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", cell(target.data, "conversation_id"))
+    .eq("organization_id", organizationId);
+}
+
 async function storeIncoming(connection: Record<string, unknown>, data: unknown, knownLids: Record<string, string> = {}, source: "webhook" | "import" = "webhook") {
   const record = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const rawKey = record["key"];
@@ -2665,6 +2742,11 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
     await storeIncomingReaction(connection, record);
     return;
   }
+  if (evolutionEditedMessage(record)) {
+    await storeIncomingEditedMessage(connection, record);
+    return;
+  }
+  if (evolutionProtocolOnlyMessage(record)) return;
   if (key["fromMe"] === true) return;
   const mergedKey = evolutionMessageKey(record, key);
   let phone = incomingPhone(mergedKey, knownLids);
@@ -2760,18 +2842,16 @@ async function storeIncoming(connection: Record<string, unknown>, data: unknown,
   }
   let inserted = !saved.error;
   if (saved.error && duplicate(saved.error)) {
-    if (content.mediaKind || quoted) {
-      const patch: Record<string, unknown> = { text: storedText };
-      if (content.mediaKind) {
-        patch.media_kind = content.mediaKind;
-        patch.media_mime = content.mediaMime;
-      }
-      if (quoted) {
-        patch.reply_to_external_id = quoted.stanzaId;
-        patch.reply_preview = quoted.preview.slice(0, 280);
-      }
-      await table("chatbot_messages").update(patch).eq("conversation_id", conversationId).eq("external_id", externalId);
+    const patch: Record<string, unknown> = { text: storedText };
+    if (content.mediaKind) {
+      patch.media_kind = content.mediaKind;
+      patch.media_mime = content.mediaMime;
     }
+    if (quoted) {
+      patch.reply_to_external_id = quoted.stanzaId;
+      patch.reply_preview = quoted.preview.slice(0, 280);
+    }
+    await table("chatbot_messages").update(patch).eq("conversation_id", conversationId).eq("external_id", externalId);
   } else if (saved.error && content.mediaKind && /media_kind|media_mime/i.test(saved.error.message)) {
     const retry = await table("chatbot_messages")
       .insert({
@@ -3194,20 +3274,14 @@ async function persistMessageMedia(
 }
 
 function mediaPlaceholder(text: string) {
-  return (
-    text === "[mensagem]" ||
-    text === "[imagem]" ||
-    text === "[vídeo]" ||
-    text === "[áudio]" ||
-    text === "[documento]"
-  );
+  return text === "[imagem]" || text === "[vídeo]" || text === "[áudio]" || text === "[documento]";
 }
 
 function storedMediaKind(value: string, text: string): "image" | "video" | "audio" | "document" | "" {
   if (value === "video" || text === "[vídeo]") return "video";
   if (value === "audio" || text === "[áudio]") return "audio";
   if (value === "document" || text === "[documento]") return "document";
-  if (value === "image" || text === "[imagem]" || text === "[mensagem]") return "image";
+  if (value === "image" || text === "[imagem]") return "image";
   return "";
 }
 

@@ -30,7 +30,10 @@ import {
   acceptsInboundReactionEvent,
   applyMessageReaction,
   evolutionQuotedContext,
+  evolutionEditedMessage,
+  evolutionProtocolOnlyMessage,
   evolutionReactionPayload,
+  acceptsInboundEditedEvent,
   messageReactionsFromStorage,
   whatsappQuotedTextPayload,
   whatsappRemoteJid,
@@ -198,10 +201,50 @@ assert.equal(evolutionWebhookEvents.includes("MESSAGES_REACTION" as (typeof evol
 assert.deepEqual([...evolutionWebhookEvents], [
   "MESSAGES_UPSERT",
   "MESSAGES_UPDATE",
+  "MESSAGES_EDITED",
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
   "CONTACTS_UPDATE",
 ]);
+assert.equal(acceptsInboundEditedEvent("MESSAGES_EDITED"), true);
+assert.equal(acceptsInboundEditedEvent("messages.edited"), true);
+assert.deepEqual(
+  evolutionEditedMessage({
+    key: { id: "ORIG1", fromMe: false, remoteJid: "5511999999999@s.whatsapp.net" },
+    type: "MESSAGE_EDIT",
+    editedMessage: { conversation: "texto editado" },
+  }),
+  { targetId: "ORIG1", text: "texto editado", mediaKind: "", mediaMime: "", fromMe: false },
+);
+assert.deepEqual(
+  evolutionEditedMessage({
+    key: { id: "PROTO1", fromMe: false },
+    message: {
+      protocolMessage: {
+        key: { id: "ORIG2", fromMe: false },
+        type: 14,
+        editedMessage: { conversation: "agora sim" },
+      },
+    },
+  }),
+  { targetId: "ORIG2", text: "agora sim", mediaKind: "", mediaMime: "", fromMe: false },
+);
+assert.equal(
+  evolutionEditedMessage({
+    key: { id: "ORIG3", fromMe: false },
+    message: { editedMessage: { message: { conversation: "via wrapper" } } },
+  })?.text,
+  "via wrapper",
+);
+assert.equal(
+  evolutionProtocolOnlyMessage({
+    key: { id: "PROTO2" },
+    message: { protocolMessage: { key: { id: "ORIG4" }, type: 14, editedMessage: { conversation: "x" } } },
+  }),
+  true,
+);
+assert.equal(evolutionMessageText({ protocolMessage: { editedMessage: { conversation: "editado" } } }), "editado");
+assert.equal(evolutionMessageText({ protocolMessage: { key: { id: "x" }, type: 0 } }), "");
 assert.equal(headerAttendant("  Marina Costa  "), "Marina Costa");
 assert.equal(headerAttendant("   "), "Fila");
 assert.equal(finishAttendanceGate({ status: "queue", assigneeId: "", userId: "ana", admin: false }), "ok");

@@ -71,13 +71,7 @@ function cacheLoadedMedia(
 }
 
 function mediaCaption(text: string) {
-  if (
-    text === "[mensagem]" ||
-    text === "[imagem]" ||
-    text === "[vídeo]" ||
-    text === "[áudio]" ||
-    text === "[documento]"
-  ) {
+  if (text === "[imagem]" || text === "[vídeo]" || text === "[áudio]" || text === "[documento]") {
     return "";
   }
   return text;
@@ -89,7 +83,6 @@ function expectsMedia(item: InboxMessage) {
     item.mediaKind === "video" ||
     item.mediaKind === "audio" ||
     item.mediaKind === "document" ||
-    item.text === "[mensagem]" ||
     item.text === "[imagem]" ||
     item.text === "[vídeo]" ||
     item.text === "[áudio]" ||

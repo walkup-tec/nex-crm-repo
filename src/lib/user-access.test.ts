@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { adsConnectionSections, adsDashboardOrder, commercialOffer, metaConnectionBroken } from "./user-access";
+import {
+  adsConnectionSections,
+  adsDashboardOrder,
+  commercialOffer,
+  masterSeesUserAccess,
+  metaConnectionBroken,
+  organizationHasAdsAccess,
+} from "./user-access";
 
 const now = Date.parse("2026-10-23T12:00:00-03:00");
 
@@ -19,3 +26,17 @@ assert.deepEqual(adsDashboardOrder({ adsMeta: true, adsGoogle: true }), ["meta",
 assert.equal(commercialOffer("google").message.endsWith("Google Ads"), true);
 assert.equal(commercialOffer("meta").message.endsWith("Meta Ads"), true);
 assert.equal(commercialOffer("google").href, "https://wa.me/555197979224");
+assert.equal(organizationHasAdsAccess({ adsMeta: true, adsGoogle: false }), true);
+assert.equal(organizationHasAdsAccess({ adsMeta: false, adsGoogle: true }), true);
+assert.equal(organizationHasAdsAccess({ adsMeta: false, adsGoogle: false }), false);
+assert.equal(organizationHasAdsAccess(null), false);
+const platforms = new Map([
+  ["ads", { adsMeta: true, adsGoogle: false }],
+  ["hosting", { adsMeta: false, adsGoogle: false }],
+]);
+assert.equal(masterSeesUserAccess({ role: "master", organizationId: null, platforms }), true);
+assert.equal(masterSeesUserAccess({ role: "client_admin", organizationId: "ads", platforms }), true);
+assert.equal(masterSeesUserAccess({ role: "client_user", organizationId: "ads", platforms }), true);
+assert.equal(masterSeesUserAccess({ role: "client_admin", organizationId: "hosting", platforms }), false);
+assert.equal(masterSeesUserAccess({ role: "client_admin", organizationId: "hosting", platforms: null }), true);
+assert.equal(masterSeesUserAccess({ role: "client_admin", organizationId: null, platforms }), false);

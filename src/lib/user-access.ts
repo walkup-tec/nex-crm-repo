@@ -73,6 +73,22 @@ export function adsConnectionSections(flags: { adsMeta?: boolean; adsGoogle?: bo
   return { meta: flags.adsMeta === true, google: flags.adsGoogle === true };
 }
 
+/** Clientes só de cobranca (ex.: hospedagem) nao entram em Usuarios — so Meta Ads ou Google Ads. */
+export function organizationHasAdsAccess(flags: { adsMeta?: boolean; adsGoogle?: boolean } | null | undefined) {
+  return flags?.adsMeta === true || flags?.adsGoogle === true;
+}
+
+export function masterSeesUserAccess(input: {
+  role: UserRole;
+  organizationId: string | null;
+  platforms: Map<string, { adsMeta: boolean; adsGoogle: boolean }> | null;
+}) {
+  if (input.role === "master") return true;
+  if (!input.platforms) return true;
+  if (!input.organizationId) return false;
+  return organizationHasAdsAccess(input.platforms.get(input.organizationId));
+}
+
 export type UsersSnapshot = {
   actor: { id: string; role: UserRole; fullName: string; organizationId: string | null };
   users: ListedUser[];

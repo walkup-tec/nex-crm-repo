@@ -3,7 +3,15 @@ import { clientDisplayName } from "@/lib/client-access";
 import { sendInviteWhatsapp } from "@/server/evo.server";
 import { appUrl, sendInviteEmail } from "@/server/mail.server";
 
-import { metaConnectionBroken, type ListedUser, type MetaConnectionProblem, type UserPermissions, type UserRole } from "@/lib/user-access";
+import {
+  masterSeesUserAccess,
+  metaConnectionBroken,
+  organizationHasAdsAccess,
+  type ListedUser,
+  type MetaConnectionProblem,
+  type UserPermissions,
+  type UserRole,
+} from "@/lib/user-access";
 
 type Role = UserRole;
 
@@ -292,9 +300,12 @@ export async function listUsers(userId: string) {
   const names = new Map(rows.map((row) => [row.id, row.full_name]));
   const ownPermissions = permissions.get(actor.id) ?? defaultPermissions;
   const visible = rows.filter((row) => {
-    if (actor.role === "master") return true;
+    const role = roles.get(row.id) ?? "client_user";
+    if (actor.role === "master") {
+      return masterSeesUserAccess({ role, organizationId: row.organization_id, platforms });
+    }
     if (actor.role === "client_admin") return row.owner_id === actor.id;
-    return ownPermissions.manage && roles.get(row.id) === "client_user" && row.organization_id === actor.organizationId;
+    return ownPermissions.manage && role === "client_user" && row.organization_id === actor.organizationId;
   });
   return {
     actor: { id: actor.id, role: actor.role, fullName: actor.fullName, organizationId: actor.organizationId },
@@ -375,13 +386,27 @@ export async function createUser(
     if (role === "client_admin") {
       const selectedOrganizationId = input.organizationId?.trim() ?? "";
       if (!selectedOrganizationId) fail("Selecione o cliente.");
-      const { data: org, error: orgError } = await supabaseAdmin
+      const platforms = await organizationPlatforms();
+      const full = await supabaseAdmin
         .from("organizations")
-        .select("id")
+        .select("id, ads_meta, ads_google")
         .eq("id", selectedOrganizationId)
         .maybeSingle();
-      if (orgError || !org) fail("Cliente não encontrado.");
-      organizationId = org.id;
+      const org =
+        full.error && /ads_meta|ads_google/i.test(full.error.message)
+          ? await supabaseAdmin.from("organizations").select("id").eq("id", selectedOrganizationId).maybeSingle()
+          : full;
+      if (org.error || !org.data) fail("Cliente não encontrado.");
+      if (platforms) {
+        const flags = platforms.get(org.data.id) ?? {
+          adsMeta: "ads_meta" in org.data ? org.data.ads_meta === true : false,
+          adsGoogle: "ads_google" in org.data ? org.data.ads_google === true : false,
+        };
+        if (!organizationHasAdsAccess(flags)) {
+          fail("Só clientes de Meta Ads ou Google Ads podem ter acesso ao sistema.");
+        }
+      }
+      organizationId = org.data.id;
     }
 
     const { error: profileError } = await supabaseAdmin.from("profiles").insert({

@@ -29,7 +29,15 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { applyMask } from "@/lib/masks";
-import { adsConnectionSections, type ListedUser, type RegisteredClient, type UserPermissions, type UserRole, type UsersSnapshot } from "@/lib/user-access";
+import {
+  adsConnectionSections,
+  organizationHasAdsAccess,
+  type ListedUser,
+  type RegisteredClient,
+  type UserPermissions,
+  type UserRole,
+  type UsersSnapshot,
+} from "@/lib/user-access";
 import { GoogleAdsConnect } from "@/components/nex/GoogleAdsConnect";
 import { MetaConnect } from "@/components/nex/MetaConnect";
 import { clientDisplayName } from "@/lib/client-access";
@@ -59,7 +67,9 @@ function permissionSummary(user: ListedUser) {
 }
 
 function subtitleFor(role: UserRole) {
-  if (role === "master") return "Crie acessos Master ou Cliente. Os usuários de cada cliente aparecem com o responsável.";
+  if (role === "master") {
+    return "Crie acessos Master ou Cliente de Meta Ads e Google Ads. Os usuários de cada cliente aparecem com o responsável.";
+  }
   if (role === "client_admin") return "Crie os usuários da sua conta. Eles ficam atribuídos a você.";
   return "Seu acesso consulta a conta, sem criar outros usuários.";
 }
@@ -118,8 +128,11 @@ export function UsersAdmin() {
         if (result.data.actor.role === "master") {
           const clientsResult = await listClientsFn();
           if (clientsResult.ok) {
+            const adsClients = clientsResult.data.filter((client) =>
+              organizationHasAdsAccess({ adsMeta: client.adsMeta, adsGoogle: client.adsGoogle }),
+            );
             setRegisteredClients(
-              clientsResult.data.map((client) => ({
+              adsClients.map((client) => ({
                 id: client.id,
                 name: clientDisplayName(client),
                 email: client.responsibleEmail,

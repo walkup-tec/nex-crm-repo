@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { BarChart3, Bot, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, LogOut, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, ShieldCheck, Smartphone, Sparkles, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
+import { BarChart3, Bot, Briefcase, BriefcaseBusiness, CalendarDays, ChevronDown, CircleAlert, CircleDollarSign, Columns3, CreditCard, FileImage, Gauge, LayoutDashboard, LogOut, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, ShieldCheck, Smartphone, Sparkles, Users, UsersRound, WalletCards, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -15,6 +15,7 @@ import { OverdueAccess } from "./OverdueAccess";
 import { RequestMeetingButton } from "./RequestMeetingButton";
 import { clientUserCanSee, noClientPermissions } from "@/lib/client-permissions";
 import { allChatbotMenus, type ChatbotMenuMap } from "@/lib/chatbot-menus";
+import { careerAccessFn } from "@/lib/career.functions";
 import { clientNavPaths } from "@/lib/master-role";
 import type { UserPermissions } from "@/lib/user-access";
 import { cn } from "@/lib/utils";
@@ -85,7 +86,8 @@ const clientSections = [
     paths: ["/financeiro", "/usuarios", "/minha-conta"],
   },
 ] as const;
-const masterNav = [["/master", "Dashboard", Gauge], ["/master/clientes", "Clientes", BriefcaseBusiness], ["/usuarios", "Usuários", Users], ["/master/campanhas", "Campanhas", BarChart3], ["/master/analytic-meta-ia", "META IA Analytics", Sparkles], ["/master/creditos-meta", "Créditos Meta", WalletCards], ["/master/financeiro", "Financeiro", CircleDollarSign], ["/master/criativos", "Criativos", FileImage], ["/master/configuracoes", "Configurações", Settings]] as const;
+const masterNav = [["/master", "Dashboard", Gauge], ["/master/clientes", "Clientes", BriefcaseBusiness], ["/usuarios", "Usuários", Users], ["/master/campanhas", "Campanhas", BarChart3], ["/master/analytic-meta-ia", "META IA Analytics", Sparkles], ["/master/candidatura", "Candidatura", Briefcase], ["/master/creditos-meta", "Créditos Meta", WalletCards], ["/master/financeiro", "Financeiro", CircleDollarSign], ["/master/criativos", "Criativos", FileImage], ["/master/configuracoes", "Configurações", Settings]] as const;
+const careerNavPath = "/master/candidatura";
 function useSignedInName() {
   const [name, setName] = useState("");
   useEffect(() => {
@@ -135,6 +137,7 @@ function Nav({
   menus = null,
   calendarMenu = false,
   metaProblem = false,
+  showCareer = false,
 }: {
   master: boolean;
   close?: () => void;
@@ -146,6 +149,7 @@ function Nav({
   menus?: ChatbotMenuMap | null;
   calendarMenu?: boolean;
   metaProblem?: boolean;
+  showCareer?: boolean;
 }) {
   const loc = useLocation().pathname;
   const path = demoPath ?? loc;
@@ -154,6 +158,7 @@ function Nav({
     return !restricted || clientUserCanSee(to, restricted, menus ?? allChatbotMenus(false));
   };
   const entries = master ? masterNav : clientItems(showClients);
+  const masterEntries = masterNav.filter(([to]) => to !== careerNavPath || showCareer);
   const link = (to: string, label: string, Icon: (typeof entries)[number][2], nested = false) => (
     <Link
       key={to}
@@ -185,7 +190,7 @@ function Nav({
   );
   if (master) {
     return (
-      <nav className="space-y-1">{masterNav.map(([to, label, Icon]) => link(to, label, Icon))}</nav>
+      <nav className="space-y-1">{masterEntries.map(([to, label, Icon]) => link(to, label, Icon))}</nav>
     );
   }
   const items = clientItems(showClients);
@@ -275,10 +280,25 @@ export function AppShell({
   const lowBalance = balanceAlert.low;
   const connectionProblems = useMetaConnectionProblems(master && !onDemoNavigate);
   const metaProblem = connectionProblems.length > 0;
+  const [showCareer, setShowCareer] = useState(false);
 
   useEffect(() => {
     setNavOpen(readNavOpen());
   }, []);
+
+  useEffect(() => {
+    if (!master || onDemoNavigate) {
+      setShowCareer(false);
+      return;
+    }
+    let active = true;
+    void careerAccessFn().then((result) => {
+      if (active) setShowCareer(Boolean(result.ok && result.data.allowed));
+    });
+    return () => {
+      active = false;
+    };
+  }, [master, onDemoNavigate]);
 
   function toggleNav() {
     setNavOpen((open) => {
@@ -302,6 +322,7 @@ export function AppShell({
     menus,
     calendarMenu,
     metaProblem,
+    showCareer,
   };
 
   const shell = (

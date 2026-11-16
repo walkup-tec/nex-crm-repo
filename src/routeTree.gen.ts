@@ -47,6 +47,7 @@ import { Route as AuthenticatedChatbotWhatsappsRouteImport } from './routes/_aut
 import { Route as AuthenticatedMasterIndexRouteImport } from './routes/_authenticated/master.index'
 import { Route as AuthenticatedMasterAnalyticMetaIaRouteImport } from './routes/_authenticated/master.analytic-meta-ia'
 import { Route as AuthenticatedMasterCampanhasRouteImport } from './routes/_authenticated/master.campanhas'
+import { Route as AuthenticatedMasterCandidaturaRouteImport } from './routes/_authenticated/master.candidatura'
 import { Route as AuthenticatedMasterClientesRouteImport } from './routes/_authenticated/master.clientes'
 import { Route as AuthenticatedMasterConfiguracoesRouteImport } from './routes/_authenticated/master.configuracoes'
 import { Route as AuthenticatedMasterCreditosMetaRouteImport } from './routes/_authenticated/master.creditos-meta'
@@ -61,6 +62,8 @@ import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes
 import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_authenticated/master.suporte.$orgId'
 import { Route as ApiIntegrationsChatgptOpenapiRouteImport } from './routes/api/integrations/chatgpt/openapi'
 import { Route as ApiIntegrationsChatgptAnalysesExecutionIdRouteImport } from './routes/api/integrations/chatgpt/analyses/$executionId'
+import { Route as ApiIntegrationsChatgptCareerSplatRouteImport } from './routes/api/integrations/chatgpt/career/$'
+import { Route as ApiIntegrationsChatgptCareerOpenapiRouteImport } from './routes/api/integrations/chatgpt/career/openapi'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -268,6 +271,12 @@ const AuthenticatedMasterCampanhasRoute =
     path: '/campanhas',
     getParentRoute: () => AuthenticatedMasterRoute,
   } as any)
+const AuthenticatedMasterCandidaturaRoute =
+  AuthenticatedMasterCandidaturaRouteImport.update({
+    id: '/candidatura',
+    path: '/candidatura',
+    getParentRoute: () => AuthenticatedMasterRoute,
+  } as any)
 const AuthenticatedMasterClientesRoute =
   AuthenticatedMasterClientesRouteImport.update({
     id: '/clientes',
@@ -347,6 +356,18 @@ const ApiIntegrationsChatgptAnalysesExecutionIdRoute =
     path: '/api/integrations/chatgpt/analyses/$executionId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiIntegrationsChatgptCareerSplatRoute =
+  ApiIntegrationsChatgptCareerSplatRouteImport.update({
+    id: '/api/integrations/chatgpt/career/$',
+    path: '/api/integrations/chatgpt/career/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptCareerOpenapiRoute =
+  ApiIntegrationsChatgptCareerOpenapiRouteImport.update({
+    id: '/api/integrations/chatgpt/career/openapi',
+    path: '/api/integrations/chatgpt/career/openapi',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -384,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
   '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
+  '/master/candidatura': typeof AuthenticatedMasterCandidaturaRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
@@ -400,6 +422,8 @@ export interface FileRoutesByFullPath {
   '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
   '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
   '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
+  '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
+  '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -434,6 +458,7 @@ export interface FileRoutesByTo {
   '/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
   '/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
+  '/master/candidatura': typeof AuthenticatedMasterCandidaturaRoute
   '/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
@@ -450,6 +475,8 @@ export interface FileRoutesByTo {
   '/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
   '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
   '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
+  '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
+  '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -489,6 +516,7 @@ export interface FileRoutesById {
   '/_authenticated/chatbot/whatsapps': typeof AuthenticatedChatbotWhatsappsRoute
   '/_authenticated/master/analytic-meta-ia': typeof AuthenticatedMasterAnalyticMetaIaRoute
   '/_authenticated/master/campanhas': typeof AuthenticatedMasterCampanhasRoute
+  '/_authenticated/master/candidatura': typeof AuthenticatedMasterCandidaturaRoute
   '/_authenticated/master/clientes': typeof AuthenticatedMasterClientesRoute
   '/_authenticated/master/configuracoes': typeof AuthenticatedMasterConfiguracoesRoute
   '/_authenticated/master/creditos-meta': typeof AuthenticatedMasterCreditosMetaRoute
@@ -505,6 +533,8 @@ export interface FileRoutesById {
   '/_authenticated/master/suporte/$orgId': typeof AuthenticatedMasterSuporteOrgIdRoute
   '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
   '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
+  '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
+  '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -544,6 +574,7 @@ export interface FileRouteTypes {
     | '/chatbot/whatsapps'
     | '/master/analytic-meta-ia'
     | '/master/campanhas'
+    | '/master/candidatura'
     | '/master/clientes'
     | '/master/configuracoes'
     | '/master/creditos-meta'
@@ -560,6 +591,8 @@ export interface FileRouteTypes {
     | '/master/suporte/$orgId'
     | '/api/integrations/chatgpt/openapi'
     | '/api/integrations/chatgpt/analyses/$executionId'
+    | '/api/integrations/chatgpt/career/$'
+    | '/api/integrations/chatgpt/career/openapi'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -594,6 +627,7 @@ export interface FileRouteTypes {
     | '/chatbot/whatsapps'
     | '/master/analytic-meta-ia'
     | '/master/campanhas'
+    | '/master/candidatura'
     | '/master/clientes'
     | '/master/configuracoes'
     | '/master/creditos-meta'
@@ -610,6 +644,8 @@ export interface FileRouteTypes {
     | '/master/suporte/$orgId'
     | '/api/integrations/chatgpt/openapi'
     | '/api/integrations/chatgpt/analyses/$executionId'
+    | '/api/integrations/chatgpt/career/$'
+    | '/api/integrations/chatgpt/career/openapi'
   id:
     | '__root__'
     | '/'
@@ -648,6 +684,7 @@ export interface FileRouteTypes {
     | '/_authenticated/chatbot/whatsapps'
     | '/_authenticated/master/analytic-meta-ia'
     | '/_authenticated/master/campanhas'
+    | '/_authenticated/master/candidatura'
     | '/_authenticated/master/clientes'
     | '/_authenticated/master/configuracoes'
     | '/_authenticated/master/creditos-meta'
@@ -664,6 +701,8 @@ export interface FileRouteTypes {
     | '/_authenticated/master/suporte/$orgId'
     | '/api/integrations/chatgpt/openapi'
     | '/api/integrations/chatgpt/analyses/$executionId'
+    | '/api/integrations/chatgpt/career/$'
+    | '/api/integrations/chatgpt/career/openapi'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -683,6 +722,8 @@ export interface RootRouteChildren {
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
   ApiIntegrationsChatgptOpenapiRoute: typeof ApiIntegrationsChatgptOpenapiRoute
   ApiIntegrationsChatgptAnalysesExecutionIdRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
+  ApiIntegrationsChatgptCareerSplatRoute: typeof ApiIntegrationsChatgptCareerSplatRoute
+  ApiIntegrationsChatgptCareerOpenapiRoute: typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -953,6 +994,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterCampanhasRouteImport
       parentRoute: typeof AuthenticatedMasterRoute
     }
+    '/_authenticated/master/candidatura': {
+      id: '/_authenticated/master/candidatura'
+      path: '/candidatura'
+      fullPath: '/master/candidatura'
+      preLoaderRoute: typeof AuthenticatedMasterCandidaturaRouteImport
+      parentRoute: typeof AuthenticatedMasterRoute
+    }
     '/_authenticated/master/clientes': {
       id: '/_authenticated/master/clientes'
       path: '/clientes'
@@ -1051,6 +1099,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/chatgpt/career/$': {
+      id: '/api/integrations/chatgpt/career/$'
+      path: '/api/integrations/chatgpt/career/$'
+      fullPath: '/api/integrations/chatgpt/career/$'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/career/openapi': {
+      id: '/api/integrations/chatgpt/career/openapi'
+      path: '/api/integrations/chatgpt/career/openapi'
+      fullPath: '/api/integrations/chatgpt/career/openapi'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerOpenapiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1108,6 +1170,7 @@ const AuthenticatedMasterFinanceiroRouteWithChildren =
 interface AuthenticatedMasterRouteChildren {
   AuthenticatedMasterAnalyticMetaIaRoute: typeof AuthenticatedMasterAnalyticMetaIaRoute
   AuthenticatedMasterCampanhasRoute: typeof AuthenticatedMasterCampanhasRoute
+  AuthenticatedMasterCandidaturaRoute: typeof AuthenticatedMasterCandidaturaRoute
   AuthenticatedMasterClientesRoute: typeof AuthenticatedMasterClientesRoute
   AuthenticatedMasterConfiguracoesRoute: typeof AuthenticatedMasterConfiguracoesRoute
   AuthenticatedMasterCreditosMetaRoute: typeof AuthenticatedMasterCreditosMetaRoute
@@ -1121,6 +1184,7 @@ const AuthenticatedMasterRouteChildren: AuthenticatedMasterRouteChildren = {
   AuthenticatedMasterAnalyticMetaIaRoute:
     AuthenticatedMasterAnalyticMetaIaRoute,
   AuthenticatedMasterCampanhasRoute: AuthenticatedMasterCampanhasRoute,
+  AuthenticatedMasterCandidaturaRoute: AuthenticatedMasterCandidaturaRoute,
   AuthenticatedMasterClientesRoute: AuthenticatedMasterClientesRoute,
   AuthenticatedMasterConfiguracoesRoute: AuthenticatedMasterConfiguracoesRoute,
   AuthenticatedMasterCreditosMetaRoute: AuthenticatedMasterCreditosMetaRoute,
@@ -1205,6 +1269,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsChatgptOpenapiRoute: ApiIntegrationsChatgptOpenapiRoute,
   ApiIntegrationsChatgptAnalysesExecutionIdRoute:
     ApiIntegrationsChatgptAnalysesExecutionIdRoute,
+  ApiIntegrationsChatgptCareerSplatRoute:
+    ApiIntegrationsChatgptCareerSplatRoute,
+  ApiIntegrationsChatgptCareerOpenapiRoute:
+    ApiIntegrationsChatgptCareerOpenapiRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

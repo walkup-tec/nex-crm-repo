@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const META_TEST_FILES = [
   "src/intelligence/meta-leads/protocol-v1.1.test.ts",
+  "src/lib/career-access.test.ts",
   "src/lib/chatgpt-integration.test.ts",
+  "src/lib/user-access.test.ts",
   "src/lib/meta-ai-calibration.test.ts",
   "src/lib/meta-ai-prompt.test.ts",
   "src/lib/meta-analysis.test.ts",

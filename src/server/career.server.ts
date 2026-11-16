@@ -17,10 +17,16 @@ function fail(message: string): never {
 }
 
 function migrationHint(message: string) {
-  if (/career_|schema cache|does not exist/i.test(message)) {
+  // Só remapear ausência real de schema/tabela — não mascarar RLS/unique/etc.
+  if (/schema cache|PGRST205|relation ["']?career_|could not find the table|does not exist/i.test(message)) {
     return "Aplique a migração 0057_career_intelligence.sql no Supabase.";
   }
   return message;
+}
+
+/** Tabelas career ainda fora do Database types gerado — evita from() tipado quebrado. */
+function careerFrom(table: string) {
+  return (supabaseAdmin as unknown as { from: (name: string) => ReturnType<typeof supabaseAdmin.from> }).from(table);
 }
 
 type CompanyInput = {
@@ -90,8 +96,7 @@ async function createExecution(input: {
   requestJson?: unknown;
 }) {
   if (input.idempotencyKey) {
-    const existing = await supabaseAdmin
-      .from("career_executions")
+    const existing = await careerFrom("career_executions")
       .select("*")
       .eq("idempotency_key", input.idempotencyKey)
       .maybeSingle();
@@ -100,8 +105,7 @@ async function createExecution(input: {
     }
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("career_executions")
+  const { data, error } = await careerFrom("career_executions")
     .insert({
       kind: input.kind,
       status: "running",
@@ -122,8 +126,7 @@ async function finishExecution(
   status: "completed" | "partial" | "error" = "completed",
   errorMessage = "",
 ) {
-  const { error } = await supabaseAdmin
-    .from("career_executions")
+  const { error } = await careerFrom("career_executions")
     .update({
       status,
       summary_json: summary,
@@ -143,19 +146,19 @@ async function findCompany(input: CompanyInput) {
   const state = (input.state ?? "").trim().toUpperCase();
 
   if (cnpj) {
-    const { data } = await supabaseAdmin.from("career_companies").select("*").eq("cnpj", cnpj).maybeSingle();
+    const { data } = await careerFrom("career_companies").select("*").eq("cnpj", cnpj).maybeSingle();
     if (data) return data;
   }
   if (domain) {
-    const { data } = await supabaseAdmin.from("career_companies").select("*").eq("domain_normalized", domain).maybeSingle();
+    const { data } = await careerFrom("career_companies").select("*").eq("domain_normalized", domain).maybeSingle();
     if (data) return data;
   }
   if (linkedin) {
-    const { data } = await supabaseAdmin.from("career_companies").select("*").eq("linkedin_normalized", linkedin).maybeSingle();
+    const { data } = await careerFrom("career_companies").select("*").eq("linkedin_normalized", linkedin).maybeSingle();
     if (data) return data;
   }
   if (name) {
-    let query = supabaseAdmin.from("career_companies").select("*").eq("name_normalized", name);
+    let query = careerFrom("career_companies").select("*").eq("name_normalized", name);
     if (city) query = query.eq("city", city);
     if (state) query = query.eq("state", state);
     const { data } = await query.maybeSingle();
@@ -252,7 +255,7 @@ export async function upsertCareerCompanies(input: {
           prospect_status: company.prospectStatus?.trim() || "new",
           research_ids: [started.execution.id],
         };
-        const { error } = await supabaseAdmin.from("career_companies").insert(row);
+        const { error } = await careerFrom("career_companies").insert(row);
         if (error) {
           if (/duplicate|unique/i.test(error.message)) {
             counts.duplicates += 1;
@@ -273,7 +276,7 @@ export async function upsertCareerCompanies(input: {
       const meaningful = Object.keys(patch).some(
         (key) => !["last_seen_at", "updated_at", "research_ids", "name_normalized", "domain_normalized", "linkedin_normalized"].includes(key),
       );
-      const { error } = await supabaseAdmin.from("career_companies").update(patch).eq("id", existing.id);
+      const { error } = await careerFrom("career_companies").update(patch).eq("id", existing.id);
       if (error) {
         counts.errors += 1;
         errorMessages.push(error.message);
@@ -326,12 +329,11 @@ export async function upsertCareerJobs(input: {
       const titleNorm = normalizeJobTitle(job.title);
       let existing = null as Record<string, unknown> | null;
       if (urlNorm) {
-        const { data } = await supabaseAdmin.from("career_jobs").select("*").eq("url_normalized", urlNorm).maybeSingle();
+        const { data } = await careerFrom("career_jobs").select("*").eq("url_normalized", urlNorm).maybeSingle();
         existing = data;
       }
       if (!existing && job.companyId && titleNorm) {
-        const { data } = await supabaseAdmin
-          .from("career_jobs")
+        const { data } = await careerFrom("career_jobs")
           .select("*")
           .eq("company_id", job.companyId)
           .eq("title_normalized", titleNorm)
@@ -365,7 +367,7 @@ export async function upsertCareerJobs(input: {
       };
 
       if (!existing) {
-        const { error } = await supabaseAdmin.from("career_jobs").insert({
+        const { error } = await careerFrom("career_jobs").insert({
           ...row,
           research_ids: [started.execution.id],
         });
@@ -380,8 +382,7 @@ export async function upsertCareerJobs(input: {
 
       const researchIds = Array.isArray(existing.research_ids) ? [...existing.research_ids] : [];
       if (!researchIds.includes(started.execution.id)) researchIds.push(started.execution.id);
-      const { error } = await supabaseAdmin
-        .from("career_jobs")
+      const { error } = await careerFrom("career_jobs")
         .update({ ...row, research_ids: researchIds })
         .eq("id", existing.id);
       if (error) {
@@ -439,8 +440,7 @@ export async function enrichCareerContacts(input: {
         counts.errors += 1;
         continue;
       }
-      const existing = await supabaseAdmin
-        .from("career_contacts")
+      const existing = await careerFrom("career_contacts")
         .select("*")
         .eq("company_id", companyId)
         .eq("kind", contact.kind)
@@ -461,11 +461,11 @@ export async function enrichCareerContacts(input: {
       };
 
       if (existing.data) {
-        const { error } = await supabaseAdmin.from("career_contacts").update(row).eq("id", existing.data.id);
+        const { error } = await careerFrom("career_contacts").update(row).eq("id", existing.data.id);
         if (error) counts.errors += 1;
         else counts.updated += 1;
       } else {
-        const { error } = await supabaseAdmin.from("career_contacts").insert(row);
+        const { error } = await careerFrom("career_contacts").insert(row);
         if (error) {
           if (/duplicate|unique/i.test(error.message)) counts.duplicates += 1;
           else counts.errors += 1;
@@ -473,8 +473,7 @@ export async function enrichCareerContacts(input: {
       }
 
       if (contact.kind === "hr_email" && contact.value) {
-        await supabaseAdmin
-          .from("career_companies")
+        await careerFrom("career_companies")
           .update({ hr_email: contact.value.trim(), last_enriched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", companyId);
       }
@@ -509,12 +508,11 @@ export async function prepareCareerApplication(input: ApplicationPrepareInput & 
     };
   }
 
-  const { data: job, error: jobError } = await supabaseAdmin.from("career_jobs").select("*").eq("id", input.jobId).maybeSingle();
+  const { data: job, error: jobError } = await careerFrom("career_jobs").select("*").eq("id", input.jobId).maybeSingle();
   if (jobError) fail(migrationHint(jobError.message));
   if (!job) fail("Vaga não encontrada.");
 
-  const { data, error } = await supabaseAdmin
-    .from("career_applications")
+  const { data, error } = await careerFrom("career_applications")
     .insert({
       job_id: job.id,
       company_id: job.company_id,
@@ -531,8 +529,7 @@ export async function prepareCareerApplication(input: ApplicationPrepareInput & 
     .single();
   if (error) fail(migrationHint(error.message));
 
-  await supabaseAdmin
-    .from("career_jobs")
+  await careerFrom("career_jobs")
     .update({ opportunity_status: "prepared", updated_at: new Date().toISOString() })
     .eq("id", job.id);
 
@@ -545,7 +542,7 @@ export async function listCareerCompanies(userId: string, query?: { q?: string; 
   await assertCareerPanelAccess(userId);
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
-  let req = supabaseAdmin.from("career_companies").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
+  let req = careerFrom("career_companies").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.q?.trim()) req = req.ilike("name", `%${query.q.trim()}%`);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
@@ -556,7 +553,7 @@ export async function listCareerJobs(userId: string, query?: { q?: string; limit
   await assertCareerPanelAccess(userId);
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
-  let req = supabaseAdmin.from("career_jobs").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
+  let req = careerFrom("career_jobs").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.q?.trim()) req = req.or(`title.ilike.%${query.q.trim()}%,company_name.ilike.%${query.q.trim()}%`);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
@@ -567,7 +564,7 @@ export async function listCareerContacts(userId: string, query?: { companyId?: s
   await assertCareerPanelAccess(userId);
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
-  let req = supabaseAdmin.from("career_contacts").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
+  let req = careerFrom("career_contacts").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.companyId) req = req.eq("company_id", query.companyId);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
@@ -576,21 +573,21 @@ export async function listCareerContacts(userId: string, query?: { companyId?: s
 
 export async function listCareerApplications(userId: string) {
   await assertCareerPanelAccess(userId);
-  const { data, error } = await supabaseAdmin.from("career_applications").select("*").order("updated_at", { ascending: false }).limit(100);
+  const { data, error } = await careerFrom("career_applications").select("*").order("updated_at", { ascending: false }).limit(100);
   if (error) fail(migrationHint(error.message));
   return { items: data ?? [] };
 }
 
 export async function listCareerHistory(userId: string) {
   await assertCareerPanelAccess(userId);
-  const { data, error } = await supabaseAdmin.from("career_executions").select("*").order("created_at", { ascending: false }).limit(100);
+  const { data, error } = await careerFrom("career_executions").select("*").order("created_at", { ascending: false }).limit(100);
   if (error) fail(migrationHint(error.message));
   return { items: data ?? [] };
 }
 
 export async function getCareerExecution(userId: string, executionId: string) {
   await assertCareerPanelAccess(userId);
-  const { data, error } = await supabaseAdmin.from("career_executions").select("*").eq("id", executionId).maybeSingle();
+  const { data, error } = await careerFrom("career_executions").select("*").eq("id", executionId).maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Execução não encontrada.");
   return data;
@@ -611,7 +608,7 @@ export async function patchCareerCompany(userId: string, id: string, patch: Part
   if (patch.hrEmail !== undefined) updates["hr_email"] = patch.hrEmail;
   if (patch.corporateEmail !== undefined) updates["corporate_email"] = patch.corporateEmail;
   if (patch.businessWhatsapp !== undefined) updates["business_whatsapp"] = patch.businessWhatsapp;
-  const { data, error } = await supabaseAdmin.from("career_companies").update(updates).eq("id", id).select("*").maybeSingle();
+  const { data, error } = await careerFrom("career_companies").update(updates).eq("id", id).select("*").maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Empresa não encontrada.");
   return data;
@@ -622,7 +619,7 @@ export async function patchCareerJob(userId: string, id: string, patch: { opport
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.opportunityStatus) updates["opportunity_status"] = patch.opportunityStatus;
   if (patch.compatibilityNotes !== undefined) updates["compatibility_notes"] = patch.compatibilityNotes;
-  const { data, error } = await supabaseAdmin.from("career_jobs").update(updates).eq("id", id).select("*").maybeSingle();
+  const { data, error } = await careerFrom("career_jobs").update(updates).eq("id", id).select("*").maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Vaga não encontrada.");
   return data;
@@ -642,7 +639,7 @@ export async function patchCareerApplication(
       updates["approved_by"] = userId;
     }
   }
-  const { data, error } = await supabaseAdmin.from("career_applications").update(updates).eq("id", id).select("*").maybeSingle();
+  const { data, error } = await careerFrom("career_applications").update(updates).eq("id", id).select("*").maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Candidatura não encontrada.");
   return data;
@@ -651,11 +648,11 @@ export async function patchCareerApplication(
 export async function careerOverview(userId: string) {
   await assertCareerPanelAccess(userId);
   const [companies, jobs, contacts, applications, executions] = await Promise.all([
-    supabaseAdmin.from("career_companies").select("id", { count: "exact", head: true }),
-    supabaseAdmin.from("career_jobs").select("id, opportunity_status, compatibility_score", { count: "exact" }),
-    supabaseAdmin.from("career_contacts").select("id", { count: "exact", head: true }),
-    supabaseAdmin.from("career_applications").select("id, status", { count: "exact" }),
-    supabaseAdmin.from("career_executions").select("id", { count: "exact", head: true }),
+    careerFrom("career_companies").select("id", { count: "exact", head: true }),
+    careerFrom("career_jobs").select("id, opportunity_status, compatibility_score", { count: "exact" }),
+    careerFrom("career_contacts").select("id", { count: "exact", head: true }),
+    careerFrom("career_applications").select("id, status", { count: "exact" }),
+    careerFrom("career_executions").select("id", { count: "exact", head: true }),
   ]);
   if (companies.error) fail(migrationHint(companies.error.message));
   if (jobs.error) fail(migrationHint(jobs.error.message));
@@ -680,7 +677,7 @@ export async function careerOverview(userId: string) {
 export async function pluginListCompanies(query?: { q?: string; limit?: number; offset?: number }) {
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
-  let req = supabaseAdmin.from("career_companies").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
+  let req = careerFrom("career_companies").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.q?.trim()) req = req.ilike("name", `%${query.q.trim()}%`);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
@@ -688,7 +685,7 @@ export async function pluginListCompanies(query?: { q?: string; limit?: number; 
 }
 
 export async function pluginGetCompany(id: string) {
-  const { data, error } = await supabaseAdmin.from("career_companies").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await careerFrom("career_companies").select("*").eq("id", id).maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Empresa não encontrada.");
   return data;
@@ -697,7 +694,7 @@ export async function pluginGetCompany(id: string) {
 export async function pluginListJobs(query?: { q?: string; limit?: number; offset?: number }) {
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
-  let req = supabaseAdmin.from("career_jobs").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
+  let req = careerFrom("career_jobs").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.q?.trim()) req = req.or(`title.ilike.%${query.q.trim()}%,company_name.ilike.%${query.q.trim()}%`);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
@@ -705,26 +702,26 @@ export async function pluginListJobs(query?: { q?: string; limit?: number; offse
 }
 
 export async function pluginGetJob(id: string) {
-  const { data, error } = await supabaseAdmin.from("career_jobs").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await careerFrom("career_jobs").select("*").eq("id", id).maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Vaga não encontrada.");
   return data;
 }
 
 export async function pluginListApplications() {
-  const { data, error } = await supabaseAdmin.from("career_applications").select("*").order("updated_at", { ascending: false }).limit(100);
+  const { data, error } = await careerFrom("career_applications").select("*").order("updated_at", { ascending: false }).limit(100);
   if (error) fail(migrationHint(error.message));
   return { items: data ?? [] };
 }
 
 export async function pluginListHistory() {
-  const { data, error } = await supabaseAdmin.from("career_executions").select("*").order("created_at", { ascending: false }).limit(100);
+  const { data, error } = await careerFrom("career_executions").select("*").order("created_at", { ascending: false }).limit(100);
   if (error) fail(migrationHint(error.message));
   return { items: data ?? [] };
 }
 
 export async function pluginGetExecution(id: string) {
-  const { data, error } = await supabaseAdmin.from("career_executions").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await careerFrom("career_executions").select("*").eq("id", id).maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Execução não encontrada.");
   return data;

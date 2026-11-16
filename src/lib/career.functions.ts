@@ -11,8 +11,11 @@ function publicMessage(error: unknown) {
   if (isForbidden(error)) return error instanceof Error ? error.message : "Acesso negado.";
   const message = error instanceof Error ? error.message : "";
   console.error(error);
-  if (/career_|migração|migration/i.test(message)) {
-    return "Aplique a migração 0057_career_intelligence.sql no Supabase.";
+  if (/migração|migration|schema cache|PGRST205|relation ["']?career_|could not find the table/i.test(message)) {
+    return "Aplique a migração 0057_career_intelligence.sql no Supabase (e recarregue o schema se necessário).";
+  }
+  if (/Missing Supabase environment variable/i.test(message)) {
+    return "Servidor sem SUPABASE_SERVICE_ROLE_KEY.";
   }
   if (!message || /postgres|PGRST|JWT|fetch failed/i.test(message)) {
     return "Não foi possível concluir. Tente de novo.";
@@ -31,59 +34,84 @@ async function guard<T>(work: () => Promise<T>): Promise<Result<T>> {
   }
 }
 
-export const careerAccessFn = createServerFn({ method: "GET" })
+async function runCareer<T>(loader: () => Promise<T>): Promise<Result<T>> {
+  try {
+    return await guard(loader);
+  } catch (error) {
+    // Captura falha de import dinâmico / RPC antes do guard.
+    return { ok: false, message: publicMessage(error) };
+  }
+}
+
+export const careerAccessFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Result<{ allowed: boolean }>> => {
-    const { canAccessCareerPanel } = await import("@/server/career-access.server");
-    return guard(async () => ({ allowed: await canAccessCareerPanel(context.userId) }));
+    return runCareer(async () => {
+      const { canAccessCareerPanel } = await import("@/server/career-access.server");
+      return { allowed: await canAccessCareerPanel(context.userId) };
+    });
   });
 
-export const careerOverviewFn = createServerFn({ method: "GET" })
+export const careerOverviewFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { careerOverview } = await import("@/server/career.server");
-    return guard(() => careerOverview(context.userId));
+    return runCareer(async () => {
+      const { careerOverview } = await import("@/server/career.server");
+      return careerOverview(context.userId);
+    });
   });
 
-export const careerCompaniesFn = createServerFn({ method: "GET" })
+export const careerCompaniesFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { listCareerCompanies } = await import("@/server/career.server");
-    return guard(() => listCareerCompanies(context.userId));
+    return runCareer(async () => {
+      const { listCareerCompanies } = await import("@/server/career.server");
+      return listCareerCompanies(context.userId);
+    });
   });
 
-export const careerJobsFn = createServerFn({ method: "GET" })
+export const careerJobsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { listCareerJobs } = await import("@/server/career.server");
-    return guard(() => listCareerJobs(context.userId));
+    return runCareer(async () => {
+      const { listCareerJobs } = await import("@/server/career.server");
+      return listCareerJobs(context.userId);
+    });
   });
 
-export const careerContactsFn = createServerFn({ method: "GET" })
+export const careerContactsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { listCareerContacts } = await import("@/server/career.server");
-    return guard(() => listCareerContacts(context.userId));
+    return runCareer(async () => {
+      const { listCareerContacts } = await import("@/server/career.server");
+      return listCareerContacts(context.userId);
+    });
   });
 
-export const careerApplicationsFn = createServerFn({ method: "GET" })
+export const careerApplicationsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { listCareerApplications } = await import("@/server/career.server");
-    return guard(() => listCareerApplications(context.userId));
+    return runCareer(async () => {
+      const { listCareerApplications } = await import("@/server/career.server");
+      return listCareerApplications(context.userId);
+    });
   });
 
-export const careerHistoryFn = createServerFn({ method: "GET" })
+export const careerHistoryFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { listCareerHistory } = await import("@/server/career.server");
-    return guard(() => listCareerHistory(context.userId));
+    return runCareer(async () => {
+      const { listCareerHistory } = await import("@/server/career.server");
+      return listCareerHistory(context.userId);
+    });
   });
 
 export const approveCareerApplicationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data: { id: string }) => data)
   .handler(async ({ context, data }) => {
-    const { patchCareerApplication } = await import("@/server/career.server");
-    return guard(() => patchCareerApplication(context.userId, data.id, { status: "approved" }));
+    return runCareer(async () => {
+      const { patchCareerApplication } = await import("@/server/career.server");
+      return patchCareerApplication(context.userId, data.id, { status: "approved" });
+    });
   });

@@ -84,6 +84,21 @@ export async function handleChatgptCareerRequest(request: Request): Promise<Resp
       return handleChatgptCareerOpenApiRequest(request);
     }
 
+    if ((path === "/health" || path === "/overview") && method === "GET") {
+      const { pluginListCompanies, pluginListJobs, pluginListHistory } = await import("@/server/career.server");
+      const [companies, jobs, history] = await Promise.all([
+        pluginListCompanies({ limit: 1, offset: 0 }),
+        pluginListJobs({ limit: 1, offset: 0 }),
+        pluginListHistory(),
+      ]);
+      return json(200, {
+        ok: true,
+        companies: companies.total,
+        jobs: jobs.total,
+        executions: history.items.length,
+      });
+    }
+
     if (path === "/companies/discover" && method === "POST") {
       const body = (await readJson(request)) as {
         companies?: unknown[];

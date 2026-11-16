@@ -46,7 +46,7 @@ export function CareerWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const [ov, co, jo, ct, ap, hi] = await Promise.all([
+      const settled = await Promise.allSettled([
         careerOverviewFn(),
         careerCompaniesFn(),
         careerJobsFn(),
@@ -54,20 +54,32 @@ export function CareerWorkspace() {
         careerApplicationsFn(),
         careerHistoryFn(),
       ]);
-      if (!ov.ok) {
-        setError(ov.message);
+      const values = settled.map((item, index) => {
+        if (item.status === "fulfilled") return item.value;
+        const reason = item.reason;
+        const message =
+          reason instanceof Error
+            ? reason.message
+            : typeof reason === "string"
+              ? reason
+              : `Falha na consulta ${index + 1} do módulo Candidatura.`;
+        return { ok: false as const, message };
+      });
+      const [ov, co, jo, ct, ap, hi] = values;
+      if (!ov || !ov.ok) {
+        setError(ov?.message || "Não foi possível carregar o resumo.");
         return;
       }
-      setOverview(ov.data);
-      setCompanies(co.ok ? co.data.items : []);
-      setJobs(jo.ok ? jo.data.items : []);
-      setContacts(ct.ok ? ct.data.items : []);
-      setApplications(ap.ok ? ap.data.items : []);
-      setHistory(hi.ok ? hi.data.items : []);
-      const firstError = [co, jo, ct, ap, hi].find((item) => !item.ok);
+      setOverview(ov.data as Overview);
+      setCompanies(co && co.ok ? ((co.data as { items: Record<string, unknown>[] }).items ?? []) : []);
+      setJobs(jo && jo.ok ? ((jo.data as { items: Record<string, unknown>[] }).items ?? []) : []);
+      setContacts(ct && ct.ok ? ((ct.data as { items: Record<string, unknown>[] }).items ?? []) : []);
+      setApplications(ap && ap.ok ? ((ap.data as { items: Record<string, unknown>[] }).items ?? []) : []);
+      setHistory(hi && hi.ok ? ((hi.data as { items: Record<string, unknown>[] }).items ?? []) : []);
+      const firstError = [co, jo, ct, ap, hi].find((item) => item && !item.ok);
       if (firstError && !firstError.ok) setError(firstError.message);
-    } catch {
-      setError("Não foi possível carregar o módulo Candidatura.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível carregar o módulo Candidatura.");
     } finally {
       setLoading(false);
     }

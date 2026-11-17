@@ -32,7 +32,7 @@ O EasyPanel injeta `PORT` no container. No host, a publicação que funciona é 
 
 A service role fica só nessas variáveis. Não usar prefixo `VITE_` nela.
 
-Deploy marker deste release Career OAuth: `NEX-DEPLOY-CAREEROAUTH2` (visível em `/health` → `deployMarker`).
+Deploy marker deste release Career e-mail: `NEX-DEPLOY-CAREEREMAIL1` (visível em `/health` → `deployMarker`).
 
 Integração ChatGPT / Career (Actions REST + MCP remoto):
 
@@ -40,7 +40,15 @@ Integração ChatGPT / Career (Actions REST + MCP remoto):
 - `CHATGPT_INTEGRATION_SECRET_PREVIOUS` (opcional, rotação)
 - `CAREER_MCP_OAUTH_SIGNING_SECRET` (obrigatório para ChatGPT Web — JWT OAuth, distinto do Bearer)
 - `CAREER_MCP_OAUTH_REDIRECT_URIS` (opcional)
+- `CAREER_SMTP_HOST=smtp.gmail.com`
+- `CAREER_SMTP_PORT=587`
+- `CAREER_SMTP_USER=mozart.linkedin@gmail.com`
+- `CAREER_SMTP_PASSWORD` (senha de app Gmail)
+- `CAREER_SMTP_FROM=mozart.linkedin@gmail.com`
+- `CAREER_APPLICATION_TEST_TO=mozart.pmo@gmail.com` (opcional, testes)
 - `APP_URL=https://app.nexmeta.com.br`
+
+SQL pós-deploy Career: aplicar `drizzle/migrations/0058_career_application_send.sql` no Supabase (kind `application_send`).
 
 Endpoints públicos HTTPS:
 

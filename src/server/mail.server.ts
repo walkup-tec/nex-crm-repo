@@ -9,13 +9,26 @@ import {
   inviteSubject,
 } from "@/lib/invite-message";
 
-function smtpConfig() {
+type SmtpConfig = { host: string; user: string; pass: string; port: number; from: string };
+
+function smtpConfig(): SmtpConfig | null {
   const host = process.env["SMTP_HOST"];
   const user = process.env["SMTP_USER"];
   const pass = process.env["SMTP_PASSWORD"];
   const port = Number(process.env["SMTP_PORT"] || 465);
   const from = process.env["SMTP_FROM"] || user;
   if (!host || !user || !pass || !from) return null;
+  return { host, user, pass, port, from };
+}
+
+/** SMTP exclusivo do módulo Candidatura (remetente mozart.linkedin@gmail.com). */
+function careerSmtpConfig(): SmtpConfig | null {
+  const host = process.env["CAREER_SMTP_HOST"]?.trim() || "smtp.gmail.com";
+  const user = process.env["CAREER_SMTP_USER"]?.trim();
+  const pass = (process.env["CAREER_SMTP_PASSWORD"] ?? "").replace(/\s+/g, "");
+  const port = Number(process.env["CAREER_SMTP_PORT"] || 587);
+  const from = process.env["CAREER_SMTP_FROM"]?.trim() || user;
+  if (!user || !pass || !from) return null;
   return { host, user, pass, port, from };
 }
 
@@ -81,8 +94,9 @@ async function sendSmtp(
     attachments?: { filename: string; content: Buffer; cid: string; contentType: string }[];
   },
   fallback: string,
+  smtpOverride?: SmtpConfig | null,
 ) {
-  const smtp = smtpConfig();
+  const smtp = smtpOverride === undefined ? smtpConfig() : smtpOverride;
   if (!smtp) {
     const failure = new Error("O envio de e-mail não está configurado no servidor.");
     failure.name = "InviteMailError";
@@ -102,6 +116,7 @@ async function sendSmtp(
     host: address,
     port: smtp.port,
     secure: smtp.port === 465,
+    requireTLS: smtp.port === 587,
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 20000,
@@ -125,6 +140,35 @@ async function sendSmtp(
     failure.name = "InviteMailError";
     throw failure;
   }
+}
+
+export async function sendCareerApplicationMail(input: {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}) {
+  const to = input.to.trim();
+  if (!to.includes("@")) {
+    const failure = new Error("Informe um e-mail de destino válido.");
+    failure.name = "InviteMailError";
+    throw failure;
+  }
+  const text = input.text.trim();
+  if (!text) {
+    const failure = new Error("A candidatura não tem corpo de e-mail para enviar.");
+    failure.name = "InviteMailError";
+    throw failure;
+  }
+  const html =
+    input.html?.trim() ||
+    `<div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:15px">${escapeHtml(text).replaceAll("\n", "<br>")}</div>`;
+  await sendSmtp(
+    { to, subject: input.subject.trim() || "Candidatura", text, html },
+    "Não foi possível enviar a candidatura por e-mail.",
+    careerSmtpConfig(),
+  );
+  return { ok: true as const, to, from: careerSmtpConfig()?.from ?? "" };
 }
 
 function mailFailureMessage(code: string, responseCode: number, fallback: string) {

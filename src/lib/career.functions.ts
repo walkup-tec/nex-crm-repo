@@ -17,6 +17,9 @@ function publicMessage(error: unknown) {
   if (/Missing Supabase environment variable/i.test(message)) {
     return "Servidor sem SUPABASE_SERVICE_ROLE_KEY.";
   }
+  if (/e-mail|smtp|caixa de e-mail|CAREER_SMTP/i.test(message)) {
+    return message;
+  }
   if (!message || /postgres|PGRST|JWT|fetch failed/i.test(message)) {
     return "Não foi possível concluir. Tente de novo.";
   }
@@ -113,5 +116,15 @@ export const approveCareerApplicationFn = createServerFn({ method: "POST" })
     return runCareer(async () => {
       const { patchCareerApplication } = await import("@/server/career.server");
       return patchCareerApplication(context.userId, data.id, { status: "approved" });
+    });
+  });
+
+export const sendCareerApplicationEmailFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string; toEmail?: string }) => data)
+  .handler(async ({ context, data }) => {
+    return runCareer(async () => {
+      const { sendCareerApplicationEmail } = await import("@/server/career.server");
+      return sendCareerApplicationEmail(context.userId, data.id, data.toEmail);
     });
   });

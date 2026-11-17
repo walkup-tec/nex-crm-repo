@@ -23,3 +23,9 @@ Impacto: o app publica `30320 → 30320` e o site publica `30321 → 30321`, amb
 Motivo: cada Implantar do EasyPanel regrava o Traefik para a rede interna e remove a publicação no host. O domínio responde 502 até alguém republicar a porta.
 
 Impacto: o serviço `nex-traefik-persist` no VPS observa o deploy de `nex_crm` e `nex_site` e reaplica `30320` e `30321` no modo host, com o Traefik em `http://172.17.0.1:<porta>/`. A instalação é única (`--install`). O script não altera a porta quando ela já está correta, para não reiniciar o container em ciclo.
+
+## 2026-11-17 — Envio de candidatura Career só por e-mail (remetente LinkedIn)
+
+Motivo: o módulo Candidatura prepara rascunhos no ChatGPT/painel; o disparo humano será por e-mail, não LinkedIn/WhatsApp automático.
+
+Impacto: remetente `mozart.linkedin@gmail.com` via `CAREER_SMTP_*` (Gmail senha de app, porta 587 STARTTLS). Destino = informado no painel (teste `mozart.pmo@gmail.com`) ou `hr_email`/`corporate_email`. Botão “Enviar por e-mail” só no painel após pronta/aprovada. Envio automático pelo MCP continua proibido.

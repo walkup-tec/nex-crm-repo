@@ -645,6 +645,95 @@ export async function patchCareerApplication(
   return data;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+/** Envia candidatura aprovada por e-mail (remetente CAREER_SMTP_* / mozart.linkedin). */
+export async function sendCareerApplicationEmail(
+  userId: string,
+  applicationId: string,
+  toEmail?: string | null,
+) {
+  await assertCareerPanelAccess(userId);
+
+  const { data: app, error: appError } = await careerFrom("career_applications")
+    .select("*")
+    .eq("id", applicationId)
+    .maybeSingle();
+  if (appError) fail(migrationHint(appError.message));
+  if (!app) fail("Candidatura não encontrada.");
+  if (app.status !== "approved" && app.status !== "ready") {
+    fail("Só é possível enviar candidaturas prontas ou aprovadas.");
+  }
+
+  const [{ data: job }, { data: company }] = await Promise.all([
+    careerFrom("career_jobs").select("id, title, company_id").eq("id", app.job_id).maybeSingle(),
+    app.company_id
+      ? careerFrom("career_companies").select("id, name, hr_email, corporate_email").eq("id", app.company_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const testTo = process.env["CAREER_APPLICATION_TEST_TO"]?.trim() ?? "";
+  const explicit = (toEmail ?? "").trim();
+  const companyTo = String(company?.hr_email || company?.corporate_email || "").trim();
+  const to = explicit || testTo || companyTo;
+  if (!isValidEmail(to)) {
+    fail("Informe um e-mail de destino válido (ou configure CAREER_APPLICATION_TEST_TO).");
+  }
+
+  const body = String(app.email_body || app.intro_message || "").trim();
+  if (!body) fail("A candidatura não tem texto de e-mail (email_body/intro_message).");
+
+  const jobTitle = String(job?.title || "Vaga");
+  const companyName = String(company?.name || "Empresa");
+  const subject = `Candidatura — ${jobTitle} — ${companyName}`;
+
+  let executionId: string | null = null;
+  try {
+    const started = await createExecution({
+      kind: "application_send",
+      actorSource: "panel",
+      actorUserId: userId,
+      requestJson: { applicationId, to },
+    });
+    executionId = String(started.execution.id);
+  } catch (error) {
+    // Sem migração 0058 o CHECK de kind bloqueia o log — o envio segue.
+    console.error("career_application_send_log", error instanceof Error ? error.message : "error");
+  }
+
+  try {
+    const { sendCareerApplicationMail } = await import("@/server/mail.server");
+    await sendCareerApplicationMail({ to, subject, text: body });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao enviar e-mail.";
+    if (executionId) {
+      await finishExecution(executionId, { applicationId, to, error: message }, "error", message);
+    }
+    fail(message);
+  }
+
+  const stamp = new Date().toISOString();
+  const guidanceNote = `Enviado por e-mail para ${to} em ${stamp}.`;
+  const previousGuidance = String(app.guidance || "").trim();
+  const { data: updated, error: updateError } = await careerFrom("career_applications")
+    .update({
+      status: "sent",
+      guidance: previousGuidance ? `${previousGuidance}\n${guidanceNote}` : guidanceNote,
+      updated_at: stamp,
+    })
+    .eq("id", applicationId)
+    .select("*")
+    .maybeSingle();
+  if (updateError) fail(migrationHint(updateError.message));
+
+  if (executionId) {
+    await finishExecution(executionId, { applicationId, to, subject }, "completed");
+  }
+  return { application: updated, to, subject };
+}
+
 export async function careerOverview(userId: string) {
   await assertCareerPanelAccess(userId);
   const [companies, jobs, contacts, applications, executions] = await Promise.all([

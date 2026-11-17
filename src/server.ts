@@ -62,6 +62,18 @@ function deployProbeResponse(pathname: string): Response | null {
   });
 }
 
+/** OAuth discovery (RFC 8414 / 9728) — garante /.well-known mesmo se o file router falhar no ponto. */
+async function careerOAuthWellKnownResponse(request: Request, pathname: string): Promise<Response | null> {
+  const isPrm =
+    pathname === "/.well-known/oauth-protected-resource" ||
+    pathname.startsWith("/.well-known/oauth-protected-resource/");
+  const isAs = pathname === "/.well-known/oauth-authorization-server";
+  if (!isPrm && !isAs) return null;
+  const oauth = await import("./server/chatgpt-career-oauth.server");
+  if (isAs) return oauth.handleCareerAuthorizationServerMetadata(request);
+  return oauth.handleCareerProtectedResourceMetadata(request);
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
@@ -69,6 +81,12 @@ export default {
       if (request.method === "GET" || request.method === "HEAD") {
         const probe = deployProbeResponse(pathname);
         if (probe) return request.method === "HEAD" ? new Response(null, { status: probe.status, headers: probe.headers }) : probe;
+        const wellKnown = await careerOAuthWellKnownResponse(request, pathname);
+        if (wellKnown) {
+          return request.method === "HEAD"
+            ? new Response(null, { status: wellKnown.status, headers: wellKnown.headers })
+            : wellKnown;
+        }
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

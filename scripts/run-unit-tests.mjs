@@ -6,6 +6,7 @@ const META_TEST_FILES = [
   "src/intelligence/meta-leads/protocol-v1.1.test.ts",
   "src/lib/career-access.test.ts",
   "src/lib/chatgpt-career-mcp.test.ts",
+  "src/lib/chatgpt-career-oauth.test.ts",
   "src/lib/chatgpt-integration.test.ts",
   "src/lib/user-access.test.ts",
   "src/lib/meta-credit-topup.test.ts",

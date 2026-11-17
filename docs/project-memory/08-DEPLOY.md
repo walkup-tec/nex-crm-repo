@@ -32,6 +32,27 @@ O EasyPanel injeta `PORT` no container. No host, a publicação que funciona é 
 
 A service role fica só nessas variáveis. Não usar prefixo `VITE_` nela.
 
+Deploy marker deste release Career OAuth: `NEX-DEPLOY-CAREEROAUTH1` (visível em `/health` → `deployMarker`).
+
+Integração ChatGPT / Career (Actions REST + MCP remoto):
+
+- `CHATGPT_INTEGRATION_SECRET` (obrigatório — Bearer REST e clientes MCP diretos)
+- `CHATGPT_INTEGRATION_SECRET_PREVIOUS` (opcional, rotação)
+- `CAREER_MCP_OAUTH_SIGNING_SECRET` (obrigatório para ChatGPT Web — JWT OAuth, distinto do Bearer)
+- `CAREER_MCP_OAUTH_REDIRECT_URIS` (opcional)
+- `APP_URL=https://app.nexmeta.com.br`
+
+Endpoints públicos HTTPS:
+
+- REST: `https://app.nexmeta.com.br/api/integrations/chatgpt/career`
+- MCP: `https://app.nexmeta.com.br/api/integrations/chatgpt/career/mcp`
+- OAuth authorize: `https://app.nexmeta.com.br/api/integrations/chatgpt/career/oauth/authorize`
+- OAuth token: `https://app.nexmeta.com.br/api/integrations/chatgpt/career/oauth/token`
+- AS metadata: `https://app.nexmeta.com.br/.well-known/oauth-authorization-server`
+- Protected resource: `https://app.nexmeta.com.br/.well-known/oauth-protected-resource`
+
+ChatGPT Web: grant `authorization_code` + PKCE S256 (não usar `client_credentials`). Acesso exclusivo `walkup@walkuptec.com.br`. MCP privado no ChatGPT Web depende de plano/workspace (Business/Enterprise/Edu com Developer Mode; Plus/Pro podem ter limite).
+
 ## Domínio
 
 No Registro.br, manter os servidores DNS do próprio Registro.br e criar registro A do domínio e de `www` para o IP público da VPS. No EasyPanel, associar esse domínio ao app `nex` e ligar o HTTPS.

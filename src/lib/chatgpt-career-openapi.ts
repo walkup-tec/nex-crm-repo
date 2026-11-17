@@ -12,10 +12,18 @@ export function chatgptCareerOpenApiDocument(serverUrl: string) {
       title: "NEX Career Intelligence — ChatGPT Integration",
       version: "1.0.0",
       description:
-        "API autenticada para o plugin NEX Career Intelligence persistir e consultar empresas, vagas, contatos e candidaturas. Autenticação: Bearer CHATGPT_INTEGRATION_SECRET.",
+        "API autenticada para o plugin NEX Career Intelligence persistir e consultar empresas, vagas, contatos e candidaturas. Autenticação REST/MCP direto: Bearer CHATGPT_INTEGRATION_SECRET. MCP Streamable HTTP em /api/integrations/chatgpt/career/mcp. ChatGPT Web: OAuth 2.1 authorization_code + PKCE S256 (AS metadata em /.well-known/oauth-authorization-server; PRM em /.well-known/oauth-protected-resource). Tokens OAuth assinados com CAREER_MCP_OAUTH_SIGNING_SECRET (separado do Bearer). career_applications_prepare só prepara rascunho — sem envio automático.",
     },
     servers: [{ url: base }],
     paths: {
+      "/api/integrations/chatgpt/career/health": {
+        get: {
+          operationId: "career_health",
+          summary: "Health do módulo Career",
+          security: bearer,
+          responses: { "200": jsonObject, "401": { description: "Não autenticado" } },
+        },
+      },
       "/api/integrations/chatgpt/career/companies/discover": {
         post: {
           operationId: "career_companies_discover",
@@ -206,7 +214,8 @@ export function chatgptCareerOpenApiDocument(serverUrl: string) {
         bearerAuth: {
           type: "http",
           scheme: "bearer",
-          description: "Mesmo CHATGPT_INTEGRATION_SECRET do EasyPanel usado pela integração GPT da NEX",
+          description:
+            "REST/MCP direto: CHATGPT_INTEGRATION_SECRET. ChatGPT Web usa OAuth JWT (CAREER_MCP_OAUTH_SIGNING_SECRET), não este Bearer.",
         },
       },
     },

@@ -21,8 +21,16 @@
 - A migração `drizzle/migrations/0010_chatbot_attendance.sql` precisa ser aplicada no Supabase. O deploy do EasyPanel não executa SQL.
 - Fila, Kanban, clientes, produtos, agendamentos, automações e relatórios ainda usam o estado da sessão.
 
+## Career / ChatGPT MCP (pré-push 2026-11-17)
+
+- OAuth oficial implementado localmente: `authorization_code` + PKCE S256, AS/PRM, JWT com `CAREER_MCP_OAUTH_SIGNING_SECRET` separado do Bearer.
+- Testes locais Career (oauth/mcp/access): ok. Diff separado de Créditos Meta / FR Seguradora.
+- Produção ainda sem o patch: `/.well-known/oauth-*` = 404; OAuth metadata cai no splat autenticado.
+- Pós-deploy: setar `CAREER_MCP_OAUTH_SIGNING_SECRET` no EasyPanel; validar initialize/tools/list/health/companies_list remotos; ChatGPT Web só se a conta permitir MCP privado.
+
 ## Pendente
 
 - Credenciais e serviços reais de Meta, Asaas e EVO
 - Biblioteca de criativos ligada ao storage em uso de produção
 - `SUPABASE_SERVICE_ROLE_KEY` configurada só no painel da VPS
+- Push Career OAuth + secret EasyPanel + validação remota / ChatGPT Web

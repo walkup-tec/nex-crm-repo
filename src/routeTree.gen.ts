@@ -17,6 +17,8 @@ import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
+import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
 import { Route as AuthenticatedCampanhasRouteImport } from './routes/_authenticated/campanhas'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
 import { Route as AuthenticatedCreditosMetaRouteImport } from './routes/_authenticated/creditos-meta'
@@ -31,6 +33,7 @@ import { Route as ApiContratacaoRouteImport } from './routes/api/contratacao'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as CCodeRouteImport } from './routes/c.$code'
 import { Route as ContratacaoContactIdRouteImport } from './routes/contratacao.$contactId'
+import { Route as DotwellKnownOauthProtectedResourceSplatRouteImport } from './routes/[.]well-known/oauth-protected-resource.$'
 import { Route as AuthenticatedChatbotIndexRouteImport } from './routes/_authenticated/chatbot.index'
 import { Route as AuthenticatedChatbotAgendamentosRouteImport } from './routes/_authenticated/chatbot.agendamentos'
 import { Route as AuthenticatedChatbotAtendimentoRouteImport } from './routes/_authenticated/chatbot.atendimento'
@@ -66,6 +69,11 @@ import { Route as ApiIntegrationsChatgptAnalysesExecutionIdRouteImport } from '.
 import { Route as ApiIntegrationsChatgptCareerSplatRouteImport } from './routes/api/integrations/chatgpt/career/$'
 import { Route as ApiIntegrationsChatgptCareerMcpRouteImport } from './routes/api/integrations/chatgpt/career/mcp'
 import { Route as ApiIntegrationsChatgptCareerOpenapiRouteImport } from './routes/api/integrations/chatgpt/career/openapi'
+import { Route as ApiIntegrationsChatgptCareerOauthAuthorizeRouteImport } from './routes/api/integrations/chatgpt/career/oauth/authorize'
+import { Route as ApiIntegrationsChatgptCareerOauthMetadataRouteImport } from './routes/api/integrations/chatgpt/career/oauth/metadata'
+import { Route as ApiIntegrationsChatgptCareerOauthProtectedResourceRouteImport } from './routes/api/integrations/chatgpt/career/oauth/protected-resource'
+import { Route as ApiIntegrationsChatgptCareerOauthRegisterRouteImport } from './routes/api/integrations/chatgpt/career/oauth/register'
+import { Route as ApiIntegrationsChatgptCareerOauthTokenRouteImport } from './routes/api/integrations/chatgpt/career/oauth/token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -106,6 +114,18 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownOauthAuthorizationServerRoute =
+  DotwellKnownOauthAuthorizationServerRouteImport.update({
+    id: '/.well-known/oauth-authorization-server',
+    path: '/.well-known/oauth-authorization-server',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownOauthProtectedResourceRoute =
+  DotwellKnownOauthProtectedResourceRouteImport.update({
+    id: '/.well-known/oauth-protected-resource',
+    path: '/.well-known/oauth-protected-resource',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedCampanhasRoute = AuthenticatedCampanhasRouteImport.update({
   id: '/campanhas',
   path: '/campanhas',
@@ -177,6 +197,12 @@ const ContratacaoContactIdRoute = ContratacaoContactIdRouteImport.update({
   path: '/$contactId',
   getParentRoute: () => ContratacaoRoute,
 } as any)
+const DotwellKnownOauthProtectedResourceSplatRoute =
+  DotwellKnownOauthProtectedResourceSplatRouteImport.update({
+    id: '/$',
+    path: '/$',
+    getParentRoute: () => DotwellKnownOauthProtectedResourceRoute,
+  } as any)
 const AuthenticatedChatbotIndexRoute =
   AuthenticatedChatbotIndexRouteImport.update({
     id: '/',
@@ -381,6 +407,36 @@ const ApiIntegrationsChatgptCareerOpenapiRoute =
     path: '/api/integrations/chatgpt/career/openapi',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiIntegrationsChatgptCareerOauthAuthorizeRoute =
+  ApiIntegrationsChatgptCareerOauthAuthorizeRouteImport.update({
+    id: '/api/integrations/chatgpt/career/oauth/authorize',
+    path: '/api/integrations/chatgpt/career/oauth/authorize',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptCareerOauthMetadataRoute =
+  ApiIntegrationsChatgptCareerOauthMetadataRouteImport.update({
+    id: '/api/integrations/chatgpt/career/oauth/metadata',
+    path: '/api/integrations/chatgpt/career/oauth/metadata',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptCareerOauthProtectedResourceRoute =
+  ApiIntegrationsChatgptCareerOauthProtectedResourceRouteImport.update({
+    id: '/api/integrations/chatgpt/career/oauth/protected-resource',
+    path: '/api/integrations/chatgpt/career/oauth/protected-resource',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptCareerOauthRegisterRoute =
+  ApiIntegrationsChatgptCareerOauthRegisterRouteImport.update({
+    id: '/api/integrations/chatgpt/career/oauth/register',
+    path: '/api/integrations/chatgpt/career/oauth/register',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiIntegrationsChatgptCareerOauthTokenRoute =
+  ApiIntegrationsChatgptCareerOauthTokenRouteImport.update({
+    id: '/api/integrations/chatgpt/career/oauth/token',
+    path: '/api/integrations/chatgpt/career/oauth/token',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -390,6 +446,8 @@ export interface FileRoutesByFullPath {
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/chatbot': typeof AuthenticatedChatbotRouteWithChildren
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -404,6 +462,7 @@ export interface FileRoutesByFullPath {
   '/c/$code': typeof CCodeRoute
   '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/auth/': typeof AuthIndexRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
   '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
@@ -439,6 +498,11 @@ export interface FileRoutesByFullPath {
   '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
   '/api/integrations/chatgpt/career/mcp': typeof ApiIntegrationsChatgptCareerMcpRoute
   '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
+  '/api/integrations/chatgpt/career/oauth/authorize': typeof ApiIntegrationsChatgptCareerOauthAuthorizeRoute
+  '/api/integrations/chatgpt/career/oauth/metadata': typeof ApiIntegrationsChatgptCareerOauthMetadataRoute
+  '/api/integrations/chatgpt/career/oauth/protected-resource': typeof ApiIntegrationsChatgptCareerOauthProtectedResourceRoute
+  '/api/integrations/chatgpt/career/oauth/register': typeof ApiIntegrationsChatgptCareerOauthRegisterRoute
+  '/api/integrations/chatgpt/career/oauth/token': typeof ApiIntegrationsChatgptCareerOauthTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -447,6 +511,8 @@ export interface FileRoutesByTo {
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/campanhas': typeof AuthenticatedCampanhasRoute
   '/creditos-meta': typeof AuthenticatedCreditosMetaRoute
   '/criativos': typeof AuthenticatedCriativosRoute
@@ -459,6 +525,7 @@ export interface FileRoutesByTo {
   '/c/$code': typeof CCodeRoute
   '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/auth': typeof AuthIndexRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
   '/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
@@ -494,6 +561,11 @@ export interface FileRoutesByTo {
   '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
   '/api/integrations/chatgpt/career/mcp': typeof ApiIntegrationsChatgptCareerMcpRoute
   '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
+  '/api/integrations/chatgpt/career/oauth/authorize': typeof ApiIntegrationsChatgptCareerOauthAuthorizeRoute
+  '/api/integrations/chatgpt/career/oauth/metadata': typeof ApiIntegrationsChatgptCareerOauthMetadataRoute
+  '/api/integrations/chatgpt/career/oauth/protected-resource': typeof ApiIntegrationsChatgptCareerOauthProtectedResourceRoute
+  '/api/integrations/chatgpt/career/oauth/register': typeof ApiIntegrationsChatgptCareerOauthRegisterRoute
+  '/api/integrations/chatgpt/career/oauth/token': typeof ApiIntegrationsChatgptCareerOauthTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -505,6 +577,8 @@ export interface FileRoutesById {
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/_authenticated/campanhas': typeof AuthenticatedCampanhasRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRouteWithChildren
   '/_authenticated/creditos-meta': typeof AuthenticatedCreditosMetaRoute
@@ -519,6 +593,7 @@ export interface FileRoutesById {
   '/c/$code': typeof CCodeRoute
   '/contratacao/$contactId': typeof ContratacaoContactIdRoute
   '/auth/': typeof AuthIndexRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/_authenticated/chatbot/agendamentos': typeof AuthenticatedChatbotAgendamentosRoute
   '/_authenticated/chatbot/atendimento': typeof AuthenticatedChatbotAtendimentoRoute
   '/_authenticated/chatbot/automacoes': typeof AuthenticatedChatbotAutomacoesRoute
@@ -554,6 +629,11 @@ export interface FileRoutesById {
   '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
   '/api/integrations/chatgpt/career/mcp': typeof ApiIntegrationsChatgptCareerMcpRoute
   '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
+  '/api/integrations/chatgpt/career/oauth/authorize': typeof ApiIntegrationsChatgptCareerOauthAuthorizeRoute
+  '/api/integrations/chatgpt/career/oauth/metadata': typeof ApiIntegrationsChatgptCareerOauthMetadataRoute
+  '/api/integrations/chatgpt/career/oauth/protected-resource': typeof ApiIntegrationsChatgptCareerOauthProtectedResourceRoute
+  '/api/integrations/chatgpt/career/oauth/register': typeof ApiIntegrationsChatgptCareerOauthRegisterRoute
+  '/api/integrations/chatgpt/career/oauth/token': typeof ApiIntegrationsChatgptCareerOauthTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -565,6 +645,8 @@ export interface FileRouteTypes {
     | '/esqueci-senha'
     | '/primeiro-acesso'
     | '/reset-password'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/campanhas'
     | '/chatbot'
     | '/creditos-meta'
@@ -579,6 +661,7 @@ export interface FileRouteTypes {
     | '/c/$code'
     | '/contratacao/$contactId'
     | '/auth/'
+    | '/.well-known/oauth-protected-resource/$'
     | '/chatbot/agendamentos'
     | '/chatbot/atendimento'
     | '/chatbot/automacoes'
@@ -614,6 +697,11 @@ export interface FileRouteTypes {
     | '/api/integrations/chatgpt/career/$'
     | '/api/integrations/chatgpt/career/mcp'
     | '/api/integrations/chatgpt/career/openapi'
+    | '/api/integrations/chatgpt/career/oauth/authorize'
+    | '/api/integrations/chatgpt/career/oauth/metadata'
+    | '/api/integrations/chatgpt/career/oauth/protected-resource'
+    | '/api/integrations/chatgpt/career/oauth/register'
+    | '/api/integrations/chatgpt/career/oauth/token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -622,6 +710,8 @@ export interface FileRouteTypes {
     | '/esqueci-senha'
     | '/primeiro-acesso'
     | '/reset-password'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/campanhas'
     | '/creditos-meta'
     | '/criativos'
@@ -634,6 +724,7 @@ export interface FileRouteTypes {
     | '/c/$code'
     | '/contratacao/$contactId'
     | '/auth'
+    | '/.well-known/oauth-protected-resource/$'
     | '/chatbot/agendamentos'
     | '/chatbot/atendimento'
     | '/chatbot/automacoes'
@@ -669,6 +760,11 @@ export interface FileRouteTypes {
     | '/api/integrations/chatgpt/career/$'
     | '/api/integrations/chatgpt/career/mcp'
     | '/api/integrations/chatgpt/career/openapi'
+    | '/api/integrations/chatgpt/career/oauth/authorize'
+    | '/api/integrations/chatgpt/career/oauth/metadata'
+    | '/api/integrations/chatgpt/career/oauth/protected-resource'
+    | '/api/integrations/chatgpt/career/oauth/register'
+    | '/api/integrations/chatgpt/career/oauth/token'
   id:
     | '__root__'
     | '/'
@@ -679,6 +775,8 @@ export interface FileRouteTypes {
     | '/esqueci-senha'
     | '/primeiro-acesso'
     | '/reset-password'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/_authenticated/campanhas'
     | '/_authenticated/chatbot'
     | '/_authenticated/creditos-meta'
@@ -693,6 +791,7 @@ export interface FileRouteTypes {
     | '/c/$code'
     | '/contratacao/$contactId'
     | '/auth/'
+    | '/.well-known/oauth-protected-resource/$'
     | '/_authenticated/chatbot/agendamentos'
     | '/_authenticated/chatbot/atendimento'
     | '/_authenticated/chatbot/automacoes'
@@ -728,6 +827,11 @@ export interface FileRouteTypes {
     | '/api/integrations/chatgpt/career/$'
     | '/api/integrations/chatgpt/career/mcp'
     | '/api/integrations/chatgpt/career/openapi'
+    | '/api/integrations/chatgpt/career/oauth/authorize'
+    | '/api/integrations/chatgpt/career/oauth/metadata'
+    | '/api/integrations/chatgpt/career/oauth/protected-resource'
+    | '/api/integrations/chatgpt/career/oauth/register'
+    | '/api/integrations/chatgpt/career/oauth/token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -739,6 +843,8 @@ export interface RootRouteChildren {
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute
+  DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   AgendaMeetingIdRoute: typeof AgendaMeetingIdRoute
   ApiContratacaoRoute: typeof ApiContratacaoRoute
   CCodeRoute: typeof CCodeRoute
@@ -751,6 +857,11 @@ export interface RootRouteChildren {
   ApiIntegrationsChatgptCareerSplatRoute: typeof ApiIntegrationsChatgptCareerSplatRoute
   ApiIntegrationsChatgptCareerMcpRoute: typeof ApiIntegrationsChatgptCareerMcpRoute
   ApiIntegrationsChatgptCareerOpenapiRoute: typeof ApiIntegrationsChatgptCareerOpenapiRoute
+  ApiIntegrationsChatgptCareerOauthAuthorizeRoute: typeof ApiIntegrationsChatgptCareerOauthAuthorizeRoute
+  ApiIntegrationsChatgptCareerOauthMetadataRoute: typeof ApiIntegrationsChatgptCareerOauthMetadataRoute
+  ApiIntegrationsChatgptCareerOauthProtectedResourceRoute: typeof ApiIntegrationsChatgptCareerOauthProtectedResourceRoute
+  ApiIntegrationsChatgptCareerOauthRegisterRoute: typeof ApiIntegrationsChatgptCareerOauthRegisterRoute
+  ApiIntegrationsChatgptCareerOauthTokenRoute: typeof ApiIntegrationsChatgptCareerOauthTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -809,6 +920,20 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-authorization-server': {
+      id: '/.well-known/oauth-authorization-server'
+      path: '/.well-known/oauth-authorization-server'
+      fullPath: '/.well-known/oauth-authorization-server'
+      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-protected-resource': {
+      id: '/.well-known/oauth-protected-resource'
+      path: '/.well-known/oauth-protected-resource'
+      fullPath: '/.well-known/oauth-protected-resource'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/campanhas': {
@@ -908,6 +1033,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/contratacao/$contactId'
       preLoaderRoute: typeof ContratacaoContactIdRouteImport
       parentRoute: typeof ContratacaoRoute
+    }
+    '/.well-known/oauth-protected-resource/$': {
+      id: '/.well-known/oauth-protected-resource/$'
+      path: '/$'
+      fullPath: '/.well-known/oauth-protected-resource/$'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceSplatRouteImport
+      parentRoute: typeof DotwellKnownOauthProtectedResourceRoute
     }
     '/_authenticated/chatbot/': {
       id: '/_authenticated/chatbot/'
@@ -1154,6 +1286,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsChatgptCareerOpenapiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/chatgpt/career/oauth/authorize': {
+      id: '/api/integrations/chatgpt/career/oauth/authorize'
+      path: '/api/integrations/chatgpt/career/oauth/authorize'
+      fullPath: '/api/integrations/chatgpt/career/oauth/authorize'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerOauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/career/oauth/metadata': {
+      id: '/api/integrations/chatgpt/career/oauth/metadata'
+      path: '/api/integrations/chatgpt/career/oauth/metadata'
+      fullPath: '/api/integrations/chatgpt/career/oauth/metadata'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerOauthMetadataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/career/oauth/protected-resource': {
+      id: '/api/integrations/chatgpt/career/oauth/protected-resource'
+      path: '/api/integrations/chatgpt/career/oauth/protected-resource'
+      fullPath: '/api/integrations/chatgpt/career/oauth/protected-resource'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerOauthProtectedResourceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/career/oauth/register': {
+      id: '/api/integrations/chatgpt/career/oauth/register'
+      path: '/api/integrations/chatgpt/career/oauth/register'
+      fullPath: '/api/integrations/chatgpt/career/oauth/register'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerOauthRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/chatgpt/career/oauth/token': {
+      id: '/api/integrations/chatgpt/career/oauth/token'
+      path: '/api/integrations/chatgpt/career/oauth/token'
+      fullPath: '/api/integrations/chatgpt/career/oauth/token'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerOauthTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1292,6 +1459,21 @@ const ContratacaoRouteWithChildren = ContratacaoRoute._addFileChildren(
   ContratacaoRouteChildren,
 )
 
+interface DotwellKnownOauthProtectedResourceRouteChildren {
+  DotwellKnownOauthProtectedResourceSplatRoute: typeof DotwellKnownOauthProtectedResourceSplatRoute
+}
+
+const DotwellKnownOauthProtectedResourceRouteChildren: DotwellKnownOauthProtectedResourceRouteChildren =
+  {
+    DotwellKnownOauthProtectedResourceSplatRoute:
+      DotwellKnownOauthProtectedResourceSplatRoute,
+  }
+
+const DotwellKnownOauthProtectedResourceRouteWithChildren =
+  DotwellKnownOauthProtectedResourceRoute._addFileChildren(
+    DotwellKnownOauthProtectedResourceRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -1301,6 +1483,10 @@ const rootRouteChildren: RootRouteChildren = {
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  DotwellKnownOauthAuthorizationServerRoute:
+    DotwellKnownOauthAuthorizationServerRoute,
+  DotwellKnownOauthProtectedResourceRoute:
+    DotwellKnownOauthProtectedResourceRouteWithChildren,
   AgendaMeetingIdRoute: AgendaMeetingIdRoute,
   ApiContratacaoRoute: ApiContratacaoRoute,
   CCodeRoute: CCodeRoute,
@@ -1316,6 +1502,16 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsChatgptCareerMcpRoute: ApiIntegrationsChatgptCareerMcpRoute,
   ApiIntegrationsChatgptCareerOpenapiRoute:
     ApiIntegrationsChatgptCareerOpenapiRoute,
+  ApiIntegrationsChatgptCareerOauthAuthorizeRoute:
+    ApiIntegrationsChatgptCareerOauthAuthorizeRoute,
+  ApiIntegrationsChatgptCareerOauthMetadataRoute:
+    ApiIntegrationsChatgptCareerOauthMetadataRoute,
+  ApiIntegrationsChatgptCareerOauthProtectedResourceRoute:
+    ApiIntegrationsChatgptCareerOauthProtectedResourceRoute,
+  ApiIntegrationsChatgptCareerOauthRegisterRoute:
+    ApiIntegrationsChatgptCareerOauthRegisterRoute,
+  ApiIntegrationsChatgptCareerOauthTokenRoute:
+    ApiIntegrationsChatgptCareerOauthTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

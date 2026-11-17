@@ -4,8 +4,7 @@
  * Não altera o contrato REST em /api/integrations/chatgpt/career/*.
  */
 import { randomUUID } from "node:crypto";
-import { authenticateChatgptIntegration } from "@/server/chatgpt-integration.server";
-import { consumeRateLimit } from "@/lib/chatgpt-integration";
+import { consumeRateLimit, extractBearerToken } from "@/lib/chatgpt-integration";
 import {
   CAREER_MCP_INSTRUCTIONS,
   CAREER_MCP_PROTOCOL_VERSION,
@@ -14,6 +13,11 @@ import {
   careerMcpTools,
   findCareerMcpTool,
 } from "@/lib/chatgpt-career-mcp";
+import {
+  careerAppOrigin,
+  isChatgptIntegrationBearer,
+  verifyCareerMcpAccessToken,
+} from "@/server/chatgpt-career-oauth.server";
 import {
   enrichCareerContacts,
   pluginGetCompany,
@@ -344,11 +348,57 @@ async function handleJsonRpcRequest(message: JsonRpcMessage): Promise<{ body: un
   return { body: rpcError(id, -32601, `Método não suportado: ${method}`) };
 }
 
+function mcpUnauthorized(message: string) {
+  return jsonResponse(401, { error: "unauthorized", message });
+}
+
+function withMcpAuthChallenge(response: Response, request: Request) {
+  if (response.status !== 401) return response;
+  const origin = careerAppOrigin(request);
+  const resourceMetadata = `${origin}/.well-known/oauth-protected-resource`;
+  const headers = new Headers(response.headers);
+  headers.set(
+    "www-authenticate",
+    `Bearer realm="nex-career-mcp", resource_metadata="${resourceMetadata}"`,
+  );
+  return new Response(response.body, { status: response.status, headers });
+}
+
+/**
+ * Dual auth:
+ * - Bearer CHATGPT_INTEGRATION_SECRET → REST / MCP direto (Actions, clientes MCP locais)
+ * - JWT OAuth (authorization_code + PKCE) → ChatGPT Web
+ */
+async function authenticateCareerMcp(request: Request): Promise<Response | null> {
+  const header = request.headers.get("authorization");
+  const apiKey = request.headers.get("x-api-key") ?? request.headers.get("apikey") ?? "";
+  const token = extractBearerToken(header) || apiKey;
+  if (!token) return mcpUnauthorized("Bearer token obrigatório.");
+
+  if (isChatgptIntegrationBearer(token)) return null;
+
+  const oauth = await verifyCareerMcpAccessToken(token, request);
+  if (oauth.ok) {
+    audit("oauth_accepted", { email: oauth.claims.email, sub: oauth.claims.sub, aud: oauth.claims.aud });
+    return null;
+  }
+
+  const integrationConfigured = Boolean(process.env["CHATGPT_INTEGRATION_SECRET"]?.trim());
+  if (!integrationConfigured && !process.env["CAREER_MCP_OAUTH_SIGNING_SECRET"]?.trim()) {
+    return jsonResponse(500, {
+      error: "chatgpt_integration_unconfigured",
+      message: "Defina CHATGPT_INTEGRATION_SECRET e/ou CAREER_MCP_OAUTH_SIGNING_SECRET no servidor.",
+    });
+  }
+
+  return mcpUnauthorized(oauth.message || "Credencial inválida.");
+}
+
 export async function handleChatgptCareerMcpRequest(request: Request): Promise<Response> {
-  const authError = authenticateChatgptIntegration(request);
+  const authError = await authenticateCareerMcp(request);
   if (authError) {
     audit("auth_rejected", { path: request.url, status: authError.status, method: request.method });
-    return authError;
+    return withMcpAuthChallenge(authError, request);
   }
 
   const originError = validateOrigin(request);

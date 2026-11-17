@@ -11,7 +11,7 @@ export const CAREER_MCP_SERVER_INFO = {
 export const CAREER_MCP_INSTRUCTIONS =
   "Persista resultados de pesquisa de empresas, vagas e contatos no NEX. " +
   "Use career_applications_prepare apenas para preparar textos — nunca envie candidaturas automaticamente. " +
-  "Prefira idempotency_key estável por lote. Autenticação: Bearer CHATGPT_INTEGRATION_SECRET.";
+  "Prefira idempotency_key estável por lote. Autenticação: Bearer CHATGPT_INTEGRATION_SECRET (direto) ou OAuth JWT (ChatGPT Web).";
 
 type JsonSchema = Record<string, unknown>;
 

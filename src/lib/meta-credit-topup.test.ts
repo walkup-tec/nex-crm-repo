@@ -6,6 +6,7 @@ import {
   encodePrepaidSyncStatus,
   hasRegisteredCreditTopup,
   insightSpendToCents,
+  mergeOrgLowBalanceFlag,
   metaCreditAlertState,
   readCreditTopup,
   readPrepaidSyncStatus,
@@ -84,5 +85,16 @@ assert.deepEqual(
   resolveCreditTopup(null, "prepaid:15000:2026-10-30T12:00:00.000Z"),
   { cents: 15000, at: "2026-10-30T12:00:00.000Z" },
 );
+
+assert.deepEqual(mergeOrgLowBalanceFlag(undefined, false), { checked: true, low: false });
+assert.deepEqual(mergeOrgLowBalanceFlag(undefined, true), { checked: true, low: true });
+assert.deepEqual(mergeOrgLowBalanceFlag({ checked: true, low: false }, true), {
+  checked: true,
+  low: true,
+});
+assert.deepEqual(mergeOrgLowBalanceFlag({ checked: true, low: true }, false), {
+  checked: true,
+  low: true,
+});
 
 console.log("meta-credit-topup tests ok");

@@ -150,3 +150,14 @@ export function metaCreditAlertState(input: {
     low: missingTopup || balanceLow || paymentError,
   };
 }
+
+/** Agrega alertas por organização (qualquer conta baixa ⇒ org em alerta). */
+export function mergeOrgLowBalanceFlag(
+  previous: { low: boolean; checked: boolean } | undefined,
+  accountLow: boolean,
+) {
+  return {
+    checked: true,
+    low: Boolean(previous?.low) || accountLow === true,
+  };
+}

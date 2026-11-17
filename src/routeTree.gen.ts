@@ -56,6 +56,7 @@ import { Route as AuthenticatedMasterFinanceiroRouteImport } from './routes/_aut
 import { Route as ApiAutentiqueWebhookRouteImport } from './routes/api/autentique/webhook'
 import { Route as ApiChatbotEvoRouteImport } from './routes/api/chatbot/evo'
 import { Route as ApiCoraWebhookRouteImport } from './routes/api/cora/webhook'
+import { Route as ApiMetaLowBalanceScanRouteImport } from './routes/api/meta/low-balance-scan'
 import { Route as AuthGoogleCallbackRouteImport } from './routes/auth.google.callback'
 import { Route as AuthMetaCallbackRouteImport } from './routes/auth.meta.callback'
 import { Route as AuthenticatedMasterFinanceiroOrgIdRouteImport } from './routes/_authenticated/master.financeiro.$orgId'
@@ -323,6 +324,11 @@ const ApiCoraWebhookRoute = ApiCoraWebhookRouteImport.update({
   path: '/api/cora/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMetaLowBalanceScanRoute = ApiMetaLowBalanceScanRouteImport.update({
+  id: '/api/meta/low-balance-scan',
+  path: '/api/meta/low-balance-scan',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthGoogleCallbackRoute = AuthGoogleCallbackRouteImport.update({
   id: '/google/callback',
   path: '/google/callback',
@@ -421,6 +427,7 @@ export interface FileRoutesByFullPath {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/meta/low-balance-scan': typeof ApiMetaLowBalanceScanRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot/': typeof AuthenticatedChatbotIndexRoute
@@ -475,6 +482,7 @@ export interface FileRoutesByTo {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/meta/low-balance-scan': typeof ApiMetaLowBalanceScanRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/chatbot': typeof AuthenticatedChatbotIndexRoute
@@ -534,6 +542,7 @@ export interface FileRoutesById {
   '/api/autentique/webhook': typeof ApiAutentiqueWebhookRoute
   '/api/chatbot/evo': typeof ApiChatbotEvoRoute
   '/api/cora/webhook': typeof ApiCoraWebhookRoute
+  '/api/meta/low-balance-scan': typeof ApiMetaLowBalanceScanRoute
   '/auth/google/callback': typeof AuthGoogleCallbackRoute
   '/auth/meta/callback': typeof AuthMetaCallbackRoute
   '/_authenticated/chatbot/': typeof AuthenticatedChatbotIndexRoute
@@ -593,6 +602,7 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/meta/low-balance-scan'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/chatbot/'
@@ -647,6 +657,7 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/meta/low-balance-scan'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/chatbot'
@@ -705,6 +716,7 @@ export interface FileRouteTypes {
     | '/api/autentique/webhook'
     | '/api/chatbot/evo'
     | '/api/cora/webhook'
+    | '/api/meta/low-balance-scan'
     | '/auth/google/callback'
     | '/auth/meta/callback'
     | '/_authenticated/chatbot/'
@@ -733,6 +745,7 @@ export interface RootRouteChildren {
   ApiAutentiqueWebhookRoute: typeof ApiAutentiqueWebhookRoute
   ApiChatbotEvoRoute: typeof ApiChatbotEvoRoute
   ApiCoraWebhookRoute: typeof ApiCoraWebhookRoute
+  ApiMetaLowBalanceScanRoute: typeof ApiMetaLowBalanceScanRoute
   ApiIntegrationsChatgptOpenapiRoute: typeof ApiIntegrationsChatgptOpenapiRoute
   ApiIntegrationsChatgptAnalysesExecutionIdRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   ApiIntegrationsChatgptCareerSplatRoute: typeof ApiIntegrationsChatgptCareerSplatRoute
@@ -1071,6 +1084,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCoraWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/meta/low-balance-scan': {
+      id: '/api/meta/low-balance-scan'
+      path: '/api/meta/low-balance-scan'
+      fullPath: '/api/meta/low-balance-scan'
+      preLoaderRoute: typeof ApiMetaLowBalanceScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/google/callback': {
       id: '/auth/google/callback'
       path: '/google/callback'
@@ -1287,6 +1307,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAutentiqueWebhookRoute: ApiAutentiqueWebhookRoute,
   ApiChatbotEvoRoute: ApiChatbotEvoRoute,
   ApiCoraWebhookRoute: ApiCoraWebhookRoute,
+  ApiMetaLowBalanceScanRoute: ApiMetaLowBalanceScanRoute,
   ApiIntegrationsChatgptOpenapiRoute: ApiIntegrationsChatgptOpenapiRoute,
   ApiIntegrationsChatgptAnalysesExecutionIdRoute:
     ApiIntegrationsChatgptAnalysesExecutionIdRoute,

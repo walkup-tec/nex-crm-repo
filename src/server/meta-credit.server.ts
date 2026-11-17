@@ -3,6 +3,7 @@ import { normalizeBalanceLink } from "@/lib/balance-link";
 import {
   lowBalanceAlertStamp,
   lowBalanceAlreadyDelivered,
+  lowBalanceLimitCents,
   shouldSendLowBalanceWhatsapp,
   whatsappNumber,
 } from "@/lib/low-balance";
@@ -15,6 +16,7 @@ import {
   availableFromRegisteredCredit,
   creditTopupLedger,
   encodePrepaidSyncStatus,
+  mergeOrgLowBalanceFlag,
   metaCreditAlertState,
   readCreditTopup,
   resolveCreditTopup,
@@ -449,8 +451,33 @@ export async function getClientBalanceAlert(userId: string) {
     availableCents,
     paymentError,
   });
+  // WhatsApp: qualquer conta da org com recarga e saldo baixo dispara alerta
+  // (não só a conta selected — evita silêncio quando outra conta zera).
+  let whatsappLow = alert.low;
+  if (!whatsappLow) {
+    try {
+      const siblings = await supabaseAdmin
+        .from("meta_accounts")
+        .select("id, balance_cents, prepaid_ledger, sync_status")
+        .eq("organization_id", profile.organization_id)
+        .neq("id", account.id);
+      if (!siblings.error) {
+        for (const row of siblings.data ?? []) {
+          const siblingTopup = resolveCreditTopup(row.prepaid_ledger, row.sync_status);
+          if (!siblingTopup) continue;
+          const cents = Number(row.balance_cents);
+          if (Number.isFinite(cents) && cents <= lowBalanceLimitCents) {
+            whatsappLow = true;
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("meta_low_balance", error instanceof Error ? error.name : "error");
+    }
+  }
   try {
-    await syncLowBalanceWhatsapp(profile.organization_id, alert.low);
+    await syncLowBalanceWhatsapp(profile.organization_id, whatsappLow);
   } catch (error) {
     console.error("meta_low_balance", error instanceof Error ? error.name : "error");
   }
@@ -543,13 +570,7 @@ type MasterCreditAccountRow = {
   selected: boolean | null;
 };
 
-/** Master MMS: recalcula saldo disponível de cada conta sem depender do login do cliente. */
-export async function refreshMasterMetaCredits(userId: string) {
-  const actor = await actorOf(userId);
-  if (!(await mmsMaster(actor.organizationId, actor.role))) {
-    fail("Apenas o Master da MMS pode atualizar os créditos de todas as contas.");
-  }
-
+async function listMasterCreditAccounts(): Promise<MasterCreditAccountRow[]> {
   const columns = "id, organization_id, external_account_id, prepaid_ledger, sync_status, selected";
   let rows: Array<Record<string, unknown>> = [];
   const withLedger = await supabaseAdmin.from("meta_accounts").select(columns);
@@ -565,7 +586,7 @@ export async function refreshMasterMetaCredits(userId: string) {
     rows = (withLedger.data ?? []) as Array<Record<string, unknown>>;
   }
 
-  const accounts: MasterCreditAccountRow[] = rows.map((row) => ({
+  return rows.map((row) => ({
     id: String(row.id ?? ""),
     organization_id: String(row.organization_id ?? ""),
     external_account_id: String(row.external_account_id ?? ""),
@@ -573,10 +594,19 @@ export async function refreshMasterMetaCredits(userId: string) {
     sync_status: typeof row.sync_status === "string" ? row.sync_status : null,
     selected: row.selected === true,
   }));
+}
 
+/**
+ * Recalcula saldos com recarga registrada e dispara WhatsApp por organização
+ * quando qualquer conta fica baixa — sem depender do cliente abrir a NEX.
+ */
+export async function scanMetaCreditBalancesAndAlert() {
+  const accounts = await listMasterCreditAccounts();
   let synced = 0;
   let skipped = 0;
   let failed = 0;
+  let alertsLow = 0;
+  const orgFlags = new Map<string, { low: boolean; checked: boolean }>();
 
   for (const account of accounts) {
     if (!account.id || !account.organization_id || !account.external_account_id) {
@@ -600,6 +630,24 @@ export async function refreshMasterMetaCredits(userId: string) {
         availableCents,
         creditTopupLedger(topup.cents, topup.at),
       );
+      let paymentError = false;
+      try {
+        paymentError = await hasBillingPaymentError(
+          account.organization_id,
+          account.external_account_id,
+        );
+      } catch {
+        paymentError = false;
+      }
+      const alert = metaCreditAlertState({
+        topup,
+        availableCents,
+        paymentError,
+      });
+      orgFlags.set(
+        account.organization_id,
+        mergeOrgLowBalanceFlag(orgFlags.get(account.organization_id), alert.low),
+      );
       synced += 1;
     } catch (error) {
       failed += 1;
@@ -611,10 +659,31 @@ export async function refreshMasterMetaCredits(userId: string) {
     }
   }
 
+  for (const [organizationId, flag] of orgFlags) {
+    if (!flag.checked) continue;
+    if (flag.low) alertsLow += 1;
+    try {
+      await syncLowBalanceWhatsapp(organizationId, flag.low);
+    } catch (error) {
+      console.error("meta_low_balance", organizationId, error instanceof Error ? error.name : "error");
+    }
+  }
+
   return {
     synced,
     skipped,
     failed,
     total: accounts.length,
+    orgsChecked: orgFlags.size,
+    orgsLow: alertsLow,
   };
+}
+
+/** Master MMS: recalcula saldo disponível de cada conta sem depender do login do cliente. */
+export async function refreshMasterMetaCredits(userId: string) {
+  const actor = await actorOf(userId);
+  if (!(await mmsMaster(actor.organizationId, actor.role))) {
+    fail("Apenas o Master da MMS pode atualizar os créditos de todas as contas.");
+  }
+  return scanMetaCreditBalancesAndAlert();
 }

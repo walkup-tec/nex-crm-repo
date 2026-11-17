@@ -148,6 +148,24 @@ export function MasterMetaCredits() {
     void loadClients();
   }, [loadClients]);
 
+  // Ao abrir Créditos Meta, varre saldos e dispara WhatsApp das contas baixas
+  // (não depende do cliente entrar na NEX).
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const result = await refreshMasterMetaCreditsFn();
+        if (!active || !result.ok) return;
+        await loadClients();
+      } catch {
+        /* loadClients já cobre falha de listagem */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [loadClients]);
+
   async function refreshBalances() {
     if (refreshing) return;
     setRefreshing(true);

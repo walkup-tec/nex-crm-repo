@@ -84,6 +84,12 @@ export async function handleChatgptCareerRequest(request: Request): Promise<Resp
       return handleChatgptCareerOpenApiRequest(request);
     }
 
+    // MCP tem rota dedicada (/career/mcp); se o splat capturar, delega sem alterar o REST.
+    if (path === "/mcp") {
+      const { handleChatgptCareerMcpRequest } = await import("@/server/chatgpt-career-mcp.server");
+      return handleChatgptCareerMcpRequest(request);
+    }
+
     if ((path === "/health" || path === "/overview") && method === "GET") {
       const { pluginListCompanies, pluginListJobs, pluginListHistory } = await import("@/server/career.server");
       const [companies, jobs, history] = await Promise.all([

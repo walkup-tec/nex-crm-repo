@@ -63,6 +63,7 @@ import { Route as AuthenticatedMasterSuporteOrgIdRouteImport } from './routes/_a
 import { Route as ApiIntegrationsChatgptOpenapiRouteImport } from './routes/api/integrations/chatgpt/openapi'
 import { Route as ApiIntegrationsChatgptAnalysesExecutionIdRouteImport } from './routes/api/integrations/chatgpt/analyses/$executionId'
 import { Route as ApiIntegrationsChatgptCareerSplatRouteImport } from './routes/api/integrations/chatgpt/career/$'
+import { Route as ApiIntegrationsChatgptCareerMcpRouteImport } from './routes/api/integrations/chatgpt/career/mcp'
 import { Route as ApiIntegrationsChatgptCareerOpenapiRouteImport } from './routes/api/integrations/chatgpt/career/openapi'
 
 const IndexRoute = IndexRouteImport.update({
@@ -362,6 +363,12 @@ const ApiIntegrationsChatgptCareerSplatRoute =
     path: '/api/integrations/chatgpt/career/$',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiIntegrationsChatgptCareerMcpRoute =
+  ApiIntegrationsChatgptCareerMcpRouteImport.update({
+    id: '/api/integrations/chatgpt/career/mcp',
+    path: '/api/integrations/chatgpt/career/mcp',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiIntegrationsChatgptCareerOpenapiRoute =
   ApiIntegrationsChatgptCareerOpenapiRouteImport.update({
     id: '/api/integrations/chatgpt/career/openapi',
@@ -423,6 +430,7 @@ export interface FileRoutesByFullPath {
   '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
   '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
+  '/api/integrations/chatgpt/career/mcp': typeof ApiIntegrationsChatgptCareerMcpRoute
   '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 export interface FileRoutesByTo {
@@ -476,6 +484,7 @@ export interface FileRoutesByTo {
   '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
   '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
+  '/api/integrations/chatgpt/career/mcp': typeof ApiIntegrationsChatgptCareerMcpRoute
   '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 export interface FileRoutesById {
@@ -534,6 +543,7 @@ export interface FileRoutesById {
   '/api/integrations/chatgpt/openapi': typeof ApiIntegrationsChatgptOpenapiRoute
   '/api/integrations/chatgpt/analyses/$executionId': typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   '/api/integrations/chatgpt/career/$': typeof ApiIntegrationsChatgptCareerSplatRoute
+  '/api/integrations/chatgpt/career/mcp': typeof ApiIntegrationsChatgptCareerMcpRoute
   '/api/integrations/chatgpt/career/openapi': typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 export interface FileRouteTypes {
@@ -592,6 +602,7 @@ export interface FileRouteTypes {
     | '/api/integrations/chatgpt/openapi'
     | '/api/integrations/chatgpt/analyses/$executionId'
     | '/api/integrations/chatgpt/career/$'
+    | '/api/integrations/chatgpt/career/mcp'
     | '/api/integrations/chatgpt/career/openapi'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -645,6 +656,7 @@ export interface FileRouteTypes {
     | '/api/integrations/chatgpt/openapi'
     | '/api/integrations/chatgpt/analyses/$executionId'
     | '/api/integrations/chatgpt/career/$'
+    | '/api/integrations/chatgpt/career/mcp'
     | '/api/integrations/chatgpt/career/openapi'
   id:
     | '__root__'
@@ -702,6 +714,7 @@ export interface FileRouteTypes {
     | '/api/integrations/chatgpt/openapi'
     | '/api/integrations/chatgpt/analyses/$executionId'
     | '/api/integrations/chatgpt/career/$'
+    | '/api/integrations/chatgpt/career/mcp'
     | '/api/integrations/chatgpt/career/openapi'
   fileRoutesById: FileRoutesById
 }
@@ -723,6 +736,7 @@ export interface RootRouteChildren {
   ApiIntegrationsChatgptOpenapiRoute: typeof ApiIntegrationsChatgptOpenapiRoute
   ApiIntegrationsChatgptAnalysesExecutionIdRoute: typeof ApiIntegrationsChatgptAnalysesExecutionIdRoute
   ApiIntegrationsChatgptCareerSplatRoute: typeof ApiIntegrationsChatgptCareerSplatRoute
+  ApiIntegrationsChatgptCareerMcpRoute: typeof ApiIntegrationsChatgptCareerMcpRoute
   ApiIntegrationsChatgptCareerOpenapiRoute: typeof ApiIntegrationsChatgptCareerOpenapiRoute
 }
 
@@ -1106,6 +1120,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsChatgptCareerSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/chatgpt/career/mcp': {
+      id: '/api/integrations/chatgpt/career/mcp'
+      path: '/api/integrations/chatgpt/career/mcp'
+      fullPath: '/api/integrations/chatgpt/career/mcp'
+      preLoaderRoute: typeof ApiIntegrationsChatgptCareerMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/integrations/chatgpt/career/openapi': {
       id: '/api/integrations/chatgpt/career/openapi'
       path: '/api/integrations/chatgpt/career/openapi'
@@ -1271,19 +1292,10 @@ const rootRouteChildren: RootRouteChildren = {
     ApiIntegrationsChatgptAnalysesExecutionIdRoute,
   ApiIntegrationsChatgptCareerSplatRoute:
     ApiIntegrationsChatgptCareerSplatRoute,
+  ApiIntegrationsChatgptCareerMcpRoute: ApiIntegrationsChatgptCareerMcpRoute,
   ApiIntegrationsChatgptCareerOpenapiRoute:
     ApiIntegrationsChatgptCareerOpenapiRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

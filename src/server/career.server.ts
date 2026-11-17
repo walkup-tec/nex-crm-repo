@@ -682,12 +682,15 @@ export async function sendCareerApplicationEmail(
     fail("Informe um e-mail de destino válido (ou configure CAREER_APPLICATION_TEST_TO).");
   }
 
-  const body = String(app.email_body || app.intro_message || "").trim();
-  if (!body) fail("A candidatura não tem texto de e-mail (email_body/intro_message).");
-
   const jobTitle = String(job?.title || "Vaga");
   const companyName = String(company?.name || "Empresa");
   const subject = `Candidatura — ${jobTitle} — ${companyName}`;
+
+  const { CAREER_APPLICATION_EMAIL_TEXT, careerApplicationEmailHtml } = await import(
+    "@/lib/career-application-email"
+  );
+  const body = CAREER_APPLICATION_EMAIL_TEXT;
+  const html = careerApplicationEmailHtml();
 
   let executionId: string | null = null;
   try {
@@ -705,7 +708,7 @@ export async function sendCareerApplicationEmail(
 
   try {
     const { sendCareerApplicationMail } = await import("@/server/mail.server");
-    await sendCareerApplicationMail({ to, subject, text: body });
+    await sendCareerApplicationMail({ to, subject, text: body, html });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao enviar e-mail.";
     if (executionId) {

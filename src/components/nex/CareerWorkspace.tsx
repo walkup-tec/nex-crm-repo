@@ -14,6 +14,7 @@ import {
   sendCareerApplicationEmailFn,
 } from "@/lib/career.functions";
 import { Input } from "@/components/ui/input";
+import { CAREER_APPLICATION_EMAIL_TEXT } from "@/lib/career-application-email";
 import {
   careerActorLabel,
   careerKindLabel,
@@ -293,8 +294,7 @@ export function CareerWorkspace() {
             applications.map((row) => {
               const id = String(row.id);
               const status = String(row.status);
-              const emailBody = String(row.email_body || "").trim();
-              const intro = String(row.intro_message || row.compatibility_analysis || "—");
+              const intro = String(row.intro_message || row.compatibility_analysis || "").trim();
               const canSend = status === "approved" || status === "ready";
               return (
               <article key={id} className="rounded-xl border p-4 space-y-3">
@@ -311,13 +311,13 @@ export function CareerWorkspace() {
                     </Button>
                   ) : null}
                 </div>
-                <p className="text-sm whitespace-pre-wrap">{intro}</p>
-                {emailBody ? (
-                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Corpo do e-mail</p>
-                    <p className="mt-1 text-sm whitespace-pre-wrap">{emailBody}</p>
-                  </div>
-                ) : null}
+                {intro ? <p className="text-sm whitespace-pre-wrap text-muted-foreground">{intro}</p> : null}
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Texto do e-mail (apresentação)
+                  </p>
+                  <p className="mt-1 text-sm whitespace-pre-wrap">{CAREER_APPLICATION_EMAIL_TEXT}</p>
+                </div>
                 {canSend ? (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Input

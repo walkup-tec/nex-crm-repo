@@ -1116,6 +1116,35 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     }
   }
 
+  async function watchAssinaturaResult(conversationId: string, startedAt: number, previewId: string) {
+    const deadline = Date.now() + 4 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await load();
+      await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      const snap = await chatbotSnapshotFn();
+      if (!snap.ok) continue;
+      const msgs = snap.data.messages.filter((row) => row.conversationId === conversationId);
+      const recent = msgs.filter((row) => new Date(row.createdAt).getTime() >= startedAt - 2000);
+      const failure = recent.find((row) => /^Assinatura não enviada:/i.test(row.text));
+      const success = recent.find(
+        (row) =>
+          /^Contrato enviado para assinatura/i.test(row.text) ||
+          /^Os e-mails de assinatura foram reenviados/i.test(row.text),
+      );
+      if (failure || success) {
+        if (failure) {
+          setSignatureError(failure.text.replace(/^Assinatura não enviada:\s*/i, ""));
+        } else {
+          setSignatureError("");
+        }
+        setOutgoing((current) => current.filter((item) => item.id !== previewId));
+        void load();
+        return true;
+      }
+    }
+    return false;
+  }
+
   async function sendAssinatura(termDays: 30 | 60 | 90 | 180 | 365 = signatureTermDays) {
     if (!selected || !contact) {
       setSignatureError("Abra a conversa do contato antes de enviar o contrato para assinatura.");
@@ -1162,35 +1191,47 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       setSignatureError("");
       setMessage("");
       // Trabalho pesado (PDF + Autentique) segue no servidor; acompanha a conversa.
-      const deadline = Date.now() + 4 * 60 * 1000;
-      while (Date.now() < deadline) {
-        await load();
-        await new Promise((resolve) => window.setTimeout(resolve, 2500));
-        const snap = await chatbotSnapshotFn();
-        if (!snap.ok) continue;
-        const msgs = snap.data.messages.filter((row) => row.conversationId === conversationId);
-        const recent = msgs.filter((row) => new Date(row.createdAt).getTime() >= startedAt - 2000);
-        const failure = recent.find((row) => /^Assinatura não enviada:/i.test(row.text));
-        const success = recent.find(
-          (row) =>
-            /^Contrato enviado para assinatura/i.test(row.text) ||
-            /^Os e-mails de assinatura foram reenviados/i.test(row.text),
+      const settled = await watchAssinaturaResult(conversationId, startedAt, preview.id);
+      if (!settled) {
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        setSignatureError(
+          "O envio ainda está em andamento no servidor. Atualize a conversa em alguns minutos — o resultado aparece como nota ou mensagem.",
         );
-        if (failure || success) {
-          if (failure) {
-            setSignatureError(failure.text.replace(/^Assinatura não enviada:\s*/i, ""));
-          }
-          setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-          void load();
-          return;
-        }
+        void load();
       }
-      setOutgoing((current) => current.filter((item) => item.id !== preview.id));
-      setSignatureError(
-        "O envio ainda está em andamento no servidor. Atualize a conversa em alguns minutos — o resultado aparece como nota ou mensagem.",
-      );
-      void load();
     } catch (error) {
+      // Proxy/rede pode cair depois que o servidor já gravou a nota e concluiu o Autentique.
+      await load();
+      const snap = await chatbotSnapshotFn().catch(() => null);
+      const msgs =
+        snap && snap.ok
+          ? snap.data.messages.filter((row) => row.conversationId === conversationId)
+          : threadMessages.filter((row) => row.conversationId === conversationId);
+      const recent = msgs.filter((row) => new Date(row.createdAt).getTime() >= startedAt - 5000);
+      const success = recent.find(
+        (row) =>
+          /^Contrato enviado para assinatura/i.test(row.text) ||
+          /^Os e-mails de assinatura foram reenviados/i.test(row.text),
+      );
+      const started = recent.find((row) => /^Gerando o contrato/i.test(row.text));
+      if (success) {
+        setSignatureError("");
+        setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+        void load();
+        return;
+      }
+      if (started) {
+        setSignatureError("");
+        const settled = await watchAssinaturaResult(conversationId, startedAt, preview.id);
+        if (!settled) {
+          setOutgoing((current) => current.filter((item) => item.id !== preview.id));
+          setSignatureError(
+            "O envio continua no servidor. Atualize a conversa em alguns minutos — o resultado aparece como nota.",
+          );
+          void load();
+        }
+        return;
+      }
       setOutgoing((current) => current.filter((item) => item.id !== preview.id));
       const raw = error instanceof Error ? error.message : "";
       setSignatureError(

@@ -335,15 +335,27 @@ export function CareerWorkspace() {
                       onClick={() => {
                         const toEmail = (sendToById[id] ?? "mozart.pmo@gmail.com").trim();
                         setSendingId(id);
-                        void sendCareerApplicationEmailFn({ data: { id, toEmail } })
+                        setError("");
+                        const sendPromise = sendCareerApplicationEmailFn({ data: { id, toEmail } });
+                        const timeoutMs = 90000;
+                        const timeoutPromise = new Promise<never>((_, reject) => {
+                          window.setTimeout(() => {
+                            reject(new Error("O envio demorou demais. Verifique SMTP/anexo e tente de novo."));
+                          }, timeoutMs);
+                        });
+                        void Promise.race([sendPromise, timeoutPromise])
                           .then((result) => {
+                            setSendingId("");
                             if (!result.ok) {
                               setError(result.message);
                               return;
                             }
-                            return load();
+                            void load();
                           })
-                          .finally(() => setSendingId(""));
+                          .catch((err) => {
+                            setSendingId("");
+                            setError(err instanceof Error ? err.message : "Falha ao enviar a candidatura.");
+                          });
                       }}
                     >
                       {sendingId === id ? "Enviando…" : "Enviar por e-mail"}

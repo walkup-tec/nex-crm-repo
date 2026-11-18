@@ -119,14 +119,24 @@ async function sendSmtp(
     failure.name = "InviteMailError";
     throw failure;
   }
+  const attachmentBytes = (input.attachments ?? []).reduce((sum, file) => sum + file.content.byteLength, 0);
+  // Gmail ~25MB na mensagem; base64 infla ~33%. Anexos grandes travam o SMTP sem erro limpo.
+  if (attachmentBytes > 8 * 1024 * 1024) {
+    const failure = new Error(
+      `Anexo de e-mail grande demais (${Math.round(attachmentBytes / (1024 * 1024))} MB). Use PDF até ~8 MB.`,
+    );
+    failure.name = "InviteMailError";
+    throw failure;
+  }
+  const heavy = attachmentBytes > 512 * 1024;
   const transporter = nodemailer.createTransport({
     host: address,
     port: smtp.port,
     secure: smtp.port === 465,
     requireTLS: smtp.port === 587,
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
+    connectionTimeout: heavy ? 30000 : 15000,
+    greetingTimeout: heavy ? 30000 : 15000,
+    socketTimeout: heavy ? 90000 : 20000,
     auth: { user: smtp.user, pass: smtp.pass },
     tls: { servername: smtp.host },
   });
@@ -142,7 +152,7 @@ async function sendSmtp(
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "error";
     const responseCode = error && typeof error === "object" && "responseCode" in error ? Number(error.responseCode) : 0;
-    console.error("smtp_send", code, Number.isFinite(responseCode) ? responseCode : 0);
+    console.error("smtp_send", code, Number.isFinite(responseCode) ? responseCode : 0, `attach_bytes=${attachmentBytes}`);
     const failure = new Error(mailFailureMessage(code, responseCode, fallback));
     failure.name = "InviteMailError";
     throw failure;
@@ -174,17 +184,22 @@ export async function sendCareerApplicationMail(input: {
     `<div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:15px">${escapeHtml(text).replaceAll("\n", "<br>")}</div>`;
 
   const resumeName = "Curriculo_Marcelo_Mozart.pdf";
+  // Preferir versão e-mail (~0,5 MB). O HD (~16 MB) estoura o Gmail em base64 e trava o envio.
   const resumeCandidates = [
     process.env["CAREER_RESUME_PATH"]?.trim(),
+    join(process.cwd(), "assets", "curriculo-marcelo-mozart-email.pdf"),
+    join("/app", "assets", "curriculo-marcelo-mozart-email.pdf"),
     join(process.cwd(), "assets", "curriculo-marcelo-mozart.pdf"),
     join("/app", "assets", "curriculo-marcelo-mozart.pdf"),
   ].filter(Boolean) as string[];
 
   let attachments: MailAttachment[] | undefined;
+  let usedPath = "";
   for (const path of resumeCandidates) {
     try {
       const content = await readFile(path);
       attachments = [{ filename: resumeName, content, contentType: "application/pdf" }];
+      usedPath = path;
       break;
     } catch {
       // tenta o próximo caminho
@@ -192,10 +207,11 @@ export async function sendCareerApplicationMail(input: {
   }
   if (!attachments) {
     console.error("career_resume_missing", resumeCandidates.join(" | "));
-    const failure = new Error("Currículo em PDF não encontrado no servidor (assets/curriculo-marcelo-mozart.pdf).");
+    const failure = new Error("Currículo em PDF não encontrado no servidor (assets/curriculo-marcelo-mozart-email.pdf).");
     failure.name = "InviteMailError";
     throw failure;
   }
+  console.info("career_resume_attached", usedPath, `${attachments[0]?.content.byteLength ?? 0}b`);
 
   await sendSmtp(
     { to, subject: input.subject.trim() || "Candidatura", text, html, attachments },

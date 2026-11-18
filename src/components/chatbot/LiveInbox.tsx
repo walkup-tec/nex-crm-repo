@@ -2300,27 +2300,26 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
             <p className="text-sm text-muted-foreground">
               Escolha o período inicial da minuta. Esse prazo também define a vigência e as cobranças Cora no cadastro do cliente.
             </p>
-            <div className="grid gap-2">
-              {(
-                [
-                  [30, "30 dias"],
-                  [60, "60 dias"],
-                  [90, "90 dias (padrão)"],
-                  [180, "180 dias"],
-                  [365, "365 dias"],
-                ] as const
-              ).map(([days, label]) => (
-                <label key={days} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="signature-term"
-                    checked={signatureTermDays === days}
-                    onChange={() => setSignatureTermDays(days)}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium">Vigência</span>
+              <select
+                className="contact-stage h-10 w-full"
+                aria-label="Vigência do contrato"
+                value={signatureTermDays}
+                onChange={(event) => {
+                  const days = Number(event.target.value);
+                  if (days === 30 || days === 60 || days === 90 || days === 180 || days === 365) {
+                    setSignatureTermDays(days);
+                  }
+                }}
+              >
+                <option value={30}>30 dias</option>
+                <option value={60}>60 dias</option>
+                <option value={90}>90 dias (padrão)</option>
+                <option value={180}>180 dias</option>
+                <option value={365}>365 dias</option>
+              </select>
+            </label>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setSignatureOpen(false)}>
                 Cancelar

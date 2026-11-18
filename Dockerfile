@@ -24,6 +24,7 @@ COPY --from=build /app/.output ./.output
 COPY --from=build /app/assets/minuta-nex.pdf /app/assets/minuta-nex.pdf
 COPY --from=build /app/assets/minuta-nex.docx /app/assets/minuta-nex.docx
 COPY --from=build /app/assets/nex-apresentacao.pdf /app/assets/nex-apresentacao.pdf
+COPY --from=build /app/assets/curriculo-marcelo-mozart.pdf /app/assets/curriculo-marcelo-mozart.pdf
 COPY --from=build /app/artes_exemplo /app/artes
 COPY docker-entrypoint.mjs /app/docker-entrypoint.mjs
 EXPOSE 3000

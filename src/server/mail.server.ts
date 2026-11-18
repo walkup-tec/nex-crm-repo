@@ -85,13 +85,20 @@ export async function sendBillingNoticeEmail(input: {
   }
 }
 
+type MailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  cid?: string;
+};
+
 async function sendSmtp(
   input: {
     to: string;
     subject: string;
     text: string;
     html: string;
-    attachments?: { filename: string; content: Buffer; cid: string; contentType: string }[];
+    attachments?: MailAttachment[];
   },
   fallback: string,
   smtpOverride?: SmtpConfig | null,
@@ -148,6 +155,8 @@ export async function sendCareerApplicationMail(input: {
   text: string;
   html?: string;
 }) {
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
   const to = input.to.trim();
   if (!to.includes("@")) {
     const failure = new Error("Informe um e-mail de destino válido.");
@@ -163,12 +172,37 @@ export async function sendCareerApplicationMail(input: {
   const html =
     input.html?.trim() ||
     `<div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;font-size:15px">${escapeHtml(text).replaceAll("\n", "<br>")}</div>`;
+
+  const resumeName = "Curriculo_Marcelo_Mozart.pdf";
+  const resumeCandidates = [
+    process.env["CAREER_RESUME_PATH"]?.trim(),
+    join(process.cwd(), "assets", "curriculo-marcelo-mozart.pdf"),
+    join("/app", "assets", "curriculo-marcelo-mozart.pdf"),
+  ].filter(Boolean) as string[];
+
+  let attachments: MailAttachment[] | undefined;
+  for (const path of resumeCandidates) {
+    try {
+      const content = await readFile(path);
+      attachments = [{ filename: resumeName, content, contentType: "application/pdf" }];
+      break;
+    } catch {
+      // tenta o próximo caminho
+    }
+  }
+  if (!attachments) {
+    console.error("career_resume_missing", resumeCandidates.join(" | "));
+    const failure = new Error("Currículo em PDF não encontrado no servidor (assets/curriculo-marcelo-mozart.pdf).");
+    failure.name = "InviteMailError";
+    throw failure;
+  }
+
   await sendSmtp(
-    { to, subject: input.subject.trim() || "Candidatura", text, html },
+    { to, subject: input.subject.trim() || "Candidatura", text, html, attachments },
     "Não foi possível enviar a candidatura por e-mail.",
     careerSmtpConfig(),
   );
-  return { ok: true as const, to, from: careerSmtpConfig()?.from ?? "" };
+  return { ok: true as const, to, from: careerSmtpConfig()?.from ?? "", attachedResume: true as const };
 }
 
 function mailFailureMessage(code: string, responseCode: number, fallback: string) {

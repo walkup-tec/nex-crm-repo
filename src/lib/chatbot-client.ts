@@ -101,11 +101,22 @@ export function monthlyDueDay(startsOn: string) {
   return due ? String(Number(due.slice(8, 10))) : "";
 }
 
-export const chatbotContractTermOptions = [30, 90] as const;
+export const chatbotContractTermOptions = [30, 60, 90, 180, 365] as const;
 export type ChatbotContractTermDays = (typeof chatbotContractTermOptions)[number];
 
 export function normalizeChatbotContractTermDays(value: unknown): ChatbotContractTermDays {
-  return value === 30 ? 30 : 90;
+  const days = typeof value === "number" ? value : Number(value);
+  return (chatbotContractTermOptions as readonly number[]).includes(days)
+    ? (days as ChatbotContractTermDays)
+    : 90;
+}
+
+export function chatbotContractTermLabel(days: ChatbotContractTermDays) {
+  if (days === 30) return "30 dias";
+  if (days === 60) return "60 dias";
+  if (days === 90) return "90 dias";
+  if (days === 180) return "180 dias";
+  return "365 dias";
 }
 
 export function chatbotClientTerms(today: string, termDays: number = 90) {

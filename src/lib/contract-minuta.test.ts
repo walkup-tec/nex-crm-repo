@@ -83,4 +83,16 @@ assert.match(textThirty, /períodos sucessivos de 30 dias/);
 assert.equal(textThirty.includes("90 (noventa) dias"), false);
 assert.equal(textThirty.includes("períodos sucessivos de 90 dias"), false);
 
+for (const [days, labeled] of [
+  [60, "60 (sessenta) dias"],
+  [180, "180 (cento e oitenta) dias"],
+  [365, "365 (trezentos e sessenta e cinco) dias"],
+] as const) {
+  const filled = fillContractMinutaDocx(docx, { ...fields, termDays: days });
+  const xmlTerm = new TextDecoder().decode(readZip(filled).find((file) => file.name === "word/document.xml")?.data);
+  const textTerm = [...xmlTerm.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((part) => part[1]).join("");
+  assert.match(textTerm, new RegExp(labeled.replace(/[()]/g, "\\$&")));
+  assert.match(textTerm, new RegExp(`períodos sucessivos de ${days} dias`));
+}
+
 console.log("contract minuta tests ok");

@@ -420,7 +420,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [message, setMessage] = useState("");
   const [signatureError, setSignatureError] = useState("");
   const [signatureOpen, setSignatureOpen] = useState(false);
-  const [signatureTermDays, setSignatureTermDays] = useState<30 | 90>(90);
+  const [signatureTermDays, setSignatureTermDays] = useState<30 | 60 | 90 | 180 | 365>(90);
   const [pending, setPending] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [blockingBots, setBlockingBots] = useState(false);
@@ -1116,7 +1116,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     }
   }
 
-  async function sendAssinatura(termDays: 30 | 90 = signatureTermDays) {
+  async function sendAssinatura(termDays: 30 | 60 | 90 | 180 | 365 = signatureTermDays) {
     if (!selected || !contact) {
       setSignatureError("Abra a conversa do contato antes de enviar o contrato para assinatura.");
       return;
@@ -2298,27 +2298,28 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
               <DialogTitle>Vigência do contrato</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              Escolha o período inicial que será escrito na minuta e usado nas cobranças Cora após o cadastro.
+              Escolha o período inicial da minuta. Esse prazo também define a vigência e as cobranças Cora no cadastro do cliente.
             </p>
             <div className="grid gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="signature-term"
-                  checked={signatureTermDays === 30}
-                  onChange={() => setSignatureTermDays(30)}
-                />
-                30 dias (uma cobrança típica no período)
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="signature-term"
-                  checked={signatureTermDays === 90}
-                  onChange={() => setSignatureTermDays(90)}
-                />
-                90 dias (padrão atual da minuta)
-              </label>
+              {(
+                [
+                  [30, "30 dias"],
+                  [60, "60 dias"],
+                  [90, "90 dias (padrão)"],
+                  [180, "180 dias"],
+                  [365, "365 dias"],
+                ] as const
+              ).map(([days, label]) => (
+                <label key={days} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="signature-term"
+                    checked={signatureTermDays === days}
+                    onChange={() => setSignatureTermDays(days)}
+                  />
+                  {label}
+                </label>
+              ))}
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setSignatureOpen(false)}>

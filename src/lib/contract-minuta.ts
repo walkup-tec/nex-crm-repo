@@ -1,4 +1,9 @@
-import { firstBusinessDueDate, monthlyDueDay } from "./chatbot-client";
+import {
+  firstBusinessDueDate,
+  monthlyDueDay,
+  normalizeChatbotContractTermDays,
+  type ChatbotContractTermDays,
+} from "./chatbot-client";
 import { readZip, writeZip } from "./docx-zip";
 
 export type ContractMinutaFields = {
@@ -12,13 +17,17 @@ export type ContractMinutaFields = {
   monthlyFeeCents: number;
   startsOn: string;
   /** Vigência inicial e de renovação automática (minuta padrão: 90). */
-  termDays?: 30 | 90;
+  termDays?: ChatbotContractTermDays;
   adsMeta: boolean;
   adsGoogle: boolean;
 };
 
-export function contractTermDaysPhrase(termDays: 30 | 90 = 90) {
-  if (termDays === 30) return { labeled: "30 (trinta) dias", short: "30 dias" };
+export function contractTermDaysPhrase(termDays: ChatbotContractTermDays = 90) {
+  const days = normalizeChatbotContractTermDays(termDays);
+  if (days === 30) return { labeled: "30 (trinta) dias", short: "30 dias" };
+  if (days === 60) return { labeled: "60 (sessenta) dias", short: "60 dias" };
+  if (days === 180) return { labeled: "180 (cento e oitenta) dias", short: "180 dias" };
+  if (days === 365) return { labeled: "365 (trezentos e sessenta e cinco) dias", short: "365 dias" };
   return { labeled: "90 (noventa) dias", short: "90 dias" };
 }
 
@@ -113,7 +122,7 @@ export function contractDate(iso: string) {
 
 export function contractMinutaReplacements(fields: ContractMinutaFields) {
   const date = contractDate(fields.startsOn);
-  const term = contractTermDaysPhrase(fields.termDays === 30 ? 30 : 90);
+  const term = contractTermDaysPhrase(normalizeChatbotContractTermDays(fields.termDays));
   const values: Record<(typeof tokens)[number], string> = {
     "[ENDEREÇO COMPLETO DO CLIENTE]": fields.address.trim(),
     "[NOME DO REPRESENTANTE LEGAL]": fields.representativeName.trim(),

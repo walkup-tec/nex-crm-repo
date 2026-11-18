@@ -160,7 +160,7 @@ export const sendChatbotPropostaFn = createServerFn({ method: "POST" })
 
 export const sendChatbotAssinaturaFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((data: { conversationId: string; termDays?: 30 | 90 }) => data)
+  .validator((data: { conversationId: string; termDays?: 30 | 60 | 90 | 180 | 365 }) => data)
   .handler(async ({ context, data }) => {
     const { sendChatbotAssinatura, recordChatbotAssinaturaFailure } = await import("@/server/chatbot.server");
     const result = await guard(() => sendChatbotAssinatura(context.userId, data.conversationId, data.termDays));

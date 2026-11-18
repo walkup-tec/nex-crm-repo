@@ -1932,7 +1932,11 @@ const assinaturaInFlight = new Set<string>();
  * Valida e inicia o envio em segundo plano.
  * A geração do PDF (LibreOffice) + Autentique pode passar de 1 min — não pode segurar o proxy HTTP.
  */
-export async function sendChatbotAssinatura(userId: string, conversationId: string, termDaysInput?: 30 | 90) {
+export async function sendChatbotAssinatura(
+  userId: string,
+  conversationId: string,
+  termDaysInput?: 30 | 60 | 90 | 180 | 365,
+) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")

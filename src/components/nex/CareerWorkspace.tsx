@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Briefcase, Building2, History, Mail, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { Briefcase, Building2, ChevronDown, ChevronRight, History, Mail, RefreshCw, Sparkles, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +14,6 @@ import {
   sendCareerApplicationEmailFn,
 } from "@/lib/career.functions";
 import { Input } from "@/components/ui/input";
-import { CAREER_APPLICATION_EMAIL_TEXT } from "@/lib/career-application-email";
 import {
   careerActorLabel,
   careerKindLabel,
@@ -105,6 +104,7 @@ export function CareerWorkspace() {
   const [history, setHistory] = useState<Record<string, unknown>[]>([]);
   const [sendToById, setSendToById] = useState<Record<string, string>>({});
   const [sendingId, setSendingId] = useState("");
+  const [descOpenById, setDescOpenById] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -294,78 +294,103 @@ export function CareerWorkspace() {
             applications.map((row) => {
               const id = String(row.id);
               const status = String(row.status);
-              const intro = String(row.intro_message || row.compatibility_analysis || "").trim();
               const canSend = status === "approved" || status === "ready";
+              const job = jobs.find((item) => String(item.id) === String(row.job_id));
+              const jobTitle = String(job?.title || "Vaga");
+              const companyName = String(job?.company_name || "").trim();
+              const jobDescription = String(job?.description || job?.compatibility_notes || "").trim();
+              const descOpen = Boolean(descOpenById[id]);
               return (
-              <article key={id} className="rounded-xl border p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <StatusBadge value={status} />
-                  {status === "ready" ? (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void approveCareerApplicationFn({ data: { id } }).then(() => load())
-                      }
-                    >
-                      Aprovar
-                    </Button>
-                  ) : null}
-                </div>
-                {intro ? <p className="text-sm whitespace-pre-wrap text-muted-foreground">{intro}</p> : null}
-                <div className="rounded-lg border bg-muted/30 px-3 py-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Texto do e-mail (apresentação)
-                  </p>
-                  <p className="mt-1 text-sm whitespace-pre-wrap">{CAREER_APPLICATION_EMAIL_TEXT}</p>
-                </div>
-                {canSend ? (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <Input
-                      type="email"
-                      placeholder="Destino (ex.: mozart.pmo@gmail.com)"
-                      value={sendToById[id] ?? "mozart.pmo@gmail.com"}
-                      onChange={(event) =>
-                        setSendToById((prev) => ({ ...prev, [id]: event.target.value }))
-                      }
-                      className="sm:max-w-sm"
-                    />
-                    <Button
-                      size="sm"
-                      disabled={sendingId === id}
-                      onClick={() => {
-                        const toEmail = (sendToById[id] ?? "mozart.pmo@gmail.com").trim();
-                        setSendingId(id);
-                        setError("");
-                        const sendPromise = sendCareerApplicationEmailFn({ data: { id, toEmail } });
-                        const timeoutMs = 90000;
-                        const timeoutPromise = new Promise<never>((_, reject) => {
-                          window.setTimeout(() => {
-                            reject(new Error("O envio demorou demais. Verifique SMTP/anexo e tente de novo."));
-                          }, timeoutMs);
-                        });
-                        void Promise.race([sendPromise, timeoutPromise])
-                          .then((result) => {
-                            setSendingId("");
-                            if (!result.ok) {
-                              setError(result.message);
-                              return;
-                            }
-                            void load();
-                          })
-                          .catch((err) => {
-                            setSendingId("");
-                            setError(err instanceof Error ? err.message : "Falha ao enviar a candidatura.");
-                          });
-                      }}
-                    >
-                      {sendingId === id ? "Enviando…" : "Enviar por e-mail"}
-                    </Button>
+                <article key={id} className="rounded-xl border px-4 py-3 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge value={status} />
+                    <p className="min-w-0 flex-1 font-medium truncate" title={jobTitle}>
+                      {jobTitle}
+                      {companyName ? (
+                        <span className="font-normal text-muted-foreground"> · {companyName}</span>
+                      ) : null}
+                    </p>
+                    {jobDescription ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0"
+                        onClick={() =>
+                          setDescOpenById((prev) => ({ ...prev, [id]: !prev[id] }))
+                        }
+                      >
+                        {descOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                        {descOpen ? "Ocultar descrição" : "Ver descrição"}
+                      </Button>
+                    ) : null}
+                    {status === "ready" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        onClick={() =>
+                          void approveCareerApplicationFn({ data: { id } }).then(() => load())
+                        }
+                      >
+                        Aprovar
+                      </Button>
+                    ) : null}
+                    {canSend ? (
+                      <>
+                        <Input
+                          type="email"
+                          placeholder="Destino"
+                          value={sendToById[id] ?? "mozart.pmo@gmail.com"}
+                          onChange={(event) =>
+                            setSendToById((prev) => ({ ...prev, [id]: event.target.value }))
+                          }
+                          className="h-8 w-full sm:w-56 shrink-0"
+                        />
+                        <Button
+                          size="sm"
+                          className="shrink-0"
+                          disabled={sendingId === id}
+                          onClick={() => {
+                            const toEmail = (sendToById[id] ?? "mozart.pmo@gmail.com").trim();
+                            setSendingId(id);
+                            setError("");
+                            const sendPromise = sendCareerApplicationEmailFn({ data: { id, toEmail } });
+                            const timeoutMs = 90000;
+                            const timeoutPromise = new Promise<never>((_, reject) => {
+                              window.setTimeout(() => {
+                                reject(new Error("O envio demorou demais. Verifique SMTP/anexo e tente de novo."));
+                              }, timeoutMs);
+                            });
+                            void Promise.race([sendPromise, timeoutPromise])
+                              .then((result) => {
+                                setSendingId("");
+                                if (!result.ok) {
+                                  setError(result.message);
+                                  return;
+                                }
+                                void load();
+                              })
+                              .catch((err) => {
+                                setSendingId("");
+                                setError(err instanceof Error ? err.message : "Falha ao enviar a candidatura.");
+                              });
+                          }}
+                        >
+                          {sendingId === id ? "Enviando…" : "Enviar"}
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
-                ) : null}
-                {status === "sent" && row.guidance ? (
-                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(row.guidance)}</p>
-                ) : null}
-              </article>
+                  {descOpen && jobDescription ? (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap border-t pt-2">
+                      {jobDescription}
+                    </p>
+                  ) : null}
+                  {status === "sent" && row.guidance ? (
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{String(row.guidance)}</p>
+                  ) : null}
+                </article>
               );
             })
           )}

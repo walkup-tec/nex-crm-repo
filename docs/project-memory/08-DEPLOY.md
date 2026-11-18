@@ -32,7 +32,7 @@ O EasyPanel injeta `PORT` no container. No host, a publicação que funciona é 
 
 A service role fica só nessas variáveis. Não usar prefixo `VITE_` nela.
 
-Deploy marker deste release Career e-mail: `NEX-DEPLOY-CAREEREMAIL4` (visível em `/health` → `deployMarker`).
+Deploy marker deste release Career e-mail: `NEX-DEPLOY-CAREEREMAIL5` (visível em `/health` → `deployMarker`).
 
 Integração ChatGPT / Career (Actions REST + MCP remoto):
 

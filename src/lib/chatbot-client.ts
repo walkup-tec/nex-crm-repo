@@ -101,14 +101,23 @@ export function monthlyDueDay(startsOn: string) {
   return due ? String(Number(due.slice(8, 10))) : "";
 }
 
-export function chatbotClientTerms(today: string) {
+export const chatbotContractTermOptions = [30, 90] as const;
+export type ChatbotContractTermDays = (typeof chatbotContractTermOptions)[number];
+
+export function normalizeChatbotContractTermDays(value: unknown): ChatbotContractTermDays {
+  return value === 30 ? 30 : 90;
+}
+
+export function chatbotClientTerms(today: string, termDays: number = 90) {
   if (!isoDate(today)) return null;
-  const endsOn = addIsoMonths(today, 3);
+  const days = normalizeChatbotContractTermDays(termDays);
+  const endsOn = addIsoDays(today, days);
   const dueDay = monthlyDueDay(today);
   if (!endsOn || !dueDay) return null;
   return {
     startsOn: brazilianDate(today),
     endsOn: brazilianDate(endsOn),
     dueDay,
+    termDays: days,
   };
 }

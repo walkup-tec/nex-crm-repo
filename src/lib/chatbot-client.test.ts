@@ -31,12 +31,18 @@ assert.deepEqual(adsFromProductNames(["Hospedagem"]), {
 const october = chatbotClientTerms("2026-10-20");
 assert.equal(october?.startsOn, "20/10/2026");
 assert.equal(october?.dueDay, "21");
-assert.equal(october?.endsOn, "20/01/2027");
+assert.equal(october?.termDays, 90);
+assert.equal(october?.endsOn, "18/01/2027");
+
+const thirty = chatbotClientTerms("2026-10-20", 30);
+assert.equal(thirty?.termDays, 30);
+assert.equal(thirty?.endsOn, "19/11/2026");
+assert.equal(contractDueDates("2026-10-20", "2026-11-19", 21, "2026-10-20").length, 1);
 
 const monthEnd = chatbotClientTerms("2026-01-31");
 assert.equal(monthEnd?.dueDay, "2");
-assert.equal(monthEnd?.endsOn, "30/04/2026");
-assert.equal(contractDueDates("2026-01-31", "2026-04-30", 2, "2026-01-31")[0], "2026-02-02");
+assert.equal(monthEnd?.endsOn, "01/05/2026");
+assert.equal(contractDueDates("2026-01-31", "2026-05-01", 2, "2026-01-31")[0], "2026-02-02");
 
 const day29 = chatbotClientTerms("2026-01-29");
 assert.equal(day29?.dueDay, "2");

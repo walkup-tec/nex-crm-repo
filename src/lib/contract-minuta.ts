@@ -11,9 +11,16 @@ export type ContractMinutaFields = {
   witnessDocument: string;
   monthlyFeeCents: number;
   startsOn: string;
+  /** Vigência inicial e de renovação automática (minuta padrão: 90). */
+  termDays?: 30 | 90;
   adsMeta: boolean;
   adsGoogle: boolean;
 };
+
+export function contractTermDaysPhrase(termDays: 30 | 90 = 90) {
+  if (termDays === 30) return { labeled: "30 (trinta) dias", short: "30 dias" };
+  return { labeled: "90 (noventa) dias", short: "90 dias" };
+}
 
 const contractPlatformSource = "plataformas Meta Ads (Facebook e Instagram)";
 
@@ -106,6 +113,7 @@ export function contractDate(iso: string) {
 
 export function contractMinutaReplacements(fields: ContractMinutaFields) {
   const date = contractDate(fields.startsOn);
+  const term = contractTermDaysPhrase(fields.termDays === 30 ? 30 : 90);
   const values: Record<(typeof tokens)[number], string> = {
     "[ENDEREÇO COMPLETO DO CLIENTE]": fields.address.trim(),
     "[NOME DO REPRESENTANTE LEGAL]": fields.representativeName.trim(),
@@ -125,6 +133,9 @@ export function contractMinutaReplacements(fields: ContractMinutaFields) {
   const replacements: (readonly [string, string])[] = [
     ["TESTEMUNHA 1: [NOME DA TESTEMUNHA]", "TESTEMUNHA 2: [NOME DA TESTEMUNHA]"],
     ["Primeira competência e vencimento: [DATA COMEÇO VIGÊNCIA CLIENTE]", `Primeira competência e vencimento: ${contractDate(firstBusinessDueDate(fields.startsOn))}`],
+    // Template fixo da minuta: adapta vigência inicial e renovação automática.
+    ["90 (noventa) dias", term.labeled],
+    ["períodos sucessivos de 90 dias", `períodos sucessivos de ${term.short}`],
     ...tokens.map((token) => [token, values[token]] as const),
   ];
   const platforms = contractPlatformPhrase(fields);

@@ -1932,7 +1932,7 @@ const assinaturaInFlight = new Set<string>();
  * Valida e inicia o envio em segundo plano.
  * A geração do PDF (LibreOffice) + Autentique pode passar de 1 min — não pode segurar o proxy HTTP.
  */
-export async function sendChatbotAssinatura(userId: string, conversationId: string) {
+export async function sendChatbotAssinatura(userId: string, conversationId: string, termDaysInput?: 30 | 90) {
   const { organizationId, admin } = await membership(userId, "inbox");
   const conversation = await table("chatbot_conversations")
     .select("*")
@@ -1969,6 +1969,8 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     witnessEmail,
   });
   if (conflict) fail(conflict);
+  const { normalizeChatbotContractTermDays } = await import("@/lib/chatbot-client");
+  const termDays = normalizeChatbotContractTermDays(termDaysInput);
   const terms = await clientContractTerms(organizationId, contactId, intake.cnpj.replace(/\D/g, ""));
   const productLinks = await rowsOrMissing(
     table("chatbot_contact_products").select("product_id").eq("contact_id", contactId).eq("organization_id", organizationId),
@@ -1982,11 +1984,19 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     fail("Marque Meta Ads, Google Ads ou Hospedagem em Produtos e serviços.");
   }
 
+  const savedTerm = await table("chatbot_contacts")
+    .update({ contract_term_days: termDays })
+    .eq("id", contactId)
+    .eq("organization_id", organizationId);
+  if (savedTerm.error && !/contract_term_days|schema cache|does not exist|PGRST/i.test(savedTerm.error.message)) {
+    fail(schemaMessage(savedTerm.error.message));
+  }
+
   const progress = await table("chatbot_messages")
     .insert({
       organization_id: organizationId,
       conversation_id: conversationId,
-      text: "Gerando o contrato e enviando para assinatura…",
+      text: `Gerando o contrato (${termDays} dias) e enviando para assinatura…`,
       direction: "out",
       status: "sent",
       internal: true,
@@ -2018,6 +2028,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
     witnessDocument: intake.witnessDocument,
     monthlyFeeCents: terms.monthlyFeeCents,
     startsOn: terms.startsOn,
+    termDays,
     adsMeta: ads.adsMeta,
     adsGoogle: ads.adsGoogle,
   };
@@ -2038,6 +2049,7 @@ export async function sendChatbotAssinatura(userId: string, conversationId: stri
           witnessDocument: payload.witnessDocument,
           monthlyFeeCents: payload.monthlyFeeCents,
           startsOn: payload.startsOn,
+          termDays: payload.termDays,
           adsMeta: payload.adsMeta,
           adsGoogle: payload.adsGoogle,
         });
@@ -4120,14 +4132,39 @@ async function provisionChatbotNexClient(organizationId: string, contactId: stri
   const products = await rowsOrMissing(table("chatbot_products").select("id, name").eq("organization_id", organizationId));
   const selected = new Set(productLinks.rows.map((row) => cell(row, "product_id")));
   const names = products.rows.filter((row) => selected.has(cell(row, "id"))).map((row) => cell(row, "name"));
-  const { adsFromProductNames, brazilToday, chatbotClientTerms, chatbotDelinquencyCents, chatbotSchedulingMessage } = await import("@/lib/chatbot-client");
+  const {
+    adsFromProductNames,
+    brazilToday,
+    chatbotClientTerms,
+    chatbotDelinquencyCents,
+    chatbotSchedulingMessage,
+    normalizeChatbotContractTermDays,
+  } = await import("@/lib/chatbot-client");
   const ads = adsFromProductNames(names);
   if (!ads.adsMeta && !ads.adsGoogle && !ads.productHosting) {
     fail("Marque Meta Ads, Google Ads ou Hospedagem em Produtos e serviços.");
   }
-  const deal = await table("chatbot_contacts").select("negotiated_cents").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-  if (deal.error) fail(schemaMessage(deal.error.message));
-  const cents = Number(deal.data?.["negotiated_cents"]);
+  const deal = await table("chatbot_contacts")
+    .select("negotiated_cents, contract_term_days")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (deal.error && !/contract_term_days|schema cache|does not exist|PGRST/i.test(deal.error.message)) {
+    fail(schemaMessage(deal.error.message));
+  }
+  let negotiated = Number(deal.data?.["negotiated_cents"]);
+  let storedTermDays: unknown = deal.data?.["contract_term_days"];
+  if (deal.error && /contract_term_days/i.test(deal.error.message)) {
+    const fallback = await table("chatbot_contacts")
+      .select("negotiated_cents")
+      .eq("id", contactId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (fallback.error) fail(schemaMessage(fallback.error.message));
+    negotiated = Number(fallback.data?.["negotiated_cents"]);
+    storedTermDays = 90;
+  }
+  const cents = negotiated;
   if (!Number.isInteger(cents) || cents <= 0) fail("Informe o valor negociado.");
   const phone = whatsappNumber(cell(contact, "phone"));
   if (!phone) fail("Esse contato não tem um telefone válido.");
@@ -4135,7 +4172,7 @@ async function provisionChatbotNexClient(organizationId: string, contactId: stri
     fail("O formulário precisa do nome e do e-mail do representante legal.");
   }
   const today = brazilToday();
-  const terms = chatbotClientTerms(today);
+  const terms = chatbotClientTerms(today, normalizeChatbotContractTermDays(storedTermDays));
   if (!terms) fail("Não foi possível definir a vigência do contrato.");
   const { provisionClientCharges, provisionClientShell, removeProvisionedClient } = await import("@/server/clients.server");
   const { inviteClientAdmin } = await import("@/server/users.server");

@@ -419,6 +419,8 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
   const [draft, setDraft] = useState("");
   const [message, setMessage] = useState("");
   const [signatureError, setSignatureError] = useState("");
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureTermDays, setSignatureTermDays] = useState<30 | 90>(90);
   const [pending, setPending] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [blockingBots, setBlockingBots] = useState(false);
@@ -1114,7 +1116,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     }
   }
 
-  async function sendAssinatura() {
+  async function sendAssinatura(termDays: 30 | 90 = signatureTermDays) {
     if (!selected || !contact) {
       setSignatureError("Abra a conversa do contato antes de enviar o contrato para assinatura.");
       return;
@@ -1127,13 +1129,14 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
       setSignatureError("Aguarde o envio que já está em andamento.");
       return;
     }
+    setSignatureOpen(false);
     setQuickOpen(false);
     setBotsOpen(false);
     const conversationId = selected;
     const preview: OutgoingPreview = {
       id: `local-${Date.now()}`,
       conversationId,
-      text: "Gerando o contrato e enviando para assinatura…",
+      text: `Gerando o contrato (${termDays} dias) e enviando para assinatura…`,
       createdAt: new Date().toISOString(),
     };
     sending.current = true;
@@ -1143,7 +1146,7 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
     const startedAt = Date.now();
     try {
       const result = await Promise.race([
-        sendChatbotAssinaturaFn({ data: { conversationId } }),
+        sendChatbotAssinaturaFn({ data: { conversationId, termDays } }),
         new Promise<never>((_, reject) => {
           window.setTimeout(() => {
             reject(new Error("O início do envio demorou demais. Atualize a conversa e tente de novo."));
@@ -2230,7 +2233,17 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
                       </Button>
                     ) : null}
                     {data?.contractingForm ? (
-                      <Button type="button" variant="outline" size="sm" disabled={pending || !contact} onClick={() => void sendAssinatura()}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={pending || !contact}
+                        onClick={() => {
+                          setSignatureError("");
+                          setSignatureTermDays(90);
+                          setSignatureOpen(true);
+                        }}
+                      >
                         Assinatura Ctt
                       </Button>
                     ) : null}
@@ -2279,6 +2292,44 @@ export function LiveInbox({ expanded = false, conversationId = "" }: { expanded?
             onSaved={() => setMeetingTick((value) => value + 1)}
           />
         ) : null}
+        <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
+          <DialogContent className="chatbot-app sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Vigência do contrato</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Escolha o período inicial que será escrito na minuta e usado nas cobranças Cora após o cadastro.
+            </p>
+            <div className="grid gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="signature-term"
+                  checked={signatureTermDays === 30}
+                  onChange={() => setSignatureTermDays(30)}
+                />
+                30 dias (uma cobrança típica no período)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="signature-term"
+                  checked={signatureTermDays === 90}
+                  onChange={() => setSignatureTermDays(90)}
+                />
+                90 dias (padrão atual da minuta)
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setSignatureOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" disabled={pending || !contact} onClick={() => void sendAssinatura(signatureTermDays)}>
+                Enviar assinatura
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
           <DialogContent className="chatbot-app return-dialog sm:max-w-md">
             <DialogHeader>

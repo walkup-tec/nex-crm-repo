@@ -73,5 +73,14 @@ assert.equal((witnessLines[0] ?? "").includes("Assinatura"), false);
 assert.match(witnessLines[1] ?? "", /Assinatura: ________________________/);
 assert.match(text, /plataformas Google Ads/);
 assert.equal(text.includes("Facebook e Instagram"), false);
+assert.match(text, /90 \(noventa\) dias/);
+
+const filledThirty = fillContractMinutaDocx(docx, { ...fields, termDays: 30 });
+const xmlThirty = new TextDecoder().decode(readZip(filledThirty).find((file) => file.name === "word/document.xml")?.data);
+const textThirty = [...xmlThirty.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((part) => part[1]).join("");
+assert.match(textThirty, /30 \(trinta\) dias/);
+assert.match(textThirty, /períodos sucessivos de 30 dias/);
+assert.equal(textThirty.includes("90 (noventa) dias"), false);
+assert.equal(textThirty.includes("períodos sucessivos de 90 dias"), false);
 
 console.log("contract minuta tests ok");

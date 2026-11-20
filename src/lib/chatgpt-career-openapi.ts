@@ -10,9 +10,9 @@ export function chatgptCareerOpenApiDocument(serverUrl: string) {
     openapi: "3.1.0",
     info: {
       title: "NEX Career Intelligence — ChatGPT Integration",
-      version: "1.0.0",
+      version: "0.3.0",
       description:
-        "API autenticada para o plugin NEX Career Intelligence persistir e consultar empresas, vagas, contatos e candidaturas. Autenticação REST/MCP direto: Bearer CHATGPT_INTEGRATION_SECRET. MCP Streamable HTTP em /api/integrations/chatgpt/career/mcp. ChatGPT Web: OAuth 2.1 authorization_code + PKCE S256 (AS metadata em /.well-known/oauth-authorization-server; PRM em /.well-known/oauth-protected-resource). Tokens OAuth assinados com CAREER_MCP_OAUTH_SIGNING_SECRET (separado do Bearer). career_applications_prepare só prepara rascunho — sem envio automático.",
+        "API autenticada para o plugin NEX Career Intelligence v0.3.0 persistir e consultar empresas, vagas, contatos multicanal e candidaturas. Enrich aceita hr_email, corporate_email, whatsapp, phone, website, recruiter_linkedin, instagram, facebook (com source_url e verification_status). Autenticação REST/MCP direto: Bearer CHATGPT_INTEGRATION_SECRET. MCP Streamable HTTP em /api/integrations/chatgpt/career/mcp. ChatGPT Web: OAuth 2.1 authorization_code + PKCE S256. career_applications_prepare só prepara rascunho — sem envio automático.",
     },
     servers: [{ url: base }],
     paths: {

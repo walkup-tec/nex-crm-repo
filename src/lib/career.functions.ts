@@ -73,6 +73,16 @@ export const careerCompaniesFn = createServerFn({ method: "POST" })
     });
   });
 
+export const careerCompanyDetailFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { id: string }) => data)
+  .handler(async ({ context, data }) => {
+    return runCareer(async () => {
+      const { getCareerCompanyDetail } = await import("@/server/career.server");
+      return getCareerCompanyDetail(context.userId, data.id);
+    });
+  });
+
 export const careerJobsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

@@ -32,7 +32,13 @@ const STATUS_LABEL: Record<string, string> = {
   // contato
   unverified: "Não verificado",
   verified: "Verificado",
+  confirmed: "Confirmado",
+  not_found: "Não encontrado",
   invalid: "Inválido",
+  // enriquecimento
+  none: "Sem enriquecimento",
+  partial: "Parcial",
+  complete: "Completo",
 };
 
 const STATUS_TONE: Record<string, CareerTone> = {
@@ -43,6 +49,8 @@ const STATUS_TONE: Record<string, CareerTone> = {
   sent: "green",
   completed: "green",
   verified: "green",
+  confirmed: "green",
+  complete: "green",
   contacted: "green",
   // amarelo — aguardando ação / em curso
   new: "yellow",
@@ -51,11 +59,13 @@ const STATUS_TONE: Record<string, CareerTone> = {
   running: "yellow",
   partial: "yellow",
   unverified: "yellow",
+  none: "yellow",
   // vermelho — bloqueio / falha / descartado
   archived: "red",
   error: "red",
   rejected: "red",
   invalid: "red",
+  not_found: "red",
 };
 
 const KIND_LABEL: Record<string, string> = {

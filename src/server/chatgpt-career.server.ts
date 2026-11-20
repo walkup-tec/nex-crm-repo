@@ -202,6 +202,8 @@ export async function handleChatgptCareerRequest(request: Request): Promise<Resp
         200,
         await pluginListJobs({
           q: url.searchParams.get("q") ?? undefined,
+          platform: url.searchParams.get("platform") ?? undefined,
+          researchMode: url.searchParams.get("research_mode") ?? url.searchParams.get("researchMode") ?? undefined,
           limit: Number(url.searchParams.get("limit") ?? 50),
           offset: Number(url.searchParams.get("offset") ?? 0),
         }),

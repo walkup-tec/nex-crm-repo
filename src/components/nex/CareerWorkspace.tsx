@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
-import { Briefcase, Building2, ChevronDown, ChevronRight, History, Mail, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Briefcase,
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  History,
+  Mail,
+  RefreshCw,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,12 +19,14 @@ import {
   approveCareerApplicationFn,
   careerApplicationsFn,
   careerCompaniesFn,
+  careerCompanyDetailFn,
   careerContactsFn,
   careerHistoryFn,
   careerJobsFn,
   careerOverviewFn,
   sendCareerApplicationEmailFn,
 } from "@/lib/career.functions";
+import { careerContactKindLabel } from "@/lib/career-access";
 import { Input } from "@/components/ui/input";
 import {
   careerActorLabel,
@@ -105,6 +119,14 @@ export function CareerWorkspace() {
   const [sendToById, setSendToById] = useState<Record<string, string>>({});
   const [sendingId, setSendingId] = useState("");
   const [descOpenById, setDescOpenById] = useState<Record<string, boolean>>({});
+  const [detailOpenId, setDetailOpenId] = useState("");
+  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [contactKindFilter, setContactKindFilter] = useState("");
+  const [contactStatusFilter, setContactStatusFilter] = useState("");
+  const [contactCompanyFilter, setContactCompanyFilter] = useState("");
+  const [jobPlatformFilter, setJobPlatformFilter] = useState("");
+  const [copyHint, setCopyHint] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,13 +175,66 @@ export function CareerWorkspace() {
     void load();
   }, [load]);
 
+  const openCompanyDetail = useCallback(async (id: string) => {
+    setDetailOpenId(id);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const result = await careerCompanyDetailFn({ data: { id } });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setDetail(result.data as Record<string, unknown>);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o detalhe.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  const filteredContacts = useMemo(() => {
+    return contacts.filter((row) => {
+      if (contactKindFilter && String(row.kind) !== contactKindFilter) return false;
+      if (contactStatusFilter && String(row.verification_status) !== contactStatusFilter) return false;
+      if (contactCompanyFilter && String(row.company_id) !== contactCompanyFilter) return false;
+      return true;
+    });
+  }, [contacts, contactKindFilter, contactStatusFilter, contactCompanyFilter]);
+
+  const filteredJobs = useMemo(() => {
+    if (!jobPlatformFilter.trim()) return jobs;
+    const needle = jobPlatformFilter.trim().toLowerCase();
+    return jobs.filter((row) => String(row.platform || "").toLowerCase().includes(needle));
+  }, [jobs, jobPlatformFilter]);
+
+  const companyOptions = useMemo(
+    () =>
+      companies
+        .map((row) => ({ id: String(row.id), name: String(row.name || "Empresa") }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [companies],
+  );
+
+  async function copyText(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyHint("Copiado");
+      window.setTimeout(() => setCopyHint(""), 1500);
+    } catch {
+      setCopyHint("Falha ao copiar");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">
-            Resultados do plugin NEX Career Intelligence. A pesquisa acontece no ChatGPT; a NEX persiste e deduplica.
+            Resultados do plugin NEX Career Intelligence v0.3.0. A pesquisa acontece no ChatGPT; a NEX persiste,
+            deduplica e exibe canais verificáveis. Nenhum envio automático.
           </p>
+          {copyHint ? <p className="mt-1 text-xs text-muted-foreground">{copyHint}</p> : null}
         </div>
         <Button variant="outline" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={loading ? "animate-spin" : undefined} />
@@ -224,36 +299,85 @@ export function CareerWorkspace() {
           {companies.length === 0 ? (
             <Empty text="Nenhuma empresa salva ainda. Use o plugin NEX Career Intelligence para descobrir e enviar." />
           ) : (
-            companies.map((row) => (
-              <article key={String(row.id)} className="rounded-xl border p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-medium">{String(row.name)}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {[row.city, row.state].filter(Boolean).join(" / ") || "Local não informado"}
-                      {row.segment ? ` · ${String(row.segment)}` : ""}
-                    </p>
+            companies.map((row) => {
+              const id = String(row.id);
+              const open = detailOpenId === id;
+              return (
+                <article key={id} className="rounded-xl border p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-medium">{String(row.name)}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {[row.city, row.state].filter(Boolean).join(" / ") || "Local não informado"}
+                        {row.category ? ` · ${String(row.category)}` : ""}
+                        {row.segment ? ` · ${String(row.segment)}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge value={String(row.enrichment_status ?? "none")} />
+                      <StatusBadge value={String(row.prospect_status ?? "new")} />
+                    </div>
                   </div>
-                  <StatusBadge value={String(row.prospect_status ?? "new")} />
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {row.website ? String(row.website) : "Sem site"} · fonte: {String(row.source || "—")}
-                </p>
-              </article>
-            ))
+                  <p className="text-xs text-muted-foreground">
+                    Site: {row.website ? String(row.website) : "—"} · contatos: {String(row.contact_count ?? 0)} ·
+                    vagas: {String(row.job_count ?? 0)}
+                    {row.last_enriched_at ? ` · enriquecido: ${String(row.last_enriched_at)}` : " · enriquecimento pendente"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void (open ? (setDetailOpenId(""), setDetail(null)) : openCompanyDetail(id))}
+                    >
+                      {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                      {open ? "Ocultar detalhe" : "Ver detalhes"}
+                    </Button>
+                    {row.website ? (
+                      <Button type="button" size="sm" variant="ghost" asChild>
+                        <a href={ensureHttp(String(row.website))} target="_blank" rel="noreferrer">
+                          <ExternalLink className="size-4" /> Abrir site
+                        </a>
+                      </Button>
+                    ) : null}
+                  </div>
+                  {open ? (
+                    <CompanyDetailPanel
+                      loading={detailLoading}
+                      detail={detailOpenId === id ? detail : null}
+                      onCopy={copyText}
+                    />
+                  ) : null}
+                </article>
+              );
+            })
           )}
         </TabsContent>
 
         <TabsContent value="vagas" className="space-y-3">
-          {jobs.length === 0 ? (
-            <Empty text="Nenhuma vaga salva. O plugin envia pesquisas para /career/jobs/search." />
+          <div className="flex flex-wrap gap-2">
+            <Input
+              className="max-w-xs"
+              placeholder="Filtrar plataforma (linkedin, gupy…)"
+              value={jobPlatformFilter}
+              onChange={(e) => setJobPlatformFilter(e.target.value)}
+            />
+          </div>
+          {filteredJobs.length === 0 ? (
+            <Empty text="Nenhuma vaga salva para o filtro atual. O plugin envia pesquisas para /career/jobs/search." />
           ) : (
-            jobs.map((row) => (
-              <article key={String(row.id)} className="rounded-xl border p-4">
+            filteredJobs.map((row) => (
+              <article key={String(row.id)} className="rounded-xl border p-4 space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <h3 className="font-medium">{String(row.title)}</h3>
-                    <p className="text-sm text-muted-foreground">{String(row.company_name || "Empresa")}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {String(row.company_name || "Empresa")}
+                      {row.platform ? ` · ${String(row.platform)}` : ""}
+                      {row.research_mode && row.research_mode !== "unknown"
+                        ? ` · ${String(row.research_mode)}`
+                        : ""}
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     {row.compatibility_score != null ? (
@@ -262,28 +386,99 @@ export function CareerWorkspace() {
                     <StatusBadge value={String(row.opportunity_status ?? "new")} />
                   </div>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground line-clamp-3">{String(row.compatibility_notes || row.description || "")}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[row.work_mode, row.contract_type, row.location].filter(Boolean).join(" · ") || "Modalidade não informada"}
+                </p>
+                <p className="text-sm text-muted-foreground line-clamp-3">
+                  {String(row.compatibility_notes || row.description || "")}
+                </p>
+                {row.url ? (
+                  <Button type="button" size="sm" variant="outline" asChild>
+                    <a href={ensureHttp(String(row.url))} target="_blank" rel="noreferrer">
+                      <ExternalLink className="size-4" /> Abrir vaga
+                    </a>
+                  </Button>
+                ) : null}
               </article>
             ))
           )}
         </TabsContent>
 
         <TabsContent value="contatos" className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={contactCompanyFilter}
+              onChange={(e) => setContactCompanyFilter(e.target.value)}
+            >
+              <option value="">Todas as empresas</option>
+              {companyOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={contactKindFilter}
+              onChange={(e) => setContactKindFilter(e.target.value)}
+            >
+              <option value="">Todos os tipos</option>
+              {[
+                "hr_email",
+                "corporate_email",
+                "whatsapp",
+                "phone",
+                "website",
+                "recruiter_linkedin",
+                "instagram",
+                "facebook",
+              ].map((kind) => (
+                <option key={kind} value={kind}>
+                  {careerContactKindLabel(kind)}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={contactStatusFilter}
+              onChange={(e) => setContactStatusFilter(e.target.value)}
+            >
+              <option value="">Todos os status</option>
+              <option value="confirmed">Confirmado</option>
+              <option value="unverified">Não verificado</option>
+              <option value="not_found">Não encontrado</option>
+            </select>
+          </div>
           {contacts.length === 0 ? (
-            <Empty text="Nenhum contato enriquecido." />
+            <Empty text="Nenhum contato enriquecido ainda. Isso significa que a pesquisa de canais ainda não foi executada (ou falhou) — não que o contato inexistente foi confirmado." />
+          ) : filteredContacts.length === 0 ? (
+            <Empty text="Nenhum contato corresponde aos filtros. Limpe os filtros ou execute career_companies_enrich no plugin." />
           ) : (
-            contacts.map((row) => (
-              <article key={String(row.id)} className="rounded-xl border p-4">
-                <div className="flex items-center gap-2">
-                  <UserRound className="size-4 text-muted-foreground" />
-                  <p className="font-medium">{String(row.full_name || row.value || "Contato")}</p>
-                  <StatusBadge value={String(row.verification_status ?? "unverified")} />
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {String(row.kind)} · {String(row.value || "não localizado")} · {String(row.source || "—")}
-                </p>
-              </article>
-            ))
+            filteredContacts.map((row) => {
+              const value = String(row.value || "");
+              const kind = String(row.kind || "");
+              return (
+                <article key={String(row.id)} className="rounded-xl border p-4 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <UserRound className="size-4 text-muted-foreground" />
+                    <p className="font-medium">{String(row.full_name || row.company_name || careerContactKindLabel(kind))}</p>
+                    <StatusBadge value={String(row.verification_status ?? "unverified")} />
+                    <Badge variant="outline">{careerContactKindLabel(kind)}</Badge>
+                  </div>
+                  <p className="text-sm">
+                    {value || "não localizado"}
+                    {row.title ? ` · ${String(row.title)}` : ""}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Empresa: {String(row.company_name || "—")} · fonte: {String(row.source || "—")}
+                    {row.source_url ? ` · ${String(row.source_url)}` : ""}
+                    {row.verified_at ? ` · verificado: ${String(row.verified_at)}` : ""}
+                  </p>
+                  <ContactActions kind={kind} value={value} sourceUrl={String(row.source_url || "")} onCopy={copyText} />
+                </article>
+              );
+            })
           )}
         </TabsContent>
 
@@ -438,4 +633,179 @@ function extractCareerItems(data: unknown): Record<string, unknown>[] {
     if (Array.isArray(root.data)) return root.data as Record<string, unknown>[];
   }
   return [];
+}
+
+function ensureHttp(url: string) {
+  if (!url) return "#";
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+function whatsappHref(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : "#";
+}
+
+function ContactActions({
+  kind,
+  value,
+  sourceUrl,
+  onCopy,
+}: {
+  kind: string;
+  value: string;
+  sourceUrl: string;
+  onCopy: (value: string) => void;
+}) {
+  if (!value && !sourceUrl) return null;
+  const actions: Array<{ label: string; href?: string; copy?: string }> = [];
+  if (kind.includes("email") && value) {
+    actions.push({ label: "Copiar e-mail", copy: value });
+    actions.push({ label: "Abrir e-mail", href: `mailto:${value}` });
+  } else if (kind === "whatsapp" || kind === "business_whatsapp") {
+    if (value) {
+      actions.push({ label: "Abrir WhatsApp", href: whatsappHref(value) });
+      actions.push({ label: "Copiar número", copy: value });
+    }
+  } else if (kind === "phone") {
+    if (value) {
+      actions.push({ label: "Copiar telefone", copy: value });
+      actions.push({ label: "Ligar", href: `tel:${value}` });
+    }
+  } else if (value) {
+    actions.push({ label: "Abrir link", href: ensureHttp(value) });
+    actions.push({ label: "Copiar", copy: value });
+  }
+  if (sourceUrl) actions.push({ label: "Fonte", href: ensureHttp(sourceUrl) });
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {actions.map((action) =>
+        action.href ? (
+          <Button key={action.label} type="button" size="sm" variant="ghost" asChild>
+            <a href={action.href} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-4" /> {action.label}
+            </a>
+          </Button>
+        ) : (
+          <Button key={action.label} type="button" size="sm" variant="ghost" onClick={() => onCopy(action.copy || "")}>
+            <Copy className="size-4" /> {action.label}
+          </Button>
+        ),
+      )}
+    </div>
+  );
+}
+
+function groupContactsBySection(contacts: Record<string, unknown>[]) {
+  const buckets: Record<string, Record<string, unknown>[]> = {
+    emails: [],
+    phones: [],
+    websites: [],
+    recruiters: [],
+    social: [],
+    other: [],
+  };
+  for (const row of contacts) {
+    const kind = String(row.kind || "");
+    if (kind === "hr_email" || kind === "recruiting_email" || kind === "corporate_email") buckets.emails.push(row);
+    else if (kind === "whatsapp" || kind === "business_whatsapp" || kind === "phone") buckets.phones.push(row);
+    else if (kind === "website" || kind === "company_linkedin") buckets.websites.push(row);
+    else if (kind === "recruiter_linkedin" || kind === "marketing_manager_linkedin" || kind === "person") {
+      buckets.recruiters.push(row);
+    } else if (kind === "instagram" || kind === "facebook") buckets.social.push(row);
+    else buckets.other.push(row);
+  }
+  return buckets;
+}
+
+function CompanyDetailPanel({
+  loading,
+  detail,
+  onCopy,
+}: {
+  loading: boolean;
+  detail: Record<string, unknown> | null;
+  onCopy: (value: string) => void;
+}) {
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Carregando detalhes…</p>;
+  }
+  if (!detail) {
+    return <p className="text-sm text-muted-foreground">Detalhe indisponível.</p>;
+  }
+  const contacts = Array.isArray(detail.contacts) ? (detail.contacts as Record<string, unknown>[]) : [];
+  const jobs = Array.isArray(detail.jobs) ? (detail.jobs as Record<string, unknown>[]) : [];
+  const groups = groupContactsBySection(contacts.filter((row) => row.verification_status !== "not_found"));
+  const notFound = contacts.filter((row) => row.verification_status === "not_found");
+
+  function Section({ title, rows }: { title: string; rows: Record<string, unknown>[] }) {
+    if (!rows.length) return null;
+    return (
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">{title}</h4>
+        {rows.map((row) => (
+          <div key={String(row.id)} className="rounded-lg border px-3 py-2 text-sm">
+            <p className="font-medium">
+              {careerContactKindLabel(String(row.kind))} · {String(row.value || "—")}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {row.full_name ? `${String(row.full_name)} · ` : ""}
+              {row.title ? `${String(row.title)} · ` : ""}
+              fonte: {String(row.source || "—")}
+              {row.source_url ? ` · ${String(row.source_url)}` : ""}
+            </p>
+            <ContactActions
+              kind={String(row.kind)}
+              value={String(row.value || "")}
+              sourceUrl={String(row.source_url || "")}
+              onCopy={onCopy}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 border-t pt-3">
+      <Section title="E-mails" rows={groups.emails} />
+      <Section title="Telefones e WhatsApp" rows={groups.phones} />
+      <Section title="Sites oficiais" rows={groups.websites} />
+      <Section title="Recrutadores" rows={groups.recruiters} />
+      <Section title="Redes sociais" rows={groups.social} />
+      <Section title="Outros" rows={groups.other} />
+      {notFound.length ? (
+        <p className="text-xs text-muted-foreground">
+          Canais pesquisados sem resultado: {notFound.map((row) => careerContactKindLabel(String(row.kind))).join(", ")}.
+        </p>
+      ) : null}
+      {!contacts.length ? (
+        <p className="text-sm text-muted-foreground">
+          Nenhum contato persistido. Execute o enriquecimento no ChatGPT (`career_companies_enrich`) — o painel não pesquisa na web.
+        </p>
+      ) : null}
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Vagas relacionadas ({jobs.length})</h4>
+        {jobs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sem vagas vinculadas a esta empresa.</p>
+        ) : (
+          jobs.map((job) => (
+            <div key={String(job.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+              <span>
+                {String(job.title)}
+                {job.platform ? ` · ${String(job.platform)}` : ""}
+              </span>
+              {job.url ? (
+                <Button type="button" size="sm" variant="ghost" asChild>
+                  <a href={ensureHttp(String(job.url))} target="_blank" rel="noreferrer">
+                    <ExternalLink className="size-4" /> Abrir
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 }

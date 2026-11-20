@@ -5,11 +5,13 @@ export const CAREER_MCP_SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26
 export const CAREER_MCP_SERVER_INFO = {
   name: "nex-career-intelligence",
   title: "NEX Career Intelligence",
-  version: "1.0.0",
+  version: "0.3.0",
 } as const;
 
 export const CAREER_MCP_INSTRUCTIONS =
-  "Persista resultados de pesquisa de empresas, vagas e contatos no NEX. " +
+  "Persista resultados de pesquisa de empresas, vagas e contatos no NEX (v0.3.0). " +
+  "Use career_companies_enrich para múltiplos canais (hr_email, corporate_email, whatsapp, phone, website, recruiter_linkedin, instagram, facebook) com source_url e verification_status. " +
+  "Separe research_mode=linkedin_monitor (só LinkedIn) de company_prospect (multicanal). " +
   "Use career_applications_prepare apenas para preparar textos — nunca envie candidaturas automaticamente. " +
   "Prefira idempotency_key estável por lote. Autenticação: Bearer CHATGPT_INTEGRATION_SECRET (direto) ou OAuth JWT (ChatGPT Web).";
 
@@ -64,15 +66,27 @@ const contactItem: JsonSchema = {
     kind: {
       type: "string",
       description:
-        "hr_email | recruiting_email | business_whatsapp | company_linkedin | recruiter_linkedin | marketing_manager_linkedin | person | other (aliases: email, whatsapp, linkedin).",
+        "v0.3.0: hr_email | corporate_email | whatsapp | phone | website | recruiter_linkedin | instagram | facebook. Legado ainda aceito. Aliases: email, recruiting_email, business_whatsapp, site, ig, fb.",
     },
     fullName: { type: "string" },
     full_name: { type: "string" },
     title: { type: "string" },
+    job_title: { type: "string" },
     value: { type: "string" },
+    label: { type: "string" },
+    sourceUrl: { type: "string" },
+    source_url: { type: "string" },
+    suitabilityForApplication: { type: "string", enum: ["suitable", "unsuitable", "unknown"] },
+    suitability_for_application: { type: "string", enum: ["suitable", "unsuitable", "unknown"] },
     verificationStatus: { type: "string", enum: ["confirmed", "unverified", "not_found"] },
     verification_status: { type: "string", enum: ["confirmed", "unverified", "not_found"] },
     source: { type: "string" },
+    phoneDdi: { type: "string" },
+    phone_ddi: { type: "string" },
+    phoneDdd: { type: "string" },
+    phone_ddd: { type: "string" },
+    phoneNumber: { type: "string" },
+    phone_number: { type: "string" },
   },
   required: ["kind", "value"],
 };
@@ -108,6 +122,14 @@ const jobItem: JsonSchema = {
     opportunityStatus: { type: "string" },
     opportunity_status: { type: "string" },
     source: { type: "string" },
+    researchMode: {
+      type: "string",
+      enum: ["linkedin_monitor", "company_prospect", "unknown"],
+      description: "linkedin_monitor = monitoramento LinkedIn; company_prospect = prospecção multicanal.",
+    },
+    research_mode: { type: "string", enum: ["linkedin_monitor", "company_prospect", "unknown"] },
+    externalId: { type: "string" },
+    external_id: { type: "string" },
   },
   required: ["title"],
 };
@@ -180,7 +202,8 @@ export const careerMcpTools: CareerMcpToolDefinition[] = [
   {
     name: "career_companies_enrich",
     title: "Enrich company contacts",
-    description: "Persiste contatos públicos de empresas (e-mail, WhatsApp, LinkedIn etc.).",
+    description:
+      "Persiste múltiplos contatos públicos por empresa (e-mail RH/corporativo, WhatsApp, telefone, sites, LinkedIn de recrutadores, Instagram, Facebook) com fonte e verificação.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -210,12 +233,15 @@ export const careerMcpTools: CareerMcpToolDefinition[] = [
   {
     name: "career_jobs_list",
     title: "List jobs",
-    description: "Lista vagas cadastradas no NEX Career.",
+    description: "Lista vagas cadastradas no NEX Career (filtro opcional por platform e research_mode).",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
         q: { type: "string" },
+        platform: { type: "string" },
+        researchMode: { type: "string", enum: ["linkedin_monitor", "company_prospect", "unknown"] },
+        research_mode: { type: "string", enum: ["linkedin_monitor", "company_prospect", "unknown"] },
         limit: { type: "integer", minimum: 1, maximum: 200 },
         offset: { type: "integer", minimum: 0 },
       },

@@ -36,10 +36,15 @@ assert.equal(normalizeJobTitle("Gerente de Tráfego Sênior"), "gerente de trafe
 assert.equal(pickCareerField({ company_id: "abc" }, "companyId", "company_id"), "abc");
 assert.equal(pickCareerField({ companyId: "xyz" }, "companyId", "company_id"), "xyz");
 assert.equal(normalizeCareerContactKind("email"), "hr_email");
-assert.equal(normalizeCareerContactKind("whatsapp"), "business_whatsapp");
-assert.equal(normalizeCareerContactKind("linkedin"), "company_linkedin");
+assert.equal(normalizeCareerContactKind("whatsapp"), "whatsapp");
+assert.equal(normalizeCareerContactKind("business_whatsapp"), "whatsapp");
+assert.equal(normalizeCareerContactKind("corporate_email"), "corporate_email");
+assert.equal(normalizeCareerContactKind("instagram"), "instagram");
+assert.equal(normalizeCareerContactKind("facebook"), "facebook");
+assert.equal(normalizeCareerContactKind("website"), "website");
+assert.equal(normalizeCareerContactKind("linkedin"), "recruiter_linkedin");
 assert.equal(normalizeCareerContactKind("hr_email"), "hr_email");
-assert.equal(normalizeCareerContactKind("telefone"), "");
+assert.equal(normalizeCareerContactKind("telefone"), "phone");
 
 const jobSnake = normalizeJobInput({
   company_id: "4ce0c890-1e96-42a9-a67c-85169aeef8fe",

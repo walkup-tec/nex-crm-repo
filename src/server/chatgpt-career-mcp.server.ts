@@ -217,6 +217,13 @@ async function invokeCareerTool(name: string, rawArgs: unknown) {
     case "career_jobs_list":
       return pluginListJobs({
         q: typeof args.q === "string" ? args.q : undefined,
+        platform: typeof args.platform === "string" ? args.platform : undefined,
+        researchMode:
+          typeof args.researchMode === "string"
+            ? args.researchMode
+            : typeof args.research_mode === "string"
+              ? args.research_mode
+              : undefined,
         limit: typeof args.limit === "number" ? args.limit : 50,
         offset: typeof args.offset === "number" ? args.offset : 0,
       });

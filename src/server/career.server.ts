@@ -1,8 +1,10 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   asCareerRecord,
+  deriveEnrichmentStatus,
   emptyUpsertCounts,
   normalizeCareerContactKind,
+  normalizeCareerResearchMode,
   normalizeCnpj,
   normalizeCompanyName,
   normalizeContactValue,
@@ -10,6 +12,7 @@ import {
   normalizeJobTitle,
   normalizeJobUrl,
   normalizeLinkedInUrl,
+  parsePhoneParts,
   pickCareerField,
   type CareerUpsertCounts,
 } from "@/lib/career-access";
@@ -22,7 +25,7 @@ function fail(message: string): never {
 function migrationHint(message: string) {
   // Só remapear ausência real de schema/tabela — não mascarar RLS/unique/etc.
   if (/schema cache|PGRST205|relation ["']?career_|could not find the table|does not exist/i.test(message)) {
-    return "Aplique a migração 0057_career_intelligence.sql no Supabase.";
+    return "Aplique as migrações Career (0057+) no Supabase, inclusive 0061_career_enrichment_v030.sql se usar enrich v0.3.0.";
   }
   return message;
 }
@@ -56,8 +59,14 @@ type ContactInput = {
   fullName?: string;
   title?: string;
   value: string;
+  label?: string;
+  sourceUrl?: string;
+  suitabilityForApplication?: "suitable" | "unsuitable" | "unknown";
   verificationStatus?: "confirmed" | "unverified" | "not_found";
   source?: string;
+  phoneDdi?: string;
+  phoneDdd?: string;
+  phoneNumber?: string;
 };
 
 type JobInput = {
@@ -78,6 +87,8 @@ type JobInput = {
   compatibilityNotes?: string;
   opportunityStatus?: string;
   source?: string;
+  researchMode?: string;
+  externalId?: string;
 };
 
 type ApplicationPrepareInput = {
@@ -226,6 +237,8 @@ export function normalizeJobInput(raw: unknown): JobInput {
     compatibilityNotes: pickCareerField(row, "compatibilityNotes", "compatibility_notes") || undefined,
     opportunityStatus: pickCareerField(row, "opportunityStatus", "opportunity_status") || undefined,
     source: pickCareerField(row, "source") || undefined,
+    researchMode: pickCareerField(row, "researchMode", "research_mode") || undefined,
+    externalId: pickCareerField(row, "externalId", "external_id") || undefined,
   };
 }
 
@@ -233,18 +246,28 @@ export function normalizeJobInput(raw: unknown): JobInput {
 export function normalizeContactInput(raw: unknown): ContactInput {
   const row = asCareerRecord(raw);
   const verification = pickCareerField(row, "verificationStatus", "verification_status");
+  const suitability = pickCareerField(row, "suitabilityForApplication", "suitability_for_application");
   return {
     companyId: pickCareerField(row, "companyId", "company_id") || undefined,
     companyName: pickCareerField(row, "companyName", "company_name") || undefined,
     kind: pickCareerField(row, "kind"),
     fullName: pickCareerField(row, "fullName", "full_name") || undefined,
-    title: pickCareerField(row, "title") || undefined,
+    title: pickCareerField(row, "title", "job_title", "jobTitle") || undefined,
     value: pickCareerField(row, "value"),
+    label: pickCareerField(row, "label") || undefined,
+    sourceUrl: pickCareerField(row, "sourceUrl", "source_url") || undefined,
+    suitabilityForApplication:
+      suitability === "suitable" || suitability === "unsuitable" || suitability === "unknown"
+        ? suitability
+        : undefined,
     verificationStatus:
       verification === "confirmed" || verification === "unverified" || verification === "not_found"
         ? verification
         : undefined,
     source: pickCareerField(row, "source") || undefined,
+    phoneDdi: pickCareerField(row, "phoneDdi", "phone_ddi", "ddi") || undefined,
+    phoneDdd: pickCareerField(row, "phoneDdd", "phone_ddd", "ddd") || undefined,
+    phoneNumber: pickCareerField(row, "phoneNumber", "phone_number") || undefined,
   };
 }
 
@@ -429,9 +452,22 @@ export async function upsertCareerJobs(input: {
       const resolvedCompanyId = await resolveCompanyId(job.companyId, job.companyName);
       const urlNorm = normalizeJobUrl(job.url ?? "");
       const titleNorm = normalizeJobTitle(job.title);
+      const platform = job.platform?.trim() ?? "";
+      const externalId = job.externalId?.trim() ?? "";
+      const researchMode = normalizeCareerResearchMode(
+        job.researchMode || (platform.toLowerCase().includes("linkedin") ? "linkedin_monitor" : "company_prospect"),
+      );
       let existing = null as Record<string, unknown> | null;
       if (urlNorm) {
         const { data } = await careerFrom("career_jobs").select("*").eq("url_normalized", urlNorm).maybeSingle();
+        existing = data;
+      }
+      if (!existing && externalId && platform) {
+        const { data } = await careerFrom("career_jobs")
+          .select("*")
+          .eq("external_id", externalId)
+          .eq("platform", platform)
+          .maybeSingle();
         existing = data;
       }
       if (!existing && resolvedCompanyId && titleNorm) {
@@ -439,7 +475,7 @@ export async function upsertCareerJobs(input: {
           .select("*")
           .eq("company_id", resolvedCompanyId)
           .eq("title_normalized", titleNorm)
-          .eq("platform", job.platform?.trim() ?? "")
+          .eq("platform", platform)
           .maybeSingle();
         existing = data;
       }
@@ -462,7 +498,7 @@ export async function upsertCareerJobs(input: {
         description: job.description?.trim() ?? "",
         url: job.url?.trim() ?? "",
         url_normalized: urlNorm,
-        platform: job.platform?.trim() ?? "",
+        platform,
         location: job.location?.trim() ?? "",
         work_mode: job.workMode?.trim() || "unknown",
         contract_type: job.contractType?.trim() || "unknown",
@@ -474,6 +510,8 @@ export async function upsertCareerJobs(input: {
         compatibility_notes: job.compatibilityNotes?.trim() ?? "",
         opportunity_status: job.opportunityStatus?.trim() || "new",
         source: job.source?.trim() ?? "",
+        research_mode: researchMode,
+        external_id: externalId,
         last_seen_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -529,6 +567,76 @@ export async function upsertCareerJobs(input: {
   };
 }
 
+async function syncCompanyChannelFromContact(companyId: string, kind: string, value: string) {
+  if (!value?.trim()) return;
+  const patch: Record<string, unknown> = {
+    last_enriched_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  if (kind === "hr_email" || kind === "recruiting_email") patch["hr_email"] = value.trim();
+  if (kind === "corporate_email") patch["corporate_email"] = value.trim();
+  if (kind === "whatsapp" || kind === "business_whatsapp") patch["business_whatsapp"] = value.trim();
+  if (kind === "website") {
+    patch["website"] = value.trim();
+    patch["domain_normalized"] = normalizeDomain(value.trim());
+  }
+  await careerFrom("career_companies").update(patch).eq("id", companyId);
+}
+
+async function refreshCompanyEnrichmentStatus(companyId: string) {
+  const { data } = await careerFrom("career_contacts")
+    .select("kind")
+    .eq("company_id", companyId)
+    .neq("verification_status", "not_found");
+  const kinds = (data ?? []).map((row) => String(row.kind ?? ""));
+  const enrichmentStatus = deriveEnrichmentStatus(kinds);
+  await careerFrom("career_companies")
+    .update({
+      enrichment_status: enrichmentStatus,
+      last_enriched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", companyId);
+}
+
+async function attachCompanyCounts(companies: Record<string, unknown>[]) {
+  if (!companies.length) return companies;
+  const ids = companies.map((row) => String(row.id));
+  const [contactsRes, jobsRes] = await Promise.all([
+    careerFrom("career_contacts").select("company_id, kind, verification_status").in("company_id", ids),
+    careerFrom("career_jobs").select("company_id").in("company_id", ids),
+  ]);
+  const contactCount = new Map<string, number>();
+  const kindByCompany = new Map<string, string[]>();
+  for (const row of contactsRes.data ?? []) {
+    const companyId = String(row.company_id);
+    if (row.verification_status === "not_found") continue;
+    contactCount.set(companyId, (contactCount.get(companyId) ?? 0) + 1);
+    const list = kindByCompany.get(companyId) ?? [];
+    list.push(String(row.kind ?? ""));
+    kindByCompany.set(companyId, list);
+  }
+  const jobCount = new Map<string, number>();
+  for (const row of jobsRes.data ?? []) {
+    const companyId = String(row.company_id ?? "");
+    if (!companyId) continue;
+    jobCount.set(companyId, (jobCount.get(companyId) ?? 0) + 1);
+  }
+  return companies.map((row) => {
+    const id = String(row.id);
+    const enrichment =
+      row.enrichment_status && row.enrichment_status !== "none"
+        ? String(row.enrichment_status)
+        : deriveEnrichmentStatus(kindByCompany.get(id) ?? []);
+    return {
+      ...row,
+      contact_count: contactCount.get(id) ?? 0,
+      job_count: jobCount.get(id) ?? 0,
+      enrichment_status: enrichment,
+    };
+  });
+}
+
 export async function enrichCareerContacts(input: {
   contacts: ContactInput[];
   actorSource: "plugin" | "panel";
@@ -554,6 +662,8 @@ export async function enrichCareerContacts(input: {
   counts.received = input.contacts.length;
   const errorMessages: string[] = [];
 
+  const touchedCompanies = new Set<string>();
+
   for (const raw of input.contacts) {
     try {
       const contact = normalizeContactInput(raw);
@@ -571,7 +681,17 @@ export async function enrichCareerContacts(input: {
         );
         continue;
       }
-      const valueNorm = normalizeContactValue(contact.value);
+      touchedCompanies.add(companyId);
+
+      const isPhoneLike = kind === "whatsapp" || kind === "phone" || kind === "business_whatsapp";
+      const phoneParts = isPhoneLike ? parsePhoneParts(contact.value || contact.phoneNumber || "") : null;
+      const valueRaw = contact.value?.trim() || (phoneParts?.digits ? `+${phoneParts.digits}` : "");
+      const valueNorm = isPhoneLike
+        ? phoneParts?.digits || normalizeContactValue(valueRaw)
+        : kind === "website" || kind === "instagram" || kind === "facebook" || kind === "recruiter_linkedin"
+          ? normalizeJobUrl(valueRaw) || normalizeContactValue(valueRaw)
+          : normalizeContactValue(valueRaw);
+
       if (!valueNorm && contact.verificationStatus !== "not_found") {
         counts.errors += 1;
         errorMessages.push(`contato sem value (kind=${kind}, companyId=${companyId})`);
@@ -589,10 +709,16 @@ export async function enrichCareerContacts(input: {
         kind,
         full_name: contact.fullName?.trim() ?? "",
         title: contact.title?.trim() ?? "",
-        value: contact.value?.trim() ?? "",
+        value: valueRaw,
         value_normalized: valueNorm || `not_found:${kind}`,
+        label: contact.label?.trim() ?? "",
+        source_url: contact.sourceUrl?.trim() ?? "",
+        suitability_for_application: contact.suitabilityForApplication ?? "unknown",
         verification_status: contact.verificationStatus ?? "unverified",
         source: contact.source?.trim() ?? "",
+        phone_ddi: contact.phoneDdi?.trim() || phoneParts?.ddi || "",
+        phone_ddd: contact.phoneDdd?.trim() || phoneParts?.ddd || "",
+        phone_number: contact.phoneNumber?.trim() || phoneParts?.number || "",
         verified_at: contact.verificationStatus === "confirmed" ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       };
@@ -614,15 +740,15 @@ export async function enrichCareerContacts(input: {
         } else counts.created += 1;
       }
 
-      if (kind === "hr_email" && contact.value) {
-        await careerFrom("career_companies")
-          .update({ hr_email: contact.value.trim(), last_enriched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq("id", companyId);
-      }
+      await syncCompanyChannelFromContact(companyId, kind, valueRaw);
     } catch (error) {
       counts.errors += 1;
       errorMessages.push(error instanceof Error ? error.message : "erro");
     }
+  }
+
+  for (const companyId of touchedCompanies) {
+    await refreshCompanyEnrichmentStatus(companyId);
   }
 
   const status = counts.errors && (counts.created || counts.updated) ? "partial" : counts.errors ? "error" : "completed";
@@ -740,29 +866,58 @@ export async function listCareerCompanies(userId: string, query?: { q?: string; 
   if (query?.q?.trim()) req = req.ilike("name", `%${query.q.trim()}%`);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
-  return { items: data ?? [], total: count ?? 0 };
+  const items = await attachCompanyCounts((data ?? []) as Record<string, unknown>[]);
+  return { items, total: count ?? 0 };
 }
 
-export async function listCareerJobs(userId: string, query?: { q?: string; limit?: number; offset?: number }) {
+export async function getCareerCompanyDetail(userId: string, id: string) {
+  await assertCareerPanelAccess(userId);
+  return pluginGetCompany(id);
+}
+
+export async function listCareerJobs(
+  userId: string,
+  query?: { q?: string; platform?: string; researchMode?: string; limit?: number; offset?: number },
+) {
   await assertCareerPanelAccess(userId);
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
   let req = careerFrom("career_jobs").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.q?.trim()) req = req.or(`title.ilike.%${query.q.trim()}%,company_name.ilike.%${query.q.trim()}%`);
+  if (query?.platform?.trim()) req = req.ilike("platform", `%${query.platform.trim()}%`);
+  if (query?.researchMode?.trim()) req = req.eq("research_mode", normalizeCareerResearchMode(query.researchMode));
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
   return { items: data ?? [], total: count ?? 0 };
 }
 
-export async function listCareerContacts(userId: string, query?: { companyId?: string; limit?: number; offset?: number }) {
+export async function listCareerContacts(
+  userId: string,
+  query?: { companyId?: string; kind?: string; verificationStatus?: string; limit?: number; offset?: number },
+) {
   await assertCareerPanelAccess(userId);
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
   let req = careerFrom("career_contacts").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.companyId) req = req.eq("company_id", query.companyId);
+  if (query?.kind?.trim()) {
+    const kind = normalizeCareerContactKind(query.kind) || query.kind.trim();
+    req = req.eq("kind", kind);
+  }
+  if (query?.verificationStatus?.trim()) req = req.eq("verification_status", query.verificationStatus.trim());
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
-  return { items: data ?? [], total: count ?? 0 };
+  const companyIds = [...new Set((data ?? []).map((row) => String(row.company_id)).filter(Boolean))];
+  const companies =
+    companyIds.length > 0
+      ? await careerFrom("career_companies").select("id, name").in("id", companyIds)
+      : { data: [] as { id: string; name: string }[] };
+  const nameById = new Map((companies.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const items = (data ?? []).map((row) => ({
+    ...row,
+    company_name: nameById.get(String(row.company_id)) ?? "",
+  }));
+  return { items, total: count ?? 0 };
 }
 
 export async function listCareerApplications(userId: string) {
@@ -967,21 +1122,43 @@ export async function pluginListCompanies(query?: { q?: string; limit?: number; 
   if (query?.q?.trim()) req = req.ilike("name", `%${query.q.trim()}%`);
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
-  return { items: data ?? [], total: count ?? 0 };
+  const items = await attachCompanyCounts((data ?? []) as Record<string, unknown>[]);
+  return { items, total: count ?? 0 };
 }
 
 export async function pluginGetCompany(id: string) {
   const { data, error } = await careerFrom("career_companies").select("*").eq("id", id).maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Empresa não encontrada.");
-  return data;
+  const [contacts, jobs] = await Promise.all([
+    careerFrom("career_contacts").select("*").eq("company_id", id).order("updated_at", { ascending: false }).limit(200),
+    careerFrom("career_jobs").select("*").eq("company_id", id).order("updated_at", { ascending: false }).limit(100),
+  ]);
+  if (contacts.error) fail(migrationHint(contacts.error.message));
+  if (jobs.error) fail(migrationHint(jobs.error.message));
+  const contactItems = contacts.data ?? [];
+  const jobItems = jobs.data ?? [];
+  const enrichment =
+    data.enrichment_status && data.enrichment_status !== "none"
+      ? String(data.enrichment_status)
+      : deriveEnrichmentStatus(contactItems.map((row) => String(row.kind ?? "")));
+  return {
+    ...data,
+    enrichment_status: enrichment,
+    contact_count: contactItems.filter((row) => row.verification_status !== "not_found").length,
+    job_count: jobItems.length,
+    contacts: contactItems,
+    jobs: jobItems,
+  };
 }
 
-export async function pluginListJobs(query?: { q?: string; limit?: number; offset?: number }) {
+export async function pluginListJobs(query?: { q?: string; platform?: string; researchMode?: string; limit?: number; offset?: number }) {
   const limit = Math.min(Math.max(query?.limit ?? 50, 1), 200);
   const offset = Math.max(query?.offset ?? 0, 0);
   let req = careerFrom("career_jobs").select("*", { count: "exact" }).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
   if (query?.q?.trim()) req = req.or(`title.ilike.%${query.q.trim()}%,company_name.ilike.%${query.q.trim()}%`);
+  if (query?.platform?.trim()) req = req.ilike("platform", `%${query.platform.trim()}%`);
+  if (query?.researchMode?.trim()) req = req.eq("research_mode", normalizeCareerResearchMode(query.researchMode));
   const { data, error, count } = await req;
   if (error) fail(migrationHint(error.message));
   return { items: data ?? [], total: count ?? 0 };

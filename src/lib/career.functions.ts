@@ -95,6 +95,16 @@ export const recordManualCareerApplicationFn = createServerFn({ method: "POST" }
     });
   });
 
+export const markCareerCompanyNoFitFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: { companyId: string; notes?: string }) => data)
+  .handler(async ({ context, data }) => {
+    return runCareer(async () => {
+      const { markCareerCompanyNoFit } = await import("@/server/career.server");
+      return markCareerCompanyNoFit(context.userId, data.companyId, data.notes);
+    });
+  });
+
 export const careerJobsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

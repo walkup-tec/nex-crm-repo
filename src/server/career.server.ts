@@ -1108,6 +1108,43 @@ export async function getCareerExecution(userId: string, executionId: string) {
   return data;
 }
 
+/** Marca empresa como sem perfil adequado (não seguir prospecção). */
+export async function markCareerCompanyNoFit(userId: string, companyId: string, notes?: string) {
+  await assertCareerPanelAccess(userId);
+  const id = companyId?.trim();
+  if (!id) fail("Informe a empresa.");
+
+  const { data: company, error: companyError } = await careerFrom("career_companies")
+    .select("id, name, change_log, prospect_status")
+    .eq("id", id)
+    .maybeSingle();
+  if (companyError) fail(migrationHint(companyError.message));
+  if (!company) fail("Empresa não encontrada.");
+
+  const changeLog = Array.isArray(company.change_log) ? [...company.change_log] : [];
+  changeLog.push({
+    at: new Date().toISOString(),
+    by: userId,
+    action: "no_fit",
+    from: company.prospect_status ?? "new",
+    to: "no_fit",
+    notes: notes?.trim() || "Empresa marcada como sem perfil adequado pelo painel Master.",
+  });
+
+  const { data, error } = await careerFrom("career_companies")
+    .update({
+      prospect_status: "no_fit",
+      change_log: changeLog,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("id, name, prospect_status, updated_at")
+    .maybeSingle();
+  if (error) fail(migrationHint(error.message));
+  if (!data) fail("Empresa não encontrada.");
+  return data;
+}
+
 export async function patchCareerCompany(userId: string, id: string, patch: Partial<CompanyInput> & { prospectStatus?: string }) {
   await assertCareerPanelAccess(userId);
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };

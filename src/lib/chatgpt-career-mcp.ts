@@ -49,7 +49,7 @@ const companyItem: JsonSchema = {
     source: { type: "string" },
     prospectStatus: {
       type: "string",
-      enum: ["new", "researching", "contacted", "qualified", "archived"],
+      enum: ["new", "researching", "contacted", "qualified", "archived", "no_fit"],
     },
   },
   required: ["name"],

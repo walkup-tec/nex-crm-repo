@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<string, string> = {
   contacted: "Contatada",
   qualified: "Qualificada",
   archived: "Arquivada",
+  no_fit: "Sem perfil",
   // vaga (opportunity)
   prepared: "Preparada",
   // candidatura
@@ -62,6 +63,7 @@ const STATUS_TONE: Record<string, CareerTone> = {
   none: "yellow",
   // vermelho — bloqueio / falha / descartado
   archived: "red",
+  no_fit: "red",
   error: "red",
   rejected: "red",
   invalid: "red",

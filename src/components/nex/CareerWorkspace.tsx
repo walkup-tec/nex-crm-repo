@@ -24,6 +24,7 @@ import {
   careerHistoryFn,
   careerJobsFn,
   careerOverviewFn,
+  markCareerCompanyNoFitFn,
   recordManualCareerApplicationFn,
   sendCareerApplicationEmailFn,
 } from "@/lib/career.functions";
@@ -133,6 +134,7 @@ export function CareerWorkspace() {
   const [applyUrl, setApplyUrl] = useState("");
   const [applyNotes, setApplyNotes] = useState("");
   const [applySaving, setApplySaving] = useState(false);
+  const [noFitSavingId, setNoFitSavingId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -237,6 +239,28 @@ export function CareerWorkspace() {
     setApplyTitle(`Candidatura via site — ${String(company.name || "Empresa")}`);
     setApplyUrl(String(company.website || ""));
     setApplyNotes("");
+  }
+
+  async function markNoFit(companyId: string) {
+    setNoFitSavingId(companyId);
+    setError("");
+    try {
+      const result = await markCareerCompanyNoFitFn({
+        data: { companyId, notes: "Sem perfil adequado para trabalhar nesta empresa." },
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setCopyHint("Empresa marcada como Sem perfil");
+      window.setTimeout(() => setCopyHint(""), 2000);
+      await load();
+      if (detailOpenId === companyId) await openCompanyDetail(companyId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível marcar Sem perfil.");
+    } finally {
+      setNoFitSavingId("");
+    }
   }
 
   async function submitManualApply(companyId: string, jobId?: string) {
@@ -389,6 +413,19 @@ export function CareerWorkspace() {
                       onClick={() => (applyFormCompanyId === id ? setApplyFormCompanyId("") : openApplyForm(row))}
                     >
                       <Sparkles className="size-4" /> Me candidatei
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={noFitSavingId === id || String(row.prospect_status) === "no_fit"}
+                      onClick={() => void markNoFit(id)}
+                    >
+                      {String(row.prospect_status) === "no_fit"
+                        ? "Sem perfil"
+                        : noFitSavingId === id
+                          ? "Salvando…"
+                          : "Sem perfil"}
                     </Button>
                   </div>
                   {applyFormCompanyId === id ? (

@@ -24,6 +24,7 @@ import {
   careerHistoryFn,
   careerJobsFn,
   careerOverviewFn,
+  recordManualCareerApplicationFn,
   sendCareerApplicationEmailFn,
 } from "@/lib/career.functions";
 import { careerContactKindLabel } from "@/lib/career-access";
@@ -127,6 +128,11 @@ export function CareerWorkspace() {
   const [contactCompanyFilter, setContactCompanyFilter] = useState("");
   const [jobPlatformFilter, setJobPlatformFilter] = useState("");
   const [copyHint, setCopyHint] = useState("");
+  const [applyFormCompanyId, setApplyFormCompanyId] = useState("");
+  const [applyTitle, setApplyTitle] = useState("");
+  const [applyUrl, setApplyUrl] = useState("");
+  const [applyNotes, setApplyNotes] = useState("");
+  const [applySaving, setApplySaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -226,6 +232,42 @@ export function CareerWorkspace() {
     }
   }
 
+  function openApplyForm(company: Record<string, unknown>) {
+    setApplyFormCompanyId(String(company.id));
+    setApplyTitle(`Candidatura via site — ${String(company.name || "Empresa")}`);
+    setApplyUrl(String(company.website || ""));
+    setApplyNotes("");
+  }
+
+  async function submitManualApply(companyId: string, jobId?: string) {
+    setApplySaving(true);
+    setError("");
+    try {
+      const result = await recordManualCareerApplicationFn({
+        data: {
+          companyId,
+          jobId,
+          title: applyTitle.trim() || undefined,
+          url: applyUrl.trim() || undefined,
+          notes: applyNotes.trim() || undefined,
+        },
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setApplyFormCompanyId("");
+      setCopyHint("Candidatura registrada");
+      window.setTimeout(() => setCopyHint(""), 2000);
+      await load();
+      if (detailOpenId === companyId) await openCompanyDetail(companyId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível registrar a candidatura.");
+    } finally {
+      setApplySaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -320,7 +362,7 @@ export function CareerWorkspace() {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Site: {row.website ? String(row.website) : "—"} · contatos: {String(row.contact_count ?? 0)} ·
-                    vagas: {String(row.job_count ?? 0)}
+                    vagas: {String(row.job_count ?? 0)} · candidaturas: {String(row.application_count ?? 0)}
                     {row.last_enriched_at ? ` · enriquecido: ${String(row.last_enriched_at)}` : " · enriquecimento pendente"}
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -340,12 +382,63 @@ export function CareerWorkspace() {
                         </a>
                       </Button>
                     ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={applyFormCompanyId === id ? "secondary" : "default"}
+                      onClick={() => (applyFormCompanyId === id ? setApplyFormCompanyId("") : openApplyForm(row))}
+                    >
+                      <Sparkles className="size-4" /> Me candidatei
+                    </Button>
                   </div>
+                  {applyFormCompanyId === id ? (
+                    <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                      <p className="text-sm text-muted-foreground">
+                        Registre que você se candidatou pelo site/RH. Isso atualiza o histórico e o contador do card.
+                      </p>
+                      <Input
+                        placeholder="Cargo / título da candidatura"
+                        value={applyTitle}
+                        onChange={(e) => setApplyTitle(e.target.value)}
+                      />
+                      <Input
+                        placeholder="URL usada (site RH, formulário…)"
+                        value={applyUrl}
+                        onChange={(e) => setApplyUrl(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Observações (opcional)"
+                        value={applyNotes}
+                        onChange={(e) => setApplyNotes(e.target.value)}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={applySaving}
+                          onClick={() => void submitManualApply(id)}
+                        >
+                          {applySaving ? "Salvando…" : "Confirmar candidatura"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={applySaving}
+                          onClick={() => setApplyFormCompanyId("")}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   {open ? (
                     <CompanyDetailPanel
                       loading={detailLoading}
                       detail={detailOpenId === id ? detail : null}
                       onCopy={copyText}
+                      onAppliedJob={(jobId) => void submitManualApply(id, jobId)}
+                      applySaving={applySaving}
                     />
                   ) : null}
                 </article>
@@ -392,13 +485,31 @@ export function CareerWorkspace() {
                 <p className="text-sm text-muted-foreground line-clamp-3">
                   {String(row.compatibility_notes || row.description || "")}
                 </p>
-                {row.url ? (
-                  <Button type="button" size="sm" variant="outline" asChild>
-                    <a href={ensureHttp(String(row.url))} target="_blank" rel="noreferrer">
-                      <ExternalLink className="size-4" /> Abrir vaga
-                    </a>
-                  </Button>
-                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {row.url ? (
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <a href={ensureHttp(String(row.url))} target="_blank" rel="noreferrer">
+                        <ExternalLink className="size-4" /> Abrir vaga
+                      </a>
+                    </Button>
+                  ) : null}
+                  {row.company_id ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      disabled={applySaving || String(row.opportunity_status) === "applied"}
+                      onClick={() => {
+                        setApplyTitle(String(row.title || ""));
+                        setApplyUrl(String(row.url || ""));
+                        setApplyNotes("");
+                        void submitManualApply(String(row.company_id), String(row.id));
+                      }}
+                    >
+                      {String(row.opportunity_status) === "applied" ? "Já candidatado" : "Me candidatei"}
+                    </Button>
+                  ) : null}
+                </div>
               </article>
             ))
           )}
@@ -722,10 +833,14 @@ function CompanyDetailPanel({
   loading,
   detail,
   onCopy,
+  onAppliedJob,
+  applySaving,
 }: {
   loading: boolean;
   detail: Record<string, unknown> | null;
   onCopy: (value: string) => void;
+  onAppliedJob?: (jobId: string) => void;
+  applySaving?: boolean;
 }) {
   if (loading) {
     return <p className="text-sm text-muted-foreground">Carregando detalhes…</p>;
@@ -735,6 +850,7 @@ function CompanyDetailPanel({
   }
   const contacts = Array.isArray(detail.contacts) ? (detail.contacts as Record<string, unknown>[]) : [];
   const jobs = Array.isArray(detail.jobs) ? (detail.jobs as Record<string, unknown>[]) : [];
+  const applications = Array.isArray(detail.applications) ? (detail.applications as Record<string, unknown>[]) : [];
   const groups = groupContactsBySection(contacts.filter((row) => row.verification_status !== "not_found"));
   const notFound = contacts.filter((row) => row.verification_status === "not_found");
 
@@ -794,13 +910,45 @@ function CompanyDetailPanel({
               <span>
                 {String(job.title)}
                 {job.platform ? ` · ${String(job.platform)}` : ""}
+                {job.opportunity_status ? ` · ${careerStatusLabel(String(job.opportunity_status))}` : ""}
               </span>
-              {job.url ? (
-                <Button type="button" size="sm" variant="ghost" asChild>
-                  <a href={ensureHttp(String(job.url))} target="_blank" rel="noreferrer">
-                    <ExternalLink className="size-4" /> Abrir
-                  </a>
-                </Button>
+              <div className="flex flex-wrap gap-1">
+                {job.url ? (
+                  <Button type="button" size="sm" variant="ghost" asChild>
+                    <a href={ensureHttp(String(job.url))} target="_blank" rel="noreferrer">
+                      <ExternalLink className="size-4" /> Abrir
+                    </a>
+                  </Button>
+                ) : null}
+                {onAppliedJob ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={applySaving || String(job.opportunity_status) === "applied"}
+                    onClick={() => onAppliedJob(String(job.id))}
+                  >
+                    {String(job.opportunity_status) === "applied" ? "Já candidatado" : "Me candidatei"}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Candidaturas ({applications.length})</h4>
+        {applications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma candidatura registrada para esta empresa.</p>
+        ) : (
+          applications.map((app) => (
+            <div key={String(app.id)} className="rounded-lg border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge value={String(app.status)} />
+                <span className="text-xs text-muted-foreground">{String(app.updated_at || app.created_at || "")}</span>
+              </div>
+              {app.guidance ? (
+                <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap">{String(app.guidance)}</p>
               ) : null}
             </div>
           ))

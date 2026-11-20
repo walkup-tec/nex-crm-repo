@@ -602,9 +602,10 @@ async function refreshCompanyEnrichmentStatus(companyId: string) {
 async function attachCompanyCounts(companies: Record<string, unknown>[]) {
   if (!companies.length) return companies;
   const ids = companies.map((row) => String(row.id));
-  const [contactsRes, jobsRes] = await Promise.all([
+  const [contactsRes, jobsRes, appsRes] = await Promise.all([
     careerFrom("career_contacts").select("company_id, kind, verification_status").in("company_id", ids),
     careerFrom("career_jobs").select("company_id").in("company_id", ids),
+    careerFrom("career_applications").select("company_id, status").in("company_id", ids),
   ]);
   const contactCount = new Map<string, number>();
   const kindByCompany = new Map<string, string[]>();
@@ -622,6 +623,13 @@ async function attachCompanyCounts(companies: Record<string, unknown>[]) {
     if (!companyId) continue;
     jobCount.set(companyId, (jobCount.get(companyId) ?? 0) + 1);
   }
+  const applicationCount = new Map<string, number>();
+  for (const row of appsRes.data ?? []) {
+    const companyId = String(row.company_id ?? "");
+    if (!companyId) continue;
+    if (row.status === "archived") continue;
+    applicationCount.set(companyId, (applicationCount.get(companyId) ?? 0) + 1);
+  }
   return companies.map((row) => {
     const id = String(row.id);
     const enrichment =
@@ -632,9 +640,167 @@ async function attachCompanyCounts(companies: Record<string, unknown>[]) {
       ...row,
       contact_count: contactCount.get(id) ?? 0,
       job_count: jobCount.get(id) ?? 0,
+      application_count: applicationCount.get(id) ?? 0,
       enrichment_status: enrichment,
     };
   });
+}
+
+/**
+ * Registro manual: candidato se candidatou pelo site/RH da empresa (ou vaga já listada).
+ * Cria/atualiza vaga + candidatura status=sent e marca opportunity_status=applied.
+ */
+export async function recordManualCareerApplication(
+  userId: string,
+  input: {
+    companyId: string;
+    jobId?: string;
+    title?: string;
+    url?: string;
+    notes?: string;
+  },
+) {
+  await assertCareerPanelAccess(userId);
+  const companyId = input.companyId?.trim();
+  if (!companyId) fail("Informe a empresa.");
+
+  const { data: company, error: companyError } = await careerFrom("career_companies")
+    .select("id, name, website")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (companyError) fail(migrationHint(companyError.message));
+  if (!company) fail("Empresa não encontrada.");
+
+  let jobId = input.jobId?.trim() || "";
+  let jobTitle = input.title?.trim() || "";
+  const applyUrl = (input.url?.trim() || String(company.website || "")).trim();
+  const notes = input.notes?.trim() || "";
+
+  if (jobId) {
+    const { data: existingJob, error: jobError } = await careerFrom("career_jobs")
+      .select("id, title, company_id")
+      .eq("id", jobId)
+      .maybeSingle();
+    if (jobError) fail(migrationHint(jobError.message));
+    if (!existingJob) fail("Vaga não encontrada.");
+    if (existingJob.company_id && String(existingJob.company_id) !== companyId) {
+      fail("A vaga não pertence a esta empresa.");
+    }
+    jobTitle = jobTitle || String(existingJob.title || "Candidatura");
+  } else {
+    jobTitle = jobTitle || `Candidatura via site — ${String(company.name)}`;
+    const urlNorm = normalizeJobUrl(applyUrl);
+    const titleNorm = normalizeJobTitle(jobTitle);
+    let existing: Record<string, unknown> | null = null;
+    if (urlNorm) {
+      const { data } = await careerFrom("career_jobs").select("id").eq("url_normalized", urlNorm).maybeSingle();
+      existing = data;
+    }
+    if (!existing) {
+      const { data } = await careerFrom("career_jobs")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("title_normalized", titleNorm)
+        .eq("platform", "company_site")
+        .maybeSingle();
+      existing = data;
+    }
+    if (existing?.id) {
+      jobId = String(existing.id);
+    } else {
+      const { data: created, error: insertJobError } = await careerFrom("career_jobs")
+        .insert({
+          company_id: companyId,
+          company_name: String(company.name),
+          title: jobTitle,
+          title_normalized: titleNorm,
+          description: notes || "Candidatura registrada manualmente pelo painel Master (via site/RH).",
+          url: applyUrl,
+          url_normalized: urlNorm,
+          platform: "company_site",
+          application_channel: "external_form",
+          opportunity_status: "applied",
+          research_mode: "company_prospect",
+          source: "panel_manual_apply",
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      if (insertJobError) fail(migrationHint(insertJobError.message));
+      jobId = String(created.id);
+    }
+  }
+
+  await careerFrom("career_jobs")
+    .update({
+      opportunity_status: "applied",
+      company_id: companyId,
+      company_name: String(company.name),
+      ...(applyUrl
+        ? { url: applyUrl, url_normalized: normalizeJobUrl(applyUrl) }
+        : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+
+  const guidance = [
+    "Candidatura registrada manualmente no painel Master.",
+    applyUrl ? `Canal/URL: ${applyUrl}` : "",
+    notes ? `Observações: ${notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const { data: existingApps } = await careerFrom("career_applications")
+    .select("id, status")
+    .eq("job_id", jobId)
+    .eq("company_id", companyId)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  const existingApp = Array.isArray(existingApps) && existingApps[0] ? existingApps[0] : null;
+
+  let applicationId = "";
+  if (existingApp?.id) {
+    const { data: updated, error: updateError } = await careerFrom("career_applications")
+      .update({
+        status: "sent",
+        guidance,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingApp.id)
+      .select("id")
+      .single();
+    if (updateError) fail(migrationHint(updateError.message));
+    applicationId = String(updated.id);
+  } else {
+    const { data: createdApp, error: appError } = await careerFrom("career_applications")
+      .insert({
+        job_id: jobId,
+        company_id: companyId,
+        status: "sent",
+        guidance,
+        intro_message: `Candidatura enviada via site/RH de ${String(company.name)}.`,
+      })
+      .select("id")
+      .single();
+    if (appError) fail(migrationHint(appError.message));
+    applicationId = String(createdApp.id);
+  }
+
+  await careerFrom("career_companies")
+    .update({
+      prospect_status: "contacted",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", companyId);
+
+  return {
+    applicationId,
+    jobId,
+    companyId,
+    status: "sent" as const,
+  };
 }
 
 export async function enrichCareerContacts(input: {
@@ -1130,14 +1296,17 @@ export async function pluginGetCompany(id: string) {
   const { data, error } = await careerFrom("career_companies").select("*").eq("id", id).maybeSingle();
   if (error) fail(migrationHint(error.message));
   if (!data) fail("Empresa não encontrada.");
-  const [contacts, jobs] = await Promise.all([
+  const [contacts, jobs, apps] = await Promise.all([
     careerFrom("career_contacts").select("*").eq("company_id", id).order("updated_at", { ascending: false }).limit(200),
     careerFrom("career_jobs").select("*").eq("company_id", id).order("updated_at", { ascending: false }).limit(100),
+    careerFrom("career_applications").select("*").eq("company_id", id).order("updated_at", { ascending: false }).limit(100),
   ]);
   if (contacts.error) fail(migrationHint(contacts.error.message));
   if (jobs.error) fail(migrationHint(jobs.error.message));
+  if (apps.error) fail(migrationHint(apps.error.message));
   const contactItems = contacts.data ?? [];
   const jobItems = jobs.data ?? [];
+  const appItems = apps.data ?? [];
   const enrichment =
     data.enrichment_status && data.enrichment_status !== "none"
       ? String(data.enrichment_status)
@@ -1147,8 +1316,10 @@ export async function pluginGetCompany(id: string) {
     enrichment_status: enrichment,
     contact_count: contactItems.filter((row) => row.verification_status !== "not_found").length,
     job_count: jobItems.length,
+    application_count: appItems.filter((row) => row.status !== "archived").length,
     contacts: contactItems,
     jobs: jobItems,
+    applications: appItems,
   };
 }
 

@@ -91,3 +91,52 @@ export type CareerUpsertCounts = {
 export function emptyUpsertCounts(): CareerUpsertCounts {
   return { received: 0, created: 0, updated: 0, duplicates: 0, errors: 0 };
 }
+
+/** Lê string de campo camelCase ou snake_case (GPT/MCP costuma misturar). */
+export function pickCareerField(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+export function asCareerRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+const CONTACT_KIND_ALIASES: Record<string, string> = {
+  email: "hr_email",
+  hr: "hr_email",
+  hr_mail: "hr_email",
+  recruiting: "recruiting_email",
+  recruiter_email: "recruiting_email",
+  whatsapp: "business_whatsapp",
+  phone: "business_whatsapp",
+  linkedin: "company_linkedin",
+  company_li: "company_linkedin",
+  recruiter_li: "recruiter_linkedin",
+  marketing_li: "marketing_manager_linkedin",
+  person_linkedin: "recruiter_linkedin",
+};
+
+export const CAREER_CONTACT_KINDS = [
+  "hr_email",
+  "recruiting_email",
+  "business_whatsapp",
+  "company_linkedin",
+  "recruiter_linkedin",
+  "marketing_manager_linkedin",
+  "person",
+  "other",
+] as const;
+
+export type CareerContactKind = (typeof CAREER_CONTACT_KINDS)[number];
+
+export function normalizeCareerContactKind(raw: string): CareerContactKind | "" {
+  const value = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!value) return "";
+  const aliased = CONTACT_KIND_ALIASES[value] ?? value;
+  return (CAREER_CONTACT_KINDS as readonly string[]).includes(aliased) ? (aliased as CareerContactKind) : "";
+}

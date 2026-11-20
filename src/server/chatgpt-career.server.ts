@@ -143,6 +143,7 @@ export async function handleChatgptCareerRequest(request: Request): Promise<Resp
         execution_id: result.executionId,
         replay: result.replay,
         ...result.counts,
+        error_samples: "errorSamples" in result ? result.errorSamples : [],
       });
     }
 
@@ -192,6 +193,7 @@ export async function handleChatgptCareerRequest(request: Request): Promise<Resp
         execution_id: result.executionId,
         replay: result.replay,
         ...result.counts,
+        error_samples: "errorSamples" in result ? result.errorSamples : [],
       });
     }
 
@@ -220,7 +222,22 @@ export async function handleChatgptCareerRequest(request: Request): Promise<Resp
         execution_id: result.executionId,
         replay: result.replay,
         ...result.counts,
+        error_samples: "errorSamples" in result ? result.errorSamples : [],
       });
+    }
+
+    if (path === "/jobs/link" && method === "POST") {
+      const body = (await readJson(request)) as {
+        links?: Array<{ jobId?: string; job_id?: string; companyId?: string; company_id?: string }>;
+      } | null;
+      const links = Array.isArray(body?.links)
+        ? body.links.map((item) => ({
+            jobId: String(item.jobId || item.job_id || ""),
+            companyId: String(item.companyId || item.company_id || ""),
+          }))
+        : [];
+      const { linkCareerJobsToCompanies } = await import("@/server/career.server");
+      return json(200, await linkCareerJobsToCompanies(links));
     }
 
     const jobMatch = /^\/jobs\/([^/]+)$/.exec(path);

@@ -69,7 +69,7 @@ export const careerCompaniesFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     return runCareer(async () => {
       const { listCareerCompanies } = await import("@/server/career.server");
-      return listCareerCompanies(context.userId);
+      return listCareerCompanies(context.userId, { limit: 200, offset: 0 });
     });
   });
 
@@ -78,7 +78,7 @@ export const careerJobsFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     return runCareer(async () => {
       const { listCareerJobs } = await import("@/server/career.server");
-      return listCareerJobs(context.userId);
+      return listCareerJobs(context.userId, { limit: 200, offset: 0 });
     });
   });
 
@@ -87,7 +87,7 @@ export const careerContactsFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     return runCareer(async () => {
       const { listCareerContacts } = await import("@/server/career.server");
-      return listCareerContacts(context.userId);
+      return listCareerContacts(context.userId, { limit: 200, offset: 0 });
     });
   });
 

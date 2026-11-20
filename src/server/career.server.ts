@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
+  asCareerRecord,
   emptyUpsertCounts,
+  normalizeCareerContactKind,
   normalizeCnpj,
   normalizeCompanyName,
   normalizeContactValue,
@@ -8,6 +10,7 @@ import {
   normalizeJobTitle,
   normalizeJobUrl,
   normalizeLinkedInUrl,
+  pickCareerField,
   type CareerUpsertCounts,
 } from "@/lib/career-access";
 import { assertCareerPanelAccess } from "@/server/career-access.server";
@@ -158,12 +161,106 @@ async function findCompany(input: CompanyInput) {
     if (data) return data;
   }
   if (name) {
-    let query = careerFrom("career_companies").select("*").eq("name_normalized", name);
-    if (city) query = query.eq("city", city);
-    if (state) query = query.eq("state", state);
-    const { data } = await query.maybeSingle();
-    if (data) return data;
+    if (city || state) {
+      let query = careerFrom("career_companies").select("*").eq("name_normalized", name);
+      if (city) query = query.eq("city", city);
+      if (state) query = query.eq("state", state);
+      const { data, error } = await query.maybeSingle();
+      if (!error && data) return data;
+    }
+    // Só aceita correspondência inequívoca por nome (evita maybeSingle em nomes ambíguos).
+    const { data } = await careerFrom("career_companies").select("*").eq("name_normalized", name).limit(2);
+    if (Array.isArray(data) && data.length === 1) return data[0];
   }
+  return null;
+}
+
+function numField(row: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  }
+  return undefined;
+}
+
+/** Normaliza payload GPT/MCP (camelCase ou snake_case) para CompanyInput. */
+export function normalizeCompanyInput(raw: unknown): CompanyInput {
+  const row = asCareerRecord(raw);
+  return {
+    name: pickCareerField(row, "name"),
+    cnpj: pickCareerField(row, "cnpj") || undefined,
+    website: pickCareerField(row, "website") || undefined,
+    linkedinUrl: pickCareerField(row, "linkedinUrl", "linkedin_url") || undefined,
+    segment: pickCareerField(row, "segment") || undefined,
+    category: pickCareerField(row, "category") || undefined,
+    city: pickCareerField(row, "city") || undefined,
+    state: pickCareerField(row, "state") || undefined,
+    corporateEmail: pickCareerField(row, "corporateEmail", "corporate_email") || undefined,
+    hrEmail: pickCareerField(row, "hrEmail", "hr_email") || undefined,
+    businessWhatsapp: pickCareerField(row, "businessWhatsapp", "business_whatsapp") || undefined,
+    recruiterNames: pickCareerField(row, "recruiterNames", "recruiter_names") || undefined,
+    source: pickCareerField(row, "source") || undefined,
+    prospectStatus: pickCareerField(row, "prospectStatus", "prospect_status") || undefined,
+  };
+}
+
+/** Normaliza payload GPT/MCP para JobInput. */
+export function normalizeJobInput(raw: unknown): JobInput {
+  const row = asCareerRecord(raw);
+  return {
+    companyId: pickCareerField(row, "companyId", "company_id") || undefined,
+    companyName: pickCareerField(row, "companyName", "company_name") || undefined,
+    title: pickCareerField(row, "title"),
+    description: pickCareerField(row, "description") || undefined,
+    url: pickCareerField(row, "url") || undefined,
+    platform: pickCareerField(row, "platform") || undefined,
+    location: pickCareerField(row, "location") || undefined,
+    workMode: pickCareerField(row, "workMode", "work_mode") || undefined,
+    contractType: pickCareerField(row, "contractType", "contract_type") || undefined,
+    salaryRange: pickCareerField(row, "salaryRange", "salary_range") || undefined,
+    requirements: pickCareerField(row, "requirements") || undefined,
+    publishedAt: pickCareerField(row, "publishedAt", "published_at") || undefined,
+    applicationChannel: pickCareerField(row, "applicationChannel", "application_channel") || undefined,
+    compatibilityScore: numField(row, "compatibilityScore", "compatibility_score"),
+    compatibilityNotes: pickCareerField(row, "compatibilityNotes", "compatibility_notes") || undefined,
+    opportunityStatus: pickCareerField(row, "opportunityStatus", "opportunity_status") || undefined,
+    source: pickCareerField(row, "source") || undefined,
+  };
+}
+
+/** Normaliza payload GPT/MCP para ContactInput. */
+export function normalizeContactInput(raw: unknown): ContactInput {
+  const row = asCareerRecord(raw);
+  const verification = pickCareerField(row, "verificationStatus", "verification_status");
+  return {
+    companyId: pickCareerField(row, "companyId", "company_id") || undefined,
+    companyName: pickCareerField(row, "companyName", "company_name") || undefined,
+    kind: pickCareerField(row, "kind"),
+    fullName: pickCareerField(row, "fullName", "full_name") || undefined,
+    title: pickCareerField(row, "title") || undefined,
+    value: pickCareerField(row, "value"),
+    verificationStatus:
+      verification === "confirmed" || verification === "unverified" || verification === "not_found"
+        ? verification
+        : undefined,
+    source: pickCareerField(row, "source") || undefined,
+  };
+}
+
+/**
+ * Resolve company_id: usa UUID informado se existir; senão nome com correspondência inequívoca.
+ */
+async function resolveCompanyId(companyId?: string, companyName?: string): Promise<string | null> {
+  const id = companyId?.trim() ?? "";
+  if (id) {
+    const { data } = await careerFrom("career_companies").select("id").eq("id", id).maybeSingle();
+    if (data?.id) return String(data.id);
+  }
+  const name = normalizeCompanyName(companyName ?? "");
+  if (!name) return null;
+  const { data } = await careerFrom("career_companies").select("id").eq("name_normalized", name).limit(2);
+  if (Array.isArray(data) && data.length === 1) return String(data[0]!.id);
   return null;
 }
 
@@ -226,8 +323,9 @@ export async function upsertCareerCompanies(input: {
   counts.received = input.companies.length;
   const errorMessages: string[] = [];
 
-  for (const company of input.companies) {
+  for (const raw of input.companies) {
     try {
+      const company = normalizeCompanyInput(raw);
       if (!company.name?.trim()) {
         counts.errors += 1;
         errorMessages.push("Empresa sem nome.");
@@ -318,13 +416,17 @@ export async function upsertCareerJobs(input: {
 
   const counts = emptyUpsertCounts();
   counts.received = input.jobs.length;
+  const errorMessages: string[] = [];
 
-  for (const job of input.jobs) {
+  for (const raw of input.jobs) {
     try {
+      const job = normalizeJobInput(raw);
       if (!job.title?.trim()) {
         counts.errors += 1;
+        errorMessages.push("Vaga sem título.");
         continue;
       }
+      const resolvedCompanyId = await resolveCompanyId(job.companyId, job.companyName);
       const urlNorm = normalizeJobUrl(job.url ?? "");
       const titleNorm = normalizeJobTitle(job.title);
       let existing = null as Record<string, unknown> | null;
@@ -332,19 +434,29 @@ export async function upsertCareerJobs(input: {
         const { data } = await careerFrom("career_jobs").select("*").eq("url_normalized", urlNorm).maybeSingle();
         existing = data;
       }
-      if (!existing && job.companyId && titleNorm) {
+      if (!existing && resolvedCompanyId && titleNorm) {
         const { data } = await careerFrom("career_jobs")
           .select("*")
-          .eq("company_id", job.companyId)
+          .eq("company_id", resolvedCompanyId)
           .eq("title_normalized", titleNorm)
           .eq("platform", job.platform?.trim() ?? "")
           .maybeSingle();
         existing = data;
       }
 
+      const companyName =
+        job.companyName?.trim() ||
+        (resolvedCompanyId
+          ? String(
+              (
+                await careerFrom("career_companies").select("name").eq("id", resolvedCompanyId).maybeSingle()
+              ).data?.name ?? "",
+            )
+          : "");
+
       const row = {
-        company_id: job.companyId || null,
-        company_name: job.companyName?.trim() ?? "",
+        company_id: resolvedCompanyId,
+        company_name: companyName,
         title: job.title.trim(),
         title_normalized: titleNorm,
         description: job.description?.trim() ?? "",
@@ -373,7 +485,10 @@ export async function upsertCareerJobs(input: {
         });
         if (error) {
           if (/duplicate|unique/i.test(error.message)) counts.duplicates += 1;
-          else counts.errors += 1;
+          else {
+            counts.errors += 1;
+            errorMessages.push(error.message);
+          }
           continue;
         }
         counts.created += 1;
@@ -382,22 +497,36 @@ export async function upsertCareerJobs(input: {
 
       const researchIds = Array.isArray(existing.research_ids) ? [...existing.research_ids] : [];
       if (!researchIds.includes(started.execution.id)) researchIds.push(started.execution.id);
+      // Preserva company_id já vinculado se a resolução atual falhar.
+      if (!row.company_id && existing.company_id) {
+        row.company_id = existing.company_id as string;
+      }
+      if (!row.company_name && existing.company_name) {
+        row.company_name = String(existing.company_name);
+      }
       const { error } = await careerFrom("career_jobs")
         .update({ ...row, research_ids: researchIds })
         .eq("id", existing.id);
       if (error) {
         counts.errors += 1;
+        errorMessages.push(error.message);
         continue;
       }
       counts.updated += 1;
-    } catch {
+    } catch (error) {
       counts.errors += 1;
+      errorMessages.push(error instanceof Error ? error.message : "erro");
     }
   }
 
   const status = counts.errors && (counts.created || counts.updated) ? "partial" : counts.errors ? "error" : "completed";
-  await finishExecution(started.execution.id, counts, status);
-  return { executionId: started.execution.id as string, counts, replay: false };
+  await finishExecution(started.execution.id, { ...counts, error_samples: errorMessages.slice(0, 5) }, status, errorMessages[0] ?? "");
+  return {
+    executionId: started.execution.id as string,
+    counts,
+    errorSamples: errorMessages.slice(0, 8),
+    replay: false,
+  };
 }
 
 export async function enrichCareerContacts(input: {
@@ -423,37 +552,45 @@ export async function enrichCareerContacts(input: {
 
   const counts = emptyUpsertCounts();
   counts.received = input.contacts.length;
+  const errorMessages: string[] = [];
 
-  for (const contact of input.contacts) {
+  for (const raw of input.contacts) {
     try {
-      let companyId = contact.companyId ?? "";
-      if (!companyId && contact.companyName) {
-        const found = await findCompany({ name: contact.companyName });
-        companyId = found?.id ?? "";
+      const contact = normalizeContactInput(raw);
+      const kind = normalizeCareerContactKind(contact.kind);
+      if (!kind) {
+        counts.errors += 1;
+        errorMessages.push(`kind inválido: ${contact.kind || "(vazio)"}`);
+        continue;
       }
+      const companyId = (await resolveCompanyId(contact.companyId, contact.companyName)) ?? "";
       if (!companyId) {
         counts.errors += 1;
+        errorMessages.push(
+          `empresa não resolvida (companyId=${contact.companyId || "—"}, companyName=${contact.companyName || "—"})`,
+        );
         continue;
       }
       const valueNorm = normalizeContactValue(contact.value);
       if (!valueNorm && contact.verificationStatus !== "not_found") {
         counts.errors += 1;
+        errorMessages.push(`contato sem value (kind=${kind}, companyId=${companyId})`);
         continue;
       }
       const existing = await careerFrom("career_contacts")
         .select("*")
         .eq("company_id", companyId)
-        .eq("kind", contact.kind)
-        .eq("value_normalized", valueNorm || `not_found:${contact.kind}`)
+        .eq("kind", kind)
+        .eq("value_normalized", valueNorm || `not_found:${kind}`)
         .maybeSingle();
 
       const row = {
         company_id: companyId,
-        kind: contact.kind,
+        kind,
         full_name: contact.fullName?.trim() ?? "",
         title: contact.title?.trim() ?? "",
         value: contact.value?.trim() ?? "",
-        value_normalized: valueNorm || `not_found:${contact.kind}`,
+        value_normalized: valueNorm || `not_found:${kind}`,
         verification_status: contact.verificationStatus ?? "unverified",
         source: contact.source?.trim() ?? "",
         verified_at: contact.verificationStatus === "confirmed" ? new Date().toISOString() : null,
@@ -462,29 +599,86 @@ export async function enrichCareerContacts(input: {
 
       if (existing.data) {
         const { error } = await careerFrom("career_contacts").update(row).eq("id", existing.data.id);
-        if (error) counts.errors += 1;
-        else counts.updated += 1;
+        if (error) {
+          counts.errors += 1;
+          errorMessages.push(error.message);
+        } else counts.updated += 1;
       } else {
         const { error } = await careerFrom("career_contacts").insert(row);
         if (error) {
           if (/duplicate|unique/i.test(error.message)) counts.duplicates += 1;
-          else counts.errors += 1;
+          else {
+            counts.errors += 1;
+            errorMessages.push(error.message);
+          }
         } else counts.created += 1;
       }
 
-      if (contact.kind === "hr_email" && contact.value) {
+      if (kind === "hr_email" && contact.value) {
         await careerFrom("career_companies")
           .update({ hr_email: contact.value.trim(), last_enriched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", companyId);
       }
-    } catch {
+    } catch (error) {
       counts.errors += 1;
+      errorMessages.push(error instanceof Error ? error.message : "erro");
     }
   }
 
   const status = counts.errors && (counts.created || counts.updated) ? "partial" : counts.errors ? "error" : "completed";
-  await finishExecution(started.execution.id, counts, status);
-  return { executionId: started.execution.id as string, counts, replay: false };
+  await finishExecution(
+    started.execution.id,
+    { ...counts, error_samples: errorMessages.slice(0, 5) },
+    status,
+    errorMessages[0] ?? "",
+  );
+  return {
+    executionId: started.execution.id as string,
+    counts,
+    errorSamples: errorMessages.slice(0, 8),
+    replay: false,
+  };
+}
+
+/** Atualização idempotente de vínculos job→company (não recria registros). */
+export async function linkCareerJobsToCompanies(
+  links: Array<{ jobId: string; companyId: string }>,
+): Promise<{ updated: number; skipped: number; errors: string[] }> {
+  let updated = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  for (const link of links) {
+    const jobId = link.jobId?.trim();
+    const companyId = link.companyId?.trim();
+    if (!jobId || !companyId) {
+      skipped += 1;
+      continue;
+    }
+    const company = await careerFrom("career_companies").select("id, name").eq("id", companyId).maybeSingle();
+    if (!company.data) {
+      errors.push(`empresa inexistente: ${companyId}`);
+      continue;
+    }
+    const job = await careerFrom("career_jobs").select("id, company_id").eq("id", jobId).maybeSingle();
+    if (!job.data) {
+      errors.push(`vaga inexistente: ${jobId}`);
+      continue;
+    }
+    if (String(job.data.company_id ?? "") === companyId) {
+      skipped += 1;
+      continue;
+    }
+    const { error } = await careerFrom("career_jobs")
+      .update({
+        company_id: companyId,
+        company_name: String(company.data.name ?? ""),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId);
+    if (error) errors.push(error.message);
+    else updated += 1;
+  }
+  return { updated, skipped, errors };
 }
 
 export async function prepareCareerApplication(input: ApplicationPrepareInput & {

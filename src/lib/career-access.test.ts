@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import {
   CAREER_ALLOWED_EMAIL,
   isCareerAllowedEmail,
+  normalizeCareerContactKind,
   normalizeCnpj,
   normalizeCompanyName,
   normalizeDomain,
   normalizeJobTitle,
   normalizeJobUrl,
   normalizeLinkedInUrl,
+  pickCareerField,
 } from "./career-access";
+import { normalizeContactInput, normalizeJobInput } from "../server/career.server";
 import { assertCareerPanelAccess, clearCareerOwnerCache, canAccessCareerPanel } from "../server/career-access.server";
 import { chatgptCareerOpenApiDocument } from "./chatgpt-career-openapi";
 import { authenticateChatgptIntegration } from "../server/chatgpt-integration.server";
@@ -29,6 +32,34 @@ assert.equal(
   "https://jobs.example.com/vaga/1",
 );
 assert.equal(normalizeJobTitle("Gerente de Tráfego Sênior"), "gerente de trafego senior");
+
+assert.equal(pickCareerField({ company_id: "abc" }, "companyId", "company_id"), "abc");
+assert.equal(pickCareerField({ companyId: "xyz" }, "companyId", "company_id"), "xyz");
+assert.equal(normalizeCareerContactKind("email"), "hr_email");
+assert.equal(normalizeCareerContactKind("whatsapp"), "business_whatsapp");
+assert.equal(normalizeCareerContactKind("linkedin"), "company_linkedin");
+assert.equal(normalizeCareerContactKind("hr_email"), "hr_email");
+assert.equal(normalizeCareerContactKind("telefone"), "");
+
+const jobSnake = normalizeJobInput({
+  company_id: "4ce0c890-1e96-42a9-a67c-85169aeef8fe",
+  company_name: "Photon Company",
+  title: "Head de Growth",
+  work_mode: "hybrid",
+});
+assert.equal(jobSnake.companyId, "4ce0c890-1e96-42a9-a67c-85169aeef8fe");
+assert.equal(jobSnake.companyName, "Photon Company");
+assert.equal(jobSnake.workMode, "hybrid");
+
+const contactSnake = normalizeContactInput({
+  company_id: "4ce0c890-1e96-42a9-a67c-85169aeef8fe",
+  kind: "email",
+  value: "rh@photon.example",
+  verification_status: "unverified",
+});
+assert.equal(contactSnake.companyId, "4ce0c890-1e96-42a9-a67c-85169aeef8fe");
+assert.equal(contactSnake.kind, "email");
+assert.equal(contactSnake.verificationStatus, "unverified");
 
 clearCareerOwnerCache();
 process.env["CAREER_ALLOWED_USER_ID"] = "user-walkup-uuid";

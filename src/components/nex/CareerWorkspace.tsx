@@ -135,11 +135,11 @@ export function CareerWorkspace() {
         return;
       }
       setOverview(ov.data as Overview);
-      setCompanies(co && co.ok ? ((co.data as { items: Record<string, unknown>[] }).items ?? []) : []);
-      setJobs(jo && jo.ok ? ((jo.data as { items: Record<string, unknown>[] }).items ?? []) : []);
-      setContacts(ct && ct.ok ? ((ct.data as { items: Record<string, unknown>[] }).items ?? []) : []);
-      setApplications(ap && ap.ok ? ((ap.data as { items: Record<string, unknown>[] }).items ?? []) : []);
-      setHistory(hi && hi.ok ? ((hi.data as { items: Record<string, unknown>[] }).items ?? []) : []);
+      setCompanies(co && co.ok ? extractCareerItems(co.data) : []);
+      setJobs(jo && jo.ok ? extractCareerItems(jo.data) : []);
+      setContacts(ct && ct.ok ? extractCareerItems(ct.data) : []);
+      setApplications(ap && ap.ok ? extractCareerItems(ap.data) : []);
+      setHistory(hi && hi.ok ? extractCareerItems(hi.data) : []);
       const firstError = [co, jo, ct, ap, hi].find((item) => item && !item.ok);
       if (firstError && !firstError.ok) setError(firstError.message);
     } catch (error) {
@@ -424,4 +424,18 @@ function Empty({ text }: { text: string }) {
       {text}
     </div>
   );
+}
+
+/** Aceita `{ items }`, array direto ou envelope aninhado das server fns. */
+function extractCareerItems(data: unknown): Record<string, unknown>[] {
+  if (Array.isArray(data)) return data as Record<string, unknown>[];
+  if (!data || typeof data !== "object") return [];
+  const root = data as { items?: unknown; data?: unknown };
+  if (Array.isArray(root.items)) return root.items as Record<string, unknown>[];
+  if (root.data && typeof root.data === "object") {
+    const nested = root.data as { items?: unknown };
+    if (Array.isArray(nested.items)) return nested.items as Record<string, unknown>[];
+    if (Array.isArray(root.data)) return root.data as Record<string, unknown>[];
+  }
+  return [];
 }

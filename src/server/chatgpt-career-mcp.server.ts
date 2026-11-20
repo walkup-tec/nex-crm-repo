@@ -197,6 +197,7 @@ async function invokeCareerTool(name: string, rawArgs: unknown) {
         execution_id: result.executionId,
         replay: result.replay,
         ...result.counts,
+        error_samples: "errorSamples" in result ? result.errorSamples : [],
       };
     }
     case "career_jobs_search": {
@@ -210,6 +211,7 @@ async function invokeCareerTool(name: string, rawArgs: unknown) {
         execution_id: result.executionId,
         replay: result.replay,
         ...result.counts,
+        error_samples: "errorSamples" in result ? result.errorSamples : [],
       };
     }
     case "career_jobs_list":
